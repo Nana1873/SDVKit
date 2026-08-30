@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>SdvKit.AlwaysOn</AssemblyName>
+    <RootNamespace>SdvKit.AlwaysOn</RootNamespace>
+    <Description>Minimal game-side background-run guard for an isolated SDVKit lab.</Description>
+    <Version>0.1.0</Version>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**</DefaultItemExcludes>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' and '$(SDV_GAME_PATH)' != ''">$(SDV_GAME_PATH)</SdvGamePath>
+    <DefineConstants>$(DefineConstants);SDVKIT_GAME_AVAILABLE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="StardewModdingAPI">
+      <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="StardewValley">
+      <HintPath>$(SdvGamePath)\Stardew Valley.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MonoGame.Framework">
+      <HintPath>$(SdvGamePath)\MonoGame.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="ValidateSdvGamePath" BeforeTargets="ResolveReferences">
+    <Error
+      Condition="'$(SdvGamePath)' == ''"
+      Text="SdvKit.AlwaysOn requires SdvGamePath (or SDV_GAME_PATH) to point to a local Stardew Valley + SMAPI installation." />
+    <Error
+      Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\StardewModdingAPI.dll')"
+      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\StardewModdingAPI.dll'." />
+    <Error
+      Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\Stardew Valley.dll')"
+      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\Stardew Valley.dll'." />
+    <Error
+      Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\MonoGame.Framework.dll')"
+      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\MonoGame.Framework.dll' for GameRunner lifecycle and focus state." />
+  </Target>
+</Project>

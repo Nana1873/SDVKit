@@ -1,6 +1,13 @@
 using System.Text.Json;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Cli;
+
+internal sealed record LiveLabCommandResult(int ExitCode, object Report);
+
+internal delegate LiveLabCommandResult LiveLabCommandRunner(
+    string action,
+    string projectRoot);
 
 public static class CliApplication
 {
@@ -25,12 +32,19 @@ public static class CliApplication
         IReadOnlyList<string> arguments,
         TextWriter output,
         TextWriter error,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        LiveLabCommandRunner? runLiveLab = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
+
+        if (runLiveLab is null)
+        {
+            runLiveLab = (action, projectRoot) =>
+                LiveLabService.Execute(action, projectRoot, discoverInstallations);
+        }
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
@@ -51,6 +65,11 @@ public static class CliApplication
         if (string.Equals(arguments[0], "project", StringComparison.Ordinal))
         {
             return RunProject(arguments, output, error);
+        }
+
+        if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
+        {
+            return RunLab(arguments, output, error, runLiveLab);
         }
 
         error.WriteLine($"Unknown command '{arguments[0]}'. Run 'sdvkit help'.");
@@ -163,6 +182,66 @@ public static class CliApplication
             : InspectionFailed;
     }
 
+    private static int RunLab(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        LiveLabCommandRunner runLiveLab)
+    {
+        const string usage =
+            "Usage: sdvkit lab <start|status|stop> --topology single --json";
+
+        if (arguments.Count == 2 && IsHelp(arguments[1]))
+        {
+            output.WriteLine(usage);
+            return Success;
+        }
+
+        if (arguments.Count != 5
+            || arguments[1] is not ("start" or "status" or "stop"))
+        {
+            error.WriteLine(usage);
+            return UsageError;
+        }
+
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        string? topology = null;
+        for (var index = 2; index < arguments.Count; index++)
+        {
+            if (string.Equals(arguments[index], "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (string.Equals(arguments[index], "--topology", StringComparison.Ordinal)
+                && index + 1 < arguments.Count)
+            {
+                topologyOptionCount++;
+                topology = arguments[++index];
+                continue;
+            }
+
+            error.WriteLine(usage);
+            return UsageError;
+        }
+
+        if (jsonOptionCount != 1
+            || topologyOptionCount != 1
+            || !string.Equals(topology, "single", StringComparison.Ordinal))
+        {
+            error.WriteLine(usage);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runLiveLab(
+            arguments[1],
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
     private static bool IsHelp(string value) =>
         string.Equals(value, "help", StringComparison.Ordinal)
         || string.Equals(value, "--help", StringComparison.Ordinal)
@@ -186,9 +265,11 @@ public static class CliApplication
         output.WriteLine("  sdvkit version [--json]");
         output.WriteLine("  sdvkit doctor --json");
         output.WriteLine("  sdvkit project inspect [path] --json");
+        output.WriteLine("  sdvkit lab <start|status|stop> --topology single --json");
         output.WriteLine();
         output.WriteLine("Commands:");
         output.WriteLine("  doctor          Detect ready Stardew Valley + SMAPI installations (read-only).");
         output.WriteLine("  project inspect Classify a SMAPI mod, content pack, or hybrid (read-only).");
+        output.WriteLine("  lab             Control one isolated, owned singleplayer live-lab process.");
     }
 }

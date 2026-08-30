@@ -1,0 +1,9 @@
+{
+  "Name": "SDVKit AlwaysOn",
+  "Author": "SDVKit contributors",
+  "Version": "0.1.0",
+  "Description": "Keeps an explicitly activated isolated SDVKit lab ticking without window focus.",
+  "UniqueID": "SDVKit.AlwaysOn",
+  "EntryDll": "SdvKit.AlwaysOn.dll",
+  "MinimumApiVersion": "4.5.0"
+}
