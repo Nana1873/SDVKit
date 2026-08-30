@@ -2,7 +2,7 @@
 
 1. Implement the smallest complete change for a concrete Stardew mod-development workflow.
 2. Reuse in this order: existing SDVKit behavior, supported SMAPI/.NET behavior, a thin adapter around an established tool, then new code.
-3. Keep normal saves and the normal or mod-manager-owned `Mods` directory outside automatic development and test operations.
+3. Keep normal saves and the normal or mod-manager-owned `Mods` directory outside automatic development and test operations. Explicitly selected real saves may be imported as isolated copies below `.sdvkit/`; never modify the source save automatically.
 4. Keep generated builds, profiles, logs, fixtures, screenshots, reports, and backups below the project's ignored `.sdvkit/` directory.
 5. Never commit game binaries, proprietary assets, personal saves, secrets, or absolute machine-local paths.
 6. Distinguish build success, automated tests, and verified in-game behavior. Claim only the level actually proven.
