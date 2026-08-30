@@ -1,0 +1,30 @@
+# Build and test output
+bin/
+obj/
+TestResults/
+artifacts/
+coverage/
+*.binlog
+*.nupkg
+*.snupkg
+
+# IDE state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# SDVKit-owned local runtime state
+.sdvkit/
+
+# Machine-local configuration
+Directory.Build.local.props
+*.local.json
+
+# Never commit game binaries, proprietary assets, or saves
+Stardew Valley.dll
+StardewModdingAPI.dll
+MonoGame.Framework.dll
+*.xnb
+SaveGameInfo
