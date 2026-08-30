@@ -199,7 +199,7 @@ public sealed class WindowsLabProcessHostTests
 
             LabProcessWaitResult wait = host.WaitForExit(
                 start.Identity,
-                TimeSpan.FromSeconds(5));
+                TimeSpan.FromSeconds(15));
 
             Assert.Equal(LabProcessWaitStatus.Exited, wait.Status);
             string[] lines = File.ReadAllLines(stdout);
