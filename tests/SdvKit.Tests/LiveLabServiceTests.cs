@@ -51,6 +51,13 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.StopRequestPath, specification.Environment["SDVKIT_LAB_STOP_PATH"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
+        KeyValuePair<string, string>[] disabledTestSaveEnvironment = specification.Environment
+            .Where(pair => pair.Key.StartsWith("SDVKIT_TEST_SAVE_", StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(9, disabledTestSaveEnvironment.Length);
+        Assert.All(
+            disabledTestSaveEnvironment,
+            pair => Assert.Equal(string.Empty, pair.Value));
         Assert.Equal(1, stateStore.VerifyWritableCount);
         Assert.Equal(paths.ModsPath, stateStore.State?.ModsPath);
         Assert.StartsWith(paths.SingleRoot, paths.ModsPath, StringComparison.OrdinalIgnoreCase);
@@ -500,13 +507,310 @@ public sealed class LiveLabServiceTests
         Assert.Equal("labOperationFailed", Assert.Single(report.Problems).Code);
     }
 
+    [Fact]
+    public void TestSaveActionRetriesOneInvalidStatusSnapshotThenRunsTheSameLifecycle()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths);
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+        var invalidMarkersWritten = 0;
+        process.BeforeStartReturn = () =>
+        {
+            invalidMarkersWritten++;
+            File.WriteAllText(paths.StatusPath, "{ transient replacement read }");
+        };
+
+        void PublishTerminal(string lifecyclePhase)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            string terminal = launch.Mode == TestSaveContract.CreateMode ? "created" : "passed";
+            WriteStatusMarker(
+                paths,
+                state,
+                lifecyclePhase,
+                pauseWhenOutOfFocus: lifecyclePhase == "active" ? false : true,
+                new TestSaveStatusMarker(
+                    TestSaveContract.SchemaVersion,
+                    launch.Mode,
+                    terminal,
+                    launch.Identity.FixtureId,
+                    launch.Identity.SaveId,
+                    IdentityVerified: true,
+                    WaitedTicks: launch.Mode == TestSaveContract.ScenarioMode ? 120 : 0,
+                    Message: "simulated terminal fixture",
+                    launch.ScenarioLogPath));
+        }
+
+        process.BeforeWaitReturn = () => PublishTerminal("exiting");
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore,
+            delay: _ => PublishTerminal("active"));
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(0, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Equal("passed", report.State);
+        Assert.Equal(120, report.ObservedTicks);
+        Assert.Equal(2, process.StartCount);
+        Assert.Equal(2, invalidMarkersWritten);
+        Assert.Equal(2, process.WaitCount);
+        Assert.Equal(2, fixtureStore.PrepareCount);
+        Assert.Equal(2, fixtureStore.CompleteCount);
+        Assert.Equal(0, fixtureStore.AbortCount);
+        Assert.Null(stateStore.State);
+        Assert.Equal(8, report.LogPaths.Count);
+        Assert.Equal(TestSaveContract.ScenarioMode, fixtureStore.CompletedModes[^1]);
+        Assert.Equal(
+            TestSaveContract.ScenarioMode,
+            process.Specification?.Environment["SDVKIT_TEST_SAVE_MODE"]);
+        Assert.Equal(
+            fixtureStore.Identity.SaveId,
+            process.Specification?.Environment["SDVKIT_TEST_SAVE_ID"]);
+    }
+
+    [Fact]
+    public void TestSaveActionRefusesAnExistingLabBeforePreparingAnyFixture()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var fixtureStore = new FakeTestSaveStore(paths);
+        LiveLabService service = Service(
+            paths,
+            new FakeStateStore { State = State(paths, gamePath) },
+            new FakeBuilder(),
+            new FakeProcessHost(),
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(3, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Equal("labNotStopped", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, fixtureStore.PrepareCount);
+    }
+
+    [Fact]
+    public void TestSaveStartExceptionAbortsThePreparedFixtureWithoutLaunching()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var fixtureStore = new FakeTestSaveStore(paths);
+        var builder = new FakeBuilder
+        {
+            ExceptionToThrow = new IOException("simulated build exception"),
+        };
+        var process = new FakeProcessHost();
+        var stateStore = new FakeStateStore();
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            builder,
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(3, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Contains(report.Problems, problem => problem.Code == "testSaveRunFailed");
+        Assert.Equal(1, fixtureStore.PrepareCount);
+        Assert.Equal(1, fixtureStore.AbortCount);
+        Assert.Equal(0, process.StartCount);
+        Assert.Null(stateStore.State);
+    }
+
+    [Fact]
+    public void UnverifiedChildWithUnconfirmedAbortKeepsTheFixtureMounted()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var fixtureStore = new FakeTestSaveStore(paths);
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.AbortUnconfirmed,
+                Error: "simulated unverified child may still be running"),
+        };
+        LiveLabService service = Service(
+            paths,
+            new FakeStateStore(),
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(3, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Contains(
+            report.Problems,
+            problem => problem.Code == "unverifiedChildAbortUnconfirmed");
+        Assert.Contains(
+            report.Problems,
+            problem => problem.Code == "testSaveCleanupDeferred");
+        Assert.Equal(1, fixtureStore.PrepareCount);
+        Assert.Equal(0, fixtureStore.AbortCount);
+    }
+
+    [Fact]
+    public void GameSideTestSaveFailureUsesStopAndAbortThenClearsOwnership()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths);
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+
+        void PublishFailure(string lifecyclePhase)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            WriteStatusMarker(
+                paths,
+                state,
+                lifecyclePhase,
+                pauseWhenOutOfFocus: lifecyclePhase == "active" ? false : true,
+                new TestSaveStatusMarker(
+                    TestSaveContract.SchemaVersion,
+                    launch.Mode,
+                    "failed",
+                    launch.Identity.FixtureId,
+                    launch.Identity.SaveId,
+                    IdentityVerified: false,
+                    WaitedTicks: 0,
+                    Message: "simulated game-side failure",
+                    launch.ScenarioLogPath));
+        }
+
+        process.BeforeWaitReturn = () => PublishFailure("exiting");
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore,
+            delay: _ => PublishFailure("active"));
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(3, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Contains(report.Problems, problem => problem.Code == "testSaveFailed");
+        Assert.Equal(1, fixtureStore.AbortCount);
+        Assert.Equal(0, fixtureStore.CompleteCount);
+        Assert.Equal(1, process.WaitCount);
+        Assert.Null(stateStore.State);
+    }
+
+    [Fact]
+    public void MissingProjectLocalScenarioLogCannotProduceAGreenWorkflow()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths)
+        {
+            ScenarioLogArchived = false,
+        };
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+
+        void PublishCreated(string lifecyclePhase)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            WriteStatusMarker(
+                paths,
+                state,
+                lifecyclePhase,
+                pauseWhenOutOfFocus: lifecyclePhase == "active" ? false : true,
+                new TestSaveStatusMarker(
+                    TestSaveContract.SchemaVersion,
+                    launch.Mode,
+                    "created",
+                    launch.Identity.FixtureId,
+                    launch.Identity.SaveId,
+                    IdentityVerified: true,
+                    WaitedTicks: 0,
+                    Message: "simulated created fixture",
+                    launch.ScenarioLogPath));
+        }
+
+        process.BeforeWaitReturn = () => PublishCreated("exiting");
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore,
+            delay: _ => PublishCreated("active"));
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        Assert.Equal(3, result.ExitCode);
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Contains(
+            report.Problems,
+            problem => problem.Code == "testSaveScenarioLogMissing");
+        Assert.Equal(1, fixtureStore.CompleteCount);
+        Assert.Null(stateStore.State);
+    }
+
     private static LiveLabService Service(
         LiveLabPaths paths,
         FakeStateStore stateStore,
         FakeBuilder builder,
         FakeProcessHost process,
         DoctorReport doctor,
-        DateTimeOffset? nowUtc = null)
+        DateTimeOffset? nowUtc = null,
+        ITestSaveFixtureStore? testSaveStore = null,
+        Action<TimeSpan>? delay = null)
     {
         return new LiveLabService(
             paths,
@@ -515,7 +819,9 @@ public sealed class LiveLabServiceTests
             process,
             () => doctor,
             () => nowUtc ?? StartedAt.AddSeconds(10),
-            () => LaunchId);
+            () => LaunchId,
+            testSaveStore,
+            delay);
     }
 
     private static DoctorReport Ready(string gamePath) =>
@@ -546,7 +852,8 @@ public sealed class LiveLabServiceTests
         LiveLabPaths paths,
         LiveLabState state,
         string phase,
-        bool? pauseWhenOutOfFocus)
+        bool? pauseWhenOutOfFocus,
+        TestSaveStatusMarker? testSave = null)
     {
         paths.EnsureDirectories();
         var marker = new AlwaysOnStatusMarker(
@@ -558,7 +865,8 @@ public sealed class LiveLabServiceTests
             600,
             IsActive: false,
             PauseWhenOutOfFocus: pauseWhenOutOfFocus,
-            StartedAt.AddSeconds(10));
+            StartedAt.AddSeconds(10),
+            testSave);
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
@@ -613,10 +921,17 @@ public sealed class LiveLabServiceTests
 
         public string? GamePath { get; private set; }
 
+        public Exception? ExceptionToThrow { get; init; }
+
         public AlwaysOnBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
         {
             CallCount++;
             GamePath = gamePath;
+            if (ExceptionToThrow is not null)
+            {
+                throw ExceptionToThrow;
+            }
+
             return new AlwaysOnBuildResult(
                 true,
                 System.IO.Path.Combine(paths.BuildPath, "always-on-build.log"),
@@ -650,10 +965,15 @@ public sealed class LiveLabServiceTests
 
         public OwnedProcessIdentity? WaitedIdentity { get; private set; }
 
+        public Action? BeforeWaitReturn { get; set; }
+
+        public Action? BeforeStartReturn { get; set; }
+
         public LabProcessStartResult Start(LabProcessStartSpec specification)
         {
             StartCount++;
             Specification = specification;
+            BeforeStartReturn?.Invoke();
             return StartResult;
         }
 
@@ -668,6 +988,7 @@ public sealed class LiveLabServiceTests
         {
             WaitCount++;
             WaitedIdentity = expected;
+            BeforeWaitReturn?.Invoke();
             return WaitResult;
         }
 
@@ -678,6 +999,74 @@ public sealed class LiveLabServiceTests
             CloseCount++;
             ClosedIdentity = expected;
             return CloseResult;
+        }
+    }
+
+    private sealed class FakeTestSaveStore : ITestSaveFixtureStore
+    {
+        private readonly LiveLabPaths _paths;
+
+        public FakeTestSaveStore(LiveLabPaths paths)
+        {
+            _paths = paths;
+            Identity = new TestSaveIdentity(
+                TestSaveContract.SchemaVersion,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                123456789L,
+                "SDVKit_123456789",
+                TestSaveContract.PlayerName,
+                TestSaveContract.FarmName,
+                TestSaveContract.FavoriteThing);
+        }
+
+        public TestSaveIdentity Identity { get; }
+
+        public int PrepareCount { get; private set; }
+
+        public int CompleteCount { get; private set; }
+
+        public int AbortCount { get; private set; }
+
+        public List<string> CompletedModes { get; } = [];
+
+        public bool ScenarioLogArchived { get; init; } = true;
+
+        public TestSavePreparation PrepareForStart()
+        {
+            string mode = PrepareCount++ == 0
+                ? TestSaveContract.CreateMode
+                : TestSaveContract.ScenarioMode;
+            return new TestSavePreparation(new TestSaveLaunchState(
+                mode,
+                Identity,
+                Path.Combine(_paths.ProjectRoot, "fake-saves", Identity.SaveId),
+                _paths.TestSaveWorkPath,
+                _paths.TestSaveScenarioLogPath));
+        }
+
+        public TestSaveCleanupResult CompleteStopped(
+            TestSaveLaunchState launch,
+            string launchId)
+        {
+            CompleteCount++;
+            CompletedModes.Add(launch.Mode);
+            return new TestSaveCleanupResult(
+            [
+                Path.Combine(_paths.TestSaveRoot, $"{launchId}.{launch.Mode}.stdout.log"),
+                Path.Combine(_paths.TestSaveRoot, $"{launchId}.{launch.Mode}.stderr.log"),
+                Path.Combine(_paths.TestSaveRoot, $"{launchId}.{launch.Mode}.status.json"),
+                Path.Combine(_paths.TestSaveRoot, $"{launchId}.{launch.Mode}.scenario.log"),
+            ],
+            ScenarioLogArchived);
+        }
+
+        public TestSaveCleanupResult AbortStopped(
+            TestSaveLaunchState launch,
+            string launchId)
+        {
+            AbortCount++;
+            return new TestSaveCleanupResult([], ScenarioLogArchived: false);
         }
     }
 }

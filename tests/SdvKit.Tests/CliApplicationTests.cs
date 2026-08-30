@@ -20,7 +20,7 @@ public sealed class CliApplicationTests
         Assert.Contains("sdvkit project build [path] --json", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit project package [path] --json", output, StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit lab <start|status|stop> --topology single --json",
+            "sdvkit lab <start|status|stop|test-save> --topology single --json",
             output,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
@@ -332,6 +332,7 @@ public sealed class CliApplicationTests
     [InlineData("start")]
     [InlineData("status")]
     [InlineData("stop")]
+    [InlineData("test-save")]
     public void LabDispatchesOnlyTheSingleTopology(string action)
     {
         string? receivedAction = null;
@@ -370,6 +371,7 @@ public sealed class CliApplicationTests
     [InlineData("lab", "start", "--topology", "network-2", "--json")]
     [InlineData("lab", "start", "--topology", "single", "--pretty")]
     [InlineData("lab", "up", "--topology", "single", "--json")]
+    [InlineData("lab", "test-save", "--topology", "single", "--json", "--fixture", "other")]
     public void LabSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         LiveLabCommandRunner runner = (_, _) =>
@@ -380,7 +382,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            $"Usage: sdvkit lab <start|status|stop> --topology single --json{Environment.NewLine}",
+            $"Usage: sdvkit lab <start|status|stop|test-save> --topology single --json{Environment.NewLine}",
             error);
     }
 

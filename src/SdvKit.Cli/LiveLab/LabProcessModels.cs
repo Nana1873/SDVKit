@@ -34,6 +34,7 @@ internal enum LabProcessStartStatus
     ExitedBeforeIdentityVerification,
     IdentityMismatch,
     Unreadable,
+    AbortUnconfirmed,
     Failed,
 }
 

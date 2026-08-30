@@ -46,9 +46,8 @@ internal sealed class BackgroundRunGuard
             if (!_originalCaptured || !CurrentOptionsAreCaptured())
             {
                 CaptureCurrentOptions();
+                _recapturePending = false;
             }
-
-            _recapturePending = false;
         }
         else if (!_originalCaptured)
         {
@@ -77,6 +76,7 @@ internal sealed class BackgroundRunGuard
     {
         _enabled = false;
         _recapturePending = false;
+        var restored = false;
         try
         {
             if (!_originalCaptured
@@ -93,15 +93,28 @@ internal sealed class BackgroundRunGuard
             }
 
             bool currentPauseWhenOutOfFocus = _state.PauseWhenOutOfFocus;
-            return new BackgroundRunRestoreResult(
+            var result = new BackgroundRunRestoreResult(
                 currentPauseWhenOutOfFocus == _originalPauseWhenOutOfFocus,
                 currentPauseWhenOutOfFocus);
+            restored = result.Succeeded;
+            return result;
         }
         finally
         {
-            _originalCaptured = false;
-            _originalPauseWhenOutOfFocus = false;
-            _capturedOptionsIdentity = null;
+            if (restored)
+            {
+                _originalCaptured = false;
+                _originalPauseWhenOutOfFocus = false;
+                _capturedOptionsIdentity = null;
+            }
+            else
+            {
+                // A clean-stop retry may observe the same temporarily detached
+                // options instance. Preserve its true original; if Stardew
+                // replaces the instance instead, the pending recapture binds
+                // that replacement before the guard writes it.
+                _recapturePending = true;
+            }
         }
     }
 

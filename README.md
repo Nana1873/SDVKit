@@ -9,7 +9,7 @@ This repository is a clean greenfield rebuild. The public surface stays delibera
 SDVKit has two equal pillars:
 
 - **Toolkit:** inspect, create, build, test, and package SMAPI mods and content packs.
-- **Live lab:** launch Stardew through an isolated SMAPI mod group and keep one controlled singleplayer run active in the background. Later issues may add explicitly selected save copies and focused scenario tests on top of this lifecycle.
+- **Live lab:** launch Stardew through an isolated SMAPI mod group, keep one controlled singleplayer run active in the background, and exercise one SDVKit-owned disposable test world without touching personal saves.
 
 The default live path uses SMAPI's native `--mods-path` support. SDVKit does not require Mod Organizer 2 and does not automatically deploy into the normal or mod-manager-owned `Mods` directory.
 
@@ -48,7 +48,21 @@ The ownership record contains the exact PID, UTC process start time, and executa
 
 AlwaysOn transiently sets Stardew's `pauseWhenOutOfFocus` option to `false`, reasserts it while the controlled process runs, and restores the captured value during the normal game-exit event before Stardew persists options. A process crash or forced external termination cannot promise that restoration.
 
-The native mod path isolates which SMAPI mods are loaded; it does **not** isolate Stardew's shared AppData preferences, saves, startup preferences, or standard SMAPI logs. This workflow does not enumerate, open, copy, select, or modify any save, and it never writes to the normal or mod-manager-owned `Mods` directory.
+The native mod path isolates which SMAPI mods are loaded; it does **not** isolate Stardew's shared AppData preferences, saves, startup preferences, or standard SMAPI logs. The ordinary `start`/`status`/`stop` lifecycle does not enumerate, open, copy, select, or modify any save, and it never writes to the normal or mod-manager-owned `Mods` directory.
+
+### Disposable test world
+
+Run the focused test-world workflow only while the regular lab is stopped:
+
+```powershell
+& .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe lab test-save --topology single --json
+```
+
+The first invocation registers one fixed SDVKit fixture below `.sdvkit/lab/single/test-save`, temporarily exposes only its exact save ID as a direct child of Stardew's shared `Saves` directory, and creates the world through Stardew's normal new-game and initial-save flow. After a confirmed clean stop, SDVKit removes and verifies removal of that exact junction, captures a byte-for-byte baseline, restores a work copy, and runs the same controlled `start`/`status`/`stop` lifecycle again. Later invocations begin from that baseline and need only the scenario run.
+
+The scenario loads the exact fixture directly, verifies its save ID, unique game ID, player, farm, favorite thing, ownership markers, main-player status, and singleplayer status before any scenario mutation, shows one `SDVKit test-save smoke` HUD message, and observes 120 real game-update ticks. Completion requires the terminal game-side marker, normal AlwaysOn option restoration, exact process exit, junction removal, and another baseline reset. Its manifest, baseline, work tree, archived stdout/stderr/status/scenario logs, and any temporary reset data stay below `.sdvkit/`; it creates no separate lifecycle or generic scenario protocol.
+
+The command never lists the shared `Saves` directory and never opens, copies, replaces, or deletes a personal save. A pre-existing entry at the exact generated fixture name blocks the workflow without touching that entry. An identity mismatch or unconfirmed cleanup blocks further fixture mutation; when the exact SDVKit junction can still be proven, cleanup removes it first. The test-save automation currently fails closed unless it finds the explicitly checked Stardew 1.6.15 (`1.6.15.24356`) and SMAPI 4.5.2 runtime contract.
 
 ## Read-only foundation commands
 

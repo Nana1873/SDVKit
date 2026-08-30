@@ -70,6 +70,53 @@ public sealed class BackgroundRunGuardTests
     }
 
     [Fact]
+    public void PreloadedWatchRebindsWhenReplacementArrivesAfterTheEventCallback()
+    {
+        FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
+        BackgroundRunGuard guard = new(state);
+        guard.Enable();
+
+        guard.RecaptureAfterOptionsReplacement();
+        FakeOptions replacement = state.ReplaceOptions(pauseWhenOutOfFocus: true);
+        guard.EnsureApplied();
+        Assert.False(replacement.PauseWhenOutOfFocus);
+
+        BackgroundRunRestoreResult restored = guard.RestoreOriginalAndDisable();
+
+        Assert.True(restored.Succeeded);
+        Assert.True(restored.ConfirmedPauseWhenOutOfFocus);
+        Assert.True(replacement.PauseWhenOutOfFocus);
+        Assert.Equal(2, replacement.SetCount);
+    }
+
+    [Fact]
+    public void PeriodicWatchRebindsASecondReplacementDuringLoad()
+    {
+        FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
+        BackgroundRunGuard guard = new(state);
+        guard.Enable();
+
+        guard.RecaptureAfterOptionsReplacement();
+        state.ReplaceOptions(pauseWhenOutOfFocus: true);
+        guard.EnsureApplied();
+        FakeOptions secondReplacement = state.ReplaceOptions(pauseWhenOutOfFocus: true);
+
+        guard.EnsureApplied();
+
+        Assert.True(secondReplacement.PauseWhenOutOfFocus);
+        Assert.Equal(0, secondReplacement.SetCount);
+
+        guard.RecaptureAfterOptionsReplacement();
+
+        Assert.False(secondReplacement.PauseWhenOutOfFocus);
+        BackgroundRunRestoreResult restored = guard.RestoreOriginalAndDisable();
+        Assert.True(restored.Succeeded);
+        Assert.True(restored.ConfirmedPauseWhenOutOfFocus);
+        Assert.True(secondReplacement.PauseWhenOutOfFocus);
+        Assert.Equal(2, secondReplacement.SetCount);
+    }
+
+    [Fact]
     public void RepeatedPreloadedForSameOptionsDoesNotCaptureTemporaryFalse()
     {
         FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
@@ -173,6 +220,46 @@ public sealed class BackgroundRunGuardTests
     }
 
     [Fact]
+    public void FailedRestoreCanRebindAReplacementAndRetryTheSameCleanStop()
+    {
+        FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
+        BackgroundRunGuard guard = new(state);
+        guard.Enable();
+        FakeOptions replacement = state.ReplaceOptions(pauseWhenOutOfFocus: true);
+
+        BackgroundRunRestoreResult first = guard.RestoreOriginalAndDisable();
+        guard.Enable();
+        BackgroundRunRestoreResult retry = guard.RestoreOriginalAndDisable();
+
+        Assert.False(first.Succeeded);
+        Assert.True(retry.Succeeded);
+        Assert.True(retry.ConfirmedPauseWhenOutOfFocus);
+        Assert.True(replacement.PauseWhenOutOfFocus);
+        Assert.Equal(2, replacement.SetCount);
+    }
+
+    [Fact]
+    public void FailedRestoreRetainsTheOriginalForTheSameReattachedOptions()
+    {
+        FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
+        BackgroundRunGuard guard = new(state);
+        guard.Enable();
+        FakeOptions originalOptions = state.DetachOptions();
+
+        BackgroundRunRestoreResult first = guard.RestoreOriginalAndDisable();
+        guard.Enable();
+        state.AttachOptions(originalOptions);
+        guard.EnsureApplied();
+        BackgroundRunRestoreResult retry = guard.RestoreOriginalAndDisable();
+
+        Assert.False(first.Succeeded);
+        Assert.True(retry.Succeeded);
+        Assert.True(retry.ConfirmedPauseWhenOutOfFocus);
+        Assert.True(originalOptions.PauseWhenOutOfFocus);
+        Assert.Equal(2, originalOptions.SetCount);
+    }
+
+    [Fact]
     public void NormalGameExitRestoresBeforeWritingTheExitingMarker()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -208,6 +295,34 @@ public sealed class BackgroundRunGuardTests
         Assert.True(restore > preparation);
         Assert.True(exitingMarker > restore);
         Assert.True(markerWrite > restore);
+    }
+
+    [Fact]
+    public void OneSecondStatusRebindsBackgroundRunAfterTheGameUpdate()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "ModEntry.cs"))
+            .ReplaceLineEndings("\n");
+
+        int handler = source.IndexOf(
+            "helper.Events.GameLoop.OneSecondUpdateTicked +=",
+            StringComparison.Ordinal);
+        int reassert = source.IndexOf(
+            "_backgroundRun.RecaptureAfterOptionsReplacement();",
+            handler,
+            StringComparison.Ordinal);
+        int status = source.IndexOf(
+            "WriteActiveStatus();",
+            handler,
+            StringComparison.Ordinal);
+
+        Assert.True(handler >= 0);
+        Assert.True(reassert > handler);
+        Assert.True(status > reassert);
     }
 
     private static string FindRepositoryRoot()

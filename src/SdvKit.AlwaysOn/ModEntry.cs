@@ -9,6 +9,7 @@ public sealed class ModEntry : Mod
 {
     private BackgroundRunGuard? _backgroundRun;
     private StatusWriter? _statusWriter;
+    private TestSaveAutomation? _testSave;
     private string? _launchId;
     private string? _stopRequestPath;
     private bool _gameLaunched;
@@ -33,6 +34,18 @@ public sealed class ModEntry : Mod
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
+        if (!TestSaveAutomation.TryCreate(
+                Monitor,
+                WriteActiveStatus,
+                out _testSave,
+                out string testSaveReason))
+        {
+            Monitor.Log(
+                $"SDVKit test-save automation is unavailable: {testSaveReason}",
+                LogLevel.Error);
+            _testSave?.LogInitializationFailure();
+        }
+
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
         helper.Events.GameLoop.UpdateTicking += (_, _) =>
@@ -47,12 +60,18 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
+                // Rebind and reassert after the game's update too. During load,
+                // Stardew can replace options more than once after the load-stage
+                // notification and before a stable world is ready.
+                _backgroundRun.RecaptureAfterOptionsReplacement();
                 WriteActiveStatus();
             }
         };
+        helper.Events.GameLoop.UpdateTicked += (_, _) =>
+            _testSave?.OnUpdateTicked();
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            _backgroundRun.Enable();
+            _backgroundRun!.Enable();
             _gameLaunched = true;
             GameRunner.instance.Exiting += (_, _) => PrepareForExit();
             WriteActiveStatus();
@@ -64,8 +83,19 @@ public sealed class ModEntry : Mod
                 _backgroundRun.RecaptureAfterOptionsReplacement();
             }
         };
+        helper.Events.GameLoop.SaveCreating += (_, _) =>
+            _testSave?.OnSaveCreating();
+        helper.Events.GameLoop.SaveCreated += (_, _) =>
+            _testSave?.OnSaveCreated();
+        helper.Events.GameLoop.SaveLoaded += (_, _) =>
+            _testSave?.OnSaveLoaded();
+        helper.Events.GameLoop.Saving += (_, _) =>
+            _testSave?.OnSaving();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
+        {
             _backgroundRun.ResetAfterReturnToTitle();
+            _testSave?.OnReturnedToTitle();
+        };
 
         Monitor.Log(
             $"SDVKit AlwaysOn activated for isolated lab launch '{launchId}'.",
@@ -134,7 +164,9 @@ public sealed class ModEntry : Mod
 
     private void TryHandleStopRequest()
     {
-        if (!_gameLaunched || _exitPrepared)
+        if (!_gameLaunched
+            || _exitPrepared
+            || _testSave is { CanStop: false })
         {
             return;
         }
@@ -204,8 +236,15 @@ public sealed class ModEntry : Mod
                 LogLevel.Error);
         }
 
-        _exitPrepared = true;
+        _exitPrepared = restore.Succeeded;
         _restoreConfirmed = restore.Succeeded;
+        if (!restore.Succeeded)
+        {
+            // Options can be replaced during a load transition. Rebind on the next
+            // game tick, then retry the same retained stop request.
+            _backgroundRun!.Enable();
+        }
+
         WriteStatus(
             restore.Succeeded ? "exiting" : "restoreFailed",
             tick,
@@ -235,7 +274,8 @@ public sealed class ModEntry : Mod
                 phase,
                 tick,
                 isActive,
-                pauseWhenOutOfFocus);
+                pauseWhenOutOfFocus,
+                _testSave?.Snapshot);
             _statusWriteErrorLogged = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
