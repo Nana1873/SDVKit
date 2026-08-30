@@ -16,6 +16,9 @@ public sealed class CliApplicationTests
         Assert.Contains("sdvkit version", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit doctor --json", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit project inspect [path] --json", output, StringComparison.Ordinal);
+        Assert.Contains("sdvkit project create", output, StringComparison.Ordinal);
+        Assert.Contains("sdvkit project build [path] --json", output, StringComparison.Ordinal);
+        Assert.Contains("sdvkit project package [path] --json", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -151,11 +154,115 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectCreateWritesSmallStableJson()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = System.IO.Path.Combine(temporary.Path, "ExamplePack");
+
+        (int exitCode, string output, string error) = Run(
+            "project",
+            "create",
+            "content-pack",
+            target,
+            "--name",
+            "Example pack",
+            "--author",
+            "Nana",
+            "--unique-id",
+            "Nana.ExamplePack",
+            "--description",
+            "A minimal example.",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal(target, root.GetProperty("root").GetString());
+        Assert.Equal("contentPack", root.GetProperty("kind").GetString());
+        Assert.Equal(
+            [".gitignore", "content.json", "manifest.json"],
+            root.GetProperty("files").EnumerateArray().Select(value => value.GetString()));
+        Assert.Empty(root.GetProperty("problems").EnumerateArray());
+        Assert.Equal(
+            ["schemaVersion", "root", "kind", "files", "problems"],
+            PropertyNames(root));
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ContentPackBuildIsAControlledJsonOutcome()
+    {
+        using TemporaryDirectory temporary = new();
+        temporary.WriteFile("manifest.json", """
+            {
+              "Name": "Pack",
+              "Author": "Nana",
+              "UniqueID": "Nana.Pack",
+              "Version": "1.0.0",
+              "Description": "Example.",
+              "ContentPackFor": { "UniqueID": "Pathoschild.ContentPatcher" }
+            }
+            """);
+        temporary.WriteFile("content.json", "{ \"Format\": \"2.9.0\", \"Changes\": [] }");
+
+        (int exitCode, string output, string error) = RunWithDoctor(
+            () => throw new InvalidOperationException("Discovery should not run."),
+            "project",
+            "build",
+            temporary.Path,
+            "--json");
+
+        Assert.Equal(3, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        Assert.Equal(
+            "projectNotBuildable",
+            document.RootElement
+                .GetProperty("problems")
+                .EnumerateArray()
+                .Single()
+                .GetProperty("code")
+                .GetString());
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void GeneratedContentPackPackagesThroughTheCli()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = System.IO.Path.Combine(temporary.Path, "Pack");
+        ProjectCreator.Create(new ProjectCreationRequest(
+            ProjectCreator.ContentPack,
+            target,
+            "Pack",
+            "Nana",
+            "Nana.Pack",
+            "Example."));
+
+        (int exitCode, string output, string error) = RunWithDoctor(
+            () => throw new InvalidOperationException("Discovery should not run."),
+            "project",
+            "package",
+            "--json",
+            target);
+
+        Assert.Equal(0, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal(".sdvkit/packages/Pack 1.0.0.zip", root.GetProperty("archive").GetString());
+        Assert.Equal(
+            ["Pack/content.json", "Pack/manifest.json"],
+            root.GetProperty("entries").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(
+            ["schemaVersion", "root", "kind", "archive", "entries", "log", "problems"],
+            PropertyNames(root));
+        Assert.Equal(string.Empty, error);
+    }
+
     [Theory]
     [InlineData("project", "inspect")]
     [InlineData("project", "inspect", "one", "two", "--json")]
     [InlineData("project", "inspect", "--unknown", "--json")]
-    [InlineData("project", "list", "--json")]
     public void ProjectSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         (int exitCode, string output, string error) = Run(arguments);
@@ -163,6 +270,58 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal($"Usage: sdvkit project inspect [path] --json{Environment.NewLine}", error);
+    }
+
+    [Theory]
+    [InlineData("project", "create", "smapi-mod", "target", "--json")]
+    [InlineData("project", "create", "unknown", "target", "--json")]
+    [InlineData("project", "create", "content-pack", "target", "--name", "Pack", "--name", "Again", "--json")]
+    public void ProjectCreateSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        (int exitCode, string output, string error) = Run(arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(
+            "Usage: sdvkit project create <smapi-mod|content-pack> <path> --name <name> --author <author> --unique-id <id> --description <text> --json"
+                + Environment.NewLine,
+            error);
+    }
+
+    [Theory]
+    [InlineData("project", "build")]
+    [InlineData("project", "build", "one", "two", "--json")]
+    public void ProjectBuildSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        (int exitCode, string output, string error) = Run(arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal($"Usage: sdvkit project build [path] --json{Environment.NewLine}", error);
+    }
+
+    [Theory]
+    [InlineData("project", "package")]
+    [InlineData("project", "package", "--pretty")]
+    public void ProjectPackageSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        (int exitCode, string output, string error) = Run(arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal($"Usage: sdvkit project package [path] --json{Environment.NewLine}", error);
+    }
+
+    [Fact]
+    public void UnknownProjectCommandReturnsProjectUsage()
+    {
+        (int exitCode, string output, string error) = Run("project", "list", "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(
+            $"Usage: sdvkit project <inspect|create|build|package> ...{Environment.NewLine}",
+            error);
     }
 
     [Fact]
