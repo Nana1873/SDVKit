@@ -5,5 +5,10 @@
     <AssemblyName>sdvkit</AssemblyName>
     <RootNamespace>SdvKit.Cli</RootNamespace>
     <Version>0.1.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SdvKit.AlwaysOn\BackgroundRunGuard.cs" Link="AlwaysOn\BackgroundRunGuard.cs" />
+  </ItemGroup>
 </Project>

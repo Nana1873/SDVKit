@@ -16,6 +16,10 @@ public sealed class CliApplicationTests
         Assert.Contains("sdvkit version", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit doctor --json", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit project inspect [path] --json", output, StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit lab <start|status|stop> --topology single --json",
+            output,
+            StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -165,6 +169,62 @@ public sealed class CliApplicationTests
         Assert.Equal($"Usage: sdvkit project inspect [path] --json{Environment.NewLine}", error);
     }
 
+    [Theory]
+    [InlineData("start")]
+    [InlineData("status")]
+    [InlineData("stop")]
+    public void LabDispatchesOnlyTheSingleTopology(string action)
+    {
+        string? receivedAction = null;
+        string? receivedRoot = null;
+        LiveLabCommandRunner runner = (candidateAction, projectRoot) =>
+        {
+            receivedAction = candidateAction;
+            receivedRoot = projectRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                topology = "single",
+                state = "test",
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithLab(
+            runner,
+            "lab",
+            action,
+            "--json",
+            "--topology",
+            "single");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(action, receivedAction);
+        Assert.Equal(Environment.CurrentDirectory, receivedRoot);
+        using JsonDocument document = JsonDocument.Parse(output);
+        Assert.Equal("single", document.RootElement.GetProperty("topology").GetString());
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("lab")]
+    [InlineData("lab", "start", "--json")]
+    [InlineData("lab", "start", "--topology", "network-2", "--json")]
+    [InlineData("lab", "start", "--topology", "single", "--pretty")]
+    [InlineData("lab", "up", "--topology", "single", "--json")]
+    public void LabSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        LiveLabCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Lab command should not run.");
+
+        (int exitCode, string output, string error) = RunWithLab(runner, arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(
+            $"Usage: sdvkit lab <start|status|stop> --topology single --json{Environment.NewLine}",
+            error);
+    }
+
     [Fact]
     public void UnknownCommandReturnsUsageError()
     {
@@ -192,6 +252,21 @@ public sealed class CliApplicationTests
         using StringWriter output = new();
         using StringWriter error = new();
         int exitCode = CliApplication.Run(arguments, output, error, discoverInstallations);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithLab(
+        LiveLabCommandRunner runLiveLab,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runLiveLab);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

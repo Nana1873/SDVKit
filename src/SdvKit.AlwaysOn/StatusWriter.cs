@@ -1,0 +1,82 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+
+namespace SdvKit.AlwaysOn;
+
+internal sealed class StatusWriter
+{
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    private readonly string _launchId;
+    private readonly string _statusPath;
+    private readonly int _processId;
+    private readonly DateTimeOffset _processStartTimeUtc;
+
+    public StatusWriter(string launchId, string statusPath)
+    {
+        _launchId = launchId;
+        _statusPath = statusPath;
+        _processId = Environment.ProcessId;
+        using Process process = Process.GetCurrentProcess();
+        _processStartTimeUtc = process.StartTime.ToUniversalTime();
+    }
+
+    public void Write(
+        string phase,
+        int tick,
+        bool isActive,
+        bool? pauseWhenOutOfFocus)
+    {
+        var marker = new
+        {
+            schemaVersion = 1,
+            launchId = _launchId,
+            processId = _processId,
+            processStartTimeUtc = _processStartTimeUtc,
+            phase,
+            tick,
+            isActive,
+            pauseWhenOutOfFocus,
+            observedAtUtc = DateTimeOffset.UtcNow,
+        };
+        string json = JsonSerializer.Serialize(marker, JsonOptions) + Environment.NewLine;
+        string directory = Path.GetDirectoryName(_statusPath)
+            ?? throw new IOException("The lab status path has no parent directory.");
+        Directory.CreateDirectory(directory);
+
+        string temporaryPath = _statusPath + $".{_processId}.tmp";
+        try
+        {
+            File.WriteAllText(temporaryPath, json, Utf8WithoutBom);
+            if (File.Exists(_statusPath))
+            {
+                File.Replace(temporaryPath, _statusPath, destinationBackupFileName: null);
+            }
+            else
+            {
+                File.Move(temporaryPath, _statusPath);
+            }
+        }
+        finally
+        {
+            TryDeleteTemporaryFile(temporaryPath);
+        }
+    }
+
+    private static void TryDeleteTemporaryFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort cleanup must not hide the original status-write result.
+        }
+    }
+}

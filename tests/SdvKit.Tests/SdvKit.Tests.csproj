@@ -23,4 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SdvKit.Cli\SdvKit.Cli.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\SdvKit.AlwaysOn\StatusWriter.cs" Link="AlwaysOn\StatusWriter.cs" />
+  </ItemGroup>
 </Project>
