@@ -2,16 +2,16 @@
 
 SDVKit is an agent-friendly Stardew Valley modding toolkit and isolated live test lab.
 
-This repository is a clean greenfield rebuild. The current code is intentionally a small, buildable CLI; features are added through focused GitHub issues and reviewable pull requests.
+This repository is a clean greenfield rebuild. The public surface stays deliberately small; features are added through focused GitHub issues and reviewable pull requests.
 
 ## Product direction
 
 SDVKit has two equal pillars:
 
 - **Toolkit:** inspect, create, build, test, and package SMAPI mods and content packs.
-- **Live lab:** launch Stardew through an isolated SMAPI mod group, keep controlled runs active in the background, use a disposable test save, and collect focused test evidence.
+- **Live lab:** launch Stardew through an isolated SMAPI mod group and keep one controlled singleplayer run active in the background. Later issues may add explicitly selected save copies and focused scenario tests on top of this lifecycle.
 
-The default live path will use SMAPI's native `--mods-path` support. SDVKit will not require Mod Organizer 2 and will not automatically deploy into the normal or mod-manager-owned `Mods` directory.
+The default live path uses SMAPI's native `--mods-path` support. SDVKit does not require Mod Organizer 2 and does not automatically deploy into the normal or mod-manager-owned `Mods` directory.
 
 ## Non-goals
 
@@ -26,10 +26,29 @@ Requirements: Windows and the .NET 8 SDK selected by `global.json`.
 
 ```powershell
 dotnet restore SDVKit.sln
+dotnet format SDVKit.sln --verify-no-changes --no-restore
 dotnet build SDVKit.sln -c Release --no-restore
 dotnet test SDVKit.sln -c Release --no-build
 & .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe --help
 ```
+
+## Isolated singleplayer live lab
+
+Run the lab commands from the project root whose ignored `.sdvkit/` directory should own the generated mod group and runtime state:
+
+```powershell
+& .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe lab start --topology single --json
+& .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe lab status --topology single --json
+& .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe lab stop --topology single --json
+```
+
+`start` reuses the single ready Stardew + SMAPI installation detected by `doctor`. It builds the minimal SDVKit AlwaysOn mod against those local assemblies, installs only that mod below `.sdvkit/lab/single/mods`, and launches the detected `StardewModdingAPI.exe` directly with the absolute native `--mods-path` argument. The child process writes stdout and stderr directly to project-owned files below `.sdvkit/lab/single/runtime`; those handles do not keep the JSON command open.
+
+The ownership record contains the exact PID, UTC process start time, and executable identity. `status` rechecks that identity and the matching game-side AlwaysOn marker. `stop` first rechecks the same process, then publishes that launch's single-purpose stop request below `.sdvkit`. AlwaysOn handles it on the game thread, restores and reads back the captured option, writes `exiting` only after confirmation, and asks the game to exit normally; the CLI waits on the exact process handle and clears ownership only after both confirmations. The normal stop path has no process-name search, UI automation, or kill fallback: an identity mismatch, unconfirmed restoration, or clean-stop timeout is reported and the process record is retained. If Windows cannot establish identity for a freshly created child at all, only that child is aborted through its original `CreateProcess` handle before `start` returns.
+
+AlwaysOn transiently sets Stardew's `pauseWhenOutOfFocus` option to `false`, reasserts it while the controlled process runs, and restores the captured value during the normal game-exit event before Stardew persists options. A process crash or forced external termination cannot promise that restoration.
+
+The native mod path isolates which SMAPI mods are loaded; it does **not** isolate Stardew's shared AppData preferences, saves, startup preferences, or standard SMAPI logs. This workflow does not enumerate, open, copy, select, or modify any save, and it never writes to the normal or mod-manager-owned `Mods` directory.
 
 ## Read-only foundation commands
 
