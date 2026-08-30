@@ -4,6 +4,7 @@ using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
+[Collection(NativeWindowsProcessGroup.Name)]
 public sealed class WindowsLabProcessHostTests
 {
     [Fact]
@@ -336,4 +337,10 @@ public sealed class WindowsLabProcessHostTests
             // The game-free test child already exited.
         }
     }
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class NativeWindowsProcessGroup
+{
+    public const string Name = "Native Windows process tests";
 }
