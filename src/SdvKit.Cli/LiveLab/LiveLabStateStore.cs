@@ -12,7 +12,8 @@ internal sealed record LiveLabState(
     string StatusPath,
     string StopRequestPath,
     TestSaveLaunchState? TestSave = null,
-    NetworkTwoLaunchState? NetworkTwo = null)
+    NetworkTwoLaunchState? NetworkTwo = null,
+    ProjectModLaunchState? ProjectMod = null)
 {
     public const int CurrentSchemaVersion = 1;
     public const string SingleTopology = "single";
@@ -209,6 +210,7 @@ internal sealed class JsonLiveLabStateStore(string statePath) : ILiveLabStateSto
 
         state.TestSave?.Validate();
         state.NetworkTwo?.Validate();
+        state.ProjectMod?.Validate();
         if (state.TestSave is not null
             && state.NetworkTwo is not null
             && (!string.Equals(

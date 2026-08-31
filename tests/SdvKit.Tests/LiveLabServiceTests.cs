@@ -490,6 +490,125 @@ public sealed class LiveLabServiceTests
     }
 
     [Fact]
+    public void StatusRejectsProjectTargetStillWaitingAfterStartupGrace()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with { ProjectMod = projectMod };
+        WriteStatusMarker(
+            paths,
+            state,
+            "active",
+            pauseWhenOutOfFocus: false,
+            projectMod: WaitingProjectMod(projectMod),
+            observedAtUtc: StartedAt.AddSeconds(31));
+        var stateStore = new FakeStateStore { State = state };
+        var process = new FakeProcessHost
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            StartedAt.AddSeconds(31));
+
+        LiveLabCommandResult result = service.Execute("status");
+
+        Assert.Equal(3, result.ExitCode);
+        LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
+        Assert.Equal("projectModPending", Assert.Single(report.Problems).Code);
+        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.NotNull(stateStore.State);
+    }
+
+    [Fact]
+    public void CleanStopRejectsProjectTargetWithoutExactLoadConfirmation()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with { ProjectMod = projectMod };
+        WriteStatusMarker(
+            paths,
+            state,
+            "exiting",
+            pauseWhenOutOfFocus: true,
+            projectMod: WaitingProjectMod(projectMod));
+        var stateStore = new FakeStateStore { State = state };
+        var process = new FakeProcessHost
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.Execute("stop");
+
+        Assert.Equal(3, result.ExitCode);
+        LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
+        Assert.Equal("stopped", report.State);
+        Assert.Equal("projectModLoadUnconfirmed", Assert.Single(report.Problems).Code);
+        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Equal(1, process.WaitCount);
+        Assert.Null(stateStore.State);
+    }
+
+    [Fact]
+    public void CleanStopAcceptsExactLoadedProjectTargetConfirmation()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with { ProjectMod = projectMod };
+        WriteStatusMarker(
+            paths,
+            state,
+            "exiting",
+            pauseWhenOutOfFocus: true,
+            projectMod: LoadedProjectMod(projectMod));
+        var stateStore = new FakeStateStore { State = state };
+        var process = new FakeProcessHost
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.Execute("stop");
+
+        Assert.Equal(0, result.ExitCode);
+        LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
+        Assert.Equal("stopped", report.State);
+        Assert.Empty(report.Problems);
+        Assert.Equal("ready", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Equal(projectMod.UniqueId, report.AlwaysOn?.ProjectMod?.LoadedUniqueId);
+        Assert.Equal(projectMod.Version, report.AlwaysOn?.ProjectMod?.LoadedVersion);
+        Assert.Same(report.AlwaysOn, service.LastAlwaysOn);
+        Assert.Equal(1, process.WaitCount);
+        Assert.Null(stateStore.State);
+    }
+
+    [Fact]
     public void MalformedStateIsReportedWithoutInspectingAnyProcess()
     {
         using TemporaryDirectory temporary = new();
@@ -844,6 +963,38 @@ public sealed class LiveLabServiceTests
             paths.StatusPath,
             paths.StopRequestPath);
 
+    private static ProjectModLaunchState ProjectModLaunch() =>
+        new(
+            "Example.ProjectMod",
+            "1.2.3",
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111");
+
+    private static ProjectModStatusMarker WaitingProjectMod(
+        ProjectModLaunchState launch) =>
+        new(
+            ProjectModContract.SchemaVersion,
+            ProjectModContract.WaitingForGameLaunchPhase,
+            launch.UniqueId,
+            launch.Version,
+            LoadedUniqueId: null,
+            LoadedVersion: null,
+            launch.BuildIdentity,
+            LoadConfirmed: false,
+            "Waiting for GameLaunched.");
+
+    private static ProjectModStatusMarker LoadedProjectMod(
+        ProjectModLaunchState launch) =>
+        new(
+            ProjectModContract.SchemaVersion,
+            ProjectModContract.LoadedPhase,
+            launch.UniqueId,
+            launch.Version,
+            launch.UniqueId,
+            launch.Version,
+            launch.BuildIdentity,
+            LoadConfirmed: true,
+            "Loaded by SMAPI.");
+
     private static void WriteExitingMarker(LiveLabPaths paths, LiveLabState state)
     {
         WriteStatusMarker(paths, state, "exiting", true);
@@ -854,7 +1005,9 @@ public sealed class LiveLabServiceTests
         LiveLabState state,
         string phase,
         bool? pauseWhenOutOfFocus,
-        TestSaveStatusMarker? testSave = null)
+        TestSaveStatusMarker? testSave = null,
+        ProjectModStatusMarker? projectMod = null,
+        DateTimeOffset? observedAtUtc = null)
     {
         paths.EnsureDirectories();
         var marker = new AlwaysOnStatusMarker(
@@ -866,8 +1019,9 @@ public sealed class LiveLabServiceTests
             600,
             IsActive: false,
             PauseWhenOutOfFocus: pauseWhenOutOfFocus,
-            StartedAt.AddSeconds(10),
-            testSave);
+            observedAtUtc ?? StartedAt.AddSeconds(10),
+            testSave,
+            ProjectMod: projectMod);
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));

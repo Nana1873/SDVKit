@@ -19,6 +19,17 @@ public sealed class ModBuildIdentityTests
         Assert.True(ModBuildIdentity.IsValid(firstIdentity));
     }
 
+    [Fact]
+    public void ComputeRetainsTheDeclaredAlwaysOnIdentityFormat()
+    {
+        using TemporaryDirectory build = new();
+        WriteDeclaredBuild(build, "assembly", "{\"version\":1}");
+
+        Assert.Equal(
+            "sha256:0d36ea2b0af602f5bde4710eb09dddc1ba26bb2dde57c12a9a3e9a5d0d9ce382",
+            ModBuildIdentity.Compute(build.Path));
+    }
+
     [Theory]
     [InlineData("SdvKit.AlwaysOn.dll")]
     [InlineData("manifest.json")]
@@ -48,6 +59,111 @@ public sealed class ModBuildIdentityTests
             () => ModBuildIdentity.Compute(build.Path));
 
         Assert.Contains(fileName, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComputeFileSetIsIndependentOfEnumerationAndCreationOrder()
+    {
+        using TemporaryDirectory first = new();
+        using TemporaryDirectory second = new();
+        first.WriteFile("z-last.txt", "last");
+        first.WriteFile("nested/a-first.txt", "first");
+        first.WriteFile("middle.txt", "middle");
+        second.WriteFile("middle.txt", "middle");
+        second.WriteFile("nested/a-first.txt", "first");
+        second.WriteFile("z-last.txt", "last");
+
+        Assert.Equal(
+            ModBuildIdentity.ComputeFileSet(first.Path),
+            ModBuildIdentity.ComputeFileSet(second.Path));
+    }
+
+    [Fact]
+    public void ComputeFileSetUsesNormalizedNestedPathsAndAllBundledFiles()
+    {
+        using TemporaryDirectory build = new();
+        build.WriteFile("manifest.json", "manifest");
+        build.WriteFile("assets/data.json", "asset");
+        build.WriteFile("lib/Bundled.dll", "binary");
+
+        string identity = ModBuildIdentity.ComputeFileSet(build.Path);
+
+        Assert.Equal(
+            "sha256:b73949eabf346284c9acef1a0d397c159067a3704d19074ab7ed83addf22907e",
+            identity);
+        Assert.True(ModBuildIdentity.IsValid(identity));
+    }
+
+    [Fact]
+    public void ComputeFileSetChangesWhenAPathChanges()
+    {
+        using TemporaryDirectory first = new();
+        using TemporaryDirectory second = new();
+        first.WriteFile("assets/first.json", "same");
+        second.WriteFile("assets/second.json", "same");
+
+        Assert.NotEqual(
+            ModBuildIdentity.ComputeFileSet(first.Path),
+            ModBuildIdentity.ComputeFileSet(second.Path));
+    }
+
+    [Fact]
+    public void ComputeFileSetChangesWhenNestedContentChanges()
+    {
+        using TemporaryDirectory first = new();
+        using TemporaryDirectory second = new();
+        first.WriteFile("lib/Bundled.dll", "first");
+        second.WriteFile("lib/Bundled.dll", "second");
+
+        Assert.NotEqual(
+            ModBuildIdentity.ComputeFileSet(first.Path),
+            ModBuildIdentity.ComputeFileSet(second.Path));
+    }
+
+    [Fact]
+    public void ComputeFileSetRejectsAnEmptyTree()
+    {
+        using TemporaryDirectory build = new();
+        Directory.CreateDirectory(Path.Combine(build.Path, "empty"));
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => ModBuildIdentity.ComputeFileSet(build.Path));
+
+        Assert.Contains("regular files", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComputeFileSetRejectsAReparsePointWhenSupported()
+    {
+        using TemporaryDirectory build = new();
+        string target = build.WriteFile("target.txt", "target");
+        string link = Path.Combine(build.Path, "linked.txt");
+        try
+        {
+            File.CreateSymbolicLink(link, target);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        InvalidDataException result = Assert.Throws<InvalidDataException>(
+            () => ModBuildIdentity.ComputeFileSet(build.Path));
+
+        Assert.Contains("reparse point", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ComputeFileReturnsTheCanonicalContentHash()
+    {
+        using TemporaryDirectory package = new();
+        string archive = package.WriteFile("package.zip", "abc");
+
+        Assert.Equal(
+            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ModBuildIdentity.ComputeFile(archive));
     }
 
     [Theory]

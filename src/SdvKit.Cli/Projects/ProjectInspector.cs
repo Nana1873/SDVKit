@@ -1,5 +1,6 @@
 using System.Security;
 using System.Text.Json;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Cli;
 
@@ -307,47 +308,15 @@ internal static class ProjectInspector
             return true;
         }
 
-        if (string.IsNullOrEmpty(value))
+        try
+        {
+            _ = ProjectModLaunchState.NormalizeVersion(value ?? string.Empty);
+            return true;
+        }
+        catch (InvalidDataException)
         {
             return false;
         }
-
-        string[] versionAndTag = value.Split('-', count: 2);
-        string[] numbers = versionAndTag[0].Split('.');
-        if (numbers.Length is < 2 or > 3 || numbers.Any(number =>
-            number.Length == 0
-            || (number.Length > 1 && number[0] == '0')
-            || !number.All(character => character is >= '0' and <= '9')))
-        {
-            return false;
-        }
-
-        return versionAndTag.Length == 1 || IsVersionTag(versionAndTag[1]);
-    }
-
-    private static bool IsVersionTag(string value)
-    {
-        var needsAlphaNumeric = true;
-        foreach (char character in value)
-        {
-            bool isAlphaNumeric = character is >= 'a' and <= 'z'
-                or >= 'A' and <= 'Z'
-                or >= '0' and <= '9';
-            if (isAlphaNumeric)
-            {
-                needsAlphaNumeric = false;
-            }
-            else if ((character is '.' or '-') && !needsAlphaNumeric)
-            {
-                needsAlphaNumeric = true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        return !needsAlphaNumeric;
     }
 
     private static ProjectInspectionReport Failure(

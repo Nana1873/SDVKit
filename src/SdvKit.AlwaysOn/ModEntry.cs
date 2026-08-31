@@ -11,6 +11,7 @@ public sealed class ModEntry : Mod
     private StatusWriter? _statusWriter;
     private TestSaveAutomation? _testSave;
     private NetworkTwoAutomation? _networkTwo;
+    private ProjectModObserver? _projectMod;
     private string? _launchId;
     private string? _stopRequestPath;
     private bool _gameLaunched;
@@ -44,6 +45,17 @@ public sealed class ModEntry : Mod
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
+        if (!ProjectModObserver.TryCreate(
+                helper,
+                Monitor,
+                out _projectMod,
+                out string projectModReason))
+        {
+            Monitor.Log(
+                $"SDVKit project-mod observation is unavailable: {projectModReason}",
+                LogLevel.Error);
+        }
+
         if (!TestSaveAutomation.TryCreate(
                 Monitor,
                 WriteActiveStatus,
@@ -101,6 +113,7 @@ public sealed class ModEntry : Mod
         {
             _backgroundRun!.Enable();
             _gameLaunched = true;
+            _projectMod?.ObserveLoadedMod();
             WriteActiveStatus();
         };
         helper.Events.Specialized.LoadStageChanged += (_, eventArgs) =>
@@ -332,7 +345,8 @@ public sealed class ModEntry : Mod
                 ipConnectionsEnabled,
                 _networkTwo?.Snapshot,
                 foregroundWindowHandle,
-                foregroundProcessId);
+                foregroundProcessId,
+                _projectMod?.Snapshot);
             _statusWriteErrorLogged = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

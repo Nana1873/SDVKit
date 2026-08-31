@@ -20,6 +20,10 @@ public sealed class CliApplicationTests
         Assert.Contains("sdvkit project build [path] --json", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit project package [path] --json", output, StringComparison.Ordinal);
         Assert.Contains(
+            "sdvkit project smoke [path] --topology <single|network-2> --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "sdvkit lab <start|status|stop|test-save> --topology single --json",
             output,
             StringComparison.Ordinal);
@@ -321,14 +325,203 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
-    public void UnknownProjectCommandReturnsProjectUsage()
+    public void ProjectHelpListsTheExactSmokeCommand()
     {
-        (int exitCode, string output, string error) = Run("project", "list", "--json");
+        (int exitCode, string output, string error) = Run("project", "--help");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains(
+            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("help")]
+    [InlineData("--help")]
+    [InlineData("-h")]
+    public void ProjectSmokeHelpUsesTheExactUsage(string help)
+    {
+        ProjectSmokeCommandRunner runner = (_, _, _) =>
+            throw new InvalidOperationException("Project smoke should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectSmoke(
+            runner,
+            "project",
+            "smoke",
+            help);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json"
+                + Environment.NewLine,
+            output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("single")]
+    [InlineData("network-2")]
+    public void ProjectSmokeDispatchesAnExplicitPathAndWritesStableJson(string topology)
+    {
+        string sourcePath = Path.Combine(Environment.CurrentDirectory, "ExampleMod");
+        string? receivedSourcePath = null;
+        string? receivedTopology = null;
+        string? receivedLabRoot = null;
+        ProjectSmokeCommandRunner runner = (candidateSourcePath, candidateTopology, labRoot) =>
+        {
+            receivedSourcePath = candidateSourcePath;
+            receivedTopology = candidateTopology;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                root = candidateSourcePath,
+                topology = candidateTopology,
+                state = "passed",
+                problems = Array.Empty<object>(),
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectSmoke(
+            runner,
+            "project",
+            "smoke",
+            "--json",
+            sourcePath,
+            "--topology",
+            topology);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(sourcePath, receivedSourcePath);
+        Assert.Equal(topology, receivedTopology);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal(sourcePath, root.GetProperty("root").GetString());
+        Assert.Equal(topology, root.GetProperty("topology").GetString());
+        Assert.Equal("passed", root.GetProperty("state").GetString());
+        Assert.Equal(
+            ["schemaVersion", "root", "topology", "state", "problems"],
+            PropertyNames(root));
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectSmokeDefaultsTheSourceAndLabRootsToTheCurrentDirectory()
+    {
+        string? receivedSourcePath = null;
+        string? receivedLabRoot = null;
+        ProjectSmokeCommandRunner runner = (sourcePath, topology, labRoot) =>
+        {
+            receivedSourcePath = sourcePath;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                topology,
+                state = "passed",
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectSmoke(
+            runner,
+            "project",
+            "smoke",
+            "--topology",
+            "single",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(Environment.CurrentDirectory, receivedSourcePath);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        Assert.NotEqual(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectSmokePropagatesAControlledJsonOutcome()
+    {
+        ProjectSmokeCommandRunner runner = (sourcePath, topology, _) =>
+            new(3, new
+            {
+                schemaVersion = 1,
+                root = sourcePath,
+                topology,
+                state = "failed",
+                problems = new[]
+                {
+                    new
+                    {
+                        code = "unsupportedProject",
+                        path = "manifest.json",
+                        message = "Only one standalone SMAPI code mod is supported.",
+                    },
+                },
+            });
+
+        (int exitCode, string output, string error) = RunWithProjectSmoke(
+            runner,
+            "project",
+            "smoke",
+            "--topology",
+            "network-2",
+            "--json");
+
+        Assert.Equal(3, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal("failed", root.GetProperty("state").GetString());
+        JsonElement problem = root.GetProperty("problems").EnumerateArray().Single();
+        Assert.Equal("unsupportedProject", problem.GetProperty("code").GetString());
+        Assert.Equal(
+            ["code", "path", "message"],
+            PropertyNames(problem));
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("project", "smoke")]
+    [InlineData("project", "smoke", "--json")]
+    [InlineData("project", "smoke", "--topology", "single")]
+    [InlineData("project", "smoke", "--topology", "single", "--json", "--json")]
+    [InlineData("project", "smoke", "--topology", "single", "--topology", "network-2", "--json")]
+    [InlineData("project", "smoke", "--topology", "--json")]
+    [InlineData("project", "smoke", "--topology", "local", "--json")]
+    [InlineData("project", "smoke", "--topology", "Single", "--json")]
+    [InlineData("project", "smoke", "one", "two", "--topology", "single", "--json")]
+    [InlineData("project", "smoke", "--unknown", "--topology", "single", "--json")]
+    [InlineData("project", "smoke", "--topology", "network-2", "--pretty")]
+    public void ProjectSmokeSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        ProjectSmokeCommandRunner runner = (_, _, _) =>
+            throw new InvalidOperationException("Project smoke should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectSmoke(
+            runner,
+            arguments);
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            $"Usage: sdvkit project <inspect|create|build|package> ...{Environment.NewLine}",
+            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json"
+                + Environment.NewLine,
+            error);
+    }
+
+    [Theory]
+    [InlineData("project")]
+    [InlineData("project", "list", "--json")]
+    public void MissingOrUnknownProjectCommandReturnsProjectUsage(params string[] arguments)
+    {
+        (int exitCode, string output, string error) = Run(arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(
+            "Usage: sdvkit project <inspect|create|build|package|smoke> ..."
+                + Environment.NewLine,
             error);
     }
 
@@ -491,6 +684,21 @@ public sealed class CliApplicationTests
             error,
             GameInstallationDiscovery.Discover,
             runLiveLab);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectSmoke(
+        ProjectSmokeCommandRunner runProjectSmoke,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectSmoke: runProjectSmoke);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

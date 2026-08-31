@@ -183,6 +183,45 @@ public sealed class ProjectInspectorTests
     }
 
     [Fact]
+    public void SemanticVersionBuildMetadataIsAccepted()
+    {
+        using TemporaryDirectory temporary = new();
+        temporary.WriteFile("Example.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        temporary.WriteFile("manifest.json", Manifest(
+            "Nana.Example",
+            entryDll: "Example.dll",
+            version: "1.2.3+build.7"));
+
+        ProjectInspectionReport report = ProjectInspector.Inspect(temporary.Path);
+
+        Assert.Equal(ProjectInspectionReport.SmapiMod, report.Kind);
+        Assert.Equal("1.2.3+build.7", Assert.Single(report.Manifests).Version);
+        Assert.Empty(report.Problems);
+    }
+
+    [Theory]
+    [InlineData("2147483647.1.1", true)]
+    [InlineData("2147483648.1.1", false)]
+    public void SemanticVersionCoreSegmentsRespectSmapiInt32Range(
+        string version,
+        bool expectedValid)
+    {
+        using TemporaryDirectory temporary = new();
+        temporary.WriteFile("Example.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        temporary.WriteFile("manifest.json", Manifest(
+            "Nana.Example",
+            entryDll: "Example.dll",
+            version: version));
+
+        ProjectInspectionReport report = ProjectInspector.Inspect(temporary.Path);
+
+        Assert.Equal(
+            expectedValid ? ProjectInspectionReport.SmapiMod : ProjectInspectionReport.Unknown,
+            report.Kind);
+        Assert.Equal(expectedValid, report.Problems.Count == 0);
+    }
+
+    [Fact]
     public void MissingRequiredIdentityFieldReturnsAProblem()
     {
         using TemporaryDirectory temporary = new();
