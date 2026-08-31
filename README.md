@@ -137,6 +137,10 @@ The resulting evidence means that a controlled package file set was staged and S
 
 This command never deploys to the normal or mod-manager-owned `Mods` directory, enumerates personal saves, creates a permanent deployment, performs hot reload, or introduces another process/save/multiplayer state machine.
 
+## Agent workflow
+
+The repository-owned [`sdv-project-smoke`](.agents/skills/sdv-project-smoke/SKILL.md) skill guides agents through discovery, project inspection, the existing end-to-end smoke, and evidence-based JSON/log reporting. It uses `single` by default and `network-2` only when a user explicitly requests a multiplayer test.
+
 ## First milestones
 
 1. Environment discovery and project inspection.
