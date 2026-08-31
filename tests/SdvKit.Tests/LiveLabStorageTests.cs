@@ -18,6 +18,17 @@ public sealed class LiveLabStorageTests
         Assert.Equal(Path.Combine(paths.SingleRoot, "mods"), paths.ModsPath);
         Assert.Equal(Path.Combine(paths.SingleRoot, "runtime"), paths.RuntimePath);
         Assert.Equal(Path.Combine(paths.SingleRoot, "build"), paths.BuildPath);
+        Assert.Equal(Path.Combine(paths.SingleRoot, "test-save"), paths.TestSaveRoot);
+        Assert.Equal(
+            Path.Combine(paths.TestSaveRoot, "fixture.json"),
+            paths.TestSaveManifestPath);
+        Assert.Equal(Path.Combine(paths.TestSaveRoot, "work"), paths.TestSaveWorkPath);
+        Assert.Equal(
+            Path.Combine(paths.TestSaveRoot, "baseline"),
+            paths.TestSaveBaselinePath);
+        Assert.Equal(
+            Path.Combine(paths.RuntimePath, "test-save-scenario.log"),
+            paths.TestSaveScenarioLogPath);
         Assert.True(Path.IsPathFullyQualified(paths.StatePath));
         Assert.True(Path.IsPathFullyQualified(paths.StatusPath));
         Assert.Equal(
@@ -175,6 +186,45 @@ public sealed class LiveLabStorageTests
         Assert.Empty(Directory.EnumerateFiles(
             paths.RuntimePath,
             ".state-write-probe.*"));
+    }
+
+    [Fact]
+    public void StateStoreRoundTripsTheExactTestSaveLaunchBinding()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        var store = new JsonLiveLabStateStore(paths.StatePath);
+        var identity = new TestSaveIdentity(
+            TestSaveContract.SchemaVersion,
+            "11111111111111111111111111111111",
+            "22222222222222222222222222222222",
+            123456789L,
+            "SDVKit_123456789",
+            TestSaveContract.PlayerName,
+            TestSaveContract.FarmName,
+            TestSaveContract.FavoriteThing);
+        LiveLabState state = CreateState(paths, Guid.NewGuid().ToString("N"), 111) with
+        {
+            TestSave = new TestSaveLaunchState(
+                TestSaveContract.ScenarioMode,
+                identity,
+                Path.Combine(project.Path, "exact-saves", identity.SaveId),
+                paths.TestSaveWorkPath,
+                paths.TestSaveScenarioLogPath),
+        };
+
+        store.Write(state);
+
+        Assert.Equal(state, store.Read());
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(paths.StatePath));
+        JsonElement testSave = document.RootElement.GetProperty("testSave");
+        Assert.Equal(TestSaveContract.ScenarioMode, testSave.GetProperty("mode").GetString());
+        Assert.Equal(identity.FixtureId, testSave
+            .GetProperty("identity")
+            .GetProperty("fixtureId")
+            .GetString());
+        Assert.Equal(paths.TestSaveWorkPath, testSave.GetProperty("workPath").GetString());
     }
 
     [Fact]

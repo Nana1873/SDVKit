@@ -450,7 +450,7 @@ internal sealed class WindowsLabProcessHost : ILabProcessHost
                 "Windows could not abort the exact unverified child",
                 terminationError);
         return new LabProcessStartResult(
-            LabProcessStartStatus.Unreadable,
+            LabProcessStartStatus.AbortUnconfirmed,
             Error: $"{verificationError} {abortError} PID {processId} may still be running, but no foreign process was opened or signaled.");
     }
 

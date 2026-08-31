@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security;
 using System.Text.Json;
 
@@ -17,21 +18,62 @@ internal sealed record LiveLabReport(
     string? BuildLogPath,
     AlwaysOnStatusReport? AlwaysOn,
     IReadOnlyList<LiveLabProblem> Problems,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string>? TestSaveLogPaths = null);
+
+internal sealed record TestSaveWorkflowReport(
+    int SchemaVersion,
+    string Topology,
+    string State,
+    string? FixtureId,
+    string? SaveId,
+    string Scenario,
+    int RequiredTicks,
+    int? ObservedTicks,
+    string BaselinePath,
+    IReadOnlyList<string> LogPaths,
+    IReadOnlyList<LiveLabProblem> Problems,
     IReadOnlyList<string> Warnings);
 
 internal sealed class LiveLabService
 {
+    private sealed record TestSaveWaitResult(
+        bool Succeeded,
+        TestSaveStatusReport? Status,
+        LiveLabProblem? Problem);
+
     private const int Success = 0;
     private const int OperationFailed = 3;
 
     private static readonly TimeSpan CleanStopTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StartupRollbackSignalGrace = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan AlwaysOnStartupGrace = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TestSaveTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan TestSavePollInterval = TimeSpan.FromMilliseconds(250);
 
     private static readonly string[] IsolationWarnings =
     [
         "Only the SMAPI mod group is isolated. Stardew AppData preferences, saves, startup preferences, and standard SMAPI logs remain shared.",
         "This workflow does not enumerate, open, copy, select, or modify saves or the normal Mods directory.",
+    ];
+
+    private static readonly string[] TestSaveWarnings =
+    [
+        "Stardew AppData preferences and standard SMAPI logs remain shared; the isolated mod group and exact SDVKit fixture do not isolate those files.",
+        "Personal saves are never enumerated, opened, copied, replaced, or deleted. Only one exact SDVKit-owned direct-child save junction is temporarily exposed.",
+    ];
+
+    private static readonly string[] TestSaveEnvironmentNames =
+    [
+        "SDVKIT_TEST_SAVE_MODE",
+        "SDVKIT_TEST_SAVE_WORKSPACE_OWNER_ID",
+        "SDVKIT_TEST_SAVE_FIXTURE_ID",
+        "SDVKIT_TEST_SAVE_UNIQUE_GAME_ID",
+        "SDVKIT_TEST_SAVE_ID",
+        "SDVKIT_TEST_SAVE_PLAYER_NAME",
+        "SDVKIT_TEST_SAVE_FARM_NAME",
+        "SDVKIT_TEST_SAVE_FAVORITE_THING",
+        "SDVKIT_TEST_SAVE_LOG_PATH",
     ];
 
     private readonly LiveLabPaths _paths;
@@ -41,6 +83,9 @@ internal sealed class LiveLabService
     private readonly Func<DoctorReport> _discoverInstallations;
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly Func<string> _createLaunchId;
+    private readonly ITestSaveFixtureStore _testSaveStore;
+    private readonly Action<TimeSpan> _delay;
+    private IReadOnlyList<string> _lastTestSaveLogPaths = [];
 
     internal LiveLabService(
         LiveLabPaths paths,
@@ -49,7 +94,9 @@ internal sealed class LiveLabService
         ILabProcessHost processHost,
         Func<DoctorReport> discoverInstallations,
         Func<DateTimeOffset>? utcNow = null,
-        Func<string>? createLaunchId = null)
+        Func<string>? createLaunchId = null,
+        ITestSaveFixtureStore? testSaveStore = null,
+        Action<TimeSpan>? delay = null)
     {
         _paths = paths;
         _stateStore = stateStore;
@@ -58,6 +105,8 @@ internal sealed class LiveLabService
         _discoverInstallations = discoverInstallations;
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
         _createLaunchId = createLaunchId ?? (() => Guid.NewGuid().ToString("N"));
+        _testSaveStore = testSaveStore ?? new TestSaveFixtureStore(paths);
+        _delay = delay ?? Thread.Sleep;
     }
 
     public static LiveLabCommandResult Execute(
@@ -112,7 +161,7 @@ internal sealed class LiveLabService
                         null,
                         [Problem(
                             "labBusy",
-                            "Another live-lab start, status, or stop operation is still running for this project.")]));
+                            "Another live-lab operation is still running for this project.")]));
             }
 
             return service.Execute(action);
@@ -135,11 +184,329 @@ internal sealed class LiveLabService
             "start" => Start(),
             "status" => Status(),
             "stop" => Stop(),
+            "test-save" => TestSave(),
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
     }
 
-    private LiveLabCommandResult Start()
+    private LiveLabCommandResult TestSave()
+    {
+        LiveLabState? existing = ReadState();
+        if (existing is not null)
+        {
+            return TestSaveWorkflowFailure(
+                existing.TestSave?.Identity,
+                [],
+                "labNotStopped",
+                "The disposable test-save workflow requires the existing single lab to be stopped first.");
+        }
+
+        var logs = new List<string>();
+        TestSaveIdentity? identity = null;
+        for (var run = 0; run < 2; run++)
+        {
+            _lastTestSaveLogPaths = [];
+            TestSavePreparation preparation;
+            try
+            {
+                preparation = _testSaveStore.PrepareForStart();
+                identity = preparation.LaunchState.Identity;
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                return TestSaveWorkflowFailure(
+                    identity,
+                    logs,
+                    "testSavePreparationFailed",
+                    exception.Message);
+            }
+
+            TestSaveLaunchState launch = preparation.LaunchState;
+            try
+            {
+                LiveLabCommandResult started = Start(launch);
+                if (started.ExitCode != Success)
+                {
+                    List<LiveLabProblem> problems =
+                        AssertLiveLabProblems(started, "testSaveStartFailed");
+                    TryCleanupPreparedRun(
+                        launch,
+                        (LiveLabReport)started.Report,
+                        logs,
+                        problems);
+                    return TestSaveWorkflowFailure(identity, logs, problems);
+                }
+
+                TestSaveWaitResult waited = WaitForTestSave(launch);
+                if (!waited.Succeeded)
+                {
+                    var problems = new List<LiveLabProblem>();
+                    if (waited.Problem is not null)
+                    {
+                        problems.Add(waited.Problem);
+                    }
+
+                    LiveLabCommandResult stoppedAfterFailure = Stop();
+                    logs.AddRange(_lastTestSaveLogPaths);
+                    if (stoppedAfterFailure.ExitCode != Success)
+                    {
+                        problems.AddRange(AssertLiveLabProblems(
+                            stoppedAfterFailure,
+                            "testSaveCleanupFailed"));
+                    }
+
+                    return TestSaveWorkflowFailure(identity, logs, problems);
+                }
+
+                LiveLabCommandResult stopped = Stop();
+                logs.AddRange(_lastTestSaveLogPaths);
+                if (stopped.ExitCode != Success)
+                {
+                    return TestSaveWorkflowFailure(
+                        identity,
+                        logs,
+                        AssertLiveLabProblems(stopped, "testSaveCleanupFailed"));
+                }
+
+                if (string.Equals(
+                        launch.Mode,
+                        TestSaveContract.ScenarioMode,
+                        StringComparison.Ordinal))
+                {
+                    return Result(
+                        Success,
+                        new TestSaveWorkflowReport(
+                            1,
+                            LiveLabState.SingleTopology,
+                            "passed",
+                            identity.FixtureId,
+                            identity.SaveId,
+                            "hud-tick-smoke",
+                            TestSaveContract.RequiredScenarioTicks,
+                            waited.Status?.WaitedTicks,
+                            _paths.TestSaveBaselinePath,
+                            logs,
+                            [],
+                            TestSaveWarnings));
+                }
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                var problems = new List<LiveLabProblem>
+                {
+                    Problem("testSaveRunFailed", exception.Message),
+                };
+                TryCleanupPreparedRun(launch, null, logs, problems);
+                return TestSaveWorkflowFailure(identity, logs, problems);
+            }
+        }
+
+        return TestSaveWorkflowFailure(
+            identity,
+            logs,
+            "testSaveScenarioMissing",
+            "The fixture was created, but its exact baseline scenario did not run.");
+    }
+
+    private TestSaveWaitResult WaitForTestSave(TestSaveLaunchState expected)
+    {
+        DateTimeOffset startedAt = _utcNow().ToUniversalTime();
+        DateTimeOffset deadline = startedAt + TestSaveTimeout;
+        DateTimeOffset alwaysOnSettleDeadline = startedAt + AlwaysOnStartupGrace;
+        string expectedPhase = string.Equals(
+            expected.Mode,
+            TestSaveContract.CreateMode,
+            StringComparison.Ordinal)
+            ? "created"
+            : "passed";
+        bool retriedInvalidStatus = false;
+        while (_utcNow().ToUniversalTime() <= deadline)
+        {
+            LiveLabCommandResult result = Status();
+            LiveLabReport report = (LiveLabReport)result.Report;
+            TestSaveStatusReport? testSave = report.AlwaysOn?.TestSave;
+            if (result.ExitCode != Success)
+            {
+                if (report.Problems.Count == 1
+                    && string.Equals(
+                        report.Problems[0].Code,
+                        "alwaysOnNotApplied",
+                        StringComparison.Ordinal)
+                    && _utcNow().ToUniversalTime() <= alwaysOnSettleDeadline)
+                {
+                    _delay(TestSavePollInterval);
+                    continue;
+                }
+
+                if (report.Problems.Count == 1
+                    && string.Equals(
+                        report.Problems[0].Code,
+                        "alwaysOnInvalid",
+                        StringComparison.Ordinal)
+                    && !retriedInvalidStatus)
+                {
+                    // The writer atomically replaces this frequently updated marker.
+                    // One poll can race that replacement; a repeated invalid read is
+                    // still terminal, and normal lab status remains strict.
+                    retriedInvalidStatus = true;
+                    _delay(TestSavePollInterval);
+                    continue;
+                }
+
+                LiveLabProblem problem = report.Problems.Count > 0
+                    ? report.Problems[0]
+                    : Problem("testSaveStatusFailed", "The exact test-save lab status failed.");
+                return new TestSaveWaitResult(false, testSave, problem);
+            }
+
+            retriedInvalidStatus = false;
+
+            if (testSave?.State is "invalid" or "mismatch" or "unexpected")
+            {
+                return new TestSaveWaitResult(
+                    false,
+                    testSave,
+                    Problem(
+                        "testSaveStatusMismatch",
+                        $"The AlwaysOn test-save marker is {testSave.State}."));
+            }
+
+            if (testSave is not null
+                && string.Equals(testSave.Phase, "failed", StringComparison.Ordinal))
+            {
+                return new TestSaveWaitResult(
+                    false,
+                    testSave,
+                    Problem(
+                        "testSaveFailed",
+                        testSave.Message ?? "The game-side test-save workflow failed."));
+            }
+
+            if (testSave is not null
+                && string.Equals(testSave.State, "ready", StringComparison.Ordinal)
+                && string.Equals(testSave.Phase, expectedPhase, StringComparison.Ordinal)
+                && testSave.IdentityVerified == true)
+            {
+                if (string.Equals(
+                        expected.Mode,
+                        TestSaveContract.ScenarioMode,
+                        StringComparison.Ordinal)
+                    && testSave.WaitedTicks < TestSaveContract.RequiredScenarioTicks)
+                {
+                    return new TestSaveWaitResult(
+                        false,
+                        testSave,
+                        Problem(
+                            "testSaveWaitIncomplete",
+                            "The game-side scenario reported completion before 120 observed update ticks."));
+                }
+
+                return new TestSaveWaitResult(true, testSave, null);
+            }
+
+            _delay(TestSavePollInterval);
+        }
+
+        return new TestSaveWaitResult(
+            false,
+            null,
+            Problem(
+                "testSaveTimedOut",
+                "The bounded game-side test-save workflow did not complete within two minutes."));
+    }
+
+    private void TryCleanupPreparedRun(
+        TestSaveLaunchState launch,
+        LiveLabReport? started,
+        List<string> logs,
+        List<LiveLabProblem> startProblems)
+    {
+        try
+        {
+            if (ReadState() is not null)
+            {
+                LiveLabCommandResult stopped = Stop();
+                logs.AddRange(_lastTestSaveLogPaths);
+                if (stopped.ExitCode != Success)
+                {
+                    startProblems.AddRange(AssertLiveLabProblems(
+                        stopped,
+                        "testSaveCleanupFailed"));
+                }
+
+                return;
+            }
+
+            bool unverifiedChildMayBeRunning = started?.Problems.Any(problem =>
+                string.Equals(
+                    problem.Code,
+                    "unverifiedChildAbortUnconfirmed",
+                    StringComparison.Ordinal)) == true;
+            if (unverifiedChildMayBeRunning
+                || (started?.ProcessId is not null
+                    && started.State is "blocked" or "running" or "ownershipMismatch"))
+            {
+                startProblems.Add(Problem(
+                    "testSaveCleanupDeferred",
+                    "The launched process was not confirmed stopped, so SDVKit left its exact fixture binding in place instead of mutating a possibly active save."));
+                return;
+            }
+
+            string cleanupId = started?.LaunchId is not null
+                && Guid.TryParseExact(started.LaunchId, "N", out _)
+                ? started.LaunchId
+                : Guid.NewGuid().ToString("N");
+            TestSaveCleanupResult cleanup = _testSaveStore.AbortStopped(launch, cleanupId);
+            logs.AddRange(cleanup.ArchivedLogPaths);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            startProblems.Add(Problem("testSaveCleanupFailed", exception.Message));
+        }
+    }
+
+    private LiveLabCommandResult TestSaveWorkflowFailure(
+        TestSaveIdentity? identity,
+        IReadOnlyList<string> logs,
+        string code,
+        string message) =>
+        TestSaveWorkflowFailure(identity, logs, [Problem(code, message)]);
+
+    private LiveLabCommandResult TestSaveWorkflowFailure(
+        TestSaveIdentity? identity,
+        IReadOnlyList<string> logs,
+        IReadOnlyList<LiveLabProblem> problems)
+    {
+        return Result(
+            OperationFailed,
+            new TestSaveWorkflowReport(
+                1,
+                LiveLabState.SingleTopology,
+                "failed",
+                identity?.FixtureId,
+                identity?.SaveId,
+                "hud-tick-smoke",
+                TestSaveContract.RequiredScenarioTicks,
+                null,
+                _paths.TestSaveBaselinePath,
+                logs,
+                problems,
+                TestSaveWarnings));
+    }
+
+    private static List<LiveLabProblem> AssertLiveLabProblems(
+        LiveLabCommandResult result,
+        string fallbackCode)
+    {
+        if (result.Report is LiveLabReport report && report.Problems.Count > 0)
+        {
+            return report.Problems.ToList();
+        }
+
+        return [Problem(fallbackCode, "The live-lab operation failed without a detailed problem.")];
+    }
+
+    private LiveLabCommandResult Start(TestSaveLaunchState? testSave = null)
     {
         LiveLabState? existing = ReadState();
         if (existing is not null)
@@ -190,16 +557,27 @@ internal sealed class LiveLabService
         }
 
         string executablePath = Path.Combine(gamePath, "StardewModdingAPI.exe");
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["SDVKIT_LAB_LAUNCH_ID"] = launchId,
+            ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
+            ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
+        };
+        foreach (string name in TestSaveEnvironmentNames)
+        {
+            environment[name] = string.Empty;
+        }
+
+        if (testSave is not null)
+        {
+            AddTestSaveEnvironment(environment, testSave);
+        }
+
         var specification = new LabProcessStartSpec(
             executablePath,
             gamePath,
             ["--mods-path", _paths.ModsPath],
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["SDVKIT_LAB_LAUNCH_ID"] = launchId,
-                ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
-                ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
-            },
+            environment,
             _paths.StandardOutputPath,
             _paths.StandardErrorPath);
         LabProcessStartResult started = _processHost.Start(specification);
@@ -220,7 +598,8 @@ internal sealed class LiveLabService
             started.Identity,
             _paths.ModsPath,
             _paths.StatusPath,
-            _paths.StopRequestPath);
+            _paths.StopRequestPath,
+            testSave);
         if (started.Status != LabProcessStartStatus.Started)
         {
             return HandleLaunchVerificationFailure(
@@ -533,6 +912,31 @@ internal sealed class LiveLabService
             AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
             if (string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
             {
+                if (state.TestSave is not null)
+                {
+                    LiveLabCommandResult finalized = CompleteConfirmedStop(state, alwaysOn);
+                    if (finalized.ExitCode != Success)
+                    {
+                        return finalized;
+                    }
+
+                    try
+                    {
+                        File.Delete(_paths.StatusPath);
+                    }
+                    catch (Exception exception) when (IsControlledFailure(exception))
+                    {
+                        return Failure(
+                            "stopped",
+                            state,
+                            "runtimeCleanupFailed",
+                            $"The confirmed stopped test-save runtime could not clear its status marker: {exception.Message}",
+                            alwaysOn: alwaysOn);
+                    }
+
+                    return null;
+                }
+
                 try
                 {
                     File.Delete(_paths.StopRequestPath);
@@ -634,6 +1038,43 @@ internal sealed class LiveLabService
                 alwaysOn: alwaysOn);
         }
 
+        if (state.TestSave is not null)
+        {
+            TestSaveStatusReport? testSave = alwaysOn.TestSave;
+            if (testSave?.State is "invalid" or "mismatch" or "unexpected")
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "testSaveStatusMismatch",
+                    $"The AlwaysOn test-save marker is {testSave.State}.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if (testSave is not null
+                && string.Equals(testSave.Phase, "failed", StringComparison.Ordinal))
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "testSaveFailed",
+                    testSave.Message ?? "The game-side test-save workflow failed.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if ((testSave is null || string.Equals(testSave.State, "pending", StringComparison.Ordinal))
+                && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
+                    > AlwaysOnStartupGrace)
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "testSavePending",
+                    "AlwaysOn did not publish the launch-bound test-save marker within 30 seconds.",
+                    alwaysOn: alwaysOn);
+            }
+        }
+
         return Result(Success, Report("running", state, [], alwaysOn: alwaysOn));
     }
 
@@ -643,12 +1084,66 @@ internal sealed class LiveLabService
     {
         if (!string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
         {
+            if (state.TestSave is not null)
+            {
+                try
+                {
+                    TestSaveCleanupResult cleanup = _testSaveStore.AbortStopped(
+                        state.TestSave,
+                        state.LaunchId);
+                    _lastTestSaveLogPaths = cleanup.ArchivedLogPaths;
+                }
+                catch (Exception exception) when (IsControlledFailure(exception))
+                {
+                    return Failure(
+                        "exited",
+                        state,
+                        "testSaveCleanupFailed",
+                        $"The exact process exited and its test-save junction could not be safely removed: {exception.Message}",
+                        alwaysOn: alwaysOn);
+                }
+            }
+
             return Failure(
                 "exited",
                 state,
                 "cleanStopNotConfirmed",
                 "The exact process exited, but AlwaysOn did not confirm restoration during normal game exit.",
                 alwaysOn: alwaysOn);
+        }
+
+        bool testSaveSucceeded = true;
+        bool scenarioLogArchived = true;
+        if (state.TestSave is not null)
+        {
+            TestSaveStatusReport? testSave = alwaysOn.TestSave;
+            string expectedPhase = string.Equals(
+                state.TestSave.Mode,
+                TestSaveContract.CreateMode,
+                StringComparison.Ordinal)
+                ? "created"
+                : "passed";
+            testSaveSucceeded = testSave is not null
+                && string.Equals(testSave.State, "ready", StringComparison.Ordinal)
+                && string.Equals(testSave.Phase, expectedPhase, StringComparison.Ordinal)
+                && testSave.IdentityVerified == true;
+            try
+            {
+                TestSaveCleanupResult cleanup = testSaveSucceeded
+                    ? _testSaveStore.CompleteStopped(state.TestSave, state.LaunchId)
+                    : _testSaveStore.AbortStopped(state.TestSave, state.LaunchId);
+                _lastTestSaveLogPaths = cleanup.ArchivedLogPaths;
+                scenarioLogArchived = cleanup.ScenarioLogArchived;
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                return Failure(
+                    "exited",
+                    state,
+                    "testSaveCleanupFailed",
+                    $"The clean process stop was confirmed, but exact test-save cleanup failed: {exception.Message}",
+                    alwaysOn: alwaysOn);
+            }
         }
 
         try
@@ -663,6 +1158,27 @@ internal sealed class LiveLabService
                 state,
                 "runtimeCleanupFailed",
                 $"The clean stop was confirmed, but its project-local ownership record could not be removed: {exception.Message}",
+                alwaysOn: alwaysOn);
+        }
+
+        if (!testSaveSucceeded)
+        {
+            return Failure(
+                "stopped",
+                state,
+                "testSaveIncomplete",
+                alwaysOn.TestSave?.Message
+                    ?? "The game-side test-save workflow did not reach its verified terminal phase.",
+                alwaysOn: alwaysOn);
+        }
+
+        if (!scenarioLogArchived)
+        {
+            return Failure(
+                "stopped",
+                state,
+                "testSaveScenarioLogMissing",
+                "The exact process and fixture were cleaned up, but the required project-local test-save scenario log was not produced.",
                 alwaysOn: alwaysOn);
         }
 
@@ -681,7 +1197,12 @@ internal sealed class LiveLabService
 
         if (!PathEquals(state.ModsPath, _paths.ModsPath)
             || !PathEquals(state.StatusPath, _paths.StatusPath)
-            || !PathEquals(state.StopRequestPath, _paths.StopRequestPath))
+            || !PathEquals(state.StopRequestPath, _paths.StopRequestPath)
+            || (state.TestSave is not null
+                && (!PathEquals(state.TestSave.WorkPath, _paths.TestSaveWorkPath)
+                    || !PathEquals(
+                        state.TestSave.ScenarioLogPath,
+                        _paths.TestSaveScenarioLogPath))))
         {
             throw new InvalidDataException(
                 "The retained live-lab paths do not match this project-local single topology.");
@@ -696,7 +1217,8 @@ internal sealed class LiveLabService
             state.StatusPath,
             state.LaunchId,
             state.OwnedProcessIdentity,
-            _utcNow().ToUniversalTime());
+            _utcNow().ToUniversalTime(),
+            state.TestSave);
     }
 
     private LiveLabCommandResult Failure(
@@ -737,13 +1259,14 @@ internal sealed class LiveLabService
             buildLogPath,
             alwaysOn,
             problems,
-            IsolationWarnings);
+            state?.TestSave is null ? IsolationWarnings : TestSaveWarnings,
+            state?.TestSave is null ? [] : _lastTestSaveLogPaths);
     }
 
     private static LiveLabProblem Problem(string code, string message) =>
         new(code, message);
 
-    private static LiveLabCommandResult Result(int exitCode, LiveLabReport report) =>
+    private static LiveLabCommandResult Result(int exitCode, object report) =>
         new(exitCode, report);
 
     private static string StartProblemCode(LabProcessStartStatus status) => status switch
@@ -751,8 +1274,27 @@ internal sealed class LiveLabService
         LabProcessStartStatus.ExitedBeforeIdentityVerification => "processExitedDuringStart",
         LabProcessStartStatus.IdentityMismatch => "processIdentityMismatch",
         LabProcessStartStatus.Unreadable => "processUnreadable",
+        LabProcessStartStatus.AbortUnconfirmed => "unverifiedChildAbortUnconfirmed",
         _ => "processStartFailed",
     };
+
+    private static void AddTestSaveEnvironment(
+        IDictionary<string, string> environment,
+        TestSaveLaunchState launch)
+    {
+        launch.Validate();
+        TestSaveIdentity identity = launch.Identity;
+        environment["SDVKIT_TEST_SAVE_MODE"] = launch.Mode;
+        environment["SDVKIT_TEST_SAVE_WORKSPACE_OWNER_ID"] = identity.WorkspaceOwnerId;
+        environment["SDVKIT_TEST_SAVE_FIXTURE_ID"] = identity.FixtureId;
+        environment["SDVKIT_TEST_SAVE_UNIQUE_GAME_ID"] =
+            identity.UniqueGameId.ToString(CultureInfo.InvariantCulture);
+        environment["SDVKIT_TEST_SAVE_ID"] = identity.SaveId;
+        environment["SDVKIT_TEST_SAVE_PLAYER_NAME"] = identity.PlayerName;
+        environment["SDVKIT_TEST_SAVE_FARM_NAME"] = identity.FarmName;
+        environment["SDVKIT_TEST_SAVE_FAVORITE_THING"] = identity.FavoriteThing;
+        environment["SDVKIT_TEST_SAVE_LOG_PATH"] = launch.ScenarioLogPath;
+    }
 
     private static string DescribeCloseResult(LabProcessCloseResult close)
     {

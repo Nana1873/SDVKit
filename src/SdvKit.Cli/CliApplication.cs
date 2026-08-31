@@ -354,7 +354,7 @@ public static class CliApplication
         LiveLabCommandRunner runLiveLab)
     {
         const string usage =
-            "Usage: sdvkit lab <start|status|stop> --topology single --json";
+            "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
 
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -363,7 +363,7 @@ public static class CliApplication
         }
 
         if (arguments.Count != 5
-            || arguments[1] is not ("start" or "status" or "stop"))
+            || arguments[1] is not ("start" or "status" or "stop" or "test-save"))
         {
             error.WriteLine(usage);
             return UsageError;
@@ -433,7 +433,7 @@ public static class CliApplication
         output.WriteLine("  sdvkit project create <smapi-mod|content-pack> <path> [options] --json");
         output.WriteLine("  sdvkit project build [path] --json");
         output.WriteLine("  sdvkit project package [path] --json");
-        output.WriteLine("  sdvkit lab <start|status|stop> --topology single --json");
+        output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine();
         output.WriteLine("Commands:");
         output.WriteLine("  doctor          Detect ready Stardew Valley + SMAPI installations (read-only).");
@@ -441,7 +441,7 @@ public static class CliApplication
         output.WriteLine("  project create  Create a minimal SMAPI mod or Content Patcher pack.");
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
-        output.WriteLine("  lab             Control one isolated, owned singleplayer live-lab process.");
+        output.WriteLine("  lab             Control one isolated process or run its disposable test-save smoke.");
     }
 
     private static void WriteProjectHelp(TextWriter output)

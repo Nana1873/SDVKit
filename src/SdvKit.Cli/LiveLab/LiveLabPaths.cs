@@ -13,7 +13,12 @@ internal sealed record LiveLabPaths(
     string StopRequestPath,
     string StandardOutputPath,
     string StandardErrorPath,
-    string AlwaysOnModPath)
+    string AlwaysOnModPath,
+    string TestSaveRoot,
+    string TestSaveManifestPath,
+    string TestSaveWorkPath,
+    string TestSaveBaselinePath,
+    string TestSaveScenarioLogPath)
 {
     public static LiveLabPaths Resolve(string projectRoot)
     {
@@ -29,6 +34,7 @@ internal sealed record LiveLabPaths(
         string modsPath = Path.Combine(singleRoot, "mods");
         string runtimePath = Path.Combine(singleRoot, "runtime");
         string buildPath = Path.Combine(singleRoot, "build");
+        string testSaveRoot = Path.Combine(singleRoot, "test-save");
 
         var paths = new LiveLabPaths(
             absoluteProjectRoot,
@@ -41,7 +47,12 @@ internal sealed record LiveLabPaths(
             Path.Combine(runtimePath, "stop.request"),
             Path.Combine(runtimePath, "smapi.stdout.log"),
             Path.Combine(runtimePath, "smapi.stderr.log"),
-            Path.Combine(modsPath, "SDVKit.AlwaysOn"));
+            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            testSaveRoot,
+            Path.Combine(testSaveRoot, "fixture.json"),
+            Path.Combine(testSaveRoot, "work"),
+            Path.Combine(testSaveRoot, "baseline"),
+            Path.Combine(runtimePath, "test-save-scenario.log"));
         paths.RejectExistingManagedReparsePoints();
         return paths;
     }

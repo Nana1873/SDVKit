@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.AlwaysOn;
 
@@ -10,6 +12,7 @@ internal sealed class StatusWriter
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     private readonly string _launchId;
@@ -30,7 +33,8 @@ internal sealed class StatusWriter
         string phase,
         int tick,
         bool isActive,
-        bool? pauseWhenOutOfFocus)
+        bool? pauseWhenOutOfFocus,
+        TestSaveStatusMarker? testSave = null)
     {
         var marker = new
         {
@@ -42,6 +46,7 @@ internal sealed class StatusWriter
             tick,
             isActive,
             pauseWhenOutOfFocus,
+            testSave,
             observedAtUtc = DateTimeOffset.UtcNow,
         };
         string json = JsonSerializer.Serialize(marker, JsonOptions) + Environment.NewLine;

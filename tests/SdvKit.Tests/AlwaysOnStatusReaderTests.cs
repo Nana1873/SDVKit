@@ -178,12 +178,134 @@ public sealed class AlwaysOnStatusReaderTests
         Assert.Null(report.PauseWhenOutOfFocus);
     }
 
+    [Fact]
+    public void MatchingTestSaveMarkerIsBoundToTheExpectedFixtureAndLog()
+    {
+        using TemporaryDirectory temporary = new();
+        TestSaveLaunchState expected = TestSaveLaunch(temporary);
+        string path = WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(expected, "passed", identityVerified: true, waitedTicks: 120));
+
+        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("active", report.State);
+        Assert.Equal("ready", report.TestSave?.State);
+        Assert.Equal("passed", report.TestSave?.Phase);
+        Assert.True(report.TestSave?.IdentityVerified);
+        Assert.Equal(120, report.TestSave?.WaitedTicks);
+    }
+
+    [Fact]
+    public void MissingTestSavePayloadIsPendingForAnExpectedFixture()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = WriteMarker(temporary, Process());
+
+        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            TestSaveLaunch(temporary));
+
+        Assert.Equal("active", report.State);
+        Assert.Equal("pending", report.TestSave?.State);
+    }
+
+    [Fact]
+    public void TestSaveIdentityOrPhaseDriftIsRejectedInsideTheValidLifecycleMarker()
+    {
+        using TemporaryDirectory temporary = new();
+        TestSaveLaunchState expected = TestSaveLaunch(temporary);
+        TestSaveStatusMarker wrongFixture = TestSaveMarker(
+            expected,
+            "passed",
+            identityVerified: true,
+            waitedTicks: 120) with
+        {
+            FixtureId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        };
+        string path = WriteMarker(temporary, Process(), wrongFixture);
+
+        AlwaysOnStatusReport mismatch = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("active", mismatch.State);
+        Assert.Equal("mismatch", mismatch.TestSave?.State);
+
+        WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(expected, "created", identityVerified: true, waitedTicks: 0));
+        AlwaysOnStatusReport wrongModePhase = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("invalid", wrongModePhase.TestSave?.State);
+    }
+
+    [Fact]
+    public void PassedScenarioRequiresAllObservedGameTicks()
+    {
+        using TemporaryDirectory temporary = new();
+        TestSaveLaunchState expected = TestSaveLaunch(temporary);
+        string path = WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(
+                expected,
+                "passed",
+                identityVerified: true,
+                waitedTicks: TestSaveContract.RequiredScenarioTicks - 1));
+
+        AlwaysOnStatusReport shortWait = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("invalid", shortWait.TestSave?.State);
+
+        WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(
+                expected,
+                "passed",
+                identityVerified: true,
+                waitedTicks: TestSaveContract.RequiredScenarioTicks));
+        AlwaysOnStatusReport completeWait = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("ready", completeWait.TestSave?.State);
+    }
+
     private static OwnedProcessIdentity Process() =>
         new(4242, StartedAt, @"E:\Games\StardewModdingAPI.exe");
 
     private static string WriteMarker(
         TemporaryDirectory temporary,
-        OwnedProcessIdentity process)
+        OwnedProcessIdentity process,
+        TestSaveStatusMarker? testSave = null)
     {
         string path = System.IO.Path.Combine(temporary.Path, "always-on.json");
         var marker = new AlwaysOnStatusMarker(
@@ -195,8 +317,44 @@ public sealed class AlwaysOnStatusReaderTests
             600,
             IsActive: false,
             PauseWhenOutOfFocus: false,
-            ObservedAt);
+            ObservedAt,
+            testSave);
         File.WriteAllText(path, JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
         return path;
     }
+
+    private static TestSaveLaunchState TestSaveLaunch(TemporaryDirectory temporary)
+    {
+        var identity = new TestSaveIdentity(
+            TestSaveContract.SchemaVersion,
+            "11111111111111111111111111111111",
+            "22222222222222222222222222222222",
+            123456789L,
+            "SDVKit_123456789",
+            TestSaveContract.PlayerName,
+            TestSaveContract.FarmName,
+            TestSaveContract.FavoriteThing);
+        return new TestSaveLaunchState(
+            TestSaveContract.ScenarioMode,
+            identity,
+            Path.Combine(temporary.Path, identity.SaveId),
+            Path.Combine(temporary.Path, "work"),
+            Path.Combine(temporary.Path, "scenario.log"));
+    }
+
+    private static TestSaveStatusMarker TestSaveMarker(
+        TestSaveLaunchState launch,
+        string phase,
+        bool identityVerified,
+        int waitedTicks) =>
+        new(
+            TestSaveContract.SchemaVersion,
+            launch.Mode,
+            phase,
+            launch.Identity.FixtureId,
+            launch.Identity.SaveId,
+            identityVerified,
+            waitedTicks,
+            "test status",
+            launch.ScenarioLogPath);
 }

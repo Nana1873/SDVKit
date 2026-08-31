@@ -8,7 +8,8 @@ internal sealed record AlwaysOnStatusReport(
     int? Tick,
     bool? IsActive,
     bool? PauseWhenOutOfFocus,
-    DateTimeOffset? ObservedAtUtc);
+    DateTimeOffset? ObservedAtUtc,
+    TestSaveStatusReport? TestSave = null);
 
 internal sealed record AlwaysOnStatusMarker(
     int SchemaVersion,
@@ -19,7 +20,8 @@ internal sealed record AlwaysOnStatusMarker(
     int Tick,
     bool IsActive,
     bool? PauseWhenOutOfFocus,
-    DateTimeOffset ObservedAtUtc);
+    DateTimeOffset ObservedAtUtc,
+    TestSaveStatusMarker? TestSave = null);
 
 internal static class AlwaysOnStatusReader
 {
@@ -29,7 +31,8 @@ internal static class AlwaysOnStatusReader
         string statusPath,
         string launchId,
         OwnedProcessIdentity process,
-        DateTimeOffset nowUtc)
+        DateTimeOffset nowUtc,
+        TestSaveLaunchState? expectedTestSave = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(statusPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
@@ -83,12 +86,118 @@ internal static class AlwaysOnStatusReader
             state = "stale";
         }
 
+        TestSaveStatusReport? testSave = ReadTestSave(marker.TestSave, expectedTestSave);
         return new AlwaysOnStatusReport(
             state,
             marker.Tick,
             marker.IsActive,
             marker.PauseWhenOutOfFocus,
-            marker.ObservedAtUtc);
+            marker.ObservedAtUtc,
+            testSave);
+    }
+
+    private static TestSaveStatusReport? ReadTestSave(
+        TestSaveStatusMarker? marker,
+        TestSaveLaunchState? expected)
+    {
+        if (expected is null)
+        {
+            return marker is null
+                ? null
+                : InvalidTestSave("unexpected");
+        }
+
+        if (marker is null)
+        {
+            return new TestSaveStatusReport(
+                "pending",
+                expected.Mode,
+                null,
+                expected.Identity.FixtureId,
+                expected.Identity.SaveId,
+                null,
+                null,
+                null,
+                expected.ScenarioLogPath);
+        }
+
+        bool knownPhase = marker.Phase is "waitingForTitle"
+            or "creating"
+            or "created"
+            or "loading"
+            or "waiting"
+            or "passed"
+            or "failed";
+        if (marker.SchemaVersion != TestSaveContract.SchemaVersion
+            || !knownPhase
+            || marker.WaitedTicks < 0
+            || string.IsNullOrWhiteSpace(marker.ScenarioLogPath))
+        {
+            return InvalidTestSave("invalid");
+        }
+
+        if (!string.Equals(marker.Mode, expected.Mode, StringComparison.Ordinal)
+            || !string.Equals(
+                marker.FixtureId,
+                expected.Identity.FixtureId,
+                StringComparison.Ordinal)
+            || !string.Equals(marker.SaveId, expected.Identity.SaveId, StringComparison.Ordinal)
+            || !PathsEqual(marker.ScenarioLogPath, expected.ScenarioLogPath))
+        {
+            return InvalidTestSave("mismatch");
+        }
+
+        bool wrongModePhase = marker.Mode switch
+        {
+            TestSaveContract.CreateMode => marker.Phase is "loading" or "waiting" or "passed",
+            TestSaveContract.ScenarioMode => marker.Phase is "creating" or "created",
+            _ => true,
+        };
+        bool missingVerification = marker.Phase is "created" or "waiting" or "passed"
+            && !marker.IdentityVerified;
+        bool insufficientScenarioWait = string.Equals(
+                marker.Mode,
+                TestSaveContract.ScenarioMode,
+                StringComparison.Ordinal)
+            && string.Equals(marker.Phase, "passed", StringComparison.Ordinal)
+            && marker.WaitedTicks < TestSaveContract.RequiredScenarioTicks;
+        if (wrongModePhase || missingVerification || insufficientScenarioWait)
+        {
+            return InvalidTestSave("invalid");
+        }
+
+        return new TestSaveStatusReport(
+            "ready",
+            marker.Mode,
+            marker.Phase,
+            marker.FixtureId,
+            marker.SaveId,
+            marker.IdentityVerified,
+            marker.WaitedTicks,
+            marker.Message,
+            marker.ScenarioLogPath);
+    }
+
+    private static TestSaveStatusReport InvalidTestSave(string state) =>
+        new(state, null, null, null, null, null, null, null, null);
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     private static AlwaysOnStatusReport Pending() =>

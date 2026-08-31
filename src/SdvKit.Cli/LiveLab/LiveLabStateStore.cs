@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SdvKit.Cli.LiveLab;
 
@@ -9,7 +10,8 @@ internal sealed record LiveLabState(
     OwnedProcessIdentity OwnedProcessIdentity,
     string ModsPath,
     string StatusPath,
-    string StopRequestPath)
+    string StopRequestPath,
+    TestSaveLaunchState? TestSave = null)
 {
     public const int CurrentSchemaVersion = 1;
     public const string SingleTopology = "single";
@@ -31,6 +33,7 @@ internal sealed class JsonLiveLabStateStore(string statePath) : ILiveLabStateSto
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     private readonly string _statePath = Path.GetFullPath(statePath);
@@ -184,5 +187,7 @@ internal sealed class JsonLiveLabStateStore(string statePath) : ILiveLabStateSto
         {
             throw new InvalidDataException("The owned process identity is invalid.");
         }
+
+        state.TestSave?.Validate();
     }
 }
