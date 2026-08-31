@@ -41,7 +41,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
     public TestSaveFixtureStore(LiveLabPaths paths)
         : this(
             paths,
-            GetDefaultSavesRoot(),
+            paths.SavesPath,
             new WindowsDirectChildJunction(paths.TestSaveRoot),
             () => Guid.NewGuid().ToString("N"),
             CreateUniqueGameId)
@@ -68,6 +68,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
     public TestSavePreparation PrepareForStart()
     {
         _paths.EnsureDirectories();
+        _paths.RejectUserProfileReparsePoints();
         EnsurePlainDirectory(_paths.TestSaveRoot);
         RejectManagedReparsePoints();
         TestSaveIdentity identity = LoadOrCreateIdentity();
@@ -687,19 +688,6 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
             OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal);
-
-    private static string GetDefaultSavesRoot()
-    {
-        string applicationData = Environment.GetFolderPath(
-            Environment.SpecialFolder.ApplicationData,
-            Environment.SpecialFolderOption.DoNotVerify);
-        if (string.IsNullOrWhiteSpace(applicationData))
-        {
-            throw new InvalidOperationException("Windows ApplicationData could not be resolved.");
-        }
-
-        return Path.Combine(applicationData, "StardewValley", "Saves");
-    }
 
     private static long CreateUniqueGameId()
     {

@@ -18,6 +18,19 @@ public sealed class LiveLabStorageTests
         Assert.Equal(Path.Combine(paths.SingleRoot, "mods"), paths.ModsPath);
         Assert.Equal(Path.Combine(paths.SingleRoot, "runtime"), paths.RuntimePath);
         Assert.Equal(Path.Combine(paths.SingleRoot, "build"), paths.BuildPath);
+        Assert.Equal(
+            Path.Combine(project.Path, ".sdvkit", "lab", "profiles", "single"),
+            paths.UserProfilePath);
+        Assert.Equal(
+            Path.Combine(paths.UserProfilePath, "AppData", "Roaming"),
+            paths.RoamingAppDataPath);
+        Assert.Equal(
+            Path.Combine(paths.UserProfilePath, "AppData", "Local"),
+            paths.LocalAppDataPath);
+        Assert.Equal(
+            Path.Combine(paths.RoamingAppDataPath, "StardewValley"),
+            paths.StardewDataPath);
+        Assert.Equal(Path.Combine(paths.StardewDataPath, "Saves"), paths.SavesPath);
         Assert.Equal(Path.Combine(paths.SingleRoot, "test-save"), paths.TestSaveRoot);
         Assert.Equal(
             Path.Combine(paths.TestSaveRoot, "fixture.json"),
@@ -57,12 +70,59 @@ public sealed class LiveLabStorageTests
         Assert.True(Directory.Exists(paths.ModsPath));
         Assert.True(Directory.Exists(paths.RuntimePath));
         Assert.True(Directory.Exists(paths.BuildPath));
+        Assert.True(Directory.Exists(paths.RoamingAppDataPath));
+        Assert.True(Directory.Exists(paths.LocalAppDataPath));
+        Assert.True(Directory.Exists(paths.SavesPath));
         Assert.Equal(
             ["build", "mods", "runtime"],
             Directory.GetDirectories(paths.SingleRoot)
                 .Select(path => Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+    }
+
+    [Fact]
+    public void NetworkRolesResolveSeparateProfilesOutsideTheirLifecycleRoots()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths single = LiveLabPaths.Resolve(project.Path);
+        LiveLabPaths host = LiveLabPaths.ResolveNetworkRole(
+            single,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhand = LiveLabPaths.ResolveNetworkRole(
+            single,
+            NetworkTwoContract.FarmhandRole);
+
+        Assert.Equal(
+            Path.Combine(
+                project.Path,
+                ".sdvkit",
+                "lab",
+                "profiles",
+                NetworkTwoContract.Topology,
+                NetworkTwoContract.HostRole),
+            host.UserProfilePath);
+        Assert.Equal(
+            Path.Combine(
+                project.Path,
+                ".sdvkit",
+                "lab",
+                "profiles",
+                NetworkTwoContract.Topology,
+                NetworkTwoContract.FarmhandRole),
+            farmhand.UserProfilePath);
+        Assert.NotEqual(
+            host.UserProfilePath,
+            farmhand.UserProfilePath,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            host.SingleRoot + Path.DirectorySeparatorChar,
+            host.UserProfilePath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            farmhand.SingleRoot + Path.DirectorySeparatorChar,
+            farmhand.UserProfilePath,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

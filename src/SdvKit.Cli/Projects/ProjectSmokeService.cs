@@ -15,7 +15,7 @@ internal static class ProjectSmokeService
     [
         "The build identity hashes the controlled staged package file set; it is echoed by the game-side marker, not measured from the runtime DLL in memory.",
         "A passed project smoke proves that SMAPI loaded the expected UniqueID and version and completed the bounded 120-tick smoke; it does not prove that every mod feature is functionally correct.",
-        "Only the isolated SMAPI mod group and exact SDVKit disposable fixture are controlled. Stardew AppData preferences and standard SMAPI logs remain shared; personal saves and the normal Mods directory are never selected or modified.",
+        "SDVKit controls the isolated SMAPI mod group, exact disposable fixture, and project-owned Stardew data root; it does not select personal data or the normal Mods directory, but the tested mod is not sandboxed.",
     ];
 
     public static LiveLabCommandResult Execute(

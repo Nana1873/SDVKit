@@ -67,6 +67,11 @@ public sealed class NetworkTwoLiveLabServiceTests
             "SDVKIT_NETWORK_TWO_SAVE_ID"]);
         Assert.Equal(launch.NetworkLogPath, specification.Environment[
             "SDVKIT_NETWORK_TWO_LOG_PATH"]);
+        Assert.Equal(paths.UserProfilePath, specification.Environment["USERPROFILE"]);
+        Assert.Equal(paths.RoamingAppDataPath, specification.Environment["APPDATA"]);
+        Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
+        Assert.Equal(paths.StardewDataPath, specification.Environment[
+            "SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal(string.Empty, specification.Environment[
             "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"]);
         Assert.Equal(TestSaveContract.ScenarioMode, specification.Environment[
@@ -123,6 +128,11 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.True(specification.StartMinimizedWithoutActivation);
         Assert.Equal("202", specification.Environment[
             "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"]);
+        Assert.Equal(paths.UserProfilePath, specification.Environment["USERPROFILE"]);
+        Assert.Equal(paths.RoamingAppDataPath, specification.Environment["APPDATA"]);
+        Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
+        Assert.Equal(paths.StardewDataPath, specification.Environment[
+            "SDVKIT_LAB_DATA_PATH"]);
         Assert.All(
             specification.Environment.Where(pair => pair.Key.StartsWith(
                 "SDVKIT_TEST_SAVE_",
@@ -133,6 +143,8 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.NotEqual(hostPaths.StopRequestPath, paths.StopRequestPath);
         Assert.NotEqual(hostPaths.StandardOutputPath, paths.StandardOutputPath);
         Assert.NotEqual(hostPaths.StandardErrorPath, paths.StandardErrorPath);
+        Assert.NotEqual(hostPaths.UserProfilePath, paths.UserProfilePath);
+        Assert.NotEqual(hostPaths.StardewDataPath, paths.StardewDataPath);
         Assert.Equal(hostPaths.TestSaveWorkPath, paths.TestSaveWorkPath);
     }
 

@@ -53,14 +53,14 @@ internal sealed class LiveLabService
 
     private static readonly string[] IsolationWarnings =
     [
-        "Only the SMAPI mod group is isolated. Stardew AppData preferences, saves, startup preferences, and standard SMAPI logs remain shared.",
-        "This workflow does not enumerate, open, copy, select, or modify saves or the normal Mods directory.",
+        "The controlled process resolves Stardew's own preferences, saves, startup preferences, and standard SMAPI logs to a project-owned data root below .sdvkit; SDVKit does not select or modify their normal counterparts or the normal Mods directory.",
+        "This is process-level data isolation, not a Windows sandbox; tested mods and external services can still access shared machine resources.",
     ];
 
     private static readonly string[] TestSaveWarnings =
     [
-        "Stardew AppData preferences and standard SMAPI logs remain shared; the isolated mod group and exact SDVKit fixture do not isolate those files.",
-        "Personal saves are never enumerated, opened, copied, replaced, or deleted. Only one exact SDVKit-owned direct-child save junction is temporarily exposed.",
+        "The controlled process resolves Stardew's own preferences, saves, startup preferences, and standard SMAPI logs to a project-owned data root below .sdvkit; SDVKit does not select personal data or the normal Mods directory.",
+        "Only one exact SDVKit-owned direct-child save junction is exposed inside that project-owned data root.",
     ];
 
     private static readonly string[] TestSaveEnvironmentNames =
@@ -682,6 +682,10 @@ internal sealed class LiveLabService
         }
 
         _paths.EnsureDirectories();
+        if (testSave is null)
+        {
+            _paths.RejectUserProfileReparsePoints();
+        }
         _stateStore.VerifyWritable();
         string gamePath = doctor.Installations[0].GamePath;
         AlwaysOnBuildResult build = preparedBuild
@@ -712,6 +716,10 @@ internal sealed class LiveLabService
         string executablePath = Path.Combine(gamePath, "StardewModdingAPI.exe");
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["USERPROFILE"] = _paths.UserProfilePath,
+            ["APPDATA"] = _paths.RoamingAppDataPath,
+            ["LOCALAPPDATA"] = _paths.LocalAppDataPath,
+            ["SDVKIT_LAB_DATA_PATH"] = _paths.StardewDataPath,
             ["SDVKIT_LAB_LAUNCH_ID"] = launchId,
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
