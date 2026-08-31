@@ -73,16 +73,40 @@ public sealed class AlwaysOnBuilderTests
     }
 
     [Fact]
-    public void RepositoryRootLocatorWalksUpToTheSolution()
+    public void SourceRootLocatorWalksUpToTheAlwaysOnProject()
     {
         using TemporaryDirectory repository = new();
-        repository.WriteFile("SDVKit.sln");
+        repository.WriteFile("src/SdvKit.AlwaysOn/SdvKit.AlwaysOn.csproj");
         string nested = Path.Combine(repository.Path, "src", "SdvKit.Cli", "bin", "Release");
         Directory.CreateDirectory(nested);
 
-        string result = RepositoryRootLocator.Find(nested);
+        string result = AlwaysOnSourceRootLocator.Find(nested);
 
         Assert.Equal(repository.Path, result);
+    }
+
+    [Fact]
+    public void SourceRootLocatorPrefersTheNearestPackagedAlwaysOnProject()
+    {
+        using TemporaryDirectory repository = new();
+        repository.WriteFile("src/SdvKit.AlwaysOn/SdvKit.AlwaysOn.csproj");
+        string packageRoot = Path.Combine(
+            repository.Path,
+            ".sdvkit",
+            "distribution",
+            "extracted",
+            "SDVKit-0.1.0-win-x64");
+        string packagedProject = Path.Combine(
+            packageRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "SdvKit.AlwaysOn.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(packagedProject)!);
+        File.WriteAllText(packagedProject, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+        string result = AlwaysOnSourceRootLocator.Find(packageRoot);
+
+        Assert.Equal(packageRoot, result);
     }
 
     private static bool IsBelow(string candidate, string parent)

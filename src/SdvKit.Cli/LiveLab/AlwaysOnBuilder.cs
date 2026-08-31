@@ -16,26 +16,26 @@ internal interface IAlwaysOnBuilder
 
 internal sealed class AlwaysOnBuilder : IAlwaysOnBuilder
 {
-    private const string ProjectRelativePath = "src/SdvKit.AlwaysOn/SdvKit.AlwaysOn.csproj";
+    internal const string ProjectRelativePath = "src/SdvKit.AlwaysOn/SdvKit.AlwaysOn.csproj";
     private const string AssemblyFileName = "SdvKit.AlwaysOn.dll";
     private const string ManifestFileName = "manifest.json";
 
     private readonly IDotNetBuildRunner _runner;
-    private readonly Func<string> _findRepositoryRoot;
+    private readonly Func<string> _findSourceRoot;
 
     public AlwaysOnBuilder()
         : this(
             new DotNetBuildRunner(),
-            () => RepositoryRootLocator.Find(AppContext.BaseDirectory))
+            () => AlwaysOnSourceRootLocator.Find(AppContext.BaseDirectory))
     {
     }
 
     internal AlwaysOnBuilder(
         IDotNetBuildRunner runner,
-        Func<string> findRepositoryRoot)
+        Func<string> findSourceRoot)
     {
         _runner = runner;
-        _findRepositoryRoot = findRepositoryRoot;
+        _findSourceRoot = findSourceRoot;
     }
 
     public AlwaysOnBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
@@ -45,8 +45,8 @@ internal sealed class AlwaysOnBuilder : IAlwaysOnBuilder
 
         paths.EnsureDirectories();
         string absoluteGamePath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gamePath));
-        string repositoryRoot = _findRepositoryRoot();
-        string projectPath = Path.GetFullPath(ProjectRelativePath, repositoryRoot);
+        string sourceRoot = _findSourceRoot();
+        string projectPath = Path.GetFullPath(ProjectRelativePath, sourceRoot);
         string sourceManifestPath = Path.Combine(
             Path.GetDirectoryName(projectPath)!,
             ManifestFileName);
@@ -69,7 +69,7 @@ internal sealed class AlwaysOnBuilder : IAlwaysOnBuilder
         RecreateDirectory(intermediatePath);
 
         var command = new DotNetBuildCommand(
-            repositoryRoot,
+            sourceRoot,
             [
                 "build",
                 projectPath,
@@ -196,7 +196,7 @@ internal sealed class DotNetBuildRunner : IDotNetBuildRunner
     }
 }
 
-internal static class RepositoryRootLocator
+internal static class AlwaysOnSourceRootLocator
 {
     public static string Find(string startPath)
     {
@@ -205,7 +205,9 @@ internal static class RepositoryRootLocator
         var current = new DirectoryInfo(Path.GetFullPath(startPath));
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "SDVKit.sln")))
+            if (File.Exists(Path.Combine(
+                    current.FullName,
+                    AlwaysOnBuilder.ProjectRelativePath)))
             {
                 return current.FullName;
             }
@@ -214,6 +216,7 @@ internal static class RepositoryRootLocator
         }
 
         throw new InvalidOperationException(
-            $"Could not find SDVKit.sln above {Path.GetFullPath(startPath)}.");
+            $"Could not find {AlwaysOnBuilder.ProjectRelativePath} above "
+            + $"{Path.GetFullPath(startPath)}.");
     }
 }

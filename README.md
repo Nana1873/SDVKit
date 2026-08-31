@@ -32,6 +32,16 @@ dotnet test SDVKit.sln -c Release --no-build
 & .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe --help
 ```
 
+## Portable Windows-x64
+
+Install the .NET 8 SDK, then download `SDVKit-0.1.0-win-x64.zip` and its `.sha256` file from the GitHub release assets. Extract and start the CLI without a repository checkout:
+
+```powershell
+Get-FileHash .\SDVKit-0.1.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.1.0-win-x64.zip
+& .\SDVKit-0.1.0-win-x64\sdvkit.exe --help
+```
+
 ## Isolated singleplayer live lab
 
 Run the lab commands from the project root whose ignored `.sdvkit/` directory should own the generated mod group and runtime state:
