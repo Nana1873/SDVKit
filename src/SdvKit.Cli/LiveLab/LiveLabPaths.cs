@@ -8,6 +8,7 @@ internal sealed record LiveLabPaths(
     string ModsPath,
     string RuntimePath,
     string BuildPath,
+    string UserProfilePath,
     string StatePath,
     string StatusPath,
     string StopRequestPath,
@@ -20,6 +21,17 @@ internal sealed record LiveLabPaths(
     string TestSaveBaselinePath,
     string TestSaveScenarioLogPath)
 {
+    public string RoamingAppDataPath =>
+        Path.Combine(UserProfilePath, "AppData", "Roaming");
+
+    public string LocalAppDataPath =>
+        Path.Combine(UserProfilePath, "AppData", "Local");
+
+    public string StardewDataPath =>
+        Path.Combine(RoamingAppDataPath, "StardewValley");
+
+    public string SavesPath => Path.Combine(StardewDataPath, "Saves");
+
     public static LiveLabPaths Resolve(string projectRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
@@ -34,6 +46,7 @@ internal sealed record LiveLabPaths(
         string modsPath = Path.Combine(singleRoot, "mods");
         string runtimePath = Path.Combine(singleRoot, "runtime");
         string buildPath = Path.Combine(singleRoot, "build");
+        string userProfilePath = Path.Combine(labRoot, "profiles", "single");
         string testSaveRoot = Path.Combine(singleRoot, "test-save");
 
         var paths = new LiveLabPaths(
@@ -42,6 +55,7 @@ internal sealed record LiveLabPaths(
             modsPath,
             runtimePath,
             buildPath,
+            userProfilePath,
             Path.Combine(runtimePath, "state.json"),
             Path.Combine(runtimePath, "always-on-status.json"),
             Path.Combine(runtimePath, "stop.request"),
@@ -76,12 +90,20 @@ internal sealed record LiveLabPaths(
         string modsPath = Path.Combine(roleRoot, "mods");
         string runtimePath = Path.Combine(roleRoot, "runtime");
         string buildPath = Path.Combine(roleRoot, "build");
+        string userProfilePath = Path.Combine(
+            singlePaths.ProjectRoot,
+            ".sdvkit",
+            "lab",
+            "profiles",
+            NetworkTwoContract.Topology,
+            role);
         var paths = new LiveLabPaths(
             singlePaths.ProjectRoot,
             roleRoot,
             modsPath,
             runtimePath,
             buildPath,
+            userProfilePath,
             Path.Combine(runtimePath, "state.json"),
             Path.Combine(runtimePath, "always-on-status.json"),
             Path.Combine(runtimePath, "stop.request"),
@@ -108,7 +130,24 @@ internal sealed record LiveLabPaths(
         EnsureDirectory(ModsPath);
         EnsureDirectory(RuntimePath);
         EnsureDirectory(BuildPath);
+        EnsureDirectory(Path.Combine(ProjectRoot, ".sdvkit", "lab", "profiles"));
+        EnsureDirectory(Path.GetDirectoryName(UserProfilePath)
+            ?? throw new InvalidOperationException("The lab user-profile root has no parent."));
+        EnsureDirectory(UserProfilePath);
+        EnsureDirectory(Path.Combine(UserProfilePath, "AppData"));
+        EnsureDirectory(RoamingAppDataPath);
+        EnsureDirectory(LocalAppDataPath);
+        EnsureDirectory(StardewDataPath);
+        EnsureDirectory(SavesPath);
         RejectExistingManagedReparsePoints();
+    }
+
+    internal void RejectUserProfileReparsePoints()
+    {
+        if (Directory.Exists(UserProfilePath))
+        {
+            RejectReparsePointsBelow(UserProfilePath);
+        }
     }
 
     internal static void RejectReparsePointsBelow(string root)
@@ -147,6 +186,15 @@ internal sealed record LiveLabPaths(
             Path.GetDirectoryName(SingleRoot)
                 ?? throw new InvalidOperationException("The live-lab instance root has no parent."),
             SingleRoot,
+            Path.Combine(ProjectRoot, ".sdvkit", "lab", "profiles"),
+            Path.GetDirectoryName(UserProfilePath)
+                ?? throw new InvalidOperationException("The lab user-profile root has no parent."),
+            UserProfilePath,
+            Path.Combine(UserProfilePath, "AppData"),
+            RoamingAppDataPath,
+            LocalAppDataPath,
+            StardewDataPath,
+            SavesPath,
         })
         {
             if (!TryGetAttributes(path, out FileAttributes attributes))

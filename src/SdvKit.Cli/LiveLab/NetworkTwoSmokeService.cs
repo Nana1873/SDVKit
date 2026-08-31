@@ -40,7 +40,7 @@ internal sealed class NetworkTwoSmokeService
     private static readonly string[] Warnings =
     [
         "The smoke uses exactly one local host and one local farmhand against SDVKit's disposable fixture; it does not expose a general multiplayer topology.",
-        "Stardew AppData preferences and standard SMAPI logs remain shared. Personal saves and the normal Mods directory are never selected or modified.",
+        "Each role resolves Stardew's own saves, preferences, and standard SMAPI logs to its own project-owned data root below .sdvkit; SDVKit does not select personal data or the normal Mods directory.",
     ];
 
     private readonly LiveLabPaths _singlePaths;
@@ -554,12 +554,9 @@ internal sealed class NetworkTwoSmokeService
         return false;
     }
 
-    private static bool IsSynchronousJoinLoad(LiveLabReport report) =>
+    internal static bool IsSynchronousJoinLoad(LiveLabReport report) =>
         report.Problems.Count == 1
-        && string.Equals(
-            report.Problems[0].Code,
-            "alwaysOnStale",
-            StringComparison.Ordinal)
+        && report.Problems[0].Code is "alwaysOnStale" or "alwaysOnNotApplied"
         && string.Equals(
             report.AlwaysOn?.NetworkTwo?.Phase,
             "joining",

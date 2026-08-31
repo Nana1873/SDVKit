@@ -8,6 +8,55 @@ public sealed class NetworkTwoSmokeServiceTests
     private const string BuildIdentity =
         "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
+    [Theory]
+    [InlineData("joining", "alwaysOnStale", true)]
+    [InlineData("joining", "alwaysOnNotApplied", true)]
+    [InlineData("joined", "alwaysOnNotApplied", false)]
+    [InlineData("joining", "networkTwoPending", false)]
+    public void SynchronousJoinLoadAllowsOnlyTheTwoExactTransientProblems(
+        string phase,
+        string problemCode,
+        bool expected)
+    {
+        var network = new NetworkTwoStatusReport(
+            "ready",
+            NetworkTwoContract.FarmhandRole,
+            phase,
+            BuildIdentity,
+            "fixture",
+            "save",
+            true,
+            0,
+            202L,
+            "farmhand",
+            null,
+            null,
+            null,
+            "C:\\network.log");
+        var alwaysOn = new AlwaysOnStatusReport(
+            "active",
+            1,
+            true,
+            true,
+            DateTimeOffset.UtcNow,
+            NetworkTwo: network);
+        var report = new LiveLabReport(
+            1,
+            NetworkTwoContract.Topology,
+            "running",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            alwaysOn,
+            [new LiveLabProblem(problemCode, "transient")],
+            []);
+
+        Assert.Equal(expected, NetworkTwoSmokeService.IsSynchronousJoinLoad(report));
+    }
+
     [Fact]
     public void RecoveredRoleIsNotReportedOrArchivedAsEvidenceForTheNewSmoke()
     {

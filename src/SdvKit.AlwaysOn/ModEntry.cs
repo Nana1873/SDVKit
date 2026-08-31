@@ -155,22 +155,28 @@ public sealed class ModEntry : Mod
             ?? string.Empty;
         stopRequestPath = Environment.GetEnvironmentVariable("SDVKIT_LAB_STOP_PATH")?.Trim()
             ?? string.Empty;
+        string expectedDataPath =
+            Environment.GetEnvironmentVariable("SDVKIT_LAB_DATA_PATH")?.Trim()
+            ?? string.Empty;
         if (!Guid.TryParseExact(launchId, "N", out _))
         {
             reason = "SDVKIT_LAB_LAUNCH_ID is missing or invalid.";
             return false;
         }
 
-        if (statusPath.Length == 0 || stopRequestPath.Length == 0)
+        if (statusPath.Length == 0
+            || stopRequestPath.Length == 0
+            || expectedDataPath.Length == 0)
         {
-            reason = "SDVKIT_LAB_STATUS_PATH or SDVKIT_LAB_STOP_PATH is missing or empty.";
+            reason = "An SDVKit lab runtime or data path is missing or empty.";
             return false;
         }
 
         if (!Path.IsPathFullyQualified(statusPath)
-            || !Path.IsPathFullyQualified(stopRequestPath))
+            || !Path.IsPathFullyQualified(stopRequestPath)
+            || !Path.IsPathFullyQualified(expectedDataPath))
         {
-            reason = "The lab status and stop-request paths must be fully qualified.";
+            reason = "The lab runtime and data paths must be fully qualified.";
             return false;
         }
 
@@ -178,6 +184,7 @@ public sealed class ModEntry : Mod
         {
             statusPath = Path.GetFullPath(statusPath);
             stopRequestPath = Path.GetFullPath(stopRequestPath);
+            expectedDataPath = Path.GetFullPath(expectedDataPath);
         }
         catch (Exception exception) when (exception is ArgumentException
             or IOException
@@ -196,6 +203,15 @@ public sealed class ModEntry : Mod
                 comparison))
         {
             reason = "The lab status and stop-request paths must share one runtime directory.";
+            return false;
+        }
+
+        if (!string.Equals(
+                Path.TrimEndingDirectorySeparator(Constants.DataPath),
+                Path.TrimEndingDirectorySeparator(expectedDataPath),
+                comparison))
+        {
+            reason = $"Stardew resolved an unexpected data path: {Constants.DataPath}";
             return false;
         }
 

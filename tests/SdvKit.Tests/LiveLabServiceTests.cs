@@ -49,6 +49,10 @@ public sealed class LiveLabServiceTests
         Assert.Equal(LaunchId, specification.Environment["SDVKIT_LAB_LAUNCH_ID"]);
         Assert.Equal(paths.StatusPath, specification.Environment["SDVKIT_LAB_STATUS_PATH"]);
         Assert.Equal(paths.StopRequestPath, specification.Environment["SDVKIT_LAB_STOP_PATH"]);
+        Assert.Equal(paths.UserProfilePath, specification.Environment["USERPROFILE"]);
+        Assert.Equal(paths.RoamingAppDataPath, specification.Environment["APPDATA"]);
+        Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
+        Assert.Equal(paths.StardewDataPath, specification.Environment["SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
         Assert.False(specification.StartMinimizedWithoutActivation);
