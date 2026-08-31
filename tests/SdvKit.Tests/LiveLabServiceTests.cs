@@ -51,6 +51,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.StopRequestPath, specification.Environment["SDVKIT_LAB_STOP_PATH"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
+        Assert.False(specification.StartMinimizedWithoutActivation);
         KeyValuePair<string, string>[] disabledTestSaveEnvironment = specification.Environment
             .Where(pair => pair.Key.StartsWith("SDVKIT_TEST_SAVE_", StringComparison.Ordinal))
             .ToArray();

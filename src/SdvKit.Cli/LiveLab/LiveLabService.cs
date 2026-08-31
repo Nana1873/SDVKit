@@ -76,6 +76,16 @@ internal sealed class LiveLabService
         "SDVKIT_TEST_SAVE_LOG_PATH",
     ];
 
+    private static readonly string[] NetworkTwoEnvironmentNames =
+    [
+        "SDVKIT_NETWORK_TWO_ROLE",
+        "SDVKIT_NETWORK_TWO_BUILD_ID",
+        "SDVKIT_NETWORK_TWO_FIXTURE_ID",
+        "SDVKIT_NETWORK_TWO_SAVE_ID",
+        "SDVKIT_NETWORK_TWO_LOG_PATH",
+        "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID",
+    ];
+
     private readonly LiveLabPaths _paths;
     private readonly ILiveLabStateStore _stateStore;
     private readonly IAlwaysOnBuilder _alwaysOnBuilder;
@@ -85,6 +95,7 @@ internal sealed class LiveLabService
     private readonly Func<string> _createLaunchId;
     private readonly ITestSaveFixtureStore _testSaveStore;
     private readonly Action<TimeSpan> _delay;
+    private readonly string _reportTopology;
     private IReadOnlyList<string> _lastTestSaveLogPaths = [];
 
     internal LiveLabService(
@@ -96,7 +107,8 @@ internal sealed class LiveLabService
         Func<DateTimeOffset>? utcNow = null,
         Func<string>? createLaunchId = null,
         ITestSaveFixtureStore? testSaveStore = null,
-        Action<TimeSpan>? delay = null)
+        Action<TimeSpan>? delay = null,
+        string reportTopology = LiveLabState.SingleTopology)
     {
         _paths = paths;
         _stateStore = stateStore;
@@ -107,6 +119,7 @@ internal sealed class LiveLabService
         _createLaunchId = createLaunchId ?? (() => Guid.NewGuid().ToString("N"));
         _testSaveStore = testSaveStore ?? new TestSaveFixtureStore(paths);
         _delay = delay ?? Thread.Sleep;
+        _reportTopology = reportTopology;
     }
 
     public static LiveLabCommandResult Execute(
@@ -187,6 +200,100 @@ internal sealed class LiveLabService
             "test-save" => TestSave(),
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
+    }
+
+    internal LiveLabCommandResult StartNetwork(
+        TestSaveLaunchState? testSave,
+        NetworkTwoLaunchState networkTwo,
+        AlwaysOnBuildResult preparedBuild)
+    {
+        ArgumentNullException.ThrowIfNull(networkTwo);
+        ArgumentNullException.ThrowIfNull(preparedBuild);
+        return Start(testSave, networkTwo, preparedBuild);
+    }
+
+    internal LiveLabCommandResult StatusNetwork() => Status();
+
+    internal LiveLabCommandResult StopNetwork()
+    {
+        LiveLabCommandResult stopped = Stop();
+        stopped = ReleaseExitedNetworkStateWithoutRestore(stopped);
+        if (stopped.ExitCode == Success
+            || stopped.Report is not LiveLabReport report
+            || !report.Problems.Any(problem => string.Equals(
+                problem.Code,
+                "cleanStopTimedOut",
+                StringComparison.Ordinal)))
+        {
+            return stopped;
+        }
+
+        LiveLabState? state = ReadState();
+        if (state is null || state.NetworkTwo is null)
+        {
+            return stopped;
+        }
+
+        LabProcessCloseResult closed = _processHost.RequestCloseAndWait(
+            state.OwnedProcessIdentity,
+            CleanStopTimeout);
+        if (closed.Status is not (LabProcessCloseStatus.Closed
+            or LabProcessCloseStatus.AlreadyExited))
+        {
+            return Failure(
+                closed.Status == LabProcessCloseStatus.IdentityMismatch
+                    ? "ownershipMismatch"
+                    : "running",
+                state,
+                "networkCleanCloseFailed",
+                $"The normal network-2 stop timed out and the exact-process window-close fallback did not complete ({DescribeCloseResult(closed)}).",
+                alwaysOn: ReadAlwaysOn(state));
+        }
+
+        return CompleteConfirmedStop(state, ReadAlwaysOn(state));
+    }
+
+    private LiveLabCommandResult ReleaseExitedNetworkStateWithoutRestore(
+        LiveLabCommandResult stopped)
+    {
+        if (stopped.Report is not LiveLabReport report
+            || !report.Problems.Any(problem => string.Equals(
+                problem.Code,
+                "cleanStopNotConfirmed",
+                StringComparison.Ordinal)))
+        {
+            return stopped;
+        }
+
+        LiveLabState? state = ReadState();
+        if (state?.NetworkTwo is null
+            || _processHost.Inspect(state.OwnedProcessIdentity).Status
+                != LabProcessInspectStatus.Exited)
+        {
+            return stopped;
+        }
+
+        try
+        {
+            File.Delete(state.StopRequestPath);
+            _stateStore.Delete();
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return Failure(
+                "exited",
+                state,
+                "runtimeCleanupFailed",
+                $"The exact network-2 process exited without restore proof, and its retained ownership record could not be released: {exception.Message}",
+                alwaysOn: report.AlwaysOn);
+        }
+
+        return Failure(
+            "stopped",
+            state,
+            "networkRestoreUnconfirmed",
+            "The exact network-2 process exited without an AlwaysOn restore marker. Its ownership record was released for bounded recovery, but this run is not accepted as a clean stop.",
+            alwaysOn: report.AlwaysOn);
     }
 
     private LiveLabCommandResult TestSave()
@@ -506,8 +613,34 @@ internal sealed class LiveLabService
         return [Problem(fallbackCode, "The live-lab operation failed without a detailed problem.")];
     }
 
-    private LiveLabCommandResult Start(TestSaveLaunchState? testSave = null)
+    private LiveLabCommandResult Start(
+        TestSaveLaunchState? testSave = null,
+        NetworkTwoLaunchState? networkTwo = null,
+        AlwaysOnBuildResult? preparedBuild = null)
     {
+        if (networkTwo is not null)
+        {
+            networkTwo.Validate();
+            bool isHost = string.Equals(
+                networkTwo.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal);
+            if (isHost != (testSave is not null)
+                || (testSave is not null
+                    && (!string.Equals(
+                            networkTwo.FixtureId,
+                            testSave.Identity.FixtureId,
+                            StringComparison.Ordinal)
+                        || !string.Equals(
+                            networkTwo.SaveId,
+                            testSave.Identity.SaveId,
+                            StringComparison.Ordinal))))
+            {
+                throw new InvalidDataException(
+                    "The network-2 role does not match its exact disposable fixture binding.");
+            }
+        }
+
         LiveLabState? existing = ReadState();
         if (existing is not null)
         {
@@ -532,7 +665,8 @@ internal sealed class LiveLabService
         _paths.EnsureDirectories();
         _stateStore.VerifyWritable();
         string gamePath = doctor.Installations[0].GamePath;
-        AlwaysOnBuildResult build = _alwaysOnBuilder.BuildAndInstall(gamePath, _paths);
+        AlwaysOnBuildResult build = preparedBuild
+            ?? _alwaysOnBuilder.BuildAndInstall(gamePath, _paths);
         if (!build.Succeeded)
         {
             return Failure(
@@ -568,9 +702,19 @@ internal sealed class LiveLabService
             environment[name] = string.Empty;
         }
 
+        foreach (string name in NetworkTwoEnvironmentNames)
+        {
+            environment[name] = string.Empty;
+        }
+
         if (testSave is not null)
         {
             AddTestSaveEnvironment(environment, testSave);
+        }
+
+        if (networkTwo is not null)
+        {
+            AddNetworkTwoEnvironment(environment, networkTwo);
         }
 
         var specification = new LabProcessStartSpec(
@@ -579,7 +723,8 @@ internal sealed class LiveLabService
             ["--mods-path", _paths.ModsPath],
             environment,
             _paths.StandardOutputPath,
-            _paths.StandardErrorPath);
+            _paths.StandardErrorPath,
+            StartMinimizedWithoutActivation: networkTwo is not null);
         LabProcessStartResult started = _processHost.Start(specification);
         if (started.Identity is null)
         {
@@ -593,13 +738,16 @@ internal sealed class LiveLabService
 
         var state = new LiveLabState(
             LiveLabState.CurrentSchemaVersion,
-            LiveLabState.SingleTopology,
+            networkTwo is null
+                ? LiveLabState.SingleTopology
+                : NetworkTwoContract.Topology,
             launchId,
             started.Identity,
             _paths.ModsPath,
             _paths.StatusPath,
             _paths.StopRequestPath,
-            testSave);
+            testSave,
+            networkTwo);
         if (started.Status != LabProcessStartStatus.Started)
         {
             return HandleLaunchVerificationFailure(
@@ -1075,6 +1223,62 @@ internal sealed class LiveLabService
             }
         }
 
+
+        if (state.NetworkTwo is not null)
+        {
+            NetworkTwoStatusReport? networkTwo = alwaysOn.NetworkTwo;
+            if (networkTwo?.State is "invalid" or "mismatch" or "unexpected")
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "networkTwoStatusMismatch",
+                    $"The AlwaysOn network-2 marker is {networkTwo.State}.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if (networkTwo is not null
+                && string.Equals(networkTwo.Phase, "failed", StringComparison.Ordinal))
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "networkTwoFailed",
+                    networkTwo.Message ?? "The game-side network-2 workflow failed.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if ((networkTwo is null
+                    || string.Equals(networkTwo.State, "pending", StringComparison.Ordinal))
+                && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
+                    > AlwaysOnStartupGrace)
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "networkTwoPending",
+                    "AlwaysOn did not publish the launch-bound network-2 marker within 30 seconds.",
+                    alwaysOn: alwaysOn);
+            }
+
+            bool isHost = string.Equals(
+                state.NetworkTwo.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal);
+            if (isHost
+                && string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
+                && (alwaysOn.EnableServer != true
+                    || alwaysOn.IpConnectionsEnabled != true))
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "networkHostOptionsNotApplied",
+                    "AlwaysOn is active for the host, but the required LAN server options are not both true.",
+                    alwaysOn: alwaysOn);
+            }
+        }
+
         return Result(Success, Report("running", state, [], alwaysOn: alwaysOn));
     }
 
@@ -1113,6 +1317,7 @@ internal sealed class LiveLabService
         }
 
         bool testSaveSucceeded = true;
+        bool networkTwoSucceeded = true;
         bool scenarioLogArchived = true;
         if (state.TestSave is not null)
         {
@@ -1146,6 +1351,32 @@ internal sealed class LiveLabService
             }
         }
 
+
+        if (state.NetworkTwo is not null)
+        {
+            NetworkTwoStatusReport? networkTwo = alwaysOn.NetworkTwo;
+            bool pairIdentitiesMatch = networkTwo?.LocalPlayerId is not (null or 0)
+                && networkTwo.RemotePlayerId is not (null or 0)
+                && networkTwo.LocalPlayerId != networkTwo.RemotePlayerId;
+            networkTwoSucceeded = networkTwo is not null
+                && string.Equals(networkTwo.State, "ready", StringComparison.Ordinal)
+                && string.Equals(networkTwo.Phase, "passed", StringComparison.Ordinal)
+                && networkTwo.IdentityVerified == true
+                && networkTwo.JoinedTicks >= NetworkTwoContract.RequiredJoinedTicks
+                && pairIdentitiesMatch;
+
+            bool isHost = string.Equals(
+                state.NetworkTwo.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal);
+            if (isHost
+                && (alwaysOn.EnableServer is null
+                    || alwaysOn.IpConnectionsEnabled is null))
+            {
+                networkTwoSucceeded = false;
+            }
+        }
+
         try
         {
             File.Delete(state.StopRequestPath);
@@ -1169,6 +1400,18 @@ internal sealed class LiveLabService
                 "testSaveIncomplete",
                 alwaysOn.TestSave?.Message
                     ?? "The game-side test-save workflow did not reach its verified terminal phase.",
+                alwaysOn: alwaysOn);
+        }
+
+
+        if (!networkTwoSucceeded)
+        {
+            return Failure(
+                "stopped",
+                state,
+                "networkTwoIncomplete",
+                alwaysOn.NetworkTwo?.Message
+                    ?? "The game-side network-2 workflow did not reach its verified terminal phase.",
                 alwaysOn: alwaysOn);
         }
 
@@ -1202,10 +1445,14 @@ internal sealed class LiveLabService
                 && (!PathEquals(state.TestSave.WorkPath, _paths.TestSaveWorkPath)
                     || !PathEquals(
                         state.TestSave.ScenarioLogPath,
-                        _paths.TestSaveScenarioLogPath))))
+                        _paths.TestSaveScenarioLogPath)))
+            || (state.NetworkTwo is not null
+                && !PathEquals(
+                    state.NetworkTwo.NetworkLogPath,
+                    Path.Combine(_paths.RuntimePath, "network-2.log"))))
         {
             throw new InvalidDataException(
-                "The retained live-lab paths do not match this project-local single topology.");
+                "The retained live-lab paths do not match this project-local live-lab instance.");
         }
 
         return state;
@@ -1218,7 +1465,8 @@ internal sealed class LiveLabService
             state.LaunchId,
             state.OwnedProcessIdentity,
             _utcNow().ToUniversalTime(),
-            state.TestSave);
+            state.TestSave,
+            state.NetworkTwo);
     }
 
     private LiveLabCommandResult Failure(
@@ -1249,7 +1497,7 @@ internal sealed class LiveLabService
         OwnedProcessIdentity? process = state?.OwnedProcessIdentity;
         return new LiveLabReport(
             1,
-            LiveLabState.SingleTopology,
+            state?.Topology ?? _reportTopology,
             stateName,
             state?.LaunchId,
             process?.ProcessId,
@@ -1294,6 +1542,20 @@ internal sealed class LiveLabService
         environment["SDVKIT_TEST_SAVE_FARM_NAME"] = identity.FarmName;
         environment["SDVKIT_TEST_SAVE_FAVORITE_THING"] = identity.FavoriteThing;
         environment["SDVKIT_TEST_SAVE_LOG_PATH"] = launch.ScenarioLogPath;
+    }
+
+    private static void AddNetworkTwoEnvironment(
+        IDictionary<string, string> environment,
+        NetworkTwoLaunchState launch)
+    {
+        launch.Validate();
+        environment["SDVKIT_NETWORK_TWO_ROLE"] = launch.Role;
+        environment["SDVKIT_NETWORK_TWO_BUILD_ID"] = launch.BuildIdentity;
+        environment["SDVKIT_NETWORK_TWO_FIXTURE_ID"] = launch.FixtureId;
+        environment["SDVKIT_NETWORK_TWO_SAVE_ID"] = launch.SaveId;
+        environment["SDVKIT_NETWORK_TWO_LOG_PATH"] = launch.NetworkLogPath;
+        environment["SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"] =
+            launch.ExpectedFarmhandId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     private static string DescribeCloseResult(LabProcessCloseResult close)

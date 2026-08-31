@@ -9,7 +9,12 @@ internal sealed record AlwaysOnStatusReport(
     bool? IsActive,
     bool? PauseWhenOutOfFocus,
     DateTimeOffset? ObservedAtUtc,
-    TestSaveStatusReport? TestSave = null);
+    TestSaveStatusReport? TestSave = null,
+    bool? EnableServer = null,
+    bool? IpConnectionsEnabled = null,
+    NetworkTwoStatusReport? NetworkTwo = null,
+    long? ForegroundWindowHandle = null,
+    int? ForegroundProcessId = null);
 
 internal sealed record AlwaysOnStatusMarker(
     int SchemaVersion,
@@ -21,7 +26,12 @@ internal sealed record AlwaysOnStatusMarker(
     bool IsActive,
     bool? PauseWhenOutOfFocus,
     DateTimeOffset ObservedAtUtc,
-    TestSaveStatusMarker? TestSave = null);
+    TestSaveStatusMarker? TestSave = null,
+    bool? EnableServer = null,
+    bool? IpConnectionsEnabled = null,
+    NetworkTwoStatusMarker? NetworkTwo = null,
+    long? ForegroundWindowHandle = null,
+    int? ForegroundProcessId = null);
 
 internal static class AlwaysOnStatusReader
 {
@@ -32,7 +42,8 @@ internal static class AlwaysOnStatusReader
         string launchId,
         OwnedProcessIdentity process,
         DateTimeOffset nowUtc,
-        TestSaveLaunchState? expectedTestSave = null)
+        TestSaveLaunchState? expectedTestSave = null,
+        NetworkTwoLaunchState? expectedNetworkTwo = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(statusPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
@@ -87,13 +98,25 @@ internal static class AlwaysOnStatusReader
         }
 
         TestSaveStatusReport? testSave = ReadTestSave(marker.TestSave, expectedTestSave);
+        NetworkTwoStatusReport? networkTwo = ReadNetworkTwo(
+            marker.NetworkTwo,
+            expectedNetworkTwo,
+            marker.ProcessId,
+            marker.IsActive,
+            marker.ForegroundWindowHandle,
+            marker.ForegroundProcessId);
         return new AlwaysOnStatusReport(
             state,
             marker.Tick,
             marker.IsActive,
             marker.PauseWhenOutOfFocus,
             marker.ObservedAtUtc,
-            testSave);
+            testSave,
+            marker.EnableServer,
+            marker.IpConnectionsEnabled,
+            networkTwo,
+            marker.ForegroundWindowHandle,
+            marker.ForegroundProcessId);
     }
 
     private static TestSaveStatusReport? ReadTestSave(
@@ -180,6 +203,141 @@ internal static class AlwaysOnStatusReader
 
     private static TestSaveStatusReport InvalidTestSave(string state) =>
         new(state, null, null, null, null, null, null, null, null);
+
+    private static NetworkTwoStatusReport? ReadNetworkTwo(
+        NetworkTwoStatusMarker? marker,
+        NetworkTwoLaunchState? expected,
+        int processId,
+        bool isActive,
+        long? foregroundWindowHandle,
+        int? foregroundProcessId)
+    {
+        if (expected is null)
+        {
+            return marker is null
+                ? null
+                : InvalidNetworkTwo("unexpected");
+        }
+
+        if (marker is null)
+        {
+            return new NetworkTwoStatusReport(
+                "pending",
+                expected.Role,
+                null,
+                expected.BuildIdentity,
+                expected.FixtureId,
+                expected.SaveId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                expected.NetworkLogPath);
+        }
+
+        bool knownPhase = marker.Phase is "waitingForFixture"
+            or "waitingForTitle"
+            or "startingHost"
+            or "hosting"
+            or "connecting"
+            or "selectingFarmhand"
+            or "joining"
+            or "joined"
+            or "passed"
+            or "failed";
+        if (marker.SchemaVersion != NetworkTwoContract.SchemaVersion
+            || !knownPhase
+            || marker.JoinedTicks < 0
+            || string.IsNullOrWhiteSpace(marker.NetworkLogPath))
+        {
+            return InvalidNetworkTwo("invalid");
+        }
+
+        if (!string.Equals(marker.Role, expected.Role, StringComparison.Ordinal)
+            || !string.Equals(
+                marker.BuildIdentity,
+                expected.BuildIdentity,
+                StringComparison.Ordinal)
+            || !string.Equals(marker.FixtureId, expected.FixtureId, StringComparison.Ordinal)
+            || !string.Equals(marker.SaveId, expected.SaveId, StringComparison.Ordinal)
+            || !PathsEqual(marker.NetworkLogPath, expected.NetworkLogPath))
+        {
+            return InvalidNetworkTwo("mismatch");
+        }
+
+        bool wrongRolePhase = marker.Role switch
+        {
+            NetworkTwoContract.HostRole => marker.Phase is "waitingForTitle"
+                or "connecting"
+                or "selectingFarmhand"
+                or "joining",
+            NetworkTwoContract.FarmhandRole => marker.Phase is "waitingForFixture"
+                or "startingHost"
+                or "hosting",
+            _ => true,
+        };
+        bool missingIdentity = (marker.Phase is "hosting" or "joined" or "passed")
+            && !marker.IdentityVerified;
+        bool wrongFarmhandIdentity = string.Equals(
+                marker.Role,
+                NetworkTwoContract.FarmhandRole,
+                StringComparison.Ordinal)
+            && marker.Phase is "selectingFarmhand" or "joining" or "joined" or "passed"
+            && marker.LocalPlayerId != expected.ExpectedFarmhandId;
+        bool missingHostedFarmhandIdentity = string.Equals(
+                marker.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal)
+            && marker.Phase is "hosting" or "joined" or "passed"
+            && marker.RemotePlayerId is null or 0;
+        bool incompletePass = string.Equals(marker.Phase, "passed", StringComparison.Ordinal)
+            && (marker.JoinedTicks < NetworkTwoContract.RequiredJoinedTicks
+                || marker.LocalPlayerId is null
+                || marker.RemotePlayerId is null
+                || string.IsNullOrWhiteSpace(marker.LocalPlayerName)
+                || string.IsNullOrWhiteSpace(marker.RemotePlayerName)
+                || foregroundWindowHandle is null or 0
+                || foregroundProcessId is null or <= 0
+                || foregroundProcessId == processId
+                || isActive);
+        bool inconsistentForegroundIndicator =
+            (foregroundWindowHandle is null) != (foregroundProcessId is null)
+            || foregroundWindowHandle == 0
+            || foregroundProcessId <= 0
+            || (foregroundProcessId is not null
+                && isActive != (foregroundProcessId == processId));
+        if (wrongRolePhase
+            || missingIdentity
+            || wrongFarmhandIdentity
+            || missingHostedFarmhandIdentity
+            || incompletePass
+            || inconsistentForegroundIndicator)
+        {
+            return InvalidNetworkTwo("invalid");
+        }
+
+        return new NetworkTwoStatusReport(
+            "ready",
+            marker.Role,
+            marker.Phase,
+            marker.BuildIdentity,
+            marker.FixtureId,
+            marker.SaveId,
+            marker.IdentityVerified,
+            marker.JoinedTicks,
+            marker.LocalPlayerId,
+            marker.LocalPlayerName,
+            marker.RemotePlayerId,
+            marker.RemotePlayerName,
+            marker.Message,
+            marker.NetworkLogPath);
+    }
+
+    private static NetworkTwoStatusReport InvalidNetworkTwo(string state) =>
+        new(state, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
     private static bool PathsEqual(string left, string right)
     {

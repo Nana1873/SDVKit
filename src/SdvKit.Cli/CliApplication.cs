@@ -7,6 +7,7 @@ internal sealed record LiveLabCommandResult(int ExitCode, object Report);
 
 internal delegate LiveLabCommandResult LiveLabCommandRunner(
     string action,
+    string topology,
     string projectRoot);
 
 public static class CliApplication
@@ -18,6 +19,10 @@ public static class CliApplication
     private const string CreateUsage = "Usage: sdvkit project create <smapi-mod|content-pack> <path> --name <name> --author <author> --unique-id <id> --description <text> --json";
     private const string BuildUsage = "Usage: sdvkit project build [path] --json";
     private const string PackageUsage = "Usage: sdvkit project package [path] --json";
+    private const string LabSingleUsage =
+        "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
+    private const string LabNetworkTwoUsage =
+        "       sdvkit lab smoke --topology network-2 --json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -46,8 +51,11 @@ public static class CliApplication
 
         if (runLiveLab is null)
         {
-            runLiveLab = (action, projectRoot) =>
-                LiveLabService.Execute(action, projectRoot, discoverInstallations);
+            runLiveLab = (action, topology, projectRoot) =>
+                string.Equals(action, "smoke", StringComparison.Ordinal)
+                && string.Equals(topology, "network-2", StringComparison.Ordinal)
+                    ? NetworkTwoSmokeService.Execute(projectRoot, discoverInstallations)
+                    : LiveLabService.Execute(action, projectRoot, discoverInstallations);
         }
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
@@ -353,19 +361,15 @@ public static class CliApplication
         TextWriter error,
         LiveLabCommandRunner runLiveLab)
     {
-        const string usage =
-            "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
-
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
-            output.WriteLine(usage);
+            WriteLabUsage(output);
             return Success;
         }
 
-        if (arguments.Count != 5
-            || arguments[1] is not ("start" or "status" or "stop" or "test-save"))
+        if (arguments.Count != 5)
         {
-            error.WriteLine(usage);
+            WriteLabUsage(error);
             return UsageError;
         }
 
@@ -388,20 +392,26 @@ public static class CliApplication
                 continue;
             }
 
-            error.WriteLine(usage);
+            WriteLabUsage(error);
             return UsageError;
         }
 
+        string action = arguments[1];
+        bool isSingleCommand = string.Equals(topology, "single", StringComparison.Ordinal)
+            && action is "start" or "status" or "stop" or "test-save";
+        bool isNetworkTwoSmoke = string.Equals(topology, "network-2", StringComparison.Ordinal)
+            && string.Equals(action, "smoke", StringComparison.Ordinal);
         if (jsonOptionCount != 1
             || topologyOptionCount != 1
-            || !string.Equals(topology, "single", StringComparison.Ordinal))
+            || (!isSingleCommand && !isNetworkTwoSmoke))
         {
-            error.WriteLine(usage);
+            WriteLabUsage(error);
             return UsageError;
         }
 
         LiveLabCommandResult result = runLiveLab(
-            arguments[1],
+            action,
+            topology!,
             Environment.CurrentDirectory);
         WriteJson(output, result.Report);
         return result.ExitCode;
@@ -434,6 +444,7 @@ public static class CliApplication
         output.WriteLine("  sdvkit project build [path] --json");
         output.WriteLine("  sdvkit project package [path] --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
+        output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
         output.WriteLine("Commands:");
         output.WriteLine("  doctor          Detect ready Stardew Valley + SMAPI installations (read-only).");
@@ -441,7 +452,13 @@ public static class CliApplication
         output.WriteLine("  project create  Create a minimal SMAPI mod or Content Patcher pack.");
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
-        output.WriteLine("  lab             Control one isolated process or run its disposable test-save smoke.");
+        output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
+    }
+
+    private static void WriteLabUsage(TextWriter output)
+    {
+        output.WriteLine(LabSingleUsage);
+        output.WriteLine(LabNetworkTwoUsage);
     }
 
     private static void WriteProjectHelp(TextWriter output)

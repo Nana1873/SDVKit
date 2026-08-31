@@ -13,6 +13,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\SdvKit.Cli\LiveLab\ModBuildIdentity.cs" Link="LiveLab\ModBuildIdentity.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\NetworkTwoModels.cs" Link="LiveLab\NetworkTwoModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\TestSaveModels.cs" Link="LiveLab\TestSaveModels.cs" />
     <Reference Include="StardewModdingAPI">
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>
@@ -28,6 +30,10 @@
     </Reference>
     <Reference Include="MonoGame.Framework">
       <HintPath>$(SdvGamePath)\MonoGame.Framework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="xTile">
+      <HintPath>$(SdvGamePath)\xTile.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
@@ -46,6 +52,9 @@
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\MonoGame.Framework.dll')"
       Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\MonoGame.Framework.dll' for GameRunner lifecycle and focus state." />
+    <Error
+      Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\xTile.dll')"
+      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\xTile.dll' for the exact in-memory starting-cabin marker." />
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll')"
       Text="SdvKit.AlwaysOn requires SMAPI's internal semantic-version interface assembly." />

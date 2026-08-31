@@ -34,7 +34,12 @@ internal sealed class StatusWriter
         int tick,
         bool isActive,
         bool? pauseWhenOutOfFocus,
-        TestSaveStatusMarker? testSave = null)
+        TestSaveStatusMarker? testSave = null,
+        bool? enableServer = null,
+        bool? ipConnectionsEnabled = null,
+        NetworkTwoStatusMarker? networkTwo = null,
+        long? foregroundWindowHandle = null,
+        int? foregroundProcessId = null)
     {
         var marker = new
         {
@@ -46,7 +51,12 @@ internal sealed class StatusWriter
             tick,
             isActive,
             pauseWhenOutOfFocus,
+            enableServer,
+            ipConnectionsEnabled,
+            foregroundWindowHandle,
+            foregroundProcessId,
             testSave,
+            networkTwo,
             observedAtUtc = DateTimeOffset.UtcNow,
         };
         string json = JsonSerializer.Serialize(marker, JsonOptions) + Environment.NewLine;

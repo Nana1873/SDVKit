@@ -23,6 +23,10 @@ public sealed class CliApplicationTests
             "sdvkit lab <start|status|stop|test-save> --topology single --json",
             output,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit lab smoke --topology network-2 --json",
+            output,
+            StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -336,10 +340,12 @@ public sealed class CliApplicationTests
     public void LabDispatchesOnlyTheSingleTopology(string action)
     {
         string? receivedAction = null;
+        string? receivedTopology = null;
         string? receivedRoot = null;
-        LiveLabCommandRunner runner = (candidateAction, projectRoot) =>
+        LiveLabCommandRunner runner = (candidateAction, topology, projectRoot) =>
         {
             receivedAction = candidateAction;
+            receivedTopology = topology;
             receivedRoot = projectRoot;
             return new LiveLabCommandResult(0, new
             {
@@ -359,9 +365,61 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(action, receivedAction);
+        Assert.Equal("single", receivedTopology);
         Assert.Equal(Environment.CurrentDirectory, receivedRoot);
         using JsonDocument document = JsonDocument.Parse(output);
         Assert.Equal("single", document.RootElement.GetProperty("topology").GetString());
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void LabHelpListsTheSingleCommandsAndExactNetworkTwoSmoke()
+    {
+        (int exitCode, string output, string error) = Run("lab", "--help");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json"
+                + Environment.NewLine
+                + "       sdvkit lab smoke --topology network-2 --json"
+                + Environment.NewLine,
+            output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void LabDispatchesTheExactNetworkTwoSmoke()
+    {
+        string? receivedAction = null;
+        string? receivedTopology = null;
+        string? receivedRoot = null;
+        LiveLabCommandRunner runner = (candidateAction, topology, projectRoot) =>
+        {
+            receivedAction = candidateAction;
+            receivedTopology = topology;
+            receivedRoot = projectRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                topology = "network-2",
+                state = "passed",
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithLab(
+            runner,
+            "lab",
+            "smoke",
+            "--topology",
+            "network-2",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("smoke", receivedAction);
+        Assert.Equal("network-2", receivedTopology);
+        Assert.Equal(Environment.CurrentDirectory, receivedRoot);
+        using JsonDocument document = JsonDocument.Parse(output);
+        Assert.Equal("network-2", document.RootElement.GetProperty("topology").GetString());
         Assert.Equal(string.Empty, error);
     }
 
@@ -369,12 +427,14 @@ public sealed class CliApplicationTests
     [InlineData("lab")]
     [InlineData("lab", "start", "--json")]
     [InlineData("lab", "start", "--topology", "network-2", "--json")]
+    [InlineData("lab", "status", "--topology", "network-2", "--json")]
+    [InlineData("lab", "smoke", "--topology", "single", "--json")]
     [InlineData("lab", "start", "--topology", "single", "--pretty")]
     [InlineData("lab", "up", "--topology", "single", "--json")]
     [InlineData("lab", "test-save", "--topology", "single", "--json", "--fixture", "other")]
     public void LabSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
-        LiveLabCommandRunner runner = (_, _) =>
+        LiveLabCommandRunner runner = (_, _, _) =>
             throw new InvalidOperationException("Lab command should not run.");
 
         (int exitCode, string output, string error) = RunWithLab(runner, arguments);
@@ -382,7 +442,10 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            $"Usage: sdvkit lab <start|status|stop|test-save> --topology single --json{Environment.NewLine}",
+            "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json"
+                + Environment.NewLine
+                + "       sdvkit lab smoke --topology network-2 --json"
+                + Environment.NewLine,
             error);
     }
 

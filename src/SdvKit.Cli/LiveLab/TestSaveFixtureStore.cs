@@ -69,7 +69,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
     {
         _paths.EnsureDirectories();
         EnsurePlainDirectory(_paths.TestSaveRoot);
-        LiveLabPaths.RejectReparsePointsBelow(_paths.SingleRoot);
+        RejectManagedReparsePoints();
         TestSaveIdentity identity = LoadOrCreateIdentity();
         ValidateSavesRoot();
         _junction.VerifyInactive(
@@ -180,7 +180,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
     {
         ArgumentNullException.ThrowIfNull(launch);
         launch.Validate();
-        LiveLabPaths.RejectReparsePointsBelow(_paths.SingleRoot);
+        RejectManagedReparsePoints();
         TestSaveIdentity identity = launch.Identity;
         if (!PathEquals(launch.WorkPath, _paths.TestSaveWorkPath)
             || !PathEquals(launch.ScenarioLogPath, _paths.TestSaveScenarioLogPath)
@@ -193,6 +193,15 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         }
 
         return identity;
+    }
+
+    private void RejectManagedReparsePoints()
+    {
+        LiveLabPaths.RejectReparsePointsBelow(_paths.SingleRoot);
+        if (!PathEquals(_paths.TestSaveRoot, _paths.SingleRoot))
+        {
+            LiveLabPaths.RejectReparsePointsBelow(_paths.TestSaveRoot);
+        }
     }
 
     private TestSaveIdentity UnmountBeforeFullValidation(TestSaveLaunchState launch)
