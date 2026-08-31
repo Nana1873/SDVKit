@@ -7,25 +7,35 @@ internal interface IBackgroundRunState
     object? OptionsIdentity { get; }
 
     bool PauseWhenOutOfFocus { get; set; }
+
+    bool EnableServer { get; set; }
+
+    bool IpConnectionsEnabled { get; set; }
 }
 
 internal readonly record struct BackgroundRunRestoreResult(
     bool Succeeded,
-    bool? ConfirmedPauseWhenOutOfFocus);
+    bool? ConfirmedPauseWhenOutOfFocus,
+    bool? ConfirmedEnableServer = null,
+    bool? ConfirmedIpConnectionsEnabled = null);
 
 internal sealed class BackgroundRunGuard
 {
     private readonly IBackgroundRunState _state;
+    private readonly bool _networkHost;
     private bool _enabled;
     private bool _originalCaptured;
     private bool _originalPauseWhenOutOfFocus;
+    private bool _originalEnableServer;
+    private bool _originalIpConnectionsEnabled;
     private object? _capturedOptionsIdentity;
     private bool _recapturePending;
 
-    public BackgroundRunGuard(IBackgroundRunState state)
+    public BackgroundRunGuard(IBackgroundRunState state, bool networkHost = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         _state = state;
+        _networkHost = networkHost;
     }
 
     public void Enable()
@@ -58,7 +68,10 @@ internal sealed class BackgroundRunGuard
             return;
         }
 
-        Apply(pauseWhenOutOfFocus: false);
+        Apply(
+            pauseWhenOutOfFocus: false,
+            enableServer: true,
+            ipConnectionsEnabled: true);
     }
 
     public void RecaptureAfterOptionsReplacement()
@@ -86,16 +99,28 @@ internal sealed class BackgroundRunGuard
                 return new BackgroundRunRestoreResult(false, null);
             }
 
-            Apply(_originalPauseWhenOutOfFocus);
+            Apply(
+                _originalPauseWhenOutOfFocus,
+                _originalEnableServer,
+                _originalIpConnectionsEnabled);
             if (!_state.IsAvailable || !CurrentOptionsAreCaptured())
             {
                 return new BackgroundRunRestoreResult(false, null);
             }
 
             bool currentPauseWhenOutOfFocus = _state.PauseWhenOutOfFocus;
+            bool? currentEnableServer = _networkHost ? _state.EnableServer : null;
+            bool? currentIpConnectionsEnabled = _networkHost
+                ? _state.IpConnectionsEnabled
+                : null;
             var result = new BackgroundRunRestoreResult(
-                currentPauseWhenOutOfFocus == _originalPauseWhenOutOfFocus,
-                currentPauseWhenOutOfFocus);
+                currentPauseWhenOutOfFocus == _originalPauseWhenOutOfFocus
+                    && (!_networkHost
+                        || currentEnableServer == _originalEnableServer
+                        && currentIpConnectionsEnabled == _originalIpConnectionsEnabled),
+                currentPauseWhenOutOfFocus,
+                currentEnableServer,
+                currentIpConnectionsEnabled);
             restored = result.Succeeded;
             return result;
         }
@@ -105,6 +130,8 @@ internal sealed class BackgroundRunGuard
             {
                 _originalCaptured = false;
                 _originalPauseWhenOutOfFocus = false;
+                _originalEnableServer = false;
+                _originalIpConnectionsEnabled = false;
                 _capturedOptionsIdentity = null;
             }
             else
@@ -118,11 +145,29 @@ internal sealed class BackgroundRunGuard
         }
     }
 
-    private void Apply(bool pauseWhenOutOfFocus)
+    private void Apply(
+        bool pauseWhenOutOfFocus,
+        bool enableServer,
+        bool ipConnectionsEnabled)
     {
         if (_state.PauseWhenOutOfFocus != pauseWhenOutOfFocus)
         {
             _state.PauseWhenOutOfFocus = pauseWhenOutOfFocus;
+        }
+
+        if (!_networkHost)
+        {
+            return;
+        }
+
+        if (_state.EnableServer != enableServer)
+        {
+            _state.EnableServer = enableServer;
+        }
+
+        if (_state.IpConnectionsEnabled != ipConnectionsEnabled)
+        {
+            _state.IpConnectionsEnabled = ipConnectionsEnabled;
         }
     }
 
@@ -136,6 +181,12 @@ internal sealed class BackgroundRunGuard
         }
 
         _originalPauseWhenOutOfFocus = _state.PauseWhenOutOfFocus;
+        if (_networkHost)
+        {
+            _originalEnableServer = _state.EnableServer;
+            _originalIpConnectionsEnabled = _state.IpConnectionsEnabled;
+        }
+
         _capturedOptionsIdentity = identity;
         _originalCaptured = true;
     }
@@ -155,6 +206,18 @@ internal sealed class SmapiBackgroundRunState : IBackgroundRunState
     {
         get => StardewValley.Game1.options.pauseWhenOutOfFocus;
         set => StardewValley.Game1.options.pauseWhenOutOfFocus = value;
+    }
+
+    public bool EnableServer
+    {
+        get => StardewValley.Game1.options.enableServer;
+        set => StardewValley.Game1.options.enableServer = value;
+    }
+
+    public bool IpConnectionsEnabled
+    {
+        get => StardewValley.Game1.options.ipConnectionsEnabled;
+        set => StardewValley.Game1.options.ipConnectionsEnabled = value;
     }
 }
 #endif

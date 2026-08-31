@@ -166,6 +166,197 @@ public sealed class BackgroundRunGuardTests
         Assert.Equal(original, state.CurrentOptions.PauseWhenOutOfFocus);
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void NetworkHostForcesAndRestoresEveryOriginalOptionCombination(
+        bool pauseWhenOutOfFocus,
+        bool enableServer,
+        bool ipConnectionsEnabled)
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus,
+            enableServer,
+            ipConnectionsEnabled);
+        BackgroundRunGuard guard = new(state, networkHost: true);
+
+        guard.Enable();
+
+        Assert.False(state.CurrentOptions.PauseWhenOutOfFocus);
+        Assert.True(state.CurrentOptions.EnableServer);
+        Assert.True(state.CurrentOptions.IpConnectionsEnabled);
+
+        BackgroundRunRestoreResult result = guard.RestoreOriginalAndDisable();
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(pauseWhenOutOfFocus, result.ConfirmedPauseWhenOutOfFocus);
+        Assert.Equal(enableServer, result.ConfirmedEnableServer);
+        Assert.Equal(ipConnectionsEnabled, result.ConfirmedIpConnectionsEnabled);
+        Assert.Equal(pauseWhenOutOfFocus, state.CurrentOptions.PauseWhenOutOfFocus);
+        Assert.Equal(enableServer, state.CurrentOptions.EnableServer);
+        Assert.Equal(ipConnectionsEnabled, state.CurrentOptions.IpConnectionsEnabled);
+        Assert.Equal(pauseWhenOutOfFocus ? 2 : 0, state.CurrentOptions.SetCount);
+        Assert.Equal(enableServer ? 0 : 2, state.CurrentOptions.EnableServerSetCount);
+        Assert.Equal(
+            ipConnectionsEnabled ? 0 : 2,
+            state.CurrentOptions.IpConnectionsEnabledSetCount);
+    }
+
+    [Fact]
+    public void NetworkHostRecapturesAllOptionsFromAReplacement()
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus: false,
+            enableServer: true,
+            ipConnectionsEnabled: true);
+        BackgroundRunGuard guard = new(state, networkHost: true);
+        guard.Enable();
+
+        guard.RecaptureAfterOptionsReplacement();
+        FakeOptions replacement = state.ReplaceOptions(
+            pauseWhenOutOfFocus: true,
+            enableServer: false,
+            ipConnectionsEnabled: false);
+        guard.EnsureApplied();
+
+        Assert.False(replacement.PauseWhenOutOfFocus);
+        Assert.True(replacement.EnableServer);
+        Assert.True(replacement.IpConnectionsEnabled);
+
+        BackgroundRunRestoreResult result = guard.RestoreOriginalAndDisable();
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.ConfirmedPauseWhenOutOfFocus);
+        Assert.False(result.ConfirmedEnableServer);
+        Assert.False(result.ConfirmedIpConnectionsEnabled);
+        Assert.True(replacement.PauseWhenOutOfFocus);
+        Assert.False(replacement.EnableServer);
+        Assert.False(replacement.IpConnectionsEnabled);
+        Assert.Equal(2, replacement.SetCount);
+        Assert.Equal(2, replacement.EnableServerSetCount);
+        Assert.Equal(2, replacement.IpConnectionsEnabledSetCount);
+    }
+
+    [Fact]
+    public void NetworkHostReassertsNetworkOptionsAfterGameChangesCurrentOptions()
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus: true,
+            enableServer: false,
+            ipConnectionsEnabled: false);
+        BackgroundRunGuard guard = new(state, networkHost: true);
+        guard.Enable();
+
+        state.ResetCurrentNetworkByGame(
+            enableServer: false,
+            ipConnectionsEnabled: false);
+        guard.EnsureApplied();
+
+        Assert.False(state.CurrentOptions.PauseWhenOutOfFocus);
+        Assert.True(state.CurrentOptions.EnableServer);
+        Assert.True(state.CurrentOptions.IpConnectionsEnabled);
+        Assert.Equal(2, state.CurrentOptions.EnableServerSetCount);
+        Assert.Equal(2, state.CurrentOptions.IpConnectionsEnabledSetCount);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void NonHostNeverReadsOrWritesNetworkOptions(
+        bool enableServer,
+        bool ipConnectionsEnabled)
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus: true,
+            enableServer,
+            ipConnectionsEnabled);
+        BackgroundRunGuard guard = new(state);
+
+        guard.Enable();
+        BackgroundRunRestoreResult result = guard.RestoreOriginalAndDisable();
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.ConfirmedPauseWhenOutOfFocus);
+        Assert.Null(result.ConfirmedEnableServer);
+        Assert.Null(result.ConfirmedIpConnectionsEnabled);
+        Assert.Equal(0, state.EnableServerGetCount);
+        Assert.Equal(0, state.IpConnectionsEnabledGetCount);
+        Assert.Equal(enableServer, state.CurrentOptions.EnableServer);
+        Assert.Equal(ipConnectionsEnabled, state.CurrentOptions.IpConnectionsEnabled);
+        Assert.Equal(0, state.CurrentOptions.EnableServerSetCount);
+        Assert.Equal(0, state.CurrentOptions.IpConnectionsEnabledSetCount);
+    }
+
+    [Fact]
+    public void NetworkHostRestoreWhileOptionsAreUnavailableReportsEveryOptionUnconfirmed()
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus: true,
+            enableServer: false,
+            ipConnectionsEnabled: false);
+        BackgroundRunGuard guard = new(state, networkHost: true);
+        guard.Enable();
+        state.DetachOptions();
+
+        BackgroundRunRestoreResult result = guard.RestoreOriginalAndDisable();
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.ConfirmedPauseWhenOutOfFocus);
+        Assert.Null(result.ConfirmedEnableServer);
+        Assert.Null(result.ConfirmedIpConnectionsEnabled);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NetworkHostFailedReadbackPreservesOriginalsForCleanStopRetry(
+        bool rejectEnableServer)
+    {
+        FakeBackgroundRunState state = new(
+            pauseWhenOutOfFocus: true,
+            enableServer: false,
+            ipConnectionsEnabled: false);
+        BackgroundRunGuard guard = new(state, networkHost: true);
+        guard.Enable();
+
+        state.CurrentOptions.RejectEnableServerWrites =
+            rejectEnableServer;
+        state.CurrentOptions.RejectIpConnectionsEnabledWrites =
+            !rejectEnableServer;
+
+        BackgroundRunRestoreResult failed = guard.RestoreOriginalAndDisable();
+
+        Assert.False(failed.Succeeded);
+        Assert.True(failed.ConfirmedPauseWhenOutOfFocus);
+        Assert.Equal(
+            rejectEnableServer,
+            failed.ConfirmedEnableServer);
+        Assert.Equal(
+            !rejectEnableServer,
+            failed.ConfirmedIpConnectionsEnabled);
+
+        state.CurrentOptions.RejectEnableServerWrites = false;
+        state.CurrentOptions.RejectIpConnectionsEnabledWrites = false;
+        guard.Enable();
+        BackgroundRunRestoreResult retry = guard.RestoreOriginalAndDisable();
+
+        Assert.True(retry.Succeeded);
+        Assert.True(retry.ConfirmedPauseWhenOutOfFocus);
+        Assert.False(retry.ConfirmedEnableServer);
+        Assert.False(retry.ConfirmedIpConnectionsEnabled);
+        Assert.True(state.CurrentOptions.PauseWhenOutOfFocus);
+        Assert.False(state.CurrentOptions.EnableServer);
+        Assert.False(state.CurrentOptions.IpConnectionsEnabled);
+    }
+
     [Fact]
     public void RestoreWhileOptionsAreUnavailableReportsUnconfirmedAndStaysDisabled()
     {
@@ -260,7 +451,7 @@ public sealed class BackgroundRunGuardTests
     }
 
     [Fact]
-    public void NormalGameExitRestoresBeforeWritingTheExitingMarker()
+    public void ControlledStopIsTheOnlyConfirmedExitAndRestoresBeforeItsMarker()
     {
         string repositoryRoot = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
@@ -270,12 +461,12 @@ public sealed class BackgroundRunGuardTests
             "ModEntry.cs"))
             .ReplaceLineEndings("\n");
 
-        int handler = source.IndexOf(
-            "GameRunner.instance.Exiting += (_, _) => PrepareForExit();",
+        int controlledStop = source.IndexOf(
+            "if (PrepareForExit())",
             StringComparison.Ordinal);
         int preparation = source.IndexOf(
             "private bool PrepareForExit()",
-            handler,
+            controlledStop,
             StringComparison.Ordinal);
         int restore = source.IndexOf(
             "_backgroundRun!.RestoreOriginalAndDisable();",
@@ -290,11 +481,16 @@ public sealed class BackgroundRunGuardTests
             restore,
             StringComparison.Ordinal);
 
-        Assert.True(handler >= 0);
-        Assert.True(preparation > handler);
+        Assert.True(controlledStop >= 0);
+        Assert.True(preparation > controlledStop);
         Assert.True(restore > preparation);
         Assert.True(exitingMarker > restore);
         Assert.True(markerWrite > restore);
+        Assert.DoesNotContain("GameRunner.instance.Exiting", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "the controlled stop request is the sole confirmed normal-exit path.",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -346,9 +542,15 @@ public sealed class BackgroundRunGuardTests
     {
         private FakeOptions? _currentOptions;
 
-        public FakeBackgroundRunState(bool pauseWhenOutOfFocus)
+        public FakeBackgroundRunState(
+            bool pauseWhenOutOfFocus,
+            bool enableServer = false,
+            bool ipConnectionsEnabled = false)
         {
-            ReplaceOptions(pauseWhenOutOfFocus);
+            ReplaceOptions(
+                pauseWhenOutOfFocus,
+                enableServer,
+                ipConnectionsEnabled);
         }
 
         public bool IsAvailable => _currentOptions is not null;
@@ -356,6 +558,10 @@ public sealed class BackgroundRunGuardTests
         public object? OptionsIdentity => _currentOptions;
 
         public int TotalSetCount { get; private set; }
+
+        public int EnableServerGetCount { get; private set; }
+
+        public int IpConnectionsEnabledGetCount { get; private set; }
 
         public FakeOptions CurrentOptions =>
             _currentOptions ?? throw new InvalidOperationException("Options are unavailable.");
@@ -370,6 +576,28 @@ public sealed class BackgroundRunGuardTests
             }
         }
 
+        public bool EnableServer
+        {
+            get
+            {
+                EnableServerGetCount++;
+                return CurrentOptions.EnableServer;
+            }
+
+            set => CurrentOptions.SetEnableServerFromGuard(value);
+        }
+
+        public bool IpConnectionsEnabled
+        {
+            get
+            {
+                IpConnectionsEnabledGetCount++;
+                return CurrentOptions.IpConnectionsEnabled;
+            }
+
+            set => CurrentOptions.SetIpConnectionsEnabledFromGuard(value);
+        }
+
         public FakeOptions DetachOptions()
         {
             FakeOptions current = CurrentOptions;
@@ -382,9 +610,15 @@ public sealed class BackgroundRunGuardTests
             _currentOptions = options;
         }
 
-        public FakeOptions ReplaceOptions(bool pauseWhenOutOfFocus)
+        public FakeOptions ReplaceOptions(
+            bool pauseWhenOutOfFocus,
+            bool enableServer = false,
+            bool ipConnectionsEnabled = false)
         {
-            _currentOptions = new FakeOptions(pauseWhenOutOfFocus);
+            _currentOptions = new FakeOptions(
+                pauseWhenOutOfFocus,
+                enableServer,
+                ipConnectionsEnabled);
             return _currentOptions;
         }
 
@@ -392,18 +626,44 @@ public sealed class BackgroundRunGuardTests
         {
             CurrentOptions.ResetByGame(pauseWhenOutOfFocus);
         }
+
+        public void ResetCurrentNetworkByGame(
+            bool enableServer,
+            bool ipConnectionsEnabled)
+        {
+            CurrentOptions.ResetNetworkByGame(
+                enableServer,
+                ipConnectionsEnabled);
+        }
     }
 
     private sealed class FakeOptions
     {
-        public FakeOptions(bool pauseWhenOutOfFocus)
+        public FakeOptions(
+            bool pauseWhenOutOfFocus,
+            bool enableServer,
+            bool ipConnectionsEnabled)
         {
             PauseWhenOutOfFocus = pauseWhenOutOfFocus;
+            EnableServer = enableServer;
+            IpConnectionsEnabled = ipConnectionsEnabled;
         }
 
         public bool PauseWhenOutOfFocus { get; private set; }
 
+        public bool EnableServer { get; private set; }
+
+        public bool IpConnectionsEnabled { get; private set; }
+
         public int SetCount { get; private set; }
+
+        public int EnableServerSetCount { get; private set; }
+
+        public int IpConnectionsEnabledSetCount { get; private set; }
+
+        public bool RejectEnableServerWrites { get; set; }
+
+        public bool RejectIpConnectionsEnabledWrites { get; set; }
 
         public void SetFromGuard(bool pauseWhenOutOfFocus)
         {
@@ -411,9 +671,37 @@ public sealed class BackgroundRunGuardTests
             SetCount++;
         }
 
+        public void SetEnableServerFromGuard(bool enableServer)
+        {
+            if (!RejectEnableServerWrites)
+            {
+                EnableServer = enableServer;
+            }
+
+            EnableServerSetCount++;
+        }
+
+        public void SetIpConnectionsEnabledFromGuard(bool ipConnectionsEnabled)
+        {
+            if (!RejectIpConnectionsEnabledWrites)
+            {
+                IpConnectionsEnabled = ipConnectionsEnabled;
+            }
+
+            IpConnectionsEnabledSetCount++;
+        }
+
         public void ResetByGame(bool pauseWhenOutOfFocus)
         {
             PauseWhenOutOfFocus = pauseWhenOutOfFocus;
+        }
+
+        public void ResetNetworkByGame(
+            bool enableServer,
+            bool ipConnectionsEnabled)
+        {
+            EnableServer = enableServer;
+            IpConnectionsEnabled = ipConnectionsEnabled;
         }
     }
 }

@@ -11,7 +11,8 @@ internal sealed record LiveLabState(
     string ModsPath,
     string StatusPath,
     string StopRequestPath,
-    TestSaveLaunchState? TestSave = null)
+    TestSaveLaunchState? TestSave = null,
+    NetworkTwoLaunchState? NetworkTwo = null)
 {
     public const int CurrentSchemaVersion = 1;
     public const string SingleTopology = "single";
@@ -154,13 +155,31 @@ internal sealed class JsonLiveLabStateStore(string statePath) : ILiveLabStateSto
                 $"Unsupported live-lab state schema: {state.SchemaVersion}");
         }
 
-        if (!string.Equals(
+        bool isSingle = string.Equals(
             state.Topology,
             LiveLabState.SingleTopology,
-            StringComparison.Ordinal))
+            StringComparison.Ordinal);
+        bool isNetworkTwo = string.Equals(
+            state.Topology,
+            NetworkTwoContract.Topology,
+            StringComparison.Ordinal);
+        if (!isSingle && !isNetworkTwo)
         {
             throw new InvalidDataException(
                 $"Unsupported live-lab topology: {state.Topology}");
+        }
+
+        bool networkHost = isNetworkTwo
+            && string.Equals(
+                state.NetworkTwo?.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal);
+        if ((isSingle && state.NetworkTwo is not null)
+            || (isNetworkTwo && state.NetworkTwo is null)
+            || (isNetworkTwo && networkHost != (state.TestSave is not null)))
+        {
+            throw new InvalidDataException(
+                "The live-lab topology does not match its exact launch payloads.");
         }
 
         if (!Guid.TryParseExact(state.LaunchId, "N", out _))
@@ -189,5 +208,20 @@ internal sealed class JsonLiveLabStateStore(string statePath) : ILiveLabStateSto
         }
 
         state.TestSave?.Validate();
+        state.NetworkTwo?.Validate();
+        if (state.TestSave is not null
+            && state.NetworkTwo is not null
+            && (!string.Equals(
+                    state.TestSave.Identity.FixtureId,
+                    state.NetworkTwo.FixtureId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    state.TestSave.Identity.SaveId,
+                    state.NetworkTwo.SaveId,
+                    StringComparison.Ordinal)))
+        {
+            throw new InvalidDataException(
+                "The network-2 host state does not match its disposable fixture identity.");
+        }
     }
 }

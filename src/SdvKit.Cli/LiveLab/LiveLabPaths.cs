@@ -57,11 +57,53 @@ internal sealed record LiveLabPaths(
         return paths;
     }
 
+    public static LiveLabPaths ResolveNetworkRole(
+        LiveLabPaths singlePaths,
+        string role)
+    {
+        ArgumentNullException.ThrowIfNull(singlePaths);
+        if (!NetworkTwoContract.IsRole(role))
+        {
+            throw new ArgumentOutOfRangeException(nameof(role));
+        }
+
+        string networkRoot = Path.Combine(
+            singlePaths.ProjectRoot,
+            ".sdvkit",
+            "lab",
+            NetworkTwoContract.Topology);
+        string roleRoot = Path.Combine(networkRoot, role);
+        string modsPath = Path.Combine(roleRoot, "mods");
+        string runtimePath = Path.Combine(roleRoot, "runtime");
+        string buildPath = Path.Combine(roleRoot, "build");
+        var paths = new LiveLabPaths(
+            singlePaths.ProjectRoot,
+            roleRoot,
+            modsPath,
+            runtimePath,
+            buildPath,
+            Path.Combine(runtimePath, "state.json"),
+            Path.Combine(runtimePath, "always-on-status.json"),
+            Path.Combine(runtimePath, "stop.request"),
+            Path.Combine(runtimePath, "smapi.stdout.log"),
+            Path.Combine(runtimePath, "smapi.stderr.log"),
+            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            singlePaths.TestSaveRoot,
+            singlePaths.TestSaveManifestPath,
+            singlePaths.TestSaveWorkPath,
+            singlePaths.TestSaveBaselinePath,
+            Path.Combine(runtimePath, "test-save-scenario.log"));
+        paths.RejectExistingManagedReparsePoints();
+        return paths;
+    }
+
     public void EnsureDirectories()
     {
         RejectExistingManagedReparsePoints();
         EnsureDirectory(Path.Combine(ProjectRoot, ".sdvkit"));
         EnsureDirectory(Path.Combine(ProjectRoot, ".sdvkit", "lab"));
+        EnsureDirectory(Path.GetDirectoryName(SingleRoot)
+            ?? throw new InvalidOperationException("The live-lab instance root has no parent."));
         EnsureDirectory(SingleRoot);
         EnsureDirectory(ModsPath);
         EnsureDirectory(RuntimePath);
@@ -102,12 +144,14 @@ internal sealed record LiveLabPaths(
         {
             Path.Combine(ProjectRoot, ".sdvkit"),
             Path.Combine(ProjectRoot, ".sdvkit", "lab"),
+            Path.GetDirectoryName(SingleRoot)
+                ?? throw new InvalidOperationException("The live-lab instance root has no parent."),
             SingleRoot,
         })
         {
             if (!TryGetAttributes(path, out FileAttributes attributes))
             {
-                return;
+                continue;
             }
 
             if ((attributes & FileAttributes.ReparsePoint) != 0)
@@ -123,7 +167,10 @@ internal sealed record LiveLabPaths(
             }
         }
 
-        RejectReparsePointsBelow(SingleRoot);
+        if (Directory.Exists(SingleRoot))
+        {
+            RejectReparsePointsBelow(SingleRoot);
+        }
     }
 
     private static void EnsureDirectory(string path)

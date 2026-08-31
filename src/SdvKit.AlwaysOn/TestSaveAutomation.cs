@@ -85,6 +85,7 @@ internal sealed class TestSaveAutomation
     public static bool TryCreate(
         IMonitor monitor,
         Action publishStatus,
+        bool networkHost,
         out TestSaveAutomation? automation,
         out string reason)
     {
@@ -110,6 +111,13 @@ internal sealed class TestSaveAutomation
             if (mode is not (TestSaveContract.CreateMode or TestSaveContract.ScenarioMode))
             {
                 throw new InvalidDataException("SDVKIT_TEST_SAVE_MODE is invalid.");
+            }
+
+            if (networkHost
+                && !string.Equals(mode, TestSaveContract.ScenarioMode, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "The network-2 host requires the existing disposable scenario fixture.");
             }
 
             scenarioLogPath = ReadEnvironment("SDVKIT_TEST_SAVE_LOG_PATH");
@@ -869,7 +877,7 @@ internal sealed class TestSaveAutomation
             ReadEnvironment("SDVKIT_TEST_SAVE_FAVORITE_THING"));
     }
 
-    private static void VerifyRuntimeVersion()
+    internal static void VerifyRuntimeVersion()
     {
         string gameVersion = Game1.version.ToString();
         string gameFileVersion =

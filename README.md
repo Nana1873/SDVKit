@@ -9,7 +9,7 @@ This repository is a clean greenfield rebuild. The public surface stays delibera
 SDVKit has two equal pillars:
 
 - **Toolkit:** inspect, create, build, test, and package SMAPI mods and content packs.
-- **Live lab:** launch Stardew through an isolated SMAPI mod group, keep one controlled singleplayer run active in the background, and exercise one SDVKit-owned disposable test world without touching personal saves.
+- **Live lab:** launch Stardew through isolated SMAPI mod groups, keep controlled runs active in the background, exercise one SDVKit-owned disposable test world, and prove one exact local host-plus-farmhand smoke without touching personal saves.
 
 The default live path uses SMAPI's native `--mods-path` support. SDVKit does not require Mod Organizer 2 and does not automatically deploy into the normal or mod-manager-owned `Mods` directory.
 
@@ -17,7 +17,7 @@ The default live path uses SMAPI's native `--mods-path` support. SDVKit does not
 
 - No generic automation or evidence framework.
 - No second MCP/runtime stack without a concrete missing capability.
-- No broad save parser, save migration engine, multiplayer lab, or crash-recovery system before a real workflow requires it.
+- No broad save parser, save migration engine, generic multiplayer lab, or crash-recovery system before a real workflow requires it.
 - No game binaries, proprietary assets, or personal saves in this repository.
 
 ## Build
@@ -46,7 +46,7 @@ Run the lab commands from the project root whose ignored `.sdvkit/` directory sh
 
 The ownership record contains the exact PID, UTC process start time, and executable identity. `status` rechecks that identity and the matching game-side AlwaysOn marker. `stop` first rechecks the same process, then publishes that launch's single-purpose stop request below `.sdvkit`. AlwaysOn handles it on the game thread, restores and reads back the captured option, writes `exiting` only after confirmation, and asks the game to exit normally; the CLI waits on the exact process handle and clears ownership only after both confirmations. The normal stop path has no process-name search, UI automation, or kill fallback: an identity mismatch, unconfirmed restoration, or clean-stop timeout is reported and the process record is retained. If Windows cannot establish identity for a freshly created child at all, only that child is aborted through its original `CreateProcess` handle before `start` returns.
 
-AlwaysOn transiently sets Stardew's `pauseWhenOutOfFocus` option to `false`, reasserts it while the controlled process runs, and restores the captured value during the normal game-exit event before Stardew persists options. A process crash or forced external termination cannot promise that restoration.
+AlwaysOn transiently sets Stardew's `pauseWhenOutOfFocus` option to `false`, reasserts it while the controlled process runs, and restores plus reads back the captured value when the owned stop request takes the normal game-exit path. A manual window close, process crash, or forced external termination cannot promise that restoration.
 
 The native mod path isolates which SMAPI mods are loaded; it does **not** isolate Stardew's shared AppData preferences, saves, startup preferences, or standard SMAPI logs. The ordinary `start`/`status`/`stop` lifecycle does not enumerate, open, copy, select, or modify any save, and it never writes to the normal or mod-manager-owned `Mods` directory.
 
@@ -63,6 +63,20 @@ The first invocation registers one fixed SDVKit fixture below `.sdvkit/lab/singl
 The scenario loads the exact fixture directly, verifies its save ID, unique game ID, player, farm, favorite thing, ownership markers, main-player status, and singleplayer status before any scenario mutation, shows one `SDVKit test-save smoke` HUD message, and observes 120 real game-update ticks. Completion requires the terminal game-side marker, normal AlwaysOn option restoration, exact process exit, junction removal, and another baseline reset. Its manifest, baseline, work tree, archived stdout/stderr/status/scenario logs, and any temporary reset data stay below `.sdvkit/`; it creates no separate lifecycle or generic scenario protocol.
 
 The command never lists the shared `Saves` directory and never opens, copies, replaces, or deletes a personal save. A pre-existing entry at the exact generated fixture name blocks the workflow without touching that entry. An identity mismatch or unconfirmed cleanup blocks further fixture mutation; when the exact SDVKit junction can still be proven, cleanup removes it first. The test-save automation currently fails closed unless it finds the explicitly checked Stardew 1.6.15 (`1.6.15.24356`) and SMAPI 4.5.2 runtime contract.
+
+### Local two-player smoke
+
+Run the fixed multiplayer slice only while the regular lab is stopped, after the disposable test-world baseline above exists and `doctor` reports exactly one ready Stardew + SMAPI installation:
+
+```powershell
+sdvkit lab smoke --topology network-2 --json
+```
+
+The command reuses that baseline and the existing process lifecycle to start exactly one local host and one local farmhand, both minimized without foreground activation. It builds the declared AlwaysOn mod once, verifies the same build ID on both sides before joining, performs a real host/join, and requires matching host and farmhand identities in the joined game. Each side must keep that exact pair connected for 120 consecutive game ticks while AlwaysOn is active, `pauseWhenOutOfFocus` is `false`, and Windows reports a different foreground-process identity. The result records each process's exact identity, foreground observation, game-side state, build ID, and separate logs below `.sdvkit/`.
+
+On a normal completion, the farmhand and then the host exit through the existing clean-stop path, the previously relevant options on both sides are restored and confirmed, and the disposable fixture is reset byte-for-byte from its baseline. The command fails closed when joining, identity matching, background progress, option restoration, process exit, junction cleanup, or reset cannot be confirmed.
+
+This is deliberately one local `network-2` smoke, not an N-player, remote-fleet, matchmaking, topology, or general multiplayer system. It never uses personal saves or the normal or mod-manager-owned `Mods` directory.
 
 ## Read-only foundation commands
 
@@ -109,6 +123,7 @@ All toolkit JSON uses relative paths for project-owned files and archives. Exit 
 3. Isolated SMAPI launch through `--mods-path`.
 4. A small always-on game bridge for controlled background runs.
 5. One disposable test-save workflow and focused scenario smoke tests.
+6. One exact local host-plus-farmhand multiplayer smoke.
 
 The issue tracker is the roadmap. A capability is added only when it serves a current workflow and can reuse no smaller existing path.
 

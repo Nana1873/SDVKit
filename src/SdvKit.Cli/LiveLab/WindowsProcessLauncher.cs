@@ -17,7 +17,9 @@ internal static partial class WindowsProcessLauncher
 {
     private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
+    private const int StartfUseShowWindow = 0x00000001;
     private const int StartfUseStdHandles = 0x00000100;
+    private const short SwShowMinNoActive = 7;
     private const uint HandleFlagInherit = 0x00000001;
     private static readonly nuint ProcThreadAttributeHandleList = 0x00020002;
 
@@ -111,12 +113,14 @@ internal static partial class WindowsProcessLauncher
                     "Windows couldn't restrict inherited handles to the three lab log streams.");
             }
 
+            (int startupFlags, short showWindow) = GetStartupWindowSettings(specification);
             StartupInfoEx startup = new()
             {
                 StartupInfo = new StartupInfo
                 {
                     Size = Marshal.SizeOf<StartupInfoEx>(),
-                    Flags = StartfUseStdHandles,
+                    Flags = startupFlags,
+                    ShowWindow = showWindow,
                     StandardInput = standardInput.SafeFileHandle.DangerousGetHandle(),
                     StandardOutput = standardOutput.SafeFileHandle.DangerousGetHandle(),
                     StandardError = standardError.SafeFileHandle.DangerousGetHandle(),
@@ -193,6 +197,15 @@ internal static partial class WindowsProcessLauncher
                 TryClearInherit(handle);
             }
         }
+    }
+
+    internal static (int Flags, short ShowWindow) GetStartupWindowSettings(
+        LabProcessStartSpec specification)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+        return specification.StartMinimizedWithoutActivation
+            ? (StartfUseStdHandles | StartfUseShowWindow, SwShowMinNoActive)
+            : (StartfUseStdHandles, (short)0);
     }
 
     private static byte[] CreateEnvironmentBlock(IReadOnlyDictionary<string, string> overrides)

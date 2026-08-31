@@ -38,6 +38,31 @@ public sealed class WindowsLabProcessHostTests
         Assert.Equal("isolated", startInfo.Environment["SDVKIT_TEST_MARKER"]);
     }
 
+    [Theory]
+    [InlineData(false, 0x00000100, 0)]
+    [InlineData(true, 0x00000101, 7)]
+    public void NativeLauncherUsesShowMinimizedNoActivateOnlyWhenRequested(
+        bool requested,
+        int expectedFlags,
+        short expectedShowWindow)
+    {
+        using TemporaryDirectory temporary = new();
+        LabProcessStartSpec specification = new(
+            Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            temporary.Path,
+            [],
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            Path.Combine(temporary.Path, "stdout.log"),
+            Path.Combine(temporary.Path, "stderr.log"),
+            StartMinimizedWithoutActivation: requested);
+
+        (int flags, short showWindow) =
+            WindowsProcessLauncher.GetStartupWindowSettings(specification);
+
+        Assert.Equal(expectedFlags, flags);
+        Assert.Equal(expectedShowWindow, showWindow);
+    }
+
     [Fact]
     public void StartTimeMismatchIsRejectedWithoutClosingTheChild()
     {

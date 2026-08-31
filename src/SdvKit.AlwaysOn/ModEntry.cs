@@ -10,6 +10,7 @@ public sealed class ModEntry : Mod
     private BackgroundRunGuard? _backgroundRun;
     private StatusWriter? _statusWriter;
     private TestSaveAutomation? _testSave;
+    private NetworkTwoAutomation? _networkTwo;
     private string? _launchId;
     private string? _stopRequestPath;
     private bool _gameLaunched;
@@ -30,13 +31,23 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        _backgroundRun = new BackgroundRunGuard(new SmapiBackgroundRunState());
+        string networkRole =
+            Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE")?.Trim()
+            ?? string.Empty;
+        bool networkHost = string.Equals(
+            networkRole,
+            SdvKit.Cli.LiveLab.NetworkTwoContract.HostRole,
+            StringComparison.Ordinal);
+        _backgroundRun = new BackgroundRunGuard(
+            new SmapiBackgroundRunState(),
+            networkHost);
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
         if (!TestSaveAutomation.TryCreate(
                 Monitor,
                 WriteActiveStatus,
+                networkHost,
                 out _testSave,
                 out string testSaveReason))
         {
@@ -44,6 +55,20 @@ public sealed class ModEntry : Mod
                 $"SDVKit test-save automation is unavailable: {testSaveReason}",
                 LogLevel.Error);
             _testSave?.LogInitializationFailure();
+        }
+
+        if (!NetworkTwoAutomation.TryCreate(
+                helper.DirectoryPath,
+                Monitor,
+                WriteActiveStatus,
+                () => _testSave?.Snapshot,
+                out _networkTwo,
+                out string networkTwoReason))
+        {
+            Monitor.Log(
+                $"SDVKit network-2 automation is unavailable: {networkTwoReason}",
+                LogLevel.Error);
+            _networkTwo?.LogInitializationFailure();
         }
 
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
@@ -68,12 +93,14 @@ public sealed class ModEntry : Mod
             }
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
+        {
             _testSave?.OnUpdateTicked();
+            _networkTwo?.OnUpdateTicked();
+        };
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
             _backgroundRun!.Enable();
             _gameLaunched = true;
-            GameRunner.instance.Exiting += (_, _) => PrepareForExit();
             WriteActiveStatus();
         };
         helper.Events.Specialized.LoadStageChanged += (_, eventArgs) =>
@@ -95,6 +122,7 @@ public sealed class ModEntry : Mod
         {
             _backgroundRun.ResetAfterReturnToTitle();
             _testSave?.OnReturnedToTitle();
+            _networkTwo?.OnReturnedToTitle();
         };
 
         Monitor.Log(
@@ -166,7 +194,8 @@ public sealed class ModEntry : Mod
     {
         if (!_gameLaunched
             || _exitPrepared
-            || _testSave is { CanStop: false })
+            || _testSave is { CanStop: false }
+            || _networkTwo is { CanStop: false })
         {
             return;
         }
@@ -222,7 +251,9 @@ public sealed class ModEntry : Mod
         }
 
         int tick = Game1.ticks;
-        bool isActive = GameRunner.instance.IsActive;
+        WindowsForegroundWindowObservation? foregroundWindow =
+            _networkTwo?.ForegroundWindow;
+        bool isActive = GetReportedIsActive(foregroundWindow);
         BackgroundRunRestoreResult restore;
         try
         {
@@ -249,24 +280,45 @@ public sealed class ModEntry : Mod
             restore.Succeeded ? "exiting" : "restoreFailed",
             tick,
             isActive,
-            restore.ConfirmedPauseWhenOutOfFocus);
+            restore.ConfirmedPauseWhenOutOfFocus,
+            restore.ConfirmedEnableServer,
+            restore.ConfirmedIpConnectionsEnabled,
+            foregroundWindow?.WindowHandle,
+            foregroundWindow?.ProcessId);
         return _restoreConfirmed;
     }
 
     private void WriteActiveStatus()
     {
+        bool networkHost = _networkTwo?.IsHost == true;
+        WindowsForegroundWindowObservation? foregroundWindow =
+            _networkTwo?.ForegroundWindow;
         WriteStatus(
             "active",
             Game1.ticks,
-            GameRunner.instance.IsActive,
-            Game1.options.pauseWhenOutOfFocus);
+            GetReportedIsActive(foregroundWindow),
+            Game1.options.pauseWhenOutOfFocus,
+            networkHost ? Game1.options.enableServer : null,
+            networkHost ? Game1.options.ipConnectionsEnabled : null,
+            foregroundWindow?.WindowHandle,
+            foregroundWindow?.ProcessId);
     }
+
+    private static bool GetReportedIsActive(
+        WindowsForegroundWindowObservation? foregroundWindow) =>
+        foregroundWindow is null
+            ? GameRunner.instance.IsActive
+            : foregroundWindow.Value.IsCurrentProcess ?? true;
 
     private void WriteStatus(
         string phase,
         int tick,
         bool isActive,
-        bool? pauseWhenOutOfFocus)
+        bool? pauseWhenOutOfFocus,
+        bool? enableServer,
+        bool? ipConnectionsEnabled,
+        long? foregroundWindowHandle,
+        int? foregroundProcessId)
     {
         try
         {
@@ -275,7 +327,12 @@ public sealed class ModEntry : Mod
                 tick,
                 isActive,
                 pauseWhenOutOfFocus,
-                _testSave?.Snapshot);
+                _testSave?.Snapshot,
+                enableServer,
+                ipConnectionsEnabled,
+                _networkTwo?.Snapshot,
+                foregroundWindowHandle,
+                foregroundProcessId);
             _statusWriteErrorLogged = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -292,6 +349,8 @@ public sealed class ModEntry : Mod
 
     private void OnProcessExit(object? sender, EventArgs eventArgs)
     {
+        // ProcessExit is only an unconfirmed best-effort restoration fallback;
+        // the controlled stop request is the sole confirmed normal-exit path.
         try
         {
             if (!_exitPrepared)
@@ -301,7 +360,7 @@ public sealed class ModEntry : Mod
         }
         catch
         {
-            // ProcessExit is only an idempotent best-effort fallback to GameRunner.Exiting.
+            // Process teardown can't safely report or recover a restoration failure.
         }
     }
 }
