@@ -32,3 +32,128 @@ jobs:
 
       - name: CLI smoke
         run: .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe --version
+
+      - name: Package portable Windows-x64 archive
+        shell: pwsh
+        run: .\scripts\package-windows-x64.ps1
+
+      - name: Smoke-test extracted portable archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $archives = @(Get-ChildItem -LiteralPath .\.sdvkit\distribution -File -Filter "SDVKit-*-win-x64.zip")
+          if ($archives.Count -ne 1) {
+            throw "Expected exactly one portable archive, found $($archives.Count)."
+          }
+
+          $archive = $archives[0]
+          $checksumPath = "$($archive.FullName).sha256"
+          $checksumParts = (Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\s+', 2
+          $actualHash = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash
+          if ($checksumParts.Count -ne 2 `
+              -or $checksumParts[0] -ne $actualHash `
+              -or $checksumParts[1] -ne $archive.Name) {
+            throw "The portable archive checksum is invalid."
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archive.FullName)
+          try {
+            foreach ($entry in $zip.Entries) {
+              $entryPath = $entry.FullName.Replace('\', '/')
+              $segments = @($entryPath.Split('/', [System.StringSplitOptions]::RemoveEmptyEntries))
+              if ($entryPath.StartsWith('/') `
+                  -or $entryPath -match '^[A-Za-z]:' `
+                  -or $segments -contains '..' `
+                  -or $segments -contains '.sdvkit' `
+                  -or $segments -contains '.git' `
+                  -or $segments -contains 'bin' `
+                  -or $segments -contains 'obj' `
+                  -or $segments -contains 'Saves' `
+                  -or -not $entryPath.StartsWith("$($archive.BaseName)/")) {
+                throw "The portable archive contains an invalid entry: $entryPath"
+              }
+
+              $extension = [System.IO.Path]::GetExtension($entryPath).ToLowerInvariant()
+              $fileName = [System.IO.Path]::GetFileName($entryPath)
+              if ($extension -in @('.pdb', '.xnb') `
+                  -or ($extension -eq '.dll' -and $fileName -ne 'sdvkit.dll') `
+                  -or ($extension -eq '.exe' -and $fileName -ne 'sdvkit.exe')) {
+                throw "The portable archive contains an unexpected binary: $entryPath"
+              }
+            }
+          }
+          finally {
+            $zip.Dispose()
+          }
+
+          $extractRoot = Join-Path $env:RUNNER_TEMP "sdvkit-portable-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $extractRoot) {
+            throw "The portable smoke destination is not fresh: $extractRoot"
+          }
+
+          $relativeToWorkspace = [System.IO.Path]::GetRelativePath(
+            [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE),
+            [System.IO.Path]::GetFullPath($extractRoot))
+          if (-not $relativeToWorkspace.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)")) {
+            throw "The portable archive must be tested outside the repository tree."
+          }
+
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $extractRoot
+          $packageRoot = Join-Path $extractRoot $archive.BaseName
+          $cli = Join-Path $packageRoot "sdvkit.exe"
+          $expectedVersion = $archive.BaseName.Substring("SDVKit-".Length)
+          $expectedVersion = $expectedVersion.Substring(0, $expectedVersion.Length - "-win-x64".Length)
+          Set-Location -LiteralPath $packageRoot
+
+          $versionOutput = (& $cli --version | Out-String).Trim()
+          $versionExitCode = $LASTEXITCODE
+          if ($versionExitCode -ne 0 -or $versionOutput -ne "SDVKit $expectedVersion") {
+            throw "The extracted CLI version check failed: $versionOutput"
+          }
+
+          $doctorOutput = (& $cli doctor --json | Out-String).Trim()
+          $doctorExitCode = $LASTEXITCODE
+          $doctor = $doctorOutput | ConvertFrom-Json
+          if ($doctorExitCode -ne 3 `
+              -or $doctor.schemaVersion -ne 1 `
+              -or $doctor.status -ne "notFound" `
+              -or @($doctor.installations).Count -ne 0) {
+            throw "The extracted CLI returned unexpected doctor diagnostics: $doctorOutput"
+          }
+
+          $fixtureRoot = Join-Path $extractRoot "inspect-fixture"
+          $createOutput = (& $cli project create smapi-mod $fixtureRoot `
+            --name "Portable Inspect Fixture" `
+            --author "SDVKit" `
+            --unique-id "SDVKit.PortableInspectFixture" `
+            --description "CI fixture for the extracted portable archive." `
+            --json | Out-String).Trim()
+          $createExitCode = $LASTEXITCODE
+          if ($createExitCode -ne 0) {
+            throw "The extracted CLI could not create the inspect fixture: $createOutput"
+          }
+
+          $inspectOutput = (& $cli project inspect $fixtureRoot --json | Out-String).Trim()
+          $inspectExitCode = $LASTEXITCODE
+          $inspection = $inspectOutput | ConvertFrom-Json
+          if ($inspectExitCode -ne 0 `
+              -or $inspection.schemaVersion -ne 1 `
+              -or $inspection.kind -ne "smapiMod" `
+              -or @($inspection.projectFiles).Count -ne 1 `
+              -or @($inspection.manifests).Count -ne 1 `
+              -or @($inspection.problems).Count -ne 0) {
+            throw "The extracted CLI returned an unexpected project inspection: $inspectOutput"
+          }
+
+      - name: Upload portable Windows-x64 archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDVKit-windows-x64
+          path: |
+            .sdvkit/distribution/SDVKit-*-win-x64.zip
+            .sdvkit/distribution/SDVKit-*-win-x64.zip.sha256
+          if-no-files-found: error
+          include-hidden-files: true
