@@ -34,12 +34,12 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.1.0-win-x64.zip` and its `.sha256` file from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.2.0-win-x64.zip` and `SDVKit-0.2.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.1.0-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.1.0-win-x64.zip
-& .\SDVKit-0.1.0-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.2.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.2.0-win-x64.zip
+& .\SDVKit-0.2.0-win-x64\sdvkit.exe --help
 ```
 
 ## Isolated singleplayer live lab
@@ -58,7 +58,7 @@ The ownership record contains the exact PID, UTC process start time, and executa
 
 AlwaysOn transiently sets Stardew's `pauseWhenOutOfFocus` option to `false`, reasserts it while the controlled process runs, and restores plus reads back the captured value when the owned stop request takes the normal game-exit path. A manual window close, process crash, or forced external termination cannot promise that restoration.
 
-Alongside the native mod path, each controlled lab role receives its own persistent Windows user-profile root below `.sdvkit/lab/profiles/`. Stardew therefore resolves preferences, saves, startup preferences, screenshots, and standard SMAPI logs below `.sdvkit/` too. AlwaysOn verifies the exact game-side Stardew data path before it activates. The ordinary `start`/`status`/`stop` lifecycle does not enumerate, open, copy, select, or modify any personal save, and it never writes to the normal or mod-manager-owned `Mods` directory. This is process-level data isolation, not a Windows sandbox: tested mods and external services such as Steam can still access shared machine resources.
+Alongside the native mod path, the controlled `single`, `host`, and `farmhand` roles receive separate persistent Windows user-profile roots at `.sdvkit/lab/profiles/single`, `.sdvkit/lab/profiles/network-2/host`, and `.sdvkit/lab/profiles/network-2/farmhand`. Stardew and SMAPI AppData is redirected per controlled process, so preferences, saves, startup preferences, screenshots, and standard SMAPI logs resolve below `.sdvkit/` too. AlwaysOn verifies the exact game-side Stardew data path before it activates. The ordinary `start`/`status`/`stop` lifecycle does not enumerate, open, copy, select, or modify any personal save, and it never writes to the normal or mod-manager-owned `Mods` directory. This is process-level data isolation, not a Windows sandbox: tested mods and external services such as Steam can still access shared machine resources. Game binaries and content continue to be read from the detected real installation; SDVKit does not create a copied game folder.
 
 Before updating a v0.1.0 checkout, cleanly stop any retained live-lab run with that version. This layout change intentionally does not migrate an active v0.1.0 fixture junction from the normal Stardew `Saves` directory.
 

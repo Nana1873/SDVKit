@@ -12,7 +12,7 @@ internal static class ProjectModStager
     private const int OwnershipSchemaVersion = 1;
     private const string OwnershipFileName = "project-smoke-staging.json";
     private const string AlwaysOnUniqueId = "SDVKit.AlwaysOn";
-    private const string AlwaysOnVersion = "0.1.0";
+    private const string AlwaysOnVersion = "0.2.0";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

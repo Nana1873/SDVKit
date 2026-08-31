@@ -40,7 +40,7 @@ public sealed class CliApplicationTests
         (int exitCode, string output, string error) = Run("--version");
 
         Assert.Equal(0, exitCode);
-        Assert.StartsWith("SDVKit 0.1.0", output, StringComparison.Ordinal);
+        Assert.StartsWith("SDVKit 0.2.0", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -53,7 +53,7 @@ public sealed class CliApplicationTests
         using JsonDocument document = JsonDocument.Parse(output);
         JsonElement root = document.RootElement;
         Assert.Equal("sdvkit", root.GetProperty("name").GetString());
-        Assert.Equal("0.1.0", root.GetProperty("version").GetString());
+        Assert.Equal("0.2.0", root.GetProperty("version").GetString());
         Assert.Equal(2, root.EnumerateObject().Count());
         Assert.Equal(string.Empty, error);
     }
