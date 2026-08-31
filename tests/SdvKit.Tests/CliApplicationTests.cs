@@ -24,6 +24,10 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
+            "sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "sdvkit lab <start|status|stop|test-save> --topology single --json",
             output,
             StringComparison.Ordinal);
@@ -334,6 +338,179 @@ public sealed class CliApplicationTests
             "Usage: sdvkit project smoke [path] --topology <single|network-2> --json",
             output,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectReviewStartDispatchesOnlyTheExplicitOrderedSources()
+    {
+        string target = Path.Combine(Environment.CurrentDirectory, "Target");
+        string companionOne = Path.Combine(Environment.CurrentDirectory, "Harness");
+        string companionTwo = Path.Combine(Environment.CurrentDirectory, "ReadyMod");
+        string contentPack = Path.Combine(Environment.CurrentDirectory, "Pack");
+        string? receivedAction = null;
+        string? receivedTarget = null;
+        IReadOnlyList<string>? receivedCompanions = null;
+        IReadOnlyList<string>? receivedPacks = null;
+        string? receivedLabRoot = null;
+        ProjectReviewCommandRunner runner = (
+            action,
+            sourcePath,
+            companionPaths,
+            contentPackPaths,
+            labRoot) =>
+        {
+            receivedAction = action;
+            receivedTarget = sourcePath;
+            receivedCompanions = companionPaths;
+            receivedPacks = contentPackPaths;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                state = "running",
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            "start",
+            "--companion",
+            companionOne,
+            target,
+            "--content-pack",
+            contentPack,
+            "--companion",
+            companionTwo,
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("start", receivedAction);
+        Assert.Equal(target, receivedTarget);
+        Assert.Equal([companionOne, companionTwo], receivedCompanions);
+        Assert.Equal([contentPack], receivedPacks);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        Assert.Equal("running", JsonDocument.Parse(output).RootElement
+            .GetProperty("state").GetString());
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectReviewStartDefaultsTargetAndLabRootToCurrentDirectory()
+    {
+        string? receivedTarget = null;
+        ProjectReviewCommandRunner runner = (
+            _,
+            sourcePath,
+            companionPaths,
+            contentPackPaths,
+            labRoot) =>
+        {
+            receivedTarget = sourcePath;
+            Assert.Empty(companionPaths);
+            Assert.Empty(contentPackPaths);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { state = "running" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            "start",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(Environment.CurrentDirectory, receivedTarget);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("stop")]
+    public void ProjectReviewLifecycleCommandsUseTheCurrentLabOnly(string action)
+    {
+        ProjectReviewCommandRunner runner = (
+            receivedAction,
+            sourcePath,
+            companionPaths,
+            contentPackPaths,
+            labRoot) =>
+        {
+            Assert.Equal(action, receivedAction);
+            Assert.Equal(Environment.CurrentDirectory, sourcePath);
+            Assert.Empty(companionPaths);
+            Assert.Empty(contentPackPaths);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { state = "stopped" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            action,
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("project", "review")]
+    [InlineData("project", "review", "start")]
+    [InlineData("project", "review", "start", "--json", "one", "two")]
+    [InlineData("project", "review", "start", "--companion", "--json")]
+    [InlineData("project", "review", "start", "--content-pack", "--json")]
+    [InlineData("project", "review", "start", "--topology", "single", "--json")]
+    [InlineData("project", "review", "status", "target", "--json")]
+    [InlineData("project", "review", "status", "--companion", "mod", "--json")]
+    [InlineData("project", "review", "stop", "--json", "--json")]
+    [InlineData("project", "review", "restart", "--json")]
+    public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    {
+        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+            throw new InvalidOperationException("Project review should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            runner,
+            arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(
+            "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json"
+                + Environment.NewLine
+                + "       sdvkit project review status --json"
+                + Environment.NewLine
+                + "       sdvkit project review stop --json"
+                + Environment.NewLine,
+            error);
+    }
+
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("start", "--help")]
+    public void ProjectReviewHelpListsTheFocusedSingleplayerSurface(params string[] suffix)
+    {
+        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+            throw new InvalidOperationException("Project review should not run.");
+        string[] arguments = ["project", "review", .. suffix];
+
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            runner,
+            arguments);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("project review start", output, StringComparison.Ordinal);
+        Assert.Contains("project review status", output, StringComparison.Ordinal);
+        Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -520,7 +697,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project <inspect|create|build|package|smoke> ..."
+            "Usage: sdvkit project <inspect|create|build|package|smoke|review> ..."
                 + Environment.NewLine,
             error);
     }
@@ -699,6 +876,21 @@ public sealed class CliApplicationTests
             error,
             GameInstallationDiscovery.Discover,
             runProjectSmoke: runProjectSmoke);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReview(
+        ProjectReviewCommandRunner runProjectReview,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectReview: runProjectReview);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

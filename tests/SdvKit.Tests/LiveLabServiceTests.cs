@@ -56,6 +56,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
         Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.False(specification.InteractiveConsole);
         KeyValuePair<string, string>[] disabledTestSaveEnvironment = specification.Environment
             .Where(pair => pair.Key.StartsWith("SDVKIT_TEST_SAVE_", StringComparison.Ordinal))
             .ToArray();
@@ -66,6 +67,229 @@ public sealed class LiveLabServiceTests
         Assert.Equal(1, stateStore.VerifyWritableCount);
         Assert.Equal(paths.ModsPath, stateStore.State?.ModsPath);
         Assert.StartsWith(paths.SingleRoot, paths.ModsPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProjectReviewStartsTheExactTargetWithAnInteractiveConsole()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeStateStore stateStore = new();
+        FakeProcessHost process = new()
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+        };
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.StartProjectReview(projectMod);
+
+        Assert.Equal(0, result.ExitCode);
+        LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(process.Specification);
+        Assert.True(specification.InteractiveConsole);
+        Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.Equal(projectMod.UniqueId, specification.Environment["SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
+        Assert.Equal(projectMod.Version, specification.Environment["SDVKIT_PROJECT_MOD_VERSION"]);
+        Assert.Equal(
+            projectMod.BuildIdentity,
+            specification.Environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+        Assert.Equal(projectMod, stateStore.State?.ProjectMod);
+        Assert.Null(stateStore.State?.TestSave);
+        Assert.Null(stateStore.State?.NetworkTwo);
+    }
+
+    [Fact]
+    public void ExitedProjectReviewCanReleaseOnlyItsRetainedRuntimeOwnership()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        File.WriteAllText(paths.StopRequestPath, LaunchId);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with
+        {
+            ProjectMod = projectMod,
+        };
+        WriteStatusMarker(
+            paths,
+            state,
+            "active",
+            pauseWhenOutOfFocus: false,
+            projectMod: LoadedProjectMod(projectMod));
+        FakeStateStore stateStore = new() { State = state };
+        FakeProcessHost process = new()
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", Assert.IsType<LiveLabReport>(result.Report).State);
+        Assert.Null(stateStore.State);
+        Assert.False(File.Exists(paths.StopRequestPath));
+        Assert.Equal(0, process.CloseCount);
+        Assert.Equal(0, process.WaitCount);
+    }
+
+    [Fact]
+    public void ExitedProjectReviewWithoutLoadConfirmationReleasesOwnershipButFails()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        File.WriteAllText(paths.StopRequestPath, LaunchId);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with
+        {
+            ProjectMod = projectMod,
+        };
+        WriteStatusMarker(
+            paths,
+            state,
+            "active",
+            pauseWhenOutOfFocus: false,
+            projectMod: WaitingProjectMod(projectMod));
+        FakeStateStore stateStore = new() { State = state };
+        FakeProcessHost process = new()
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.Equal("projectModLoadUnconfirmed", Assert.Single(report.Problems).Code);
+        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Null(stateStore.State);
+        Assert.False(File.Exists(paths.StopRequestPath));
+        Assert.Equal(0, process.CloseCount);
+        Assert.Equal(0, process.WaitCount);
+    }
+
+    [Fact]
+    public void ExitedProjectSmokeCannotUseTheReviewFinalizer()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeTestSaveStore fixtureStore = new(paths);
+        LiveLabState state = State(paths, gamePath) with
+        {
+            ProjectMod = ProjectModLaunch(),
+            TestSave = fixtureStore.PrepareForStart().LaunchState,
+        };
+        FakeStateStore stateStore = new() { State = state };
+        FakeProcessHost process = new()
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(
+            "projectReviewStateMismatch",
+            Assert.Single(Assert.IsType<LiveLabReport>(result.Report).Problems).Code);
+        Assert.Same(state, stateStore.State);
+    }
+
+    [Fact]
+    public void ExitedPlainLabCannotUseTheReviewFinalizer()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabState state = State(paths, gamePath);
+        FakeStateStore stateStore = new() { State = state };
+        FakeProcessHost process = new()
+        {
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(
+            "projectReviewStateMismatch",
+            Assert.Single(Assert.IsType<LiveLabReport>(result.Report).Problems).Code);
+        Assert.Same(state, stateStore.State);
+    }
+
+    [Theory]
+    [InlineData("Running")]
+    [InlineData("IdentityMismatch")]
+    [InlineData("Unreadable")]
+    public void ProjectReviewFinalizerRetainsOwnershipUnlessTheExactProcessExited(
+        string processStatusName)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = temporary.WriteFile("game/.keep");
+        gamePath = Path.GetDirectoryName(gamePath)!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabState state = State(paths, gamePath) with
+        {
+            ProjectMod = ProjectModLaunch(),
+        };
+        FakeStateStore stateStore = new() { State = state };
+        FakeProcessHost process = new()
+        {
+            InspectResult = new LabProcessInspectResult(
+                Enum.Parse<LabProcessInspectStatus>(processStatusName)),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        Assert.NotEqual("stopped", Assert.IsType<LiveLabReport>(result.Report).State);
+        Assert.Same(state, stateStore.State);
     }
 
     [Fact]

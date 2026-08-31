@@ -229,6 +229,107 @@ internal sealed class LiveLabService
         return TestSave(projectMod);
     }
 
+    internal LiveLabCommandResult StartProjectReview(ProjectModLaunchState projectMod)
+    {
+        ArgumentNullException.ThrowIfNull(projectMod);
+        projectMod.Validate();
+        return Start(projectMod: projectMod, interactiveConsole: true);
+    }
+
+    internal LiveLabCommandResult StatusProjectReview() => Status();
+
+    internal LiveLabCommandResult StopProjectReview() => Stop();
+
+    internal LiveLabCommandResult FinalizeExitedProjectReview()
+    {
+        LiveLabState? state = ReadState();
+        if (state is null)
+        {
+            return Result(Success, Report("stopped", null, []));
+        }
+
+        if (!string.Equals(
+                state.Topology,
+                LiveLabState.SingleTopology,
+                StringComparison.Ordinal)
+            || state.ProjectMod is null
+            || state.TestSave is not null
+            || state.NetworkTwo is not null)
+        {
+            return Failure(
+                "blocked",
+                state,
+                "projectReviewStateMismatch",
+                "Only a retained single-player project-review process can be finalized without an AlwaysOn exit marker.");
+        }
+
+        LabProcessInspectResult observation =
+            _processHost.Inspect(state.OwnedProcessIdentity);
+        if (observation.Status == LabProcessInspectStatus.Running)
+        {
+            return RunningStatus(state);
+        }
+
+        if (observation.Status == LabProcessInspectStatus.IdentityMismatch)
+        {
+            return Failure(
+                "ownershipMismatch",
+                state,
+                "processIdentityMismatch",
+                observation.Error ?? "The PID no longer identifies the owned review process.");
+        }
+
+        if (observation.Status == LabProcessInspectStatus.Unreadable)
+        {
+            return Failure(
+                "unreadable",
+                state,
+                "processUnreadable",
+                observation.Error ?? "The owned review process identity could not be read.");
+        }
+
+        if (observation.Status != LabProcessInspectStatus.Exited)
+        {
+            return Failure(
+                "unreadable",
+                state,
+                "processUnreadable",
+                "The owned review process returned an unknown observation state.");
+        }
+
+        AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
+        bool projectModSucceeded = ProjectModLoadSucceeded(alwaysOn, state.ProjectMod);
+        try
+        {
+            File.Delete(state.StopRequestPath);
+            _stateStore.Delete();
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return Failure(
+                "exited",
+                state,
+                "runtimeCleanupFailed",
+                $"The exact project-review process exited, but its retained ownership record could not be released: {exception.Message}",
+                alwaysOn: alwaysOn);
+        }
+
+        if (!projectModSucceeded)
+        {
+            return Failure(
+                "stopped",
+                state,
+                "projectModLoadUnconfirmed",
+                alwaysOn.ProjectMod?.Message
+                    ?? "SMAPI did not confirm the expected project mod identity and version as loaded before the review process exited.",
+                alwaysOn: alwaysOn);
+        }
+
+        return Result(
+            Success,
+            Report("stopped", state, [], alwaysOn: alwaysOn));
+    }
+
     internal LiveLabCommandResult StatusNetwork() => Status();
 
     internal LiveLabCommandResult StopNetwork()
@@ -634,7 +735,8 @@ internal sealed class LiveLabService
         TestSaveLaunchState? testSave = null,
         NetworkTwoLaunchState? networkTwo = null,
         AlwaysOnBuildResult? preparedBuild = null,
-        ProjectModLaunchState? projectMod = null)
+        ProjectModLaunchState? projectMod = null,
+        bool interactiveConsole = false)
     {
         projectMod?.Validate();
         if (networkTwo is not null)
@@ -761,7 +863,8 @@ internal sealed class LiveLabService
             environment,
             _paths.StandardOutputPath,
             _paths.StandardErrorPath,
-            StartMinimizedWithoutActivation: networkTwo is not null);
+            StartMinimizedWithoutActivation: networkTwo is not null,
+            InteractiveConsole: interactiveConsole);
         LabProcessStartResult started = _processHost.Start(specification);
         if (started.Identity is null)
         {
@@ -1458,26 +1561,7 @@ internal sealed class LiveLabService
 
         if (state.ProjectMod is not null)
         {
-            ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
-            projectModSucceeded = projectMod is not null
-                && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
-                && string.Equals(
-                    projectMod.Phase,
-                    ProjectModContract.LoadedPhase,
-                    StringComparison.Ordinal)
-                && projectMod.LoadConfirmed == true
-                && string.Equals(
-                    projectMod.LoadedUniqueId,
-                    state.ProjectMod.UniqueId,
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    projectMod.LoadedVersion,
-                    state.ProjectMod.Version,
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    projectMod.BuildIdentity,
-                    state.ProjectMod.BuildIdentity,
-                    StringComparison.Ordinal);
+            projectModSucceeded = ProjectModLoadSucceeded(alwaysOn, state.ProjectMod);
         }
 
         try
@@ -1542,6 +1626,32 @@ internal sealed class LiveLabService
         return Result(
             Success,
             Report("stopped", state, [], alwaysOn: alwaysOn));
+    }
+
+    private static bool ProjectModLoadSucceeded(
+        AlwaysOnStatusReport alwaysOn,
+        ProjectModLaunchState expected)
+    {
+        ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
+        return projectMod is not null
+            && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.Phase,
+                ProjectModContract.LoadedPhase,
+                StringComparison.Ordinal)
+            && projectMod.LoadConfirmed == true
+            && string.Equals(
+                projectMod.LoadedUniqueId,
+                expected.UniqueId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.LoadedVersion,
+                expected.Version,
+                StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.BuildIdentity,
+                expected.BuildIdentity,
+                StringComparison.Ordinal);
     }
 
     private LiveLabState? ReadState()

@@ -7,7 +7,7 @@ using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Cli;
 
-internal static class ProjectModStager
+internal static partial class ProjectModStager
 {
     private const int OwnershipSchemaVersion = 1;
     private const string OwnershipFileName = "project-smoke-staging.json";
@@ -954,14 +954,18 @@ internal static class ProjectModStager
             return true;
         }
 
-        string provided = ProjectModLaunchState.NormalizeVersion(providedVersion)
-            .Split('+', count: 2)[0];
-        string minimum = ProjectModLaunchState.NormalizeVersion(minimumVersion)
-            .Split('+', count: 2)[0];
-        string[] providedParts = provided.Split('-', count: 2);
-        string[] minimumParts = minimum.Split('-', count: 2);
-        string[] providedNumbers = providedParts[0].Split('.');
-        string[] minimumNumbers = minimumParts[0].Split('.');
+        if (!TryReadComparableVersion(
+                providedVersion,
+                out string[] providedNumbers,
+                out string[]? providedPrerelease)
+            || !TryReadComparableVersion(
+                minimumVersion,
+                out string[] minimumNumbers,
+                out string[]? minimumPrerelease))
+        {
+            return false;
+        }
+
         for (var index = 0; index < 3; index++)
         {
             int numericComparison = CompareNumericText(
@@ -973,8 +977,81 @@ internal static class ProjectModStager
             }
         }
 
-        return providedParts.Length == 1 || minimumParts.Length == 2;
+        if (providedPrerelease is null)
+        {
+            return true;
+        }
+
+        return minimumPrerelease is not null
+            && ComparePrerelease(providedPrerelease, minimumPrerelease) >= 0;
     }
+
+    private static bool TryReadComparableVersion(
+        string version,
+        out string[] coreNumbers,
+        out string[]? prerelease)
+    {
+        coreNumbers = [];
+        prerelease = null;
+        string normalized;
+        try
+        {
+            normalized = ProjectModLaunchState.NormalizeVersion(version);
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+
+        string precedence = normalized.Split('+', count: 2)[0];
+        string[] parts = precedence.Split('-', count: 2);
+        coreNumbers = parts[0].Split('.');
+        if (coreNumbers.Length != 3)
+        {
+            return false;
+        }
+
+        if (parts.Length == 1)
+        {
+            return true;
+        }
+
+        prerelease = parts[1].Split('.');
+        return !prerelease.Any(identifier =>
+            IsNumericIdentifier(identifier)
+            && identifier.Length > 1
+            && identifier[0] == '0');
+    }
+
+    private static int ComparePrerelease(string[] left, string[] right)
+    {
+        for (var index = 0; index < Math.Min(left.Length, right.Length); index++)
+        {
+            if (string.Equals(left[index], right[index], StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            bool leftNumeric = IsNumericIdentifier(left[index]);
+            bool rightNumeric = IsNumericIdentifier(right[index]);
+            if (leftNumeric && rightNumeric)
+            {
+                return CompareNumericText(left[index], right[index]);
+            }
+
+            if (leftNumeric != rightNumeric)
+            {
+                return leftNumeric ? -1 : 1;
+            }
+
+            return string.Compare(left[index], right[index], StringComparison.Ordinal);
+        }
+
+        return left.Length.CompareTo(right.Length);
+    }
+
+    private static bool IsNumericIdentifier(string value) =>
+        value.Length > 0 && value.All(character => character is >= '0' and <= '9');
 
     private static int CompareNumericText(string left, string right)
     {

@@ -15,6 +15,13 @@ internal delegate LiveLabCommandResult ProjectSmokeCommandRunner(
     string topology,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
+    string action,
+    string sourcePath,
+    IReadOnlyList<string> companionPaths,
+    IReadOnlyList<string> contentPackPaths,
+    string labRoot);
+
 public static class CliApplication
 {
     private const int Success = 0;
@@ -26,6 +33,12 @@ public static class CliApplication
     private const string PackageUsage = "Usage: sdvkit project package [path] --json";
     private const string SmokeUsage =
         "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
+    private const string ReviewStartUsage =
+        "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json";
+    private const string ReviewStatusUsage =
+        "       sdvkit project review status --json";
+    private const string ReviewStopUsage =
+        "       sdvkit project review stop --json";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -50,7 +63,8 @@ public static class CliApplication
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
         LiveLabCommandRunner? runLiveLab = null,
-        ProjectSmokeCommandRunner? runProjectSmoke = null)
+        ProjectSmokeCommandRunner? runProjectSmoke = null,
+        ProjectReviewCommandRunner? runProjectReview = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -72,6 +86,22 @@ public static class CliApplication
                 ProjectSmokeService.Execute(
                     sourcePath,
                     topology,
+                    labRoot,
+                    discoverInstallations);
+        }
+
+        if (runProjectReview is null)
+        {
+            runProjectReview = (
+                action,
+                sourcePath,
+                companionPaths,
+                contentPackPaths,
+                labRoot) => ProjectReviewService.Execute(
+                    action,
+                    sourcePath,
+                    companionPaths,
+                    contentPackPaths,
                     labRoot,
                     discoverInstallations);
         }
@@ -99,7 +129,8 @@ public static class CliApplication
                 output,
                 error,
                 discoverInstallations,
-                runProjectSmoke);
+                runProjectSmoke,
+                runProjectReview);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -171,7 +202,8 @@ public static class CliApplication
         TextWriter output,
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
-        ProjectSmokeCommandRunner runProjectSmoke)
+        ProjectSmokeCommandRunner runProjectSmoke,
+        ProjectReviewCommandRunner runProjectReview)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -182,7 +214,7 @@ public static class CliApplication
         if (arguments.Count < 2)
         {
             error.WriteLine(
-                "Usage: sdvkit project <inspect|create|build|package|smoke> ...");
+                "Usage: sdvkit project <inspect|create|build|package|smoke|review> ...");
             return UsageError;
         }
 
@@ -193,6 +225,7 @@ public static class CliApplication
             "build" => RunProjectBuild(arguments, output, error, discoverInstallations),
             "package" => RunProjectPackage(arguments, output, error, discoverInstallations),
             "smoke" => RunProjectSmoke(arguments, output, error, runProjectSmoke),
+            "review" => RunProjectReview(arguments, output, error, runProjectReview),
             _ => ProjectUsageError(error),
         };
     }
@@ -318,6 +351,40 @@ public static class CliApplication
         return result.ExitCode;
     }
 
+    private static int RunProjectReview(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewCommandRunner runProjectReview)
+    {
+        if ((arguments.Count == 3 && IsHelp(arguments[2]))
+            || (arguments.Count == 4 && IsHelp(arguments[3])))
+        {
+            WriteProjectReviewUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReview(
+                arguments,
+                out string? action,
+                out string? path,
+                out IReadOnlyList<string>? companionPaths,
+                out IReadOnlyList<string>? contentPackPaths))
+        {
+            WriteProjectReviewUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReview(
+            action!,
+            path!,
+            companionPaths!,
+            contentPackPaths!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
     private static bool TryParseOptionalPath(
         IReadOnlyList<string> arguments,
         out string? path)
@@ -399,6 +466,73 @@ public static class CliApplication
         return true;
     }
 
+    private static bool TryParseProjectReview(
+        IReadOnlyList<string> arguments,
+        out string? action,
+        out string? path,
+        out IReadOnlyList<string>? companionPaths,
+        out IReadOnlyList<string>? contentPackPaths)
+    {
+        action = arguments.Count > 2 ? arguments[2] : null;
+        path = null;
+        companionPaths = null;
+        contentPackPaths = null;
+        if (action is not ("start" or "status" or "stop"))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var companions = new List<string>();
+        var packs = new List<string>();
+        var jsonOptionCount = 0;
+        for (var index = 3; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (argument is "--companion" or "--content-pack")
+            {
+                if (!string.Equals(action, "start", StringComparison.Ordinal)
+                    || index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                (string.Equals(argument, "--companion", StringComparison.Ordinal)
+                    ? companions
+                    : packs).Add(value);
+                continue;
+            }
+
+            operands.Add(argument);
+        }
+
+        bool isStart = string.Equals(action, "start", StringComparison.Ordinal);
+        if (jsonOptionCount != 1
+            || operands.Any(argument => argument.StartsWith('-'))
+            || (isStart && operands.Count > 1)
+            || (!isStart && (operands.Count > 0
+                || companions.Count > 0
+                || packs.Count > 0)))
+        {
+            return false;
+        }
+
+        path = isStart && operands.Count == 1
+            ? operands[0]
+            : Environment.CurrentDirectory;
+        companionPaths = companions;
+        contentPackPaths = packs;
+        return true;
+    }
+
     private static bool TryParseCreationRequest(
         IReadOnlyList<string> arguments,
         out ProjectCreationRequest? request)
@@ -455,7 +589,7 @@ public static class CliApplication
     private static int ProjectUsageError(TextWriter error)
     {
         error.WriteLine(
-            "Usage: sdvkit project <inspect|create|build|package|smoke> ...");
+            "Usage: sdvkit project <inspect|create|build|package|smoke|review> ...");
         return UsageError;
     }
 
@@ -549,6 +683,9 @@ public static class CliApplication
         output.WriteLine("  sdvkit project package [path] --json");
         output.WriteLine(
             "  sdvkit project smoke [path] --topology <single|network-2> --json");
+        output.WriteLine(
+            "  sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json");
+        output.WriteLine("  sdvkit project review <status|stop> --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -559,6 +696,7 @@ public static class CliApplication
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
         output.WriteLine("  project smoke   Build and smoke-test one mod in the isolated live lab.");
+        output.WriteLine("  project review  Run an explicit local mod set in an interactive singleplayer lab.");
         output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
     }
 
@@ -577,5 +715,15 @@ public static class CliApplication
         output.WriteLine(BuildUsage);
         output.WriteLine(PackageUsage);
         output.WriteLine(SmokeUsage);
+        output.WriteLine(ReviewStartUsage);
+        output.WriteLine(ReviewStatusUsage);
+        output.WriteLine(ReviewStopUsage);
+    }
+
+    private static void WriteProjectReviewUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewStartUsage);
+        output.WriteLine(ReviewStatusUsage);
+        output.WriteLine(ReviewStopUsage);
     }
 }

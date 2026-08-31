@@ -149,6 +149,28 @@ The resulting evidence means that a controlled package file set was staged and S
 
 This command never deploys to the normal or mod-manager-owned `Mods` directory, enumerates personal saves, creates a permanent deployment, performs hot reload, or introduces another process/save/multiplayer state machine.
 
+## Interactive singleplayer project review
+
+Run one target code-mod project with only the local test companions and content packs named on the command line:
+
+```powershell
+sdvkit project review start .\ExampleMod `
+  --companion .\tests\Example.IngameHarness `
+  --companion C:\local-mods\ReadyCompanion `
+  --content-pack .\tests\fixtures\ExamplePack `
+  --json
+sdvkit project review status --json
+sdvkit project review stop --json
+```
+
+Run all three commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one SMAPI C# target project; every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value must explicitly name one ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
+
+Code projects reuse inspection, the isolated Release build, and validated packaging. Ready mod directories and native content packs are copied through a strict plain-tree preparation path because they are already runtime artifacts; source projects, saves, secrets, executables, archives, game assemblies, reparse points, and nested manifests are rejected. Before any launch, the complete explicit set is checked case-insensitively for valid non-reserved `UniqueID` values, unique staging names, required dependency and minimum-version satisfaction, content-pack providers, and existing mod-group collisions. Only the target, named companions, named packs, and SDVKit AlwaysOn count as available dependencies.
+
+The whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target mod identity and version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and full file-set identity. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
+
+Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unlike `project smoke`, review does not use the disposable fixture or stop after 120 ticks.
+
 ## Agent workflow
 
 The repository-owned [`sdv-project-smoke`](.agents/skills/sdv-project-smoke/SKILL.md) skill guides agents through discovery, project inspection, the existing end-to-end smoke, and evidence-based JSON/log reporting. It uses `single` by default and `network-2` only when a user explicitly requests a multiplayer test.

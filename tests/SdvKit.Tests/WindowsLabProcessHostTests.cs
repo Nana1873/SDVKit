@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
 using SdvKit.Cli.LiveLab;
@@ -39,10 +40,13 @@ public sealed class WindowsLabProcessHostTests
     }
 
     [Theory]
-    [InlineData(false, 0x00000100, 0)]
-    [InlineData(true, 0x00000101, 7)]
-    public void NativeLauncherUsesShowMinimizedNoActivateOnlyWhenRequested(
-        bool requested,
+    [InlineData(false, false, 0x00000100, 0)]
+    [InlineData(true, false, 0x00000101, 7)]
+    [InlineData(false, true, 0, 0)]
+    [InlineData(true, true, 0, 0)]
+    public void NativeLauncherUsesWindowFlagsForTheSelectedLaunchMode(
+        bool startMinimized,
+        bool interactiveConsole,
         int expectedFlags,
         short expectedShowWindow)
     {
@@ -54,13 +58,64 @@ public sealed class WindowsLabProcessHostTests
             new Dictionary<string, string>(StringComparer.Ordinal),
             Path.Combine(temporary.Path, "stdout.log"),
             Path.Combine(temporary.Path, "stderr.log"),
-            StartMinimizedWithoutActivation: requested);
+            StartMinimizedWithoutActivation: startMinimized,
+            InteractiveConsole: interactiveConsole);
 
         (int flags, short showWindow) =
             WindowsProcessLauncher.GetStartupWindowSettings(specification);
 
         Assert.Equal(expectedFlags, flags);
         Assert.Equal(expectedShowWindow, showWindow);
+    }
+
+    [Theory]
+    [InlineData(false, true, 0x00080400)]
+    [InlineData(true, false, 0x00000410)]
+    public void NativeLauncherUsesANewConsoleWithoutInheritedHandlesOnlyForInteractiveStarts(
+        bool interactiveConsole,
+        bool expectedInheritHandles,
+        int expectedCreationFlags)
+    {
+        using TemporaryDirectory temporary = new();
+        LabProcessStartSpec specification = new(
+            Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            temporary.Path,
+            [],
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            Path.Combine(temporary.Path, "stdout.log"),
+            Path.Combine(temporary.Path, "stderr.log"),
+            InteractiveConsole: interactiveConsole);
+
+        (bool inheritHandles, uint creationFlags) =
+            WindowsProcessLauncher.GetProcessCreationSettings(specification);
+
+        Assert.Equal(expectedInheritHandles, inheritHandles);
+        Assert.Equal(checked((uint)expectedCreationFlags), creationFlags);
+    }
+
+    [Fact]
+    public void FailedInteractiveStartDoesNotCreateRedirectedLogFiles()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        string stdout = Path.Combine(temporary.Path, "runtime", "stdout.log");
+        string stderr = Path.Combine(temporary.Path, "runtime", "stderr.log");
+        LabProcessStartSpec specification = new(
+            Path.Combine(temporary.Path, "missing.exe"),
+            temporary.Path,
+            [],
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            stdout,
+            stderr,
+            InteractiveConsole: true);
+
+        Assert.Throws<Win32Exception>(() => WindowsProcessLauncher.Start(specification));
+        Assert.False(File.Exists(stdout));
+        Assert.False(File.Exists(stderr));
     }
 
     [Fact]

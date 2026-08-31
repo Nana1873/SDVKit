@@ -95,6 +95,40 @@ public sealed class ProjectBuilderTests
     }
 
     [Fact]
+    public void BuildIgnoresPreexistingProjectReferenceIntermediateFiles()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = CreateMod(temporary);
+        string sharedDirectory = AddExternalProjectReference(temporary, target);
+        string sharedProject = System.IO.Path.Combine(sharedDirectory, "ExampleMod.csproj");
+        string gamePath = CreateReferenceAssemblies(temporary);
+
+        DotNetBuildResult prerequisiteBuild = ProjectBuilder.RunDotNet(new DotNetBuildCommand(
+            sharedDirectory,
+            ["build", sharedProject, "--configuration", "Release", "--nologo"]));
+        Assert.True(
+            prerequisiteBuild.ExitCode == 0,
+            prerequisiteBuild.StartError + prerequisiteBuild.Output);
+        string originalAssemblyInfo = Assert.Single(Directory.GetFiles(
+            System.IO.Path.Combine(sharedDirectory, "obj"),
+            "*.AssemblyInfo.cs",
+            SearchOption.AllDirectories));
+
+        ProjectBuildReport build = ProjectBuilder.Build(
+            target,
+            () => new DoctorReport(
+                1,
+                DoctorReport.Ready,
+                [new DetectedInstallation(gamePath)]));
+
+        Assert.True(
+            build.Problems.Count == 0,
+            File.ReadAllText(System.IO.Path.Combine(target, ".sdvkit", "logs", "build.log")));
+        Assert.True(File.Exists(originalAssemblyInfo));
+        Assert.Equal(2, ProjectArtifactDirectories(target, "obj", "ExampleMod").Length);
+    }
+
+    [Fact]
     public void BuildRejectsProjectOutputOverridesOutsideStateDirectory()
     {
         using TemporaryDirectory temporary = new();
