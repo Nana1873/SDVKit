@@ -86,6 +86,13 @@ internal sealed class LiveLabService
         "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID",
     ];
 
+    private static readonly string[] ProjectModEnvironmentNames =
+    [
+        "SDVKIT_PROJECT_MOD_UNIQUE_ID",
+        "SDVKIT_PROJECT_MOD_VERSION",
+        "SDVKIT_PROJECT_MOD_BUILD_IDENTITY",
+    ];
+
     private readonly LiveLabPaths _paths;
     private readonly ILiveLabStateStore _stateStore;
     private readonly IAlwaysOnBuilder _alwaysOnBuilder;
@@ -97,6 +104,8 @@ internal sealed class LiveLabService
     private readonly Action<TimeSpan> _delay;
     private readonly string _reportTopology;
     private IReadOnlyList<string> _lastTestSaveLogPaths = [];
+
+    internal AlwaysOnStatusReport? LastAlwaysOn { get; private set; }
 
     internal LiveLabService(
         LiveLabPaths paths,
@@ -197,7 +206,7 @@ internal sealed class LiveLabService
             "start" => Start(),
             "status" => Status(),
             "stop" => Stop(),
-            "test-save" => TestSave(),
+            "test-save" => TestSave(projectMod: null),
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
     }
@@ -205,11 +214,19 @@ internal sealed class LiveLabService
     internal LiveLabCommandResult StartNetwork(
         TestSaveLaunchState? testSave,
         NetworkTwoLaunchState networkTwo,
-        AlwaysOnBuildResult preparedBuild)
+        AlwaysOnBuildResult preparedBuild,
+        ProjectModLaunchState? projectMod = null)
     {
         ArgumentNullException.ThrowIfNull(networkTwo);
         ArgumentNullException.ThrowIfNull(preparedBuild);
-        return Start(testSave, networkTwo, preparedBuild);
+        return Start(testSave, networkTwo, preparedBuild, projectMod);
+    }
+
+    internal LiveLabCommandResult RunProjectTestSave(ProjectModLaunchState projectMod)
+    {
+        ArgumentNullException.ThrowIfNull(projectMod);
+        projectMod.Validate();
+        return TestSave(projectMod);
     }
 
     internal LiveLabCommandResult StatusNetwork() => Status();
@@ -296,7 +313,7 @@ internal sealed class LiveLabService
             alwaysOn: report.AlwaysOn);
     }
 
-    private LiveLabCommandResult TestSave()
+    private LiveLabCommandResult TestSave(ProjectModLaunchState? projectMod)
     {
         LiveLabState? existing = ReadState();
         if (existing is not null)
@@ -331,7 +348,7 @@ internal sealed class LiveLabService
             TestSaveLaunchState launch = preparation.LaunchState;
             try
             {
-                LiveLabCommandResult started = Start(launch);
+                LiveLabCommandResult started = Start(launch, projectMod: projectMod);
                 if (started.ExitCode != Success)
                 {
                     List<LiveLabProblem> problems =
@@ -616,8 +633,10 @@ internal sealed class LiveLabService
     private LiveLabCommandResult Start(
         TestSaveLaunchState? testSave = null,
         NetworkTwoLaunchState? networkTwo = null,
-        AlwaysOnBuildResult? preparedBuild = null)
+        AlwaysOnBuildResult? preparedBuild = null,
+        ProjectModLaunchState? projectMod = null)
     {
+        projectMod?.Validate();
         if (networkTwo is not null)
         {
             networkTwo.Validate();
@@ -707,6 +726,11 @@ internal sealed class LiveLabService
             environment[name] = string.Empty;
         }
 
+        foreach (string name in ProjectModEnvironmentNames)
+        {
+            environment[name] = string.Empty;
+        }
+
         if (testSave is not null)
         {
             AddTestSaveEnvironment(environment, testSave);
@@ -715,6 +739,11 @@ internal sealed class LiveLabService
         if (networkTwo is not null)
         {
             AddNetworkTwoEnvironment(environment, networkTwo);
+        }
+
+        if (projectMod is not null)
+        {
+            AddProjectModEnvironment(environment, projectMod);
         }
 
         var specification = new LabProcessStartSpec(
@@ -747,7 +776,8 @@ internal sealed class LiveLabService
             _paths.StatusPath,
             _paths.StopRequestPath,
             testSave,
-            networkTwo);
+            networkTwo,
+            projectMod);
         if (started.Status != LabProcessStartStatus.Started)
         {
             return HandleLaunchVerificationFailure(
@@ -1279,6 +1309,45 @@ internal sealed class LiveLabService
             }
         }
 
+        if (state.ProjectMod is not null)
+        {
+            ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
+            if (projectMod?.State is "invalid" or "mismatch" or "unexpected")
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "projectModStatusMismatch",
+                    $"The AlwaysOn project-mod marker is {projectMod.State}.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if (projectMod is not null
+                && string.Equals(projectMod.State, "failed", StringComparison.Ordinal))
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "projectModLoadFailed",
+                    projectMod.Message
+                        ?? "SMAPI did not confirm the expected project mod as loaded.",
+                    alwaysOn: alwaysOn);
+            }
+
+            if ((projectMod is null
+                    || string.Equals(projectMod.State, "pending", StringComparison.Ordinal))
+                && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
+                    > AlwaysOnStartupGrace)
+            {
+                return Failure(
+                    "running",
+                    state,
+                    "projectModPending",
+                    "AlwaysOn did not publish the launch-bound project-mod load marker within 30 seconds.",
+                    alwaysOn: alwaysOn);
+            }
+        }
+
         return Result(Success, Report("running", state, [], alwaysOn: alwaysOn));
     }
 
@@ -1286,6 +1355,7 @@ internal sealed class LiveLabService
         LiveLabState state,
         AlwaysOnStatusReport alwaysOn)
     {
+        LastAlwaysOn = alwaysOn;
         if (!string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
         {
             if (state.TestSave is not null)
@@ -1318,6 +1388,7 @@ internal sealed class LiveLabService
 
         bool testSaveSucceeded = true;
         bool networkTwoSucceeded = true;
+        bool projectModSucceeded = true;
         bool scenarioLogArchived = true;
         if (state.TestSave is not null)
         {
@@ -1377,6 +1448,30 @@ internal sealed class LiveLabService
             }
         }
 
+        if (state.ProjectMod is not null)
+        {
+            ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
+            projectModSucceeded = projectMod is not null
+                && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
+                && string.Equals(
+                    projectMod.Phase,
+                    ProjectModContract.LoadedPhase,
+                    StringComparison.Ordinal)
+                && projectMod.LoadConfirmed == true
+                && string.Equals(
+                    projectMod.LoadedUniqueId,
+                    state.ProjectMod.UniqueId,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    projectMod.LoadedVersion,
+                    state.ProjectMod.Version,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    projectMod.BuildIdentity,
+                    state.ProjectMod.BuildIdentity,
+                    StringComparison.Ordinal);
+        }
+
         try
         {
             File.Delete(state.StopRequestPath);
@@ -1389,6 +1484,17 @@ internal sealed class LiveLabService
                 state,
                 "runtimeCleanupFailed",
                 $"The clean stop was confirmed, but its project-local ownership record could not be removed: {exception.Message}",
+                alwaysOn: alwaysOn);
+        }
+
+        if (!projectModSucceeded)
+        {
+            return Failure(
+                "stopped",
+                state,
+                "projectModLoadUnconfirmed",
+                alwaysOn.ProjectMod?.Message
+                    ?? "SMAPI did not confirm the expected project mod identity and version as loaded.",
                 alwaysOn: alwaysOn);
         }
 
@@ -1466,7 +1572,8 @@ internal sealed class LiveLabService
             state.OwnedProcessIdentity,
             _utcNow().ToUniversalTime(),
             state.TestSave,
-            state.NetworkTwo);
+            state.NetworkTwo,
+            state.ProjectMod);
     }
 
     private LiveLabCommandResult Failure(
@@ -1556,6 +1663,16 @@ internal sealed class LiveLabService
         environment["SDVKIT_NETWORK_TWO_LOG_PATH"] = launch.NetworkLogPath;
         environment["SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"] =
             launch.ExpectedFarmhandId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
+    private static void AddProjectModEnvironment(
+        IDictionary<string, string> environment,
+        ProjectModLaunchState launch)
+    {
+        launch.Validate();
+        environment["SDVKIT_PROJECT_MOD_UNIQUE_ID"] = launch.UniqueId;
+        environment["SDVKIT_PROJECT_MOD_VERSION"] = launch.Version;
+        environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"] = launch.BuildIdentity;
     }
 
     private static string DescribeCloseResult(LabProcessCloseResult close)

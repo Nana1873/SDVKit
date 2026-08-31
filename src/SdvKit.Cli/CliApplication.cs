@@ -10,6 +10,11 @@ internal delegate LiveLabCommandResult LiveLabCommandRunner(
     string topology,
     string projectRoot);
 
+internal delegate LiveLabCommandResult ProjectSmokeCommandRunner(
+    string sourcePath,
+    string topology,
+    string labRoot);
+
 public static class CliApplication
 {
     private const int Success = 0;
@@ -19,6 +24,8 @@ public static class CliApplication
     private const string CreateUsage = "Usage: sdvkit project create <smapi-mod|content-pack> <path> --name <name> --author <author> --unique-id <id> --description <text> --json";
     private const string BuildUsage = "Usage: sdvkit project build [path] --json";
     private const string PackageUsage = "Usage: sdvkit project package [path] --json";
+    private const string SmokeUsage =
+        "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -42,7 +49,8 @@ public static class CliApplication
         TextWriter output,
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
-        LiveLabCommandRunner? runLiveLab = null)
+        LiveLabCommandRunner? runLiveLab = null,
+        ProjectSmokeCommandRunner? runProjectSmoke = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -56,6 +64,16 @@ public static class CliApplication
                 && string.Equals(topology, "network-2", StringComparison.Ordinal)
                     ? NetworkTwoSmokeService.Execute(projectRoot, discoverInstallations)
                     : LiveLabService.Execute(action, projectRoot, discoverInstallations);
+        }
+
+        if (runProjectSmoke is null)
+        {
+            runProjectSmoke = (sourcePath, topology, labRoot) =>
+                ProjectSmokeService.Execute(
+                    sourcePath,
+                    topology,
+                    labRoot,
+                    discoverInstallations);
         }
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
@@ -76,7 +94,12 @@ public static class CliApplication
 
         if (string.Equals(arguments[0], "project", StringComparison.Ordinal))
         {
-            return RunProject(arguments, output, error, discoverInstallations);
+            return RunProject(
+                arguments,
+                output,
+                error,
+                discoverInstallations,
+                runProjectSmoke);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -147,7 +170,8 @@ public static class CliApplication
         IReadOnlyList<string> arguments,
         TextWriter output,
         TextWriter error,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        ProjectSmokeCommandRunner runProjectSmoke)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -157,7 +181,8 @@ public static class CliApplication
 
         if (arguments.Count < 2)
         {
-            error.WriteLine("Usage: sdvkit project <inspect|create|build|package> ...");
+            error.WriteLine(
+                "Usage: sdvkit project <inspect|create|build|package|smoke> ...");
             return UsageError;
         }
 
@@ -167,6 +192,7 @@ public static class CliApplication
             "create" => RunProjectCreate(arguments, output, error),
             "build" => RunProjectBuild(arguments, output, error, discoverInstallations),
             "package" => RunProjectPackage(arguments, output, error, discoverInstallations),
+            "smoke" => RunProjectSmoke(arguments, output, error, runProjectSmoke),
             _ => ProjectUsageError(error),
         };
     }
@@ -266,6 +292,32 @@ public static class CliApplication
         return report.Problems.Count == 0 ? Success : InspectionFailed;
     }
 
+    private static int RunProjectSmoke(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectSmokeCommandRunner runProjectSmoke)
+    {
+        if (arguments.Count == 3 && IsHelp(arguments[2]))
+        {
+            output.WriteLine(SmokeUsage);
+            return Success;
+        }
+
+        if (!TryParseProjectSmoke(arguments, out string? path, out string? topology))
+        {
+            error.WriteLine(SmokeUsage);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectSmoke(
+            path!,
+            topology!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
     private static bool TryParseOptionalPath(
         IReadOnlyList<string> arguments,
         out string? path)
@@ -289,6 +341,57 @@ public static class CliApplication
             || operands.Any(argument => argument.StartsWith('-')))
         {
             path = null;
+            return false;
+        }
+
+        path = operands.Count == 0 ? Environment.CurrentDirectory : operands[0];
+        return true;
+    }
+
+    private static bool TryParseProjectSmoke(
+        IReadOnlyList<string> arguments,
+        out string? path,
+        out string? topology)
+    {
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        topology = null;
+        for (var index = 2; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (string.Equals(argument, "--topology", StringComparison.Ordinal))
+            {
+                topologyOptionCount++;
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    path = null;
+                    topology = null;
+                    return false;
+                }
+
+                topology = arguments[++index];
+                continue;
+            }
+
+            operands.Add(argument);
+        }
+
+        if (jsonOptionCount != 1
+            || topologyOptionCount != 1
+            || topology is not ("single" or "network-2")
+            || operands.Count > 1
+            || operands.Any(argument => argument.StartsWith('-')))
+        {
+            path = null;
+            topology = null;
             return false;
         }
 
@@ -351,7 +454,8 @@ public static class CliApplication
 
     private static int ProjectUsageError(TextWriter error)
     {
-        error.WriteLine("Usage: sdvkit project <inspect|create|build|package> ...");
+        error.WriteLine(
+            "Usage: sdvkit project <inspect|create|build|package|smoke> ...");
         return UsageError;
     }
 
@@ -443,6 +547,8 @@ public static class CliApplication
         output.WriteLine("  sdvkit project create <smapi-mod|content-pack> <path> [options] --json");
         output.WriteLine("  sdvkit project build [path] --json");
         output.WriteLine("  sdvkit project package [path] --json");
+        output.WriteLine(
+            "  sdvkit project smoke [path] --topology <single|network-2> --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -452,6 +558,7 @@ public static class CliApplication
         output.WriteLine("  project create  Create a minimal SMAPI mod or Content Patcher pack.");
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
+        output.WriteLine("  project smoke   Build and smoke-test one mod in the isolated live lab.");
         output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
     }
 
@@ -469,5 +576,6 @@ public static class CliApplication
         output.WriteLine(CreateUsage);
         output.WriteLine(BuildUsage);
         output.WriteLine(PackageUsage);
+        output.WriteLine(SmokeUsage);
     }
 }

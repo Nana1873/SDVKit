@@ -136,6 +136,65 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.Equal(hostPaths.TestSaveWorkPath, paths.TestSaveWorkPath);
     }
 
+    [Fact]
+    public void StartBindsProjectTargetEnvironmentAndPersistsItsExactPayload()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths singlePaths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            singlePaths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths paths = LiveLabPaths.ResolveNetworkRole(
+            singlePaths,
+            NetworkTwoContract.FarmhandRole);
+        TestSaveIdentity identity = TestSave(paths).Identity;
+        NetworkTwoLaunchState launch = Launch(
+            paths,
+            NetworkTwoContract.FarmhandRole,
+            identity,
+            expectedFarmhandId: 202L);
+        var projectMod = new ProjectModLaunchState(
+            "Example.ProjectMod",
+            "1.2.3",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222");
+        var stateStore = new FakeStateStore();
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            gamePath);
+        var prepared = new AlwaysOnBuildResult(
+            true,
+            Path.Combine(hostPaths.BuildPath, "always-on-build.log"),
+            null);
+
+        LiveLabCommandResult result = service.StartNetwork(
+            testSave: null,
+            launch,
+            prepared,
+            projectMod);
+
+        Assert.Equal(0, result.ExitCode);
+        LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+        Assert.Equal(projectMod, state.ProjectMod);
+        LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(
+            process.Specification);
+        Assert.Equal(projectMod.UniqueId, specification.Environment[
+            "SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
+        Assert.Equal(projectMod.Version, specification.Environment[
+            "SDVKIT_PROJECT_MOD_VERSION"]);
+        Assert.Equal(projectMod.BuildIdentity, specification.Environment[
+            "SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, true)]

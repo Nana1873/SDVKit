@@ -14,7 +14,8 @@ internal sealed record AlwaysOnStatusReport(
     bool? IpConnectionsEnabled = null,
     NetworkTwoStatusReport? NetworkTwo = null,
     long? ForegroundWindowHandle = null,
-    int? ForegroundProcessId = null);
+    int? ForegroundProcessId = null,
+    ProjectModStatusReport? ProjectMod = null);
 
 internal sealed record AlwaysOnStatusMarker(
     int SchemaVersion,
@@ -31,7 +32,8 @@ internal sealed record AlwaysOnStatusMarker(
     bool? IpConnectionsEnabled = null,
     NetworkTwoStatusMarker? NetworkTwo = null,
     long? ForegroundWindowHandle = null,
-    int? ForegroundProcessId = null);
+    int? ForegroundProcessId = null,
+    ProjectModStatusMarker? ProjectMod = null);
 
 internal static class AlwaysOnStatusReader
 {
@@ -43,7 +45,8 @@ internal static class AlwaysOnStatusReader
         OwnedProcessIdentity process,
         DateTimeOffset nowUtc,
         TestSaveLaunchState? expectedTestSave = null,
-        NetworkTwoLaunchState? expectedNetworkTwo = null)
+        NetworkTwoLaunchState? expectedNetworkTwo = null,
+        ProjectModLaunchState? expectedProjectMod = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(statusPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
@@ -105,6 +108,9 @@ internal static class AlwaysOnStatusReader
             marker.IsActive,
             marker.ForegroundWindowHandle,
             marker.ForegroundProcessId);
+        ProjectModStatusReport? projectMod = ReadProjectMod(
+            marker.ProjectMod,
+            expectedProjectMod);
         return new AlwaysOnStatusReport(
             state,
             marker.Tick,
@@ -116,7 +122,8 @@ internal static class AlwaysOnStatusReader
             marker.IpConnectionsEnabled,
             networkTwo,
             marker.ForegroundWindowHandle,
-            marker.ForegroundProcessId);
+            marker.ForegroundProcessId,
+            projectMod);
     }
 
     private static TestSaveStatusReport? ReadTestSave(
@@ -338,6 +345,94 @@ internal static class AlwaysOnStatusReader
 
     private static NetworkTwoStatusReport InvalidNetworkTwo(string state) =>
         new(state, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+    private static ProjectModStatusReport? ReadProjectMod(
+        ProjectModStatusMarker? marker,
+        ProjectModLaunchState? expected)
+    {
+        if (expected is null)
+        {
+            return marker is null
+                ? null
+                : InvalidProjectMod("unexpected");
+        }
+
+        if (marker is null)
+        {
+            return new ProjectModStatusReport(
+                "pending",
+                null,
+                ProjectModContract.WaitingForGameLaunchPhase,
+                expected.UniqueId,
+                expected.Version,
+                null,
+                null,
+                expected.BuildIdentity,
+                null,
+                null);
+        }
+
+        bool knownPhase = marker.Phase is ProjectModContract.WaitingForGameLaunchPhase
+            or ProjectModContract.LoadedPhase
+            or ProjectModContract.FailedPhase;
+        if (marker.SchemaVersion != ProjectModContract.SchemaVersion
+            || !knownPhase
+            || !ModBuildIdentity.IsValid(marker.BuildIdentity)
+            || !string.Equals(marker.ExpectedUniqueId, expected.UniqueId, StringComparison.Ordinal)
+            || !string.Equals(marker.ExpectedVersion, expected.Version, StringComparison.Ordinal)
+            || !string.Equals(marker.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal))
+        {
+            return InvalidProjectMod("mismatch");
+        }
+
+        bool loaded = string.Equals(
+            marker.Phase,
+            ProjectModContract.LoadedPhase,
+            StringComparison.Ordinal);
+        bool waiting = string.Equals(
+            marker.Phase,
+            ProjectModContract.WaitingForGameLaunchPhase,
+            StringComparison.Ordinal);
+        if ((loaded
+                && (!marker.LoadConfirmed
+                    || !string.Equals(
+                        marker.LoadedUniqueId,
+                        expected.UniqueId,
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        marker.LoadedVersion,
+                        expected.Version,
+                        StringComparison.Ordinal)))
+            || (!loaded && marker.LoadConfirmed)
+            || (waiting
+                && (marker.LoadedUniqueId is not null
+                    || marker.LoadedVersion is not null)))
+        {
+            return InvalidProjectMod("invalid");
+        }
+
+        string state = marker.Phase switch
+        {
+            ProjectModContract.WaitingForGameLaunchPhase => "pending",
+            ProjectModContract.LoadedPhase => "ready",
+            ProjectModContract.FailedPhase => "failed",
+            _ => "invalid",
+        };
+        return new ProjectModStatusReport(
+            state,
+            marker.SchemaVersion,
+            marker.Phase,
+            marker.ExpectedUniqueId,
+            marker.ExpectedVersion,
+            marker.LoadedUniqueId,
+            marker.LoadedVersion,
+            marker.BuildIdentity,
+            marker.LoadConfirmed,
+            marker.Message);
+    }
+
+    private static ProjectModStatusReport InvalidProjectMod(string state) =>
+        new(state, null, null, null, null, null, null, null, null, null);
 
     private static bool PathsEqual(string left, string right)
     {

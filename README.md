@@ -116,6 +116,27 @@ For C# mods, `project package` lets ModBuildConfig select the declared release o
 
 All toolkit JSON uses relative paths for project-owned files and archives. Exit code `0` means success, `2` is a CLI usage error, and `3` is a controlled create, build, or package outcome; build diagnostics are kept in the reported `.sdvkit/logs` file.
 
+## End-to-end project smoke
+
+Build, package, and load one current standalone SMAPI C# mod in the existing isolated live lab:
+
+```powershell
+sdvkit project smoke .\ExampleMod --topology single --json
+sdvkit project smoke .\ExampleMod --topology network-2 --json
+```
+
+The optional project path selects the mod source; it defaults to the current directory. The live lab remains rooted at the command's current directory, so an explicitly selected project can reuse that lab's SDVKit-owned disposable world without copying a save or creating another lifecycle. Project build/package output stays below the selected source's `.sdvkit`; live staging, logs, fixture state, and reports stay below the lab root's `.sdvkit`.
+
+V1 accepts exactly one standalone code-mod manifest paired with exactly one C# project. It calls the existing inspector and isolated Release builder, then stages only the release ZIP already produced and validated by `ProjectPackager`. Content packs, hybrid trees, ambiguous projects, the reserved `SDVKit.AlwaysOn` identity, and missing required runtime dependencies are controlled exit-`3` outcomes. Optional dependencies may be absent; SDVKit never downloads or installs Content Patcher or another mod automatically.
+
+The package is revalidated before extraction. Its package SHA-256, declared manifest version, canonical SMAPI version, and complete staged file-set identity are recorded, and the package is extracted only within the selected isolated mod group as a sibling of AlwaysOn under `.sdvkit/lab/single/mods` or `.sdvkit/lab/network-2/{host,farmhand}/mods`. In JSON, `declaredVersion` preserves the package-manifest text while `version` is SMAPI's canonical semantic form (for example, `1.0` becomes `1.0.0`). Network-2 copies the same prepared package file set to both roles and requires matching identities. An unowned directory, another mod, drifted ownership state, or any retained earlier project-smoke staging blocks the next run. Even an exactly matching ownership marker is not auto-replaced, because a later invocation cannot prove that every child from an earlier failed launch stopped; normal confirmed cleanup removes it in the originating run.
+
+AlwaysOn uses SMAPI's loaded-mod registry after `GameLaunched` to confirm the exact target `UniqueID` and manifest version on the single process or on both host and farmhand. The command then reuses the existing disposable-fixture load, 120-tick single or joined-pair smoke, exact-process clean stop, option restoration, junction cleanup, and byte-for-byte baseline reset. On a confirmed normal end, it removes only its own target staging; uncertain process ownership retains that staging and reports a blocked cleanup instead of mutating a possibly active mod group.
+
+The resulting evidence means that a controlled package file set was staged and SMAPI reported the expected mod identity/version while the bounded smoke passed. The build identity is echoed through the launch-bound game-side marker; it is **not** a hash measured from a DLL in memory. A passed smoke also does not prove that every feature of the target mod is functionally correct. Target-related load failures are selected from the project-local captured SMAPI stdout/stderr logs and returned with those limits stated in JSON.
+
+This command never deploys to the normal or mod-manager-owned `Mods` directory, enumerates personal saves, creates a permanent deployment, performs hot reload, or introduces another process/save/multiplayer state machine.
+
 ## First milestones
 
 1. Environment discovery and project inspection.
@@ -124,6 +145,7 @@ All toolkit JSON uses relative paths for project-owned files and archives. Exit 
 4. A small always-on game bridge for controlled background runs.
 5. One disposable test-save workflow and focused scenario smoke tests.
 6. One exact local host-plus-farmhand multiplayer smoke.
+7. One packaged SMAPI project loaded and smoke-tested end to end in either existing topology.
 
 The issue tracker is the roadmap. A capability is added only when it serves a current workflow and can reuse no smaller existing path.
 

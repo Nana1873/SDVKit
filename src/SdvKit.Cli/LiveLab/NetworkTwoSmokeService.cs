@@ -57,6 +57,7 @@ internal sealed class NetworkTwoSmokeService
     private readonly Action<TimeSpan> _delay;
     private readonly Func<DoctorReport> _discoverInstallations;
     private readonly string _smokeId;
+    private readonly ProjectModLaunchState? _projectMod;
     private readonly UnfocusedObservation _hostUnfocused = new();
     private readonly UnfocusedObservation _farmhandUnfocused = new();
     private readonly List<LiveLabProblem> _problems = [];
@@ -79,7 +80,8 @@ internal sealed class NetworkTwoSmokeService
         Func<DoctorReport> discoverInstallations,
         Func<DateTimeOffset>? utcNow = null,
         Action<TimeSpan>? delay = null,
-        Func<string>? createSmokeId = null)
+        Func<string>? createSmokeId = null,
+        ProjectModLaunchState? projectMod = null)
     {
         _singlePaths = singlePaths;
         _hostPaths = LiveLabPaths.ResolveNetworkRole(singlePaths, NetworkTwoContract.HostRole);
@@ -95,6 +97,8 @@ internal sealed class NetworkTwoSmokeService
         _delay = delay ?? Thread.Sleep;
         _discoverInstallations = discoverInstallations;
         _smokeId = (createSmokeId ?? (() => Guid.NewGuid().ToString("N")))();
+        projectMod?.Validate();
+        _projectMod = projectMod;
 
         var processHost = new WindowsLabProcessHost();
         var unusedPreparedBuilder = new AlwaysOnBuilder();
@@ -143,6 +147,41 @@ internal sealed class NetworkTwoSmokeService
             }
 
             var service = new NetworkTwoSmokeService(paths, discoverInstallations);
+            try
+            {
+                return service.Run();
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                return service.HandleUnexpectedFailure(exception);
+            }
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return new LiveLabCommandResult(
+                OperationFailed,
+                EmptyReport(
+                    "blocked",
+                    [Problem("networkTwoOperationFailed", exception.Message)]));
+        }
+    }
+
+    internal static LiveLabCommandResult ExecuteWithinLock(
+        string projectRoot,
+        Func<DoctorReport> discoverInstallations,
+        ProjectModLaunchState projectMod)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        ArgumentNullException.ThrowIfNull(discoverInstallations);
+        ArgumentNullException.ThrowIfNull(projectMod);
+
+        try
+        {
+            LiveLabPaths paths = LiveLabPaths.Resolve(projectRoot);
+            var service = new NetworkTwoSmokeService(
+                paths,
+                discoverInstallations,
+                projectMod: projectMod);
             try
             {
                 return service.Run();
@@ -243,7 +282,8 @@ internal sealed class NetworkTwoSmokeService
         LiveLabCommandResult hostStarted = _hostService.StartNetwork(
             _fixtureLaunch,
             hostLaunch,
-            prepared.HostBuild);
+            prepared.HostBuild,
+            _projectMod);
         _hostReport = RequireReport(hostStarted);
         _hostUnverifiedChildPossible = hostStarted.ExitCode != Success
             && MayHaveUncontrolledProcess(_hostReport);
@@ -273,7 +313,8 @@ internal sealed class NetworkTwoSmokeService
         LiveLabCommandResult farmhandStarted = _farmhandService.StartNetwork(
             testSave: null,
             farmhandLaunch,
-            prepared.HostBuild);
+            prepared.HostBuild,
+            _projectMod);
         _farmhandReport = RequireReport(farmhandStarted);
         _farmhandUnverifiedChildPossible = farmhandStarted.ExitCode != Success
             && MayHaveUncontrolledProcess(_farmhandReport);
@@ -585,6 +626,13 @@ internal sealed class NetworkTwoSmokeService
                 farmhandNetwork.RemotePlayerName,
                 TestSaveContract.PlayerName,
                 StringComparison.Ordinal);
+        if (_projectMod is not null)
+        {
+            matches = matches
+                && ProjectModMatches(host?.ProjectMod, _projectMod)
+                && ProjectModMatches(farmhand?.ProjectMod, _projectMod);
+        }
+
         if (!matches)
         {
             _problems.Add(Problem(
@@ -594,6 +642,16 @@ internal sealed class NetworkTwoSmokeService
 
         return matches;
     }
+
+    private static bool ProjectModMatches(
+        ProjectModStatusReport? actual,
+        ProjectModLaunchState expected) =>
+        actual?.State == "ready"
+        && actual.Phase == ProjectModContract.LoadedPhase
+        && actual.LoadConfirmed == true
+        && string.Equals(actual.LoadedUniqueId, expected.UniqueId, StringComparison.Ordinal)
+        && string.Equals(actual.LoadedVersion, expected.Version, StringComparison.Ordinal)
+        && string.Equals(actual.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal);
 
     private LiveLabCommandResult FailFromReport(
         LiveLabReport report,

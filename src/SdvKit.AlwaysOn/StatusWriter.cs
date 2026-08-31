@@ -39,7 +39,8 @@ internal sealed class StatusWriter
         bool? ipConnectionsEnabled = null,
         NetworkTwoStatusMarker? networkTwo = null,
         long? foregroundWindowHandle = null,
-        int? foregroundProcessId = null)
+        int? foregroundProcessId = null,
+        ProjectModStatusMarker? projectMod = null)
     {
         var marker = new
         {
@@ -57,6 +58,7 @@ internal sealed class StatusWriter
             foregroundProcessId,
             testSave,
             networkTwo,
+            projectMod,
             observedAtUtc = DateTimeOffset.UtcNow,
         };
         string json = JsonSerializer.Serialize(marker, JsonOptions) + Environment.NewLine;
