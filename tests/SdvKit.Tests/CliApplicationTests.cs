@@ -25,7 +25,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
+            "sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -356,7 +356,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
+            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -691,7 +691,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json"
+            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json"
                 + Environment.NewLine
                 + "       sdvkit project review status [--topology <single|network-2>] --json"
                 + Environment.NewLine
@@ -700,6 +700,8 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology network-2 --json"
+                + Environment.NewLine
+                + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine,
             error);
     }
@@ -747,6 +749,10 @@ public sealed class CliApplicationTests
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
         Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
+        Assert.Contains(
+            "Content-pack targets require --topology single and an explicit provider --companion.",
+            output,
+            StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 

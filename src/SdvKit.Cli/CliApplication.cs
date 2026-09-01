@@ -41,7 +41,7 @@ public static class CliApplication
     private const string SmokeUsage =
         "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
     private const string ReviewStartUsage =
-        "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json";
+        "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
         "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
@@ -769,7 +769,7 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project smoke [path] --topology <single|network-2> --json");
         output.WriteLine(
-            "  sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json");
+            "  sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json");
         output.WriteLine(
             "  sdvkit project review status [--topology <single|network-2>] --json");
         output.WriteLine(
@@ -787,7 +787,7 @@ public static class CliApplication
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
         output.WriteLine("  project smoke   Build and smoke-test one mod in the isolated live lab.");
-        output.WriteLine("  project review  Run an explicit local mod set in an interactive single or network-2 lab.");
+        output.WriteLine("  project review  Review one C# mod target, or one root content-pack target in singleplayer.");
         output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
     }
 
@@ -820,5 +820,7 @@ public static class CliApplication
         output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
+        output.WriteLine(
+            "Content-pack targets require --topology single and an explicit provider --companion.");
     }
 }
