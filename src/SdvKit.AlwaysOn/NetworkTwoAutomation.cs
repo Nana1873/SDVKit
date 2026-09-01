@@ -348,7 +348,7 @@ internal sealed class NetworkTwoAutomation
                 return;
             }
 
-            VerifyHostFixtureBeforeHosting();
+            VerifyHostFixtureBeforeHosting(testSave.Mode);
             SetPhase("startingHost", "Starting Stardew's normal LAN host.");
             Game1.multiplayerMode = 2;
             object multiplayer = _multiplayer!.GetValue(null)
@@ -487,7 +487,7 @@ internal sealed class NetworkTwoAutomation
         }
     }
 
-    private void VerifyHostFixtureBeforeHosting()
+    private void VerifyHostFixtureBeforeHosting(string testSaveMode)
     {
         if (!Context.IsWorldReady
             || !Context.IsMainPlayer
@@ -502,7 +502,46 @@ internal sealed class NetworkTwoAutomation
                 "The network-2 host did not retain the exact disposable fixture identity.");
         }
 
+        Farmer farmhand = PrepareHostFarmhand(testSaveMode);
+
+        if (farmhand.UniqueMultiplayerID == 0)
+        {
+            throw new InvalidOperationException(
+                "The loaded disposable fixture created an invalid farmhand identity.");
+        }
+
+        Game1.player.modData[NetworkTwoContract.BuildMarkerKey] = _loadedBuildIdentity;
+        Game1.player.modData[NetworkTwoContract.RoleMarkerKey] = NetworkTwoContract.HostRole;
+        _localPlayerId = Game1.player.UniqueMultiplayerID;
+        _localPlayerName = Game1.player.Name;
+        _remotePlayerId = farmhand.UniqueMultiplayerID;
+        _identityVerified = true;
+    }
+
+    private Farmer PrepareHostFarmhand(string testSaveMode)
+    {
         List<Farmer> farmhands = Game1.getAllFarmhands().ToList();
+        if (string.Equals(
+                testSaveMode,
+                TestSaveContract.ReviewMode,
+                StringComparison.Ordinal)
+            && farmhands.Count == 1)
+        {
+            Farmer savedFarmhand = farmhands[0];
+            if (!savedFarmhand.isUnclaimedFarmhand
+                || savedFarmhand.UniqueMultiplayerID == 0
+                || !MatchesPlayer(
+                    savedFarmhand,
+                    NetworkTwoContract.FarmhandRole,
+                    NetworkTwoContract.FarmhandName))
+            {
+                throw new InvalidOperationException(
+                    "The loaded review save did not retain the exact unclaimed farmhand identity.");
+            }
+
+            return savedFarmhand;
+        }
+
         if (farmhands.Count != 0)
         {
             throw new InvalidOperationException(
@@ -554,19 +593,7 @@ internal sealed class NetworkTwoAutomation
                 "The loaded disposable fixture did not create exactly one unclaimed farmhand.");
         }
 
-
-        if (farmhands[0].UniqueMultiplayerID == 0)
-        {
-            throw new InvalidOperationException(
-                "The loaded disposable fixture created an invalid farmhand identity.");
-        }
-
-        Game1.player.modData[NetworkTwoContract.BuildMarkerKey] = _loadedBuildIdentity;
-        Game1.player.modData[NetworkTwoContract.RoleMarkerKey] = NetworkTwoContract.HostRole;
-        _localPlayerId = Game1.player.UniqueMultiplayerID;
-        _localPlayerName = Game1.player.Name;
-        _remotePlayerId = farmhands[0].UniqueMultiplayerID;
-        _identityVerified = true;
+        return farmhands[0];
     }
 
     private void ConfigureFarmhand(Farmer farmhand)

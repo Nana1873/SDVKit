@@ -108,16 +108,18 @@ internal sealed class TestSaveAutomation
             identity = ReadIdentity();
             identity.Validate();
             identityValidated = true;
-            if (mode is not (TestSaveContract.CreateMode or TestSaveContract.ScenarioMode))
+            if (mode is not (TestSaveContract.CreateMode
+                or TestSaveContract.ScenarioMode
+                or TestSaveContract.ReviewMode))
             {
                 throw new InvalidDataException("SDVKIT_TEST_SAVE_MODE is invalid.");
             }
 
             if (networkHost
-                && !string.Equals(mode, TestSaveContract.ScenarioMode, StringComparison.Ordinal))
+                && mode is not (TestSaveContract.ScenarioMode or TestSaveContract.ReviewMode))
             {
                 throw new InvalidDataException(
-                    "The network-2 host requires the existing disposable scenario fixture.");
+                    "The network-2 host requires the existing disposable scenario or review fixture.");
             }
 
             scenarioLogPath = ReadEnvironment("SDVKIT_TEST_SAVE_LOG_PATH");
@@ -205,7 +207,9 @@ internal sealed class TestSaveAutomation
             reason = exception.Message;
             if (identityValidated
                 && identity is not null
-                && mode is TestSaveContract.CreateMode or TestSaveContract.ScenarioMode
+                && mode is (TestSaveContract.CreateMode
+                    or TestSaveContract.ScenarioMode
+                    or TestSaveContract.ReviewMode)
                 && Path.IsPathFullyQualified(scenarioLogPath))
             {
                 automation = new TestSaveAutomation(
@@ -406,7 +410,7 @@ internal sealed class TestSaveAutomation
 
     public void OnSaveLoaded()
     {
-        if (!string.Equals(_mode, TestSaveContract.ScenarioMode, StringComparison.Ordinal)
+        if (_mode is not (TestSaveContract.ScenarioMode or TestSaveContract.ReviewMode)
             || !string.Equals(_phase, "loading", StringComparison.Ordinal))
         {
             return;
@@ -415,6 +419,14 @@ internal sealed class TestSaveAutomation
         try
         {
             VerifyExactWorld();
+            if (string.Equals(_mode, TestSaveContract.ReviewMode, StringComparison.Ordinal))
+            {
+                SetPhase(
+                    "passed",
+                    "Exact fixture loaded for interactive review without scenario mutation.");
+                return;
+            }
+
             if (Game1.player.modData.ContainsKey(TestSaveContract.ScenarioMarkerKey))
             {
                 throw new InvalidOperationException(
@@ -444,7 +456,11 @@ internal sealed class TestSaveAutomation
 
         try
         {
-            VerifyExactWorld();
+            VerifyExactWorld(
+                allowMultiplayer: string.Equals(
+                    _mode,
+                    TestSaveContract.ReviewMode,
+                    StringComparison.Ordinal));
             Log("saving", "Exact fixture identity verified before Stardew save serialization.");
         }
         catch (Exception exception)
@@ -736,7 +752,9 @@ internal sealed class TestSaveAutomation
         }
     }
 
-    private void VerifyExactWorld(bool requireWorldReady = true)
+    private void VerifyExactWorld(
+        bool requireWorldReady = true,
+        bool allowMultiplayer = false)
     {
         var mismatches = new List<string>();
         Farmer? player = Game1.player;
@@ -750,7 +768,7 @@ internal sealed class TestSaveAutomation
             mismatches.Add("mainPlayer");
         }
 
-        if (Context.IsMultiplayer)
+        if (!allowMultiplayer && Context.IsMultiplayer)
         {
             mismatches.Add("singlePlayer");
         }

@@ -67,16 +67,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
 
     public TestSavePreparation PrepareForStart()
     {
-        _paths.EnsureDirectories();
-        _paths.RejectUserProfileReparsePoints();
-        EnsurePlainDirectory(_paths.TestSaveRoot);
-        RejectManagedReparsePoints();
-        TestSaveIdentity identity = LoadOrCreateIdentity();
-        ValidateSavesRoot();
-        _junction.VerifyInactive(
-            _savesRoot,
-            identity.SaveId,
-            _paths.TestSaveWorkPath);
+        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: true);
 
         string mode;
         if (Directory.Exists(_paths.TestSaveBaselinePath))
@@ -91,6 +82,68 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
             mode = TestSaveContract.CreateMode;
         }
 
+        return Activate(identity, mode);
+    }
+
+    public TestSavePreparation PrepareReviewForStart(bool resetFromBaseline)
+    {
+        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
+        if (!Directory.Exists(_paths.TestSaveBaselinePath))
+        {
+            throw new InvalidOperationException(
+                "Interactive review requires the existing disposable test-save baseline.");
+        }
+
+        VerifyOwnedPayload(_paths.TestSaveBaselinePath, identity);
+        VerifyRequiredStardewFiles(_paths.TestSaveBaselinePath, identity);
+        if (resetFromBaseline)
+        {
+            ResetWorkFromBaseline(identity);
+        }
+        else
+        {
+            VerifyOwnedPayload(_paths.TestSaveWorkPath, identity);
+            VerifyRequiredStardewFiles(_paths.TestSaveWorkPath, identity);
+        }
+
+        return Activate(identity, TestSaveContract.ReviewMode);
+    }
+
+    public void ResetReview()
+    {
+        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
+        if (!Directory.Exists(_paths.TestSaveBaselinePath))
+        {
+            throw new InvalidOperationException(
+                "Interactive review requires the existing disposable test-save baseline.");
+        }
+
+        ResetWorkFromBaseline(identity);
+        _junction.VerifyInactive(
+            _savesRoot,
+            identity.SaveId,
+            _paths.TestSaveWorkPath);
+    }
+
+    private TestSaveIdentity PrepareFixtureAccess(bool allowCreateIdentity)
+    {
+        _paths.EnsureDirectories();
+        _paths.RejectUserProfileReparsePoints();
+        EnsurePlainDirectory(_paths.TestSaveRoot);
+        RejectManagedReparsePoints();
+        TestSaveIdentity identity = allowCreateIdentity
+            ? LoadOrCreateIdentity()
+            : ReadIdentity(_paths.TestSaveManifestPath);
+        ValidateSavesRoot();
+        _junction.VerifyInactive(
+            _savesRoot,
+            identity.SaveId,
+            _paths.TestSaveWorkPath);
+        return identity;
+    }
+
+    private TestSavePreparation Activate(TestSaveIdentity identity, string mode)
+    {
         File.Delete(_paths.TestSaveScenarioLogPath);
         string slotPath = Path.Combine(_savesRoot, identity.SaveId);
         var launch = new TestSaveLaunchState(
@@ -124,6 +177,11 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         TestSaveIdentity identity = UnmountBeforeFullValidation(launch);
         VerifyRegisteredIdentity(identity);
         VerifyOwnedPayload(_paths.TestSaveWorkPath, identity);
+        if (string.Equals(launch.Mode, TestSaveContract.ReviewMode, StringComparison.Ordinal))
+        {
+            VerifyRequiredStardewFiles(_paths.TestSaveWorkPath, identity);
+        }
+
         IReadOnlyList<string> logs = ArchiveLogs(launchId, launch.Mode);
 
         if (string.Equals(launch.Mode, TestSaveContract.CreateMode, StringComparison.Ordinal))
@@ -131,7 +189,11 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
             CaptureBaseline(identity);
         }
 
-        ResetWorkFromBaseline(identity);
+        if (!string.Equals(launch.Mode, TestSaveContract.ReviewMode, StringComparison.Ordinal))
+        {
+            ResetWorkFromBaseline(identity);
+        }
+
         _junction.EnsureInactive(_savesRoot, identity.SaveId, _paths.TestSaveWorkPath);
         return new TestSaveCleanupResult(logs, HasScenarioLog(logs));
     }
@@ -144,7 +206,8 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         VerifyRegisteredIdentity(identity);
         VerifyOwnedPayload(_paths.TestSaveWorkPath, identity);
         IReadOnlyList<string> logs = ArchiveLogs(launchId, $"{launch.Mode}-failed");
-        if (Directory.Exists(_paths.TestSaveBaselinePath))
+        if (!string.Equals(launch.Mode, TestSaveContract.ReviewMode, StringComparison.Ordinal)
+            && Directory.Exists(_paths.TestSaveBaselinePath))
         {
             ResetWorkFromBaseline(identity);
         }

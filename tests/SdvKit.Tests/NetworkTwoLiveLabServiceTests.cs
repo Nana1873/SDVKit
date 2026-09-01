@@ -208,6 +208,76 @@ public sealed class NetworkTwoLiveLabServiceTests
     }
 
     [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void ReviewRolesUseSeparateInteractiveConsolesWithAlwaysOnAndProjectBinding(
+        string role)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths singlePaths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            singlePaths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths paths = LiveLabPaths.ResolveNetworkRole(singlePaths, role);
+        TestSaveLaunchState review = TestSave(hostPaths) with
+        {
+            Mode = TestSaveContract.ReviewMode,
+        };
+        NetworkTwoLaunchState launch = Launch(
+            paths,
+            role,
+            review.Identity,
+            role == NetworkTwoContract.FarmhandRole ? 202L : null);
+        var projectMod = new ProjectModLaunchState(
+            "Example.ProjectMod",
+            "1.2.3",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222");
+        var stateStore = new FakeStateStore();
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+        };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            gamePath);
+        var prepared = new AlwaysOnBuildResult(
+            true,
+            Path.Combine(hostPaths.BuildPath, "always-on-build.log"),
+            null);
+
+        LiveLabCommandResult result = service.StartNetwork(
+            role == NetworkTwoContract.HostRole ? review : null,
+            launch,
+            prepared,
+            projectMod,
+            interactiveConsole: true);
+
+        Assert.Equal(0, result.ExitCode);
+        LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+        Assert.Equal(projectMod, state.ProjectMod);
+        Assert.Equal(role, state.NetworkTwo?.Role);
+        Assert.Equal(
+            role == NetworkTwoContract.HostRole ? review : null,
+            state.TestSave);
+        LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(
+            process.Specification);
+        Assert.True(specification.InteractiveConsole);
+        Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.Equal(paths.ModsPath, specification.Arguments[1]);
+        Assert.Equal(paths.UserProfilePath, specification.Environment["USERPROFILE"]);
+        Assert.Equal(paths.StardewDataPath, specification.Environment[
+            "SDVKIT_LAB_DATA_PATH"]);
+        Assert.Equal(projectMod.BuildIdentity, specification.Environment[
+            "SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, true)]
     public void HostCleanStopRequiresAndReportsConfirmedRestoredNetworkOptions(

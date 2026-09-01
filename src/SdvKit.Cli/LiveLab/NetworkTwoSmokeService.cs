@@ -42,6 +42,12 @@ internal sealed class NetworkTwoSmokeService
         "The smoke uses exactly one local host and one local farmhand against SDVKit's disposable fixture; it does not expose a general multiplayer topology.",
         "Each role resolves Stardew's own saves, preferences, and standard SMAPI logs to its own project-owned data root below .sdvkit; SDVKit does not select personal data or the normal Mods directory.",
     ];
+    private static readonly string[] ReviewWarnings =
+    [
+        "The review uses exactly one local host and one local farmhand against SDVKit's owned disposable fixture; it does not prove general multiplayer compatibility.",
+        "Each role resolves Stardew's saves, preferences, screenshots, and standard SMAPI logs to a distinct project-owned data root below .sdvkit; normal saves and the normal Mods directory are not selected.",
+        "A clean review stop preserves the owned work fixture for a real pair restart. An explicit project review reset restores the byte-for-byte baseline and removes the owned review staging.",
+    ];
 
     private readonly LiveLabPaths _singlePaths;
     private readonly LiveLabPaths _hostPaths;
@@ -58,6 +64,7 @@ internal sealed class NetworkTwoSmokeService
     private readonly Func<DoctorReport> _discoverInstallations;
     private readonly string _smokeId;
     private readonly ProjectModLaunchState? _projectMod;
+    private readonly bool _interactiveReview;
     private readonly UnfocusedObservation _hostUnfocused = new();
     private readonly UnfocusedObservation _farmhandUnfocused = new();
     private readonly List<LiveLabProblem> _problems = [];
@@ -68,6 +75,7 @@ internal sealed class NetworkTwoSmokeService
     private AlwaysOnBuildResult? _hostBuild;
     private string? _buildIdentity;
     private bool _fixturePrepared;
+    private bool _fixtureReleased;
     private bool _fixtureReset;
     private bool _hostLaunchedThisRun;
     private bool _farmhandLaunchedThisRun;
@@ -81,7 +89,8 @@ internal sealed class NetworkTwoSmokeService
         Func<DateTimeOffset>? utcNow = null,
         Action<TimeSpan>? delay = null,
         Func<string>? createSmokeId = null,
-        ProjectModLaunchState? projectMod = null)
+        ProjectModLaunchState? projectMod = null,
+        bool interactiveReview = false)
     {
         _singlePaths = singlePaths;
         _hostPaths = LiveLabPaths.ResolveNetworkRole(singlePaths, NetworkTwoContract.HostRole);
@@ -99,6 +108,7 @@ internal sealed class NetworkTwoSmokeService
         _smokeId = (createSmokeId ?? (() => Guid.NewGuid().ToString("N")))();
         projectMod?.Validate();
         _projectMod = projectMod;
+        _interactiveReview = interactiveReview;
 
         var processHost = new WindowsLabProcessHost();
         var unusedPreparedBuilder = new AlwaysOnBuilder();
@@ -201,7 +211,144 @@ internal sealed class NetworkTwoSmokeService
         }
     }
 
+    internal static LiveLabCommandResult StartReviewWithinLock(
+        string projectRoot,
+        Func<DoctorReport> discoverInstallations,
+        ProjectModLaunchState projectMod,
+        bool resetFromBaseline)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        ArgumentNullException.ThrowIfNull(discoverInstallations);
+        ArgumentNullException.ThrowIfNull(projectMod);
+
+        try
+        {
+            LiveLabPaths paths = LiveLabPaths.Resolve(projectRoot);
+            var service = new NetworkTwoSmokeService(
+                paths,
+                discoverInstallations,
+                projectMod: projectMod,
+                interactiveReview: true);
+            try
+            {
+                return service.StartReview(resetFromBaseline);
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                return service.HandleUnexpectedFailure(exception);
+            }
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return new LiveLabCommandResult(
+                OperationFailed,
+                EmptyReport(
+                    "blocked",
+                    [Problem("networkTwoReviewStartFailed", exception.Message)],
+                    review: true));
+        }
+    }
+
+    internal static LiveLabCommandResult StatusReviewWithinLock(
+        string projectRoot,
+        ProjectModLaunchState projectMod)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        ArgumentNullException.ThrowIfNull(projectMod);
+        return ExecuteReviewLifecycleWithinLock(projectRoot, projectMod, stop: false);
+    }
+
+    internal static LiveLabCommandResult StopReviewWithinLock(
+        string projectRoot,
+        ProjectModLaunchState projectMod)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        ArgumentNullException.ThrowIfNull(projectMod);
+        return ExecuteReviewLifecycleWithinLock(projectRoot, projectMod, stop: true);
+    }
+
+    private static LiveLabCommandResult ExecuteReviewLifecycleWithinLock(
+        string projectRoot,
+        ProjectModLaunchState projectMod,
+        bool stop)
+    {
+        try
+        {
+            LiveLabPaths paths = LiveLabPaths.Resolve(projectRoot);
+            var service = new NetworkTwoSmokeService(
+                paths,
+                () => throw new InvalidOperationException(
+                    "Network-2 review status and stop must not run installation discovery."),
+                projectMod: projectMod,
+                interactiveReview: true);
+            return stop ? service.StopReview() : service.StatusReview();
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return new LiveLabCommandResult(
+                OperationFailed,
+                EmptyReport(
+                    "blocked",
+                    [Problem("networkTwoReviewLifecycleFailed", exception.Message)],
+                    review: true));
+        }
+    }
+
     private LiveLabCommandResult Run()
+    {
+        LiveLabCommandResult? startFailure = StartPair(
+            review: false,
+            resetReviewFromBaseline: false);
+        if (startFailure is not null)
+        {
+            return startFailure;
+        }
+
+        LiveLabCommandResult? stopFailure = StopStartedPair(
+            fixtureResetExpected: true,
+            requiredLogs: false);
+        if (stopFailure is not null)
+        {
+            return stopFailure;
+        }
+
+        try
+        {
+            return new LiveLabCommandResult(
+                Success,
+                CreateReport(
+                    "passed",
+                    ArchiveRoleLogs(
+                        _hostPaths,
+                        NetworkTwoContract.HostRole,
+                        required: true),
+                    ArchiveRoleLogs(
+                        _farmhandPaths,
+                        NetworkTwoContract.FarmhandRole,
+                        required: true)));
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            _problems.Add(Problem("networkTwoLogArchiveFailed", exception.Message));
+            return new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("failed", [], []));
+        }
+    }
+
+    private LiveLabCommandResult StartReview(bool resetFromBaseline)
+    {
+        LiveLabCommandResult? failure = StartPair(
+            review: true,
+            resetReviewFromBaseline: resetFromBaseline);
+        return failure ?? new LiveLabCommandResult(
+            Success,
+            CreateReport("running", [], []));
+    }
+
+    private LiveLabCommandResult? StartPair(
+        bool review,
+        bool resetReviewFromBaseline)
     {
         if (!Guid.TryParseExact(_smokeId, "N", out _))
         {
@@ -212,10 +359,28 @@ internal sealed class NetworkTwoSmokeService
         {
             return Fail(
                 "singleLabNotStopped",
-                "The single live lab must be stopped before the network-2 smoke starts.");
+                $"The single live lab must be stopped before the network-2 {(review ? "review" : "smoke")} starts.");
         }
 
-        if (!RecoverRetainedNetworkRun())
+        if (review)
+        {
+            if (_hostStateStore.Read() is not null || _farmhandStateStore.Read() is not null)
+            {
+                _problems.Add(Problem(
+                    "networkTwoReviewAlreadyRunning",
+                    "A retained network-2 role state blocks a new interactive review start; use review status or stop."));
+                return new LiveLabCommandResult(
+                    OperationFailed,
+                    CreateReport("blocked", [], []));
+            }
+        }
+        else if (RetainedReviewBlocksSmoke())
+        {
+            return new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("blocked", [], []));
+        }
+        else if (!RecoverRetainedNetworkRun())
         {
             return FailureResult("blocked");
         }
@@ -234,7 +399,7 @@ internal sealed class NetworkTwoSmokeService
         {
             return Fail(
                 "installationNotReady",
-                "The network-2 smoke requires exactly one ready Stardew Valley + SMAPI installation from doctor.");
+                $"The network-2 {(review ? "review" : "smoke")} requires exactly one ready Stardew Valley + SMAPI installation from doctor.");
         }
 
         NetworkTwoModBuildResult prepared = _buildPreparer.Prepare(
@@ -252,12 +417,16 @@ internal sealed class NetworkTwoSmokeService
 
         try
         {
-            TestSavePreparation fixture = _fixtureStore.PrepareForStart();
+            TestSavePreparation fixture = review
+                ? _fixtureStore.PrepareReviewForStart(resetReviewFromBaseline)
+                : _fixtureStore.PrepareForStart();
             _fixtureLaunch = fixture.LaunchState;
             _fixturePrepared = true;
             if (!string.Equals(
                     _fixtureLaunch.Mode,
-                    TestSaveContract.ScenarioMode,
+                    review
+                        ? TestSaveContract.ReviewMode
+                        : TestSaveContract.ScenarioMode,
                     StringComparison.Ordinal))
             {
                 return Fail(
@@ -267,6 +436,10 @@ internal sealed class NetworkTwoSmokeService
 
             File.Delete(NetworkLogPath(_hostPaths));
             File.Delete(NetworkLogPath(_farmhandPaths));
+            File.Delete(_hostPaths.StandardOutputPath);
+            File.Delete(_hostPaths.StandardErrorPath);
+            File.Delete(_farmhandPaths.StandardOutputPath);
+            File.Delete(_farmhandPaths.StandardErrorPath);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {
@@ -283,7 +456,8 @@ internal sealed class NetworkTwoSmokeService
             _fixtureLaunch,
             hostLaunch,
             prepared.HostBuild,
-            _projectMod);
+            _projectMod,
+            interactiveConsole: review);
         _hostReport = RequireReport(hostStarted);
         _hostUnverifiedChildPossible = hostStarted.ExitCode != Success
             && MayHaveUncontrolledProcess(_hostReport);
@@ -314,7 +488,8 @@ internal sealed class NetworkTwoSmokeService
             testSave: null,
             farmhandLaunch,
             prepared.HostBuild,
-            _projectMod);
+            _projectMod,
+            interactiveConsole: review);
         _farmhandReport = RequireReport(farmhandStarted);
         _farmhandUnverifiedChildPossible = farmhandStarted.ExitCode != Success
             && MayHaveUncontrolledProcess(_farmhandReport);
@@ -333,9 +508,54 @@ internal sealed class NetworkTwoSmokeService
             return FailureResult("failed");
         }
 
+        return null;
+    }
+
+    private bool RetainedReviewBlocksSmoke()
+    {
+        LiveLabState? hostState = _hostStateStore.Read();
+        if (string.Equals(
+                hostState?.TestSave?.Mode,
+                TestSaveContract.ReviewMode,
+                StringComparison.Ordinal))
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewRetained",
+                "A retained interactive network-2 review blocks smoke recovery; use project review status, stop, or reset. Nothing was changed."));
+            return true;
+        }
+
+        ProjectReviewStagingResult review = SdvKit.Cli.ProjectModStager.ReadReview(
+            _singlePaths,
+            NetworkTwoContract.Topology,
+            detectUnownedArtifacts: false);
+        if (review.Problem is not null)
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewOwnershipInvalid",
+                $"The retained interactive network-2 review ownership could not be proven; smoke recovery was blocked without mutation: {review.Problem.Message}"));
+            return true;
+        }
+
+        if (review.Staging is null)
+        {
+            return false;
+        }
+
+        _problems.Add(Problem(
+            "networkTwoReviewRetained",
+            "Retained interactive network-2 review staging blocks smoke recovery; use project review status, stop, or reset. Nothing was changed."));
+        return true;
+    }
+
+    private LiveLabCommandResult? StopStartedPair(
+        bool fixtureResetExpected,
+        bool requiredLogs)
+    {
         LiveLabCommandResult farmhandStopped = _farmhandService.StopNetwork();
         _farmhandReport = RequireReport(farmhandStopped);
-        if (farmhandStopped.ExitCode != Success || _farmhandStateStore.Read() is not null)
+        bool farmhandStateRetained = _farmhandStateStore.Read() is not null;
+        if (farmhandStateRetained)
         {
             AddReportProblems(
                 _farmhandReport,
@@ -345,38 +565,281 @@ internal sealed class NetworkTwoSmokeService
         }
 
         _farmhandUnverifiedChildPossible = false;
+        bool terminalStopProblem = farmhandStopped.ExitCode != Success;
+        if (terminalStopProblem)
+        {
+            AddReportProblems(
+                _farmhandReport,
+                "networkFarmhandStopFailed",
+                "The exact farmhand ownership was released after exit, but its clean-stop proof was incomplete.");
+        }
 
         LiveLabCommandResult hostStopped = _hostService.StopNetwork();
         _hostReport = RequireReport(hostStopped);
-        if (hostStopped.ExitCode != Success || _hostStateStore.Read() is not null)
+        bool hostStateRetained = _hostStateStore.Read() is not null;
+        if (!hostStateRetained)
+        {
+            _fixtureReleased = true;
+            _fixtureReset = fixtureResetExpected;
+        }
+
+        if (hostStopped.ExitCode != Success || hostStateRetained)
         {
             AddReportProblems(
                 _hostReport,
                 "networkHostStopFailed",
-                "The exact host did not complete its clean stop and fixture reset.");
-            return FailureResult("blocked");
+                fixtureResetExpected
+                    ? "The exact host did not complete its clean stop and fixture reset."
+                    : "The exact host did not complete its clean stop and retained review-fixture unmount.");
+            if (hostStateRetained)
+            {
+                return FailureResult("blocked");
+            }
+
+            terminalStopProblem = true;
         }
 
-        _fixtureReset = true;
-        IReadOnlyList<string> hostLogs;
-        IReadOnlyList<string> farmhandLogs;
-        try
+        _fixtureReset = fixtureResetExpected;
+        _fixtureReleased = true;
+        if (requiredLogs)
         {
-            hostLogs = ArchiveRoleLogs(_hostPaths, NetworkTwoContract.HostRole, required: true);
-            farmhandLogs = ArchiveRoleLogs(
-                _farmhandPaths,
-                NetworkTwoContract.FarmhandRole,
-                required: true);
+            try
+            {
+                _ = ArchiveRoleLogs(
+                    _hostPaths,
+                    NetworkTwoContract.HostRole,
+                    required: true);
+                _ = ArchiveRoleLogs(
+                    _farmhandPaths,
+                    NetworkTwoContract.FarmhandRole,
+                    required: true);
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                _problems.Add(Problem("networkTwoLogArchiveFailed", exception.Message));
+                terminalStopProblem = true;
+            }
         }
-        catch (Exception exception) when (IsControlledFailure(exception))
+
+        return terminalStopProblem
+            ? new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("blocked", [], []))
+            : null;
+    }
+
+    private LiveLabCommandResult StatusReview()
+    {
+        if (!TryLoadRetainedReviewPair(
+                out LiveLabState? hostState,
+                out LiveLabState? farmhandState,
+                allowPartial: false))
         {
-            _problems.Add(Problem("networkTwoLogArchiveFailed", exception.Message));
-            return FailureResult("failed");
+            return new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("blocked", [], []));
+        }
+
+        if (hostState is null && farmhandState is null)
+        {
+            return new LiveLabCommandResult(
+                Success,
+                CreateReport("stopped", [], []));
+        }
+
+        LiveLabCommandResult hostStatus = _hostService.StatusNetwork();
+        LiveLabCommandResult farmhandStatus = _farmhandService.StatusNetwork();
+        _hostReport = RequireReport(hostStatus);
+        _farmhandReport = RequireReport(farmhandStatus);
+        _hostUnfocused.Observe(_hostReport.AlwaysOn);
+        _farmhandUnfocused.Observe(_farmhandReport.AlwaysOn);
+
+        if (hostStatus.ExitCode != Success)
+        {
+            AddReportProblems(
+                _hostReport,
+                "networkHostStatusFailed",
+                "The exact interactive network-2 host status failed.");
+        }
+
+        if (farmhandStatus.ExitCode != Success)
+        {
+            AddReportProblems(
+                _farmhandReport,
+                "networkFarmhandStatusFailed",
+                "The exact interactive network-2 farmhand status failed.");
+        }
+
+        bool running = hostStatus.ExitCode == Success
+            && farmhandStatus.ExitCode == Success
+            && string.Equals(_hostReport.State, "running", StringComparison.Ordinal)
+            && string.Equals(_farmhandReport.State, "running", StringComparison.Ordinal)
+            && PairPassed(_hostReport.AlwaysOn, _farmhandReport.AlwaysOn);
+        if (!running && _problems.Count == 0)
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewPairNotReady",
+                "The exact host/farmhand review pair is not in its confirmed joined running state."));
+        }
+
+        return new LiveLabCommandResult(
+            running ? Success : OperationFailed,
+            CreateReport(running ? "running" : "blocked", [], []));
+    }
+
+    private LiveLabCommandResult StopReview()
+    {
+        if (!TryLoadRetainedReviewPair(
+                out LiveLabState? hostState,
+                out LiveLabState? farmhandState,
+                allowPartial: true))
+        {
+            return new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("blocked", [], []));
+        }
+
+        if (hostState is null && farmhandState is null)
+        {
+            return new LiveLabCommandResult(
+                Success,
+                CreateReport("stopped", [], []));
+        }
+
+        if (hostState is null && farmhandState is not null)
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewHostOwnershipMissing",
+                "Only farmhand ownership remains. Host exit and review-fixture unmount cannot be confirmed, so no role was changed."));
+            return new LiveLabCommandResult(
+                OperationFailed,
+                CreateReport("blocked", [], []));
+        }
+
+        _hostLaunchedThisRun = true;
+        _farmhandLaunchedThisRun = true;
+        LiveLabCommandResult? failure = StopStartedPair(
+            fixtureResetExpected: false,
+            requiredLogs: false);
+        if (failure is not null)
+        {
+            return failure;
         }
 
         return new LiveLabCommandResult(
             Success,
-            CreateReport("passed", hostLogs, farmhandLogs));
+            CreateReport(
+                "stopped",
+                TryArchiveRoleLogs(
+                    _hostPaths,
+                    NetworkTwoContract.HostRole,
+                    launchedThisRun: true),
+                TryArchiveRoleLogs(
+                    _farmhandPaths,
+                    NetworkTwoContract.FarmhandRole,
+                    launchedThisRun: true)));
+    }
+
+    private bool TryLoadRetainedReviewPair(
+        out LiveLabState? hostState,
+        out LiveLabState? farmhandState,
+        bool allowPartial)
+    {
+        hostState = _hostStateStore.Read();
+        farmhandState = _farmhandStateStore.Read();
+        if (hostState is null && farmhandState is null)
+        {
+            return true;
+        }
+
+        if (!allowPartial && (hostState is null || farmhandState is null))
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewOwnershipIncomplete",
+                "The retained interactive network-2 review must contain both exact role states; nothing was changed."));
+            return false;
+        }
+
+        _fixtureLaunch = hostState?.TestSave;
+        _fixturePrepared = _fixtureLaunch is not null;
+        _buildIdentity = hostState?.NetworkTwo?.BuildIdentity
+            ?? farmhandState?.NetworkTwo?.BuildIdentity;
+        bool hostMatches = hostState is null || (string.Equals(
+                hostState.Topology,
+                NetworkTwoContract.Topology,
+                StringComparison.Ordinal)
+            && string.Equals(
+                hostState.NetworkTwo?.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal)
+            && string.Equals(
+                hostState.TestSave?.Mode,
+                TestSaveContract.ReviewMode,
+                StringComparison.Ordinal)
+            && ProjectModLaunchMatches(hostState.ProjectMod, _projectMod)
+            && ReviewRolePathsMatch(
+                hostState,
+                _hostPaths,
+                requireTestSave: true));
+        bool farmhandMatches = farmhandState is null || (string.Equals(
+                farmhandState.Topology,
+                NetworkTwoContract.Topology,
+                StringComparison.Ordinal)
+            && string.Equals(
+                farmhandState.NetworkTwo?.Role,
+                NetworkTwoContract.FarmhandRole,
+                StringComparison.Ordinal)
+            && farmhandState.TestSave is null
+            && ProjectModLaunchMatches(farmhandState.ProjectMod, _projectMod)
+            && ReviewRolePathsMatch(
+                farmhandState,
+                _farmhandPaths,
+                requireTestSave: false));
+        bool pairMatches = hostState is null || farmhandState is null || (string.Equals(
+                hostState.NetworkTwo?.BuildIdentity,
+                farmhandState.NetworkTwo?.BuildIdentity,
+                StringComparison.Ordinal)
+            && string.Equals(
+                hostState.NetworkTwo?.FixtureId,
+                farmhandState.NetworkTwo?.FixtureId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                hostState.NetworkTwo?.SaveId,
+                farmhandState.NetworkTwo?.SaveId,
+                StringComparison.Ordinal));
+        bool matches = hostMatches && farmhandMatches && pairMatches;
+        if (!matches)
+        {
+            _problems.Add(Problem(
+                "networkTwoReviewOwnershipMismatch",
+                "The retained role states do not match the exact interactive review target, build, fixture, and role bindings; nothing was changed."));
+        }
+
+        return matches;
+    }
+
+    private static bool ReviewRolePathsMatch(
+        LiveLabState state,
+        LiveLabPaths paths,
+        bool requireTestSave)
+    {
+        bool common = PathEquals(state.ModsPath, paths.ModsPath)
+            && PathEquals(state.StatusPath, paths.StatusPath)
+            && PathEquals(state.StopRequestPath, paths.StopRequestPath)
+            && PathEquals(
+                state.NetworkTwo!.NetworkLogPath,
+                NetworkLogPath(paths));
+        if (!common || !requireTestSave)
+        {
+            return common;
+        }
+
+        TestSaveLaunchState testSave = state.TestSave!;
+        return PathEquals(testSave.WorkPath, paths.TestSaveWorkPath)
+            && PathEquals(testSave.ScenarioLogPath, paths.TestSaveScenarioLogPath)
+            && PathEquals(
+                testSave.SlotPath,
+                Path.Combine(paths.SavesPath, testSave.Identity.SaveId));
     }
 
     private bool RecoverRetainedNetworkRun()
@@ -650,6 +1113,15 @@ internal sealed class NetworkTwoSmokeService
         && string.Equals(actual.LoadedVersion, expected.Version, StringComparison.Ordinal)
         && string.Equals(actual.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal);
 
+    private static bool ProjectModLaunchMatches(
+        ProjectModLaunchState? actual,
+        ProjectModLaunchState? expected) =>
+        actual is not null
+        && expected is not null
+        && string.Equals(actual.UniqueId, expected.UniqueId, StringComparison.Ordinal)
+        && string.Equals(actual.Version, expected.Version, StringComparison.Ordinal)
+        && string.Equals(actual.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal);
+
     private LiveLabCommandResult FailFromReport(
         LiveLabReport report,
         string fallbackCode,
@@ -703,14 +1175,15 @@ internal sealed class NetworkTwoSmokeService
                 _hostUnverifiedChildPossible,
                 NetworkTwoContract.HostRole);
 
-            if (hostSafe && _fixturePrepared && !_fixtureReset)
+            if (hostSafe && _fixturePrepared && !_fixtureReleased)
             {
                 if (_hostStateStore.Read() is null && !_hostUnverifiedChildPossible)
                 {
                     try
                     {
                         _fixtureStore.AbortStopped(_fixtureLaunch!, _smokeId);
-                        _fixtureReset = true;
+                        _fixtureReleased = true;
+                        _fixtureReset = !_interactiveReview;
                     }
                     catch (Exception exception) when (IsControlledFailure(exception))
                     {
@@ -758,7 +1231,8 @@ internal sealed class NetworkTwoSmokeService
             if (string.Equals(role, NetworkTwoContract.HostRole, StringComparison.Ordinal)
                 && _fixturePrepared)
             {
-                _fixtureReset = true;
+                _fixtureReleased = true;
+                _fixtureReset = !_interactiveReview;
             }
 
             return true;
@@ -867,7 +1341,7 @@ internal sealed class NetworkTwoSmokeService
                 _farmhandUnfocused,
                 farmhandLogs),
             _problems,
-            Warnings);
+            _interactiveReview ? ReviewWarnings : Warnings);
     }
 
     private static NetworkTwoRoleReport RoleReport(
@@ -895,7 +1369,8 @@ internal sealed class NetworkTwoSmokeService
 
     private static NetworkTwoSmokeReport EmptyReport(
         string state,
-        IReadOnlyList<LiveLabProblem> problems) =>
+        IReadOnlyList<LiveLabProblem> problems,
+        bool review = false) =>
         new(
             NetworkTwoContract.SchemaVersion,
             NetworkTwoContract.Topology,
@@ -907,7 +1382,7 @@ internal sealed class NetworkTwoSmokeService
             EmptyRole(NetworkTwoContract.HostRole),
             EmptyRole(NetworkTwoContract.FarmhandRole),
             problems,
-            Warnings);
+            review ? ReviewWarnings : Warnings);
 
     private static NetworkTwoRoleReport EmptyRole(string role) =>
         new(role, "notStarted", null, null, null, null, null, false, null, null, []);
@@ -943,6 +1418,14 @@ internal sealed class NetworkTwoSmokeService
 
     private static string NetworkLogPath(LiveLabPaths paths) =>
         Path.Combine(paths.RuntimePath, "network-2.log");
+
+    private static bool PathEquals(string left, string right) =>
+        string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
 
     private DoctorReport DiscoverOnce() =>
         _doctor ??= _discoverInstallations();

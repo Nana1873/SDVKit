@@ -307,10 +307,15 @@ public sealed class ProjectReviewStagerTests
 
         ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(result.Staging);
         Assert.Null(result.Problem);
+        Assert.Equal(LiveLabState.SingleTopology, staging.Topology);
         Assert.Equal(3, staging.Artifacts.Count);
         Assert.True(File.Exists(staging.OwnershipPath));
         Assert.All(staging.Artifacts, artifact =>
         {
+            ProjectReviewRoleStagingPath rolePath = Assert.Single(
+                artifact.RoleStagingPaths);
+            Assert.Equal(LiveLabState.SingleTopology, rolePath.Role);
+            Assert.Equal(rolePath.StagingPath, artifact.StagingPath);
             Assert.True(Directory.Exists(artifact.StagingPath));
             Assert.Equal(
                 artifact.BuildIdentity,
@@ -327,6 +332,228 @@ public sealed class ProjectReviewStagerTests
         Assert.False(File.Exists(staging.OwnershipPath));
         Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
         Assert.Equal("persistent-save", File.ReadAllText(saveSentinel));
+    }
+
+    [Fact]
+    public void NetworkTwoStagesTheSameReviewSetForHostAndFarmhandAndCleansBoth()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        hostPaths.EnsureDirectories();
+        farmhandPaths.EnsureDirectories();
+        string hostAlwaysOn = WriteSentinel(
+            hostPaths.AlwaysOnModPath,
+            "always-on.txt",
+            "host-always-on");
+        string farmhandAlwaysOn = WriteSentinel(
+            farmhandPaths.AlwaysOnModPath,
+            "always-on.txt",
+            "farmhand-always-on");
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target",
+            "1.2.0");
+        ProjectReviewPreparedArtifact companion = Artifact(
+            temporary.Path,
+            "Harness",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Harness");
+        ProjectReviewPreparedArtifact contentPack = Artifact(
+            temporary.Path,
+            "SmokePack",
+            ProjectReviewArtifactRole.ContentPack,
+            "Nana.Target.SmokePack",
+            contentPackFor: "Nana.Target",
+            contentPackForMinimumVersion: "1.0.0");
+
+        ProjectReviewStagingResult result = ProjectModStager.StageReview(
+            [target, companion, contentPack],
+            NetworkTwoContract.Topology,
+            paths);
+
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(result.Staging);
+        Assert.Null(result.Problem);
+        Assert.Equal(NetworkTwoContract.Topology, staging.Topology);
+        Assert.Equal(
+            staging.Target.BuildIdentity,
+            staging.TargetLaunchState.BuildIdentity);
+        Assert.Equal(
+            Path.Combine(
+                temporary.Path,
+                ".sdvkit",
+                "lab",
+                NetworkTwoContract.Topology,
+                "project-review-staging.json"),
+            staging.OwnershipPath);
+        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.Equal(
+                new[]
+                {
+                    NetworkTwoContract.HostRole,
+                    NetworkTwoContract.FarmhandRole,
+                },
+                artifact.RoleStagingPaths.Select(path => path.Role));
+            string hostStagingPath = artifact.StagingPathFor(
+                NetworkTwoContract.HostRole);
+            string farmhandStagingPath = artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole);
+            Assert.Equal(hostPaths.ModsPath, Path.GetDirectoryName(hostStagingPath));
+            Assert.Equal(farmhandPaths.ModsPath, Path.GetDirectoryName(farmhandStagingPath));
+            Assert.NotEqual(hostStagingPath, farmhandStagingPath);
+            Assert.Equal(
+                artifact.BuildIdentity,
+                ModBuildIdentity.ComputeFileSet(hostStagingPath));
+            Assert.Equal(
+                artifact.BuildIdentity,
+                ModBuildIdentity.ComputeFileSet(farmhandStagingPath));
+        });
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(
+            paths,
+            NetworkTwoContract.Topology);
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(
+            paths,
+            NetworkTwoContract.Topology);
+
+        Assert.NotNull(read.Staging);
+        Assert.Null(read.Problem);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.HostRole)));
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole)));
+        });
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.Equal("host-always-on", File.ReadAllText(hostAlwaysOn));
+        Assert.Equal("farmhand-always-on", File.ReadAllText(farmhandAlwaysOn));
+    }
+
+    [Fact]
+    public void NetworkTwoCleanupRetriesAfterOneOwnedRolePathWasAlreadyRemoved()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(
+            ProjectModStager.StageReview(
+                [target],
+                NetworkTwoContract.Topology,
+                paths).Staging);
+        string hostStagingPath = staging.Target.StagingPathFor(
+            NetworkTwoContract.HostRole);
+        string farmhandStagingPath = staging.Target.StagingPathFor(
+            NetworkTwoContract.FarmhandRole);
+        Directory.Delete(hostStagingPath, recursive: true);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(
+            paths,
+            NetworkTwoContract.Topology);
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(
+            paths,
+            NetworkTwoContract.Topology);
+
+        Assert.Null(read.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipInvalid",
+            Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.False(Directory.Exists(farmhandStagingPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
+    }
+
+    [Fact]
+    public void NetworkTwoSmokeOwnershipBlocksReviewWithoutStagingEitherRole()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        hostPaths.EnsureDirectories();
+        farmhandPaths.EnsureDirectories();
+        WriteSentinel(
+            Path.Combine(
+                temporary.Path,
+                ".sdvkit",
+                "lab",
+                NetworkTwoContract.Topology),
+            "project-smoke-staging.json",
+            "retained-smoke-ownership");
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+
+        ProjectReviewStagingResult result = ProjectModStager.StageReview(
+            [target],
+            NetworkTwoContract.Topology,
+            paths);
+
+        Assert.Null(result.Staging);
+        Assert.Equal(
+            "smokeStagingOwnershipPresent",
+            Assert.IsType<ProjectReviewProblem>(result.Problem).Code);
+        Assert.False(Directory.Exists(Path.Combine(hostPaths.ModsPath, "Target")));
+        Assert.False(Directory.Exists(Path.Combine(farmhandPaths.ModsPath, "Target")));
+    }
+
+    [Fact]
+    public void NetworkTwoFarmhandForeignModBlocksReviewBeforeHostMutation()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        hostPaths.EnsureDirectories();
+        farmhandPaths.EnsureDirectories();
+        string foreignSentinel = WriteSentinel(
+            Path.Combine(farmhandPaths.ModsPath, "ForeignMod"),
+            "sentinel.txt",
+            "foreign");
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+
+        ProjectReviewStagingResult result = ProjectModStager.StageReview(
+            [target],
+            NetworkTwoContract.Topology,
+            paths);
+
+        Assert.Null(result.Staging);
+        Assert.Equal(
+            "foreignLabModCollision",
+            Assert.IsType<ProjectReviewProblem>(result.Problem).Code);
+        Assert.False(Directory.Exists(Path.Combine(hostPaths.ModsPath, "Target")));
+        Assert.False(Directory.Exists(Path.Combine(farmhandPaths.ModsPath, "Target")));
+        Assert.Equal("foreign", File.ReadAllText(foreignSentinel));
     }
 
     [Fact]

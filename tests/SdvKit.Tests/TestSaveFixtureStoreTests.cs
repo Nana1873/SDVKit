@@ -124,6 +124,111 @@ public sealed class TestSaveFixtureStoreTests
     }
 
     [Fact]
+    public void ReviewStartCanResetThenCleanStopPreservesWorkForResume()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        var junction = new FakeJunction();
+        TestSaveFixtureStore store = CreateStore(paths, saves.Path, junction);
+        TestSaveLaunchState create = store.PrepareForStart().LaunchState;
+        WriteCompleteSavePayload(paths, create.Identity, "baseline save", "baseline info");
+        store.CompleteStopped(create, LaunchId);
+        string savePath = Path.Combine(paths.TestSaveWorkPath, create.Identity.SaveId);
+        string infoPath = Path.Combine(paths.TestSaveWorkPath, "SaveGameInfo");
+        string reviewOnlyPath = Path.Combine(paths.TestSaveWorkPath, "review-only");
+        File.WriteAllText(savePath, "discard before first review");
+        File.WriteAllText(reviewOnlyPath, "discard before first review");
+
+        TestSaveLaunchState first = store.PrepareReviewForStart(resetFromBaseline: true)
+            .LaunchState;
+
+        Assert.Equal(TestSaveContract.ReviewMode, first.Mode);
+        Assert.Equal("baseline save", File.ReadAllText(savePath));
+        Assert.Equal("baseline info", File.ReadAllText(infoPath));
+        Assert.False(File.Exists(reviewOnlyPath));
+        Assert.True(junction.Active);
+
+        File.WriteAllText(savePath, "saved review selection");
+        File.WriteAllText(infoPath, "saved review info");
+        File.WriteAllText(reviewOnlyPath, "preserve across restart");
+        paths.EnsureDirectories();
+        File.WriteAllText(paths.StandardOutputPath, "review stdout");
+        File.WriteAllText(paths.TestSaveScenarioLogPath, "review fixture log");
+
+        TestSaveCleanupResult stopped = store.CompleteStopped(
+            first,
+            "44444444444444444444444444444444");
+
+        Assert.False(junction.Active);
+        Assert.True(stopped.ScenarioLogArchived);
+        Assert.Contains(
+            stopped.ArchivedLogPaths,
+            path => path.EndsWith(".review.scenario.log", StringComparison.Ordinal));
+        Assert.Equal("saved review selection", File.ReadAllText(savePath));
+        Assert.Equal("saved review info", File.ReadAllText(infoPath));
+        Assert.Equal("preserve across restart", File.ReadAllText(reviewOnlyPath));
+        Assert.Equal(
+            "baseline save",
+            File.ReadAllText(Path.Combine(paths.TestSaveBaselinePath, create.Identity.SaveId)));
+
+        TestSaveLaunchState resumed = store.PrepareReviewForStart(resetFromBaseline: false)
+            .LaunchState;
+
+        Assert.Equal(TestSaveContract.ReviewMode, resumed.Mode);
+        Assert.Equal(first.Identity, resumed.Identity);
+        Assert.Equal("saved review selection", File.ReadAllText(savePath));
+        Assert.Equal("saved review info", File.ReadAllText(infoPath));
+        Assert.Equal("preserve across restart", File.ReadAllText(reviewOnlyPath));
+        Assert.True(junction.Active);
+
+        store.CompleteStopped(resumed, "55555555555555555555555555555555");
+
+        Assert.False(junction.Active);
+        Assert.Equal("saved review selection", File.ReadAllText(savePath));
+        Assert.Equal("preserve across restart", File.ReadAllText(reviewOnlyPath));
+    }
+
+    [Fact]
+    public void ReviewResetRequiresAnInactiveSlotAndRestoresTheExactBaseline()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        var junction = new FakeJunction();
+        TestSaveFixtureStore store = CreateStore(paths, saves.Path, junction);
+        TestSaveLaunchState create = store.PrepareForStart().LaunchState;
+        WriteCompleteSavePayload(paths, create.Identity, "baseline save", "baseline info");
+        store.CompleteStopped(create, LaunchId);
+        TestSaveLaunchState review = store.PrepareReviewForStart(resetFromBaseline: true)
+            .LaunchState;
+        string savePath = Path.Combine(paths.TestSaveWorkPath, create.Identity.SaveId);
+        string reviewOnlyPath = Path.Combine(paths.TestSaveWorkPath, "review-only");
+        File.WriteAllText(savePath, "review mutation");
+        File.WriteAllText(reviewOnlyPath, "review mutation");
+
+        Assert.Throws<InvalidOperationException>(store.ResetReview);
+
+        Assert.True(junction.Active);
+        Assert.Equal("review mutation", File.ReadAllText(savePath));
+        Assert.Equal("review mutation", File.ReadAllText(reviewOnlyPath));
+
+        store.CompleteStopped(review, "66666666666666666666666666666666");
+        store.ResetReview();
+
+        Assert.False(junction.Active);
+        Assert.Equal("baseline save", File.ReadAllText(savePath));
+        Assert.Equal(
+            "baseline info",
+            File.ReadAllText(Path.Combine(paths.TestSaveWorkPath, "SaveGameInfo")));
+        Assert.False(File.Exists(reviewOnlyPath));
+        Assert.Empty(Directory.EnumerateDirectories(
+            paths.TestSaveRoot,
+            ".*.tmp",
+            SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
     public void AbortRemovesOnlyTheExactBindingAndRestoresAnExistingBaseline()
     {
         using TemporaryDirectory project = new();

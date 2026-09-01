@@ -6,32 +6,52 @@ namespace SdvKit.Cli;
 
 internal static partial class ProjectModStager
 {
-    private const int ReviewOwnershipSchemaVersion = 1;
+    private const int ReviewOwnershipSchemaVersion = 2;
     private const string ReviewOwnershipFileName = "project-review-staging.json";
 
     public static ProjectReviewStagingResult StageReview(
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
         LiveLabPaths paths,
         Action<string, string>? copyTree = null,
+        Func<string, bool>? deleteTree = null) =>
+        StageReview(
+            artifacts,
+            LiveLabState.SingleTopology,
+            paths,
+            copyTree,
+            deleteTree);
+
+    public static ProjectReviewStagingResult StageReview(
+        IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
+        string topology,
+        LiveLabPaths singlePaths,
+        Action<string, string>? copyTree = null,
         Func<string, bool>? deleteTree = null)
     {
         ArgumentNullException.ThrowIfNull(artifacts);
-        ArgumentNullException.ThrowIfNull(paths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(topology);
+        ArgumentNullException.ThrowIfNull(singlePaths);
         copyTree ??= CopyPlainTree;
         deleteTree ??= DeleteKnownDirectory;
 
         try
         {
-            paths.EnsureDirectories();
+            ReviewRolePaths[] rolePaths = ResolveReviewRolePaths(singlePaths, topology);
+            foreach (ReviewRolePaths rolePath in rolePaths)
+            {
+                rolePath.Paths.EnsureDirectories();
+            }
+
             ProjectReviewProblem? setProblem = ValidateReviewSet(artifacts);
             if (setProblem is not null)
             {
                 return new ProjectReviewStagingResult(null, setProblem);
             }
 
-            string ownershipPath = ReviewOwnershipPath(paths);
+            string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
             ProjectReviewStagingResult retained = ReadReview(
-                paths,
+                singlePaths,
+                topology,
                 detectUnownedArtifacts: false);
             if (retained.Problem is not null)
             {
@@ -42,52 +62,63 @@ internal static partial class ProjectModStager
             {
                 return ReviewFailure(
                     "reviewStagingOwnershipPresent",
-                    RelativePath(paths.ProjectRoot, ownershipPath),
+                    RelativePath(singlePaths.ProjectRoot, ownershipPath),
                     "A previous exact SDVKit-owned project-review staging is still present and was left untouched.");
             }
 
-            string smokeOwnershipPath = Path.Combine(paths.SingleRoot, OwnershipFileName);
+            string smokeOwnershipPath = SmokeOwnershipPath(singlePaths, topology);
             if (File.Exists(smokeOwnershipPath))
             {
                 return ReviewFailure(
                     "smokeStagingOwnershipPresent",
-                    RelativePath(paths.ProjectRoot, smokeOwnershipPath),
+                    RelativePath(singlePaths.ProjectRoot, smokeOwnershipPath),
                     "A retained project-smoke staging blocks project review.");
             }
 
-            foreach (string entry in Directory.EnumerateFileSystemEntries(paths.ModsPath))
+            foreach (ReviewRolePaths rolePath in rolePaths)
             {
-                if (!PathEquals(entry, paths.AlwaysOnModPath))
+                foreach (string entry in Directory.EnumerateFileSystemEntries(
+                    rolePath.Paths.ModsPath))
                 {
-                    return ReviewFailure(
-                        "foreignLabModCollision",
-                        RelativePath(paths.ProjectRoot, entry),
-                        "Project review requires an isolated mod group containing only SDVKit AlwaysOn before its exact staging set is installed.");
+                    if (!PathEquals(entry, rolePath.Paths.AlwaysOnModPath))
+                    {
+                        return ReviewFailure(
+                            "foreignLabModCollision",
+                            RelativePath(singlePaths.ProjectRoot, entry),
+                            $"Project review requires the isolated {rolePath.Role} mod group to contain only SDVKit AlwaysOn before its exact staging set is installed.");
+                    }
                 }
             }
 
             var owned = artifacts.Select(artifact =>
             {
-                string stagingPath = Path.Combine(paths.ModsPath, artifact.TopLevelDirectory);
+                ProjectReviewRoleStagingPath[] stagingPaths = rolePaths
+                    .Select(rolePath => new ProjectReviewRoleStagingPath(
+                        rolePath.Role,
+                        Path.Combine(
+                            rolePath.Paths.ModsPath,
+                            artifact.TopLevelDirectory)))
+                    .ToArray();
                 return new ProjectReviewOwnedArtifact(
                     artifact.Role,
                     artifact.SourceRoot,
                     artifact.TopLevelDirectory,
-                    stagingPath,
+                    stagingPaths,
                     artifact.Manifest,
                     artifact.BuildIdentity,
                     artifact.BuildLog,
                     artifact.PackageLog);
             }).ToArray();
 
-            if (owned.Any(artifact => Directory.Exists(artifact.StagingPath)
-                    || File.Exists(artifact.StagingPath)))
+            ProjectReviewRoleStagingPath? collision = owned
+                .SelectMany(artifact => artifact.RoleStagingPaths)
+                .FirstOrDefault(path => Directory.Exists(path.StagingPath)
+                    || File.Exists(path.StagingPath));
+            if (collision is not null)
             {
-                ProjectReviewOwnedArtifact collision = owned.First(artifact =>
-                    Directory.Exists(artifact.StagingPath) || File.Exists(artifact.StagingPath));
                 return ReviewFailure(
                     "reviewStagingCollision",
-                    RelativePath(paths.ProjectRoot, collision.StagingPath),
+                    RelativePath(singlePaths.ProjectRoot, collision.StagingPath),
                     "A project-review staging destination already exists without current review ownership.");
             }
 
@@ -97,18 +128,27 @@ internal static partial class ProjectModStager
                 foreach ((ProjectReviewPreparedArtifact source, ProjectReviewOwnedArtifact target)
                     in artifacts.Zip(owned))
                 {
-                    created.Add(target.StagingPath);
-                    copyTree(source.PreparedPath, target.StagingPath);
-                    string identity = ModBuildIdentity.ComputeFileSet(target.StagingPath);
-                    if (!string.Equals(identity, source.BuildIdentity, StringComparison.Ordinal))
+                    foreach (ProjectReviewRoleStagingPath roleStaging
+                        in target.RoleStagingPaths)
                     {
-                        throw new InvalidDataException(
-                            "A staged project-review file set differs from its prepared source.");
+                        created.Add(roleStaging.StagingPath);
+                        copyTree(source.PreparedPath, roleStaging.StagingPath);
+                        string identity = ModBuildIdentity.ComputeFileSet(
+                            roleStaging.StagingPath);
+                        if (!string.Equals(
+                                identity,
+                                source.BuildIdentity,
+                                StringComparison.Ordinal))
+                        {
+                            throw new InvalidDataException(
+                                $"The staged {roleStaging.Role} project-review file set differs from its prepared source.");
+                        }
                     }
                 }
 
                 var staging = new ProjectReviewStaging(
                     ReviewOwnershipSchemaVersion,
+                    topology,
                     ownershipPath,
                     owned);
                 WriteReviewOwnership(ownershipPath, staging);
@@ -117,7 +157,7 @@ internal static partial class ProjectModStager
             catch (Exception exception)
             {
                 var rollbackComplete = true;
-                foreach (string path in created)
+                foreach (string path in created.AsEnumerable().Reverse())
                 {
                     rollbackComplete = deleteTree(path) && rollbackComplete;
                 }
@@ -152,70 +192,119 @@ internal static partial class ProjectModStager
 
     public static ProjectReviewStagingResult ReadReview(
         LiveLabPaths paths,
+        bool detectUnownedArtifacts = true) =>
+        ReadReview(
+            paths,
+            LiveLabState.SingleTopology,
+            detectUnownedArtifacts);
+
+    public static ProjectReviewStagingResult ReadReview(
+        LiveLabPaths singlePaths,
+        string topology,
         bool detectUnownedArtifacts = true)
     {
-        ArgumentNullException.ThrowIfNull(paths);
-        string ownershipPath = ReviewOwnershipPath(paths);
+        ArgumentNullException.ThrowIfNull(singlePaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(topology);
+        ReviewRolePaths[] rolePaths;
+        try
+        {
+            rolePaths = ResolveReviewRolePaths(singlePaths, topology);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return ReviewFailure("reviewTopologyInvalid", null, exception.Message);
+        }
+
+        string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
         if (!File.Exists(ownershipPath))
         {
-            if (detectUnownedArtifacts && Directory.Exists(paths.ModsPath))
+            if (detectUnownedArtifacts && File.Exists(SmokeOwnershipPath(singlePaths, topology)))
+            {
+                return ReviewFailure(
+                    "smokeStagingOwnershipPresent",
+                    RelativePath(
+                        singlePaths.ProjectRoot,
+                        SmokeOwnershipPath(singlePaths, topology)),
+                    "A retained project-smoke staging blocks project review.");
+            }
+
+            if (detectUnownedArtifacts)
             {
                 try
                 {
-                    string? unownedArtifact = Directory
-                        .EnumerateFileSystemEntries(paths.ModsPath)
-                        .FirstOrDefault(entry => !PathEquals(entry, paths.AlwaysOnModPath));
-                    if (unownedArtifact is not null)
+                    foreach (ReviewRolePaths rolePath in rolePaths)
                     {
-                        return ReviewFailure(
-                            "reviewStagingOwnershipMissing",
-                            RelativePath(paths.ProjectRoot, unownedArtifact),
-                            "The isolated mod group contains a non-AlwaysOn artifact without a project-review ownership marker; it was left untouched.");
+                        if (!Directory.Exists(rolePath.Paths.ModsPath))
+                        {
+                            continue;
+                        }
+
+                        string? unownedArtifact = Directory
+                            .EnumerateFileSystemEntries(rolePath.Paths.ModsPath)
+                            .FirstOrDefault(entry => !PathEquals(
+                                entry,
+                                rolePath.Paths.AlwaysOnModPath));
+                        if (unownedArtifact is not null)
+                        {
+                            return ReviewFailure(
+                                "reviewStagingOwnershipMissing",
+                                RelativePath(singlePaths.ProjectRoot, unownedArtifact),
+                                $"The isolated {rolePath.Role} mod group contains a non-AlwaysOn artifact without a project-review ownership marker; it was left untouched.");
+                        }
                     }
                 }
                 catch (Exception exception) when (IsControlledFailure(exception))
                 {
                     return ReviewFailure(
                         "reviewStagingOwnershipInvalid",
-                        RelativePath(paths.ProjectRoot, paths.ModsPath),
-                        $"The isolated project-review mod group could not be proven clean: {exception.Message}");
+                        RelativePath(singlePaths.ProjectRoot, ReviewTopologyRoot(singlePaths, topology)),
+                        $"The isolated project-review mod groups could not be proven clean: {exception.Message}");
                 }
             }
 
             return new ProjectReviewStagingResult(null, null);
         }
 
+        return ReadReviewOwnership(
+            singlePaths,
+            topology,
+            allowMissingStagingPaths: false);
+    }
+
+    public static ProjectReviewCleanupResult RemoveReview(LiveLabPaths paths) =>
+        RemoveReview(paths, LiveLabState.SingleTopology);
+
+    public static ProjectReviewCleanupResult RemoveReview(
+        LiveLabPaths singlePaths,
+        string topology)
+    {
+        ArgumentNullException.ThrowIfNull(singlePaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(topology);
+        string ownershipPath;
         try
         {
-            using FileStream stream = new(
-                ownershipPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read);
-            ProjectReviewStaging staging = JsonSerializer.Deserialize<ProjectReviewStaging>(
-                    stream,
-                    JsonOptions)
-                ?? throw new InvalidDataException(
-                    "The project-review ownership marker is empty.");
-            staging = staging with { OwnershipPath = ownershipPath };
-            ProjectReviewProblem? problem = ValidateOwnedReview(staging, paths);
-            return problem is null
-                ? new ProjectReviewStagingResult(staging, null)
-                : new ProjectReviewStagingResult(null, problem);
+            ResolveReviewRolePaths(singlePaths, topology);
+            ownershipPath = ReviewOwnershipPath(singlePaths, topology);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {
-            return ReviewFailure(
-                "reviewStagingOwnershipInvalid",
-                RelativePath(paths.ProjectRoot, ownershipPath),
-                $"The retained project-review staging could not be proven as SDVKit-owned: {exception.Message}");
+            return new ProjectReviewCleanupResult(
+                false,
+                ReviewProblem("reviewTopologyInvalid", null, exception.Message));
         }
-    }
 
-    public static ProjectReviewCleanupResult RemoveReview(LiveLabPaths paths)
-    {
-        ArgumentNullException.ThrowIfNull(paths);
-        ProjectReviewStagingResult current = ReadReview(paths);
+        if (!File.Exists(ownershipPath))
+        {
+            ProjectReviewStagingResult absent = ReadReview(singlePaths, topology);
+            return absent.Problem is null
+                ? new ProjectReviewCleanupResult(true, null)
+                : new ProjectReviewCleanupResult(false, absent.Problem);
+        }
+
+        ProjectReviewStagingResult current = ReadReviewOwnership(
+            singlePaths,
+            topology,
+            allowMissingStagingPaths: true);
         if (current.Problem is not null)
         {
             return new ProjectReviewCleanupResult(false, current.Problem);
@@ -228,12 +317,59 @@ internal static partial class ProjectModStager
 
         try
         {
+            var cleanupErrors = new List<string>();
+            string[] ownedPaths = current.Staging.Artifacts
+                .SelectMany(artifact => artifact.RoleStagingPaths)
+                .Select(roleStaging => roleStaging.StagingPath)
+                .ToArray();
             foreach (ProjectReviewOwnedArtifact artifact in current.Staging.Artifacts)
             {
-                Directory.Delete(artifact.StagingPath, recursive: true);
+                foreach (ProjectReviewRoleStagingPath roleStaging
+                    in artifact.RoleStagingPaths)
+                {
+                    if (!Directory.Exists(roleStaging.StagingPath))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        Directory.Delete(roleStaging.StagingPath, recursive: true);
+                    }
+                    catch (Exception exception) when (IsControlledFailure(exception))
+                    {
+                        cleanupErrors.Add(
+                            $"{roleStaging.Role}:{roleStaging.StagingPath}: {exception.Message}");
+                    }
+                }
             }
 
-            File.Delete(current.Staging.OwnershipPath);
+            foreach (string remainingPath in ownedPaths.Where(path => !PathIsAbsent(path)))
+            {
+                cleanupErrors.Add($"retained:{remainingPath}");
+            }
+
+            if (cleanupErrors.Count > 0)
+            {
+                return new ProjectReviewCleanupResult(
+                    false,
+                    ReviewProblem(
+                        "reviewStagingCleanupFailed",
+                        null,
+                        $"One or more exact owned review staging paths could not be removed; ownership was retained for retry: {string.Join(" | ", cleanupErrors)}"));
+            }
+
+            File.Delete(ownershipPath);
+            if (File.Exists(ownershipPath))
+            {
+                return new ProjectReviewCleanupResult(
+                    false,
+                    ReviewProblem(
+                        "reviewStagingCleanupFailed",
+                        RelativePath(singlePaths.ProjectRoot, ownershipPath),
+                        "The exact review staging paths were removed, but their ownership marker remains."));
+            }
+
             return new ProjectReviewCleanupResult(true, null);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
@@ -381,17 +517,67 @@ internal static partial class ProjectModStager
         return null;
     }
 
+    private static ProjectReviewStagingResult ReadReviewOwnership(
+        LiveLabPaths singlePaths,
+        string topology,
+        bool allowMissingStagingPaths)
+    {
+        string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
+        try
+        {
+            using FileStream stream = new(
+                ownershipPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read);
+            ProjectReviewStaging? staging = JsonSerializer.Deserialize<ProjectReviewStaging>(
+                stream,
+                JsonOptions);
+            if (staging is null)
+            {
+                throw new InvalidDataException(
+                    "The retained project-review ownership marker is empty.");
+            }
+
+            staging = staging with { OwnershipPath = ownershipPath };
+            ProjectReviewProblem? validation = ValidateOwnedReview(
+                staging,
+                singlePaths,
+                topology,
+                allowMissingStagingPaths);
+            return validation is null
+                ? new ProjectReviewStagingResult(staging, null)
+                : new ProjectReviewStagingResult(null, validation);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return ReviewFailure(
+                "reviewStagingOwnershipInvalid",
+                RelativePath(singlePaths.ProjectRoot, ownershipPath),
+                $"The retained project-review staging could not be proven as SDVKit-owned: {exception.Message}");
+        }
+    }
+
     private static ProjectReviewProblem? ValidateOwnedReview(
         ProjectReviewStaging staging,
-        LiveLabPaths paths)
+        LiveLabPaths singlePaths,
+        string topology,
+        bool allowMissingStagingPaths)
     {
+        ReviewRolePaths[] expectedRoles = ResolveReviewRolePaths(singlePaths, topology);
         if (staging.SchemaVersion != ReviewOwnershipSchemaVersion
+            || !string.Equals(staging.Topology, topology, StringComparison.Ordinal)
             || staging.Artifacts is null
             || staging.Artifacts.Count == 0
             || staging.Artifacts.Count(artifact => string.Equals(
                 artifact.Role,
                 ProjectReviewArtifactRole.Target,
-                StringComparison.Ordinal)) != 1)
+                StringComparison.Ordinal)) != 1
+            || staging.Artifacts.Any(artifact => artifact.Manifest is null
+                || artifact.RoleStagingPaths is null
+                || artifact.RoleStagingPaths.Count != expectedRoles.Length
+                || !IsSafeSegment(artifact.TopLevelDirectory)
+                || !ModBuildIdentity.IsValid(artifact.BuildIdentity)))
         {
             return ReviewProblem(
                 "reviewStagingOwnershipInvalid",
@@ -399,55 +585,151 @@ internal static partial class ProjectModStager
                 "The retained project-review ownership marker is structurally invalid.");
         }
 
-        if (staging.Artifacts.Select(artifact => artifact.StagingPath)
-                .Distinct(PathComparer()).Count() != staging.Artifacts.Count
+        ProjectReviewRoleStagingPath[] allStagingPaths = staging.Artifacts
+            .SelectMany(artifact => artifact.RoleStagingPaths)
+            .ToArray();
+        if (allStagingPaths.Select(path => path.StagingPath)
+                .Distinct(PathComparer()).Count() != allStagingPaths.Length
             || staging.Artifacts.Select(artifact => artifact.Manifest.UniqueId)
                 .Distinct(StringComparer.OrdinalIgnoreCase).Count() != staging.Artifacts.Count)
         {
             return ReviewProblem(
                 "reviewStagingOwnershipInvalid",
                 null,
-                "The retained project-review ownership marker contains duplicate artifacts.");
+                "The retained project-review ownership marker contains duplicate artifacts or paths.");
+        }
+
+        if (File.Exists(SmokeOwnershipPath(singlePaths, topology)))
+        {
+            return ReviewProblem(
+                "smokeStagingOwnershipPresent",
+                RelativePath(
+                    singlePaths.ProjectRoot,
+                    SmokeOwnershipPath(singlePaths, topology)),
+                "A retained project-smoke staging blocks project review.");
+        }
+
+        var expectedPathsByRole = new Dictionary<string, HashSet<string>>(
+            StringComparer.Ordinal);
+        foreach (ReviewRolePaths expectedRole in expectedRoles)
+        {
+            expectedPathsByRole.Add(
+                expectedRole.Role,
+                new HashSet<string>(PathComparer()));
         }
 
         foreach (ProjectReviewOwnedArtifact artifact in staging.Artifacts)
         {
-            string stagingPath = Path.GetFullPath(artifact.StagingPath);
-            if (!PathEquals(Path.GetDirectoryName(stagingPath)!, paths.ModsPath)
-                || PathEquals(stagingPath, paths.AlwaysOnModPath)
-                || !Directory.Exists(stagingPath)
-                || (File.GetAttributes(stagingPath) & FileAttributes.ReparsePoint) != 0
-                || !ModBuildIdentity.IsValid(artifact.BuildIdentity))
+            if (artifact.RoleStagingPaths.Select(path => path.Role)
+                    .Distinct(StringComparer.Ordinal).Count() != expectedRoles.Length)
             {
                 return ReviewProblem(
                     "reviewStagingOwnershipInvalid",
                     null,
-                    "A retained review staging path is missing, unsafe, or outside the exact isolated mod group.");
+                    "A retained project-review artifact does not contain exactly one path for each topology role.");
             }
 
-            LiveLabPaths.RejectReparsePointsBelow(stagingPath);
-            ProjectReviewManifest? manifest = ReadReviewManifest(
-                Path.Combine(stagingPath, "manifest.json"),
-                allowVersionToken: false,
-                out _);
-            if (manifest is null
-                || !string.Equals(
-                    manifest.UniqueId,
-                    artifact.Manifest.UniqueId,
-                    StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(
-                    manifest.Version,
-                    artifact.Manifest.Version,
-                    StringComparison.Ordinal)
-                || !string.Equals(
-                    ModBuildIdentity.ComputeFileSet(stagingPath),
-                    artifact.BuildIdentity,
-                    StringComparison.Ordinal))
+            foreach (ReviewRolePaths expectedRole in expectedRoles)
+            {
+                ProjectReviewRoleStagingPath? roleStaging = artifact.RoleStagingPaths
+                    .SingleOrDefault(path => string.Equals(
+                        path.Role,
+                        expectedRole.Role,
+                        StringComparison.Ordinal));
+                if (roleStaging is null)
+                {
+                    return ReviewProblem(
+                        "reviewStagingOwnershipInvalid",
+                        null,
+                        "A retained project-review artifact does not contain exactly one path for each topology role.");
+                }
+
+                string stagingPath = Path.GetFullPath(roleStaging.StagingPath);
+                if (!PathEquals(Path.GetDirectoryName(stagingPath)!, expectedRole.Paths.ModsPath)
+                    || !string.Equals(
+                        Path.GetFileName(stagingPath),
+                        artifact.TopLevelDirectory,
+                        OperatingSystem.IsWindows()
+                            ? StringComparison.OrdinalIgnoreCase
+                            : StringComparison.Ordinal)
+                    || PathEquals(stagingPath, expectedRole.Paths.AlwaysOnModPath)
+                    || File.Exists(stagingPath))
+                {
+                    return ReviewProblem(
+                        "reviewStagingOwnershipInvalid",
+                        null,
+                        "A retained review staging path is unsafe or outside its exact isolated role mod group.");
+                }
+
+                expectedPathsByRole[expectedRole.Role].Add(stagingPath);
+                if (!Directory.Exists(stagingPath))
+                {
+                    if (allowMissingStagingPaths)
+                    {
+                        continue;
+                    }
+
+                    return ReviewProblem(
+                        "reviewStagingOwnershipInvalid",
+                        null,
+                        "A retained review staging path is missing from its exact isolated role mod group.");
+                }
+
+                if ((File.GetAttributes(stagingPath) & FileAttributes.ReparsePoint) != 0)
+                {
+                    return ReviewProblem(
+                        "reviewStagingOwnershipInvalid",
+                        null,
+                        "A retained review staging path is a reparse point and was left untouched.");
+                }
+
+                LiveLabPaths.RejectReparsePointsBelow(stagingPath);
+                ProjectReviewManifest? manifest = ReadReviewManifest(
+                    Path.Combine(stagingPath, "manifest.json"),
+                    allowVersionToken: false,
+                    out _);
+                if (manifest is null
+                    || !string.Equals(
+                        manifest.UniqueId,
+                        artifact.Manifest.UniqueId,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        manifest.Version,
+                        artifact.Manifest.Version,
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        ModBuildIdentity.ComputeFileSet(stagingPath),
+                        artifact.BuildIdentity,
+                        StringComparison.Ordinal))
+                {
+                    return ReviewProblem(
+                        "reviewStagingOwnershipDrifted",
+                        null,
+                        $"The retained {expectedRole.Role} project-review staging differs from its ownership marker and was left untouched.");
+                }
+            }
+        }
+
+        foreach (ReviewRolePaths expectedRole in expectedRoles)
+        {
+            if (!Directory.Exists(expectedRole.Paths.ModsPath))
+            {
+                continue;
+            }
+
+            string? foreignEntry = Directory
+                .EnumerateFileSystemEntries(expectedRole.Paths.ModsPath)
+                .FirstOrDefault(entry => !PathEquals(
+                        entry,
+                        expectedRole.Paths.AlwaysOnModPath)
+                    && !expectedPathsByRole[expectedRole.Role].Contains(
+                        Path.GetFullPath(entry)));
+            if (foreignEntry is not null)
             {
                 return ReviewProblem(
-                    "reviewStagingOwnershipDrifted",
-                    null,
-                    "A retained project-review staging differs from its ownership marker and was left untouched.");
+                    "foreignLabModCollision",
+                    RelativePath(singlePaths.ProjectRoot, foreignEntry),
+                    $"The isolated {expectedRole.Role} mod group contains an artifact outside the exact retained project-review ownership set; it was left untouched.");
             }
         }
 
@@ -485,8 +767,83 @@ internal static partial class ProjectModStager
         }
     }
 
-    private static string ReviewOwnershipPath(LiveLabPaths paths) =>
-        Path.Combine(paths.SingleRoot, ReviewOwnershipFileName);
+    private static ReviewRolePaths[] ResolveReviewRolePaths(
+        LiveLabPaths singlePaths,
+        string topology)
+    {
+        if (string.Equals(
+                topology,
+                LiveLabState.SingleTopology,
+                StringComparison.Ordinal))
+        {
+            return [new ReviewRolePaths(LiveLabState.SingleTopology, singlePaths)];
+        }
+
+        if (!string.Equals(
+                topology,
+                NetworkTwoContract.Topology,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Unsupported project-review topology: {topology}");
+        }
+
+        return
+        [
+            new ReviewRolePaths(
+                NetworkTwoContract.HostRole,
+                LiveLabPaths.ResolveNetworkRole(
+                    singlePaths,
+                    NetworkTwoContract.HostRole)),
+            new ReviewRolePaths(
+                NetworkTwoContract.FarmhandRole,
+                LiveLabPaths.ResolveNetworkRole(
+                    singlePaths,
+                    NetworkTwoContract.FarmhandRole)),
+        ];
+    }
+
+    private static string ReviewTopologyRoot(
+        LiveLabPaths singlePaths,
+        string topology)
+    {
+        if (string.Equals(
+                topology,
+                LiveLabState.SingleTopology,
+                StringComparison.Ordinal))
+        {
+            return singlePaths.SingleRoot;
+        }
+
+        if (string.Equals(
+                topology,
+                NetworkTwoContract.Topology,
+                StringComparison.Ordinal))
+        {
+            return Path.Combine(
+                singlePaths.ProjectRoot,
+                ".sdvkit",
+                "lab",
+                NetworkTwoContract.Topology);
+        }
+
+        throw new InvalidDataException(
+            $"Unsupported project-review topology: {topology}");
+    }
+
+    private static string ReviewOwnershipPath(
+        LiveLabPaths singlePaths,
+        string topology) =>
+        Path.Combine(
+            ReviewTopologyRoot(singlePaths, topology),
+            ReviewOwnershipFileName);
+
+    private static string SmokeOwnershipPath(
+        LiveLabPaths singlePaths,
+        string topology) =>
+        Path.Combine(
+            ReviewTopologyRoot(singlePaths, topology),
+            OwnershipFileName);
 
     private static ProjectReviewStagingResult ReviewFailure(
         string code,
@@ -499,4 +856,8 @@ internal static partial class ProjectModStager
         string? path,
         string message) =>
         new(code, path, message);
+
+    private sealed record ReviewRolePaths(
+        string Role,
+        LiveLabPaths Paths);
 }

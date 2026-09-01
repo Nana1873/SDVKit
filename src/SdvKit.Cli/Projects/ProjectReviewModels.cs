@@ -44,18 +44,39 @@ internal sealed record ProjectReviewPreparationResult(
     string? PreparationRoot,
     ProjectReviewProblem? Problem);
 
+internal sealed record ProjectReviewRoleStagingPath(
+    string Role,
+    string StagingPath);
+
 internal sealed record ProjectReviewOwnedArtifact(
     string Role,
     string SourceRoot,
     string TopLevelDirectory,
-    string StagingPath,
+    IReadOnlyList<ProjectReviewRoleStagingPath> RoleStagingPaths,
     ProjectReviewManifest Manifest,
     string BuildIdentity,
     string? BuildLog,
-    string? PackageLog);
+    string? PackageLog)
+{
+    [JsonIgnore]
+    public string StagingPath => RoleStagingPaths.Count == 1
+        ? RoleStagingPaths[0].StagingPath
+        : throw new InvalidOperationException(
+            "A network-2 review artifact has role-specific staging paths; select one by role.");
+
+    public string StagingPathFor(string role)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(role);
+        return RoleStagingPaths.Single(path => string.Equals(
+            path.Role,
+            role,
+            StringComparison.Ordinal)).StagingPath;
+    }
+}
 
 internal sealed record ProjectReviewStaging(
     int SchemaVersion,
+    string Topology,
     string OwnershipPath,
     IReadOnlyList<ProjectReviewOwnedArtifact> Artifacts)
 {
