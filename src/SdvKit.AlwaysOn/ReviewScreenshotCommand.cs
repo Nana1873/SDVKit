@@ -130,25 +130,56 @@ internal static class ReviewScreenshotOperation
 }
 
 #if SDVKIT_GAME_AVAILABLE
-internal static class ReviewScreenshotCommand
+internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Capture an isolated map screenshot: sdvkit screenshot <label>";
+        "Isolated review helpers: sdvkit screenshot <label> | sdvkit fixture ...";
+    private const string Usage =
+        "Usage: sdvkit screenshot <label> | sdvkit fixture ...";
 
-    public static void Register(IModHelper helper, IMonitor monitor)
+    public static void Register(
+        IModHelper helper,
+        IMonitor monitor,
+        Func<TestSaveAutomation?> testSave,
+        Func<NetworkTwoAutomation?> networkTwo)
     {
         ArgumentNullException.ThrowIfNull(helper);
         ArgumentNullException.ThrowIfNull(monitor);
+        ArgumentNullException.ThrowIfNull(testSave);
+        ArgumentNullException.ThrowIfNull(networkTwo);
 
-        var runtime = new StardewReviewScreenshotRuntime();
+        var screenshotRuntime = new StardewReviewScreenshotRuntime();
+        var fixtureRuntime = new StardewReviewFixtureRuntime(
+            testSave,
+            networkTwo,
+            helper.Multiplayer.GetNewID);
         helper.ConsoleCommands.Add(
             RootCommand,
             HelpText,
-            (_, arguments) => Handle(arguments, runtime, monitor));
+            (_, arguments) =>
+            {
+                if (arguments.Length > 0
+                    && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))
+                {
+                    ReviewScreenshotCommand.Handle(arguments, screenshotRuntime, monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "fixture", StringComparison.Ordinal))
+                {
+                    ReviewFixtureCommand.Handle(arguments, fixtureRuntime, monitor);
+                }
+                else
+                {
+                    monitor.Log(Usage, LogLevel.Error);
+                }
+            });
     }
+}
 
-    private static void Handle(
+internal static class ReviewScreenshotCommand
+{
+    public static void Handle(
         string[] arguments,
         IReviewScreenshotRuntime runtime,
         IMonitor monitor)
@@ -177,21 +208,22 @@ internal static class ReviewScreenshotCommand
         }
     }
 
-    private sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime
-    {
-        public bool IsWorldReady => Context.IsWorldReady;
+}
 
-        public bool CanTakeScreenshots => Game1.game1.CanTakeScreenshots();
+internal sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime
+{
+    public bool IsWorldReady => Context.IsWorldReady;
 
-        public bool ScreenshotBusy => Game1.game1.ScreenshotBusy;
+    public bool CanTakeScreenshots => Game1.game1.CanTakeScreenshots();
 
-        public string GetScreenshotFolder() =>
-            Game1.game1.GetScreenshotFolder(true);
+    public bool ScreenshotBusy => Game1.game1.ScreenshotBusy;
 
-        public bool FileExists(string path) => File.Exists(path);
+    public string GetScreenshotFolder() =>
+        Game1.game1.GetScreenshotFolder(true);
 
-        public string? TakeMapScreenshot(string screenshotName) =>
-            Game1.game1.takeMapScreenshot(1f, screenshotName, null!);
-    }
+    public bool FileExists(string path) => File.Exists(path);
+
+    public string? TakeMapScreenshot(string screenshotName) =>
+        Game1.game1.takeMapScreenshot(1f, screenshotName, null!);
 }
 #endif

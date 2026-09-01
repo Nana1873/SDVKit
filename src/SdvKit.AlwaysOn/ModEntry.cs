@@ -45,7 +45,6 @@ public sealed class ModEntry : Mod
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
-        ReviewScreenshotCommand.Register(helper, Monitor);
         if (!ProjectModObserver.TryCreate(
                 helper,
                 Monitor,
@@ -83,6 +82,12 @@ public sealed class ModEntry : Mod
                 LogLevel.Error);
             _networkTwo?.LogInitializationFailure();
         }
+
+        ReviewCommand.Register(
+            helper,
+            Monitor,
+            () => _testSave,
+            () => _networkTwo);
 
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 

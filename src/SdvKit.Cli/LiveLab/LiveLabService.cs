@@ -91,6 +91,7 @@ internal sealed class LiveLabService
         "SDVKIT_PROJECT_MOD_UNIQUE_ID",
         "SDVKIT_PROJECT_MOD_VERSION",
         "SDVKIT_PROJECT_MOD_BUILD_IDENTITY",
+        "SDVKIT_PROJECT_REVIEW",
     ];
 
     private readonly LiveLabPaths _paths;
@@ -1001,6 +1002,10 @@ internal sealed class LiveLabService
         if (projectMod is not null)
         {
             AddProjectModEnvironment(environment, projectMod);
+            if (interactiveConsole)
+            {
+                environment["SDVKIT_PROJECT_REVIEW"] = "1";
+            }
         }
 
         var specification = new LabProcessStartSpec(

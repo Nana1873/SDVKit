@@ -76,6 +76,7 @@ public sealed class NetworkTwoLiveLabServiceTests
             "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"]);
         Assert.Equal(TestSaveContract.ScenarioMode, specification.Environment[
             "SDVKIT_TEST_SAVE_MODE"]);
+        Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.StartsWith(
             Path.Combine(temporary.Path, ".sdvkit", "lab", "network-2", "host"),
             paths.ModsPath,
@@ -138,6 +139,7 @@ public sealed class NetworkTwoLiveLabServiceTests
                 "SDVKIT_TEST_SAVE_",
                 StringComparison.Ordinal)),
             pair => Assert.Equal(string.Empty, pair.Value));
+        Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.NotEqual(hostPaths.ModsPath, paths.ModsPath);
         Assert.NotEqual(hostPaths.StatusPath, paths.StatusPath);
         Assert.NotEqual(hostPaths.StopRequestPath, paths.StopRequestPath);
@@ -205,6 +207,7 @@ public sealed class NetworkTwoLiveLabServiceTests
             "SDVKIT_PROJECT_MOD_VERSION"]);
         Assert.Equal(projectMod.BuildIdentity, specification.Environment[
             "SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+        Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
     }
 
     [Theory]
@@ -275,6 +278,7 @@ public sealed class NetworkTwoLiveLabServiceTests
             "SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal(projectMod.BuildIdentity, specification.Environment[
             "SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
     }
 
     [Theory]

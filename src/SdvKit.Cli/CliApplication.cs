@@ -792,6 +792,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json");
         output.WriteLine(
+            "    Owned review-fixture console lines are transported as <text>; see project review --help.");
+        output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
         output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
@@ -828,6 +830,7 @@ public static class CliApplication
         output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
+        WriteReviewFixtureConsoleUsage(output);
     }
 
     private static void WriteProjectReviewUsage(TextWriter output)
@@ -839,5 +842,19 @@ public static class CliApplication
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
+        WriteReviewFixtureConsoleUsage(output);
+    }
+
+    private static void WriteReviewFixtureConsoleUsage(TextWriter output)
+    {
+        output.WriteLine(
+            "AlwaysOn fixture console lines (quote one as <text> for project review command; not top-level CLI):");
+        output.WriteLine("  sdvkit fixture status");
+        output.WriteLine("  sdvkit fixture building ensure <alias> deluxe-barn <x> <y>");
+        output.WriteLine("  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>");
+        output.WriteLine("  sdvkit fixture object clear-owned <alias-or-id>");
+        output.WriteLine("  sdvkit fixture animal ensure <alias-or-id> white-cow");
+        output.WriteLine("  sdvkit fixture enter <alias-or-id>");
+        output.WriteLine("  sdvkit fixture farm");
     }
 }

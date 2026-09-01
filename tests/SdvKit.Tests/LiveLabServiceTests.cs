@@ -53,6 +53,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.RoamingAppDataPath, specification.Environment["APPDATA"]);
         Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
         Assert.Equal(paths.StardewDataPath, specification.Environment["SDVKIT_LAB_DATA_PATH"]);
+        Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
         Assert.False(specification.StartMinimizedWithoutActivation);
@@ -102,6 +103,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(
             projectMod.BuildIdentity,
             specification.Environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal(projectMod, stateStore.State?.ProjectMod);
         Assert.Null(stateStore.State?.TestSave);
         Assert.Null(stateStore.State?.NetworkTwo);
@@ -152,8 +154,35 @@ public sealed class LiveLabServiceTests
         Assert.Equal(
             fixtureStore.Identity.FixtureId,
             specification.Environment["SDVKIT_TEST_SAVE_FIXTURE_ID"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal(projectMod, stateStore.State?.ProjectMod);
         Assert.Null(stateStore.State?.NetworkTwo);
+    }
+
+    [Fact]
+    public void ProjectSmokeExplicitlyClearsTheProjectReviewEnvironment()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeProcessHost process = new();
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabService service = Service(
+            paths,
+            new FakeStateStore(),
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: new FakeTestSaveStore(paths));
+
+        LiveLabCommandResult result = service.RunProjectTestSave(projectMod);
+
+        Assert.Equal(3, result.ExitCode);
+        LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(
+            process.Specification);
+        Assert.Equal(projectMod.UniqueId, specification.Environment[
+            "SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
+        Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
     }
 
     [Fact]
@@ -1114,6 +1143,9 @@ public sealed class LiveLabServiceTests
         Assert.Equal(
             fixtureStore.Identity.SaveId,
             process.Specification?.Environment["SDVKIT_TEST_SAVE_ID"]);
+        Assert.Equal(
+            string.Empty,
+            process.Specification?.Environment["SDVKIT_PROJECT_REVIEW"]);
     }
 
     [Fact]

@@ -103,7 +103,8 @@ internal static class ProjectPackager
             ProjectInspectionReport.SmapiMod or ProjectInspectionReport.Hybrid => PackageMod(
                 path,
                 discoverInstallations,
-                runner ?? ProjectBuilder.RunDotNet),
+                runner ?? ProjectBuilder.RunDotNet,
+                stateDirectory: null),
             ProjectInspectionReport.ContentPack => PackageContentPack(inspection),
             _ => Report(
                 inspection,
@@ -114,10 +115,42 @@ internal static class ProjectPackager
         };
     }
 
+    internal static ProjectPackageReport PackageForReview(
+        string path,
+        string stateDirectory,
+        Func<DoctorReport> discoverInstallations,
+        DotNetBuildRunner? runner = null)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+        ArgumentNullException.ThrowIfNull(discoverInstallations);
+
+        ProjectInspectionReport inspection = ProjectInspector.Inspect(path);
+        if (inspection.Problems.Count > 0)
+        {
+            return Report(inspection, null, [], null, inspection.Problems);
+        }
+
+        return inspection.Kind is ProjectInspectionReport.SmapiMod
+            or ProjectInspectionReport.Hybrid
+            ? PackageMod(
+                path,
+                discoverInstallations,
+                runner ?? ProjectBuilder.RunDotNet,
+                Path.GetFullPath(stateDirectory))
+            : Report(
+                inspection,
+                null,
+                [],
+                null,
+                [new ProjectProblem("projectNotPackageable", null)]);
+    }
+
     private static ProjectPackageReport PackageMod(
         string path,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner runner)
+        DotNetBuildRunner runner,
+        string? stateDirectory)
     {
         ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(path);
         if (resolution.Target is null)
@@ -139,10 +172,13 @@ internal static class ProjectPackager
         }
 
         string root = resolution.Inspection.Root;
-        ProjectProblem? stateProblem = ProjectBuilder.CheckStateDirectory(root);
-        if (stateProblem is not null)
+        if (stateDirectory is null)
         {
-            return Report(resolution.Inspection, null, [], null, [stateProblem]);
+            ProjectProblem? stateProblem = ProjectBuilder.CheckStateDirectory(root);
+            if (stateProblem is not null)
+            {
+                return Report(resolution.Inspection, null, [], null, [stateProblem]);
+            }
         }
 
         PackFileScan sourceScan = ScanContentPackFiles(root);
@@ -151,23 +187,56 @@ internal static class ProjectPackager
             return Report(resolution.Inspection, null, [], null, [sourceScan.Problem]);
         }
 
-        string artifactsPath = Path.Combine(root, ".sdvkit", "build");
+        string stateRoot = stateDirectory ?? Path.Combine(root, ".sdvkit");
+        string artifactsPath = Path.Combine(stateRoot, "build");
         ProjectProblem? outputProblem = ProjectBuilder.PrepareOutputIsolation(
             artifactsPath,
-            "packageOutputUnavailable");
+            "packageOutputUnavailable",
+            stateDirectory);
         if (outputProblem is not null)
         {
             return Report(resolution.Inspection, null, [], null, [outputProblem]);
         }
 
         string stagingRoot = Path.Combine(
-            root,
-            FromSlashPath(PackageStagingDirectory),
+            stateRoot,
+            "package-staging",
             Guid.NewGuid().ToString("N"));
-        string logFile = Path.Combine(root, FromSlashPath(ProjectBuilder.PackageLogPath));
+        string logFile = Path.Combine(stateRoot, "logs", "package.log");
+        string reportLogPath = stateDirectory is null
+            ? ProjectBuilder.PackageLogPath
+            : logFile;
         try
         {
+            if (stateDirectory is not null
+                && (!ProjectBuilder.ReviewStateTreeIsPlain(stateDirectory)
+                    || !ProjectBuilder.ReviewStatePathIsPlain(
+                        stateDirectory,
+                        stagingRoot,
+                        allowFinalFile: false)))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    null,
+                    [new ProjectProblem("packageOutputUnavailable", stagingRoot)]);
+            }
+
             Directory.CreateDirectory(stagingRoot);
+            if (stateDirectory is not null
+                && !ProjectBuilder.ReviewStatePathIsPlain(
+                    stateDirectory,
+                    stagingRoot,
+                    allowFinalFile: false))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    null,
+                    [new ProjectProblem("packageOutputUnavailable", stagingRoot)]);
+            }
         }
         catch (Exception exception) when (exception is IOException
             or SecurityException
@@ -189,10 +258,14 @@ internal static class ProjectPackager
                 gamePath!,
                 enableZip: true,
                 stagingRoot);
-            DotNetBuildResult build = ProjectBuilder.RunAndLog(command, logFile, runner);
+            DotNetBuildResult build = ProjectBuilder.RunAndLog(
+                command,
+                logFile,
+                runner,
+                stateDirectory);
             IReadOnlyList<ProjectProblem> buildProblems = ProjectBuilder.ProcessProblems(
                 build,
-                ProjectBuilder.PackageLogPath,
+                reportLogPath,
                 "packageBuildFailed",
                 "packageLogUnavailable");
             if (buildProblems.Count > 0)
@@ -201,8 +274,23 @@ internal static class ProjectPackager
                     resolution.Inspection,
                     null,
                     [],
-                    ProjectBuilder.PackageLogPath,
+                    reportLogPath,
                     buildProblems);
+            }
+
+            if (stateDirectory is not null
+                && (!ProjectBuilder.ReviewStateTreeIsPlain(stateDirectory)
+                    || !ProjectBuilder.ReviewStatePathIsPlain(
+                        stateDirectory,
+                        stagingRoot,
+                        allowFinalFile: false)))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    reportLogPath,
+                    [new ProjectProblem("packageOutputUnavailable", stagingRoot)]);
             }
 
             string[] archives = Directory.GetFiles(stagingRoot, "*.zip", SearchOption.TopDirectoryOnly);
@@ -212,8 +300,23 @@ internal static class ProjectPackager
                     resolution.Inspection,
                     null,
                     [],
-                    ProjectBuilder.PackageLogPath,
-                    [new ProjectProblem("packageArchiveNotFound", ProjectBuilder.PackageLogPath)]);
+                    reportLogPath,
+                    [new ProjectProblem("packageArchiveNotFound", reportLogPath)]);
+            }
+
+            if (stateDirectory is not null
+                && (!ProjectBuilder.ReviewStateTreeIsPlain(stateDirectory)
+                    || !ProjectBuilder.ReviewStatePathIsPlain(
+                        stateDirectory,
+                        archives[0],
+                        allowFinalFile: true)))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    reportLogPath,
+                    [new ProjectProblem("packageOutputUnavailable", archives[0])]);
             }
 
             ArchiveValidation validation = ValidateArchive(
@@ -225,19 +328,68 @@ internal static class ProjectPackager
                     resolution.Inspection,
                     null,
                     [],
-                    ProjectBuilder.PackageLogPath,
+                    reportLogPath,
                     [validation.Problem]);
             }
 
-            string packagesPath = Path.Combine(root, FromSlashPath(PackageDirectory));
+            string packagesPath = Path.Combine(stateRoot, "packages");
+            if (stateDirectory is not null
+                && !ProjectBuilder.ReviewStatePathIsPlain(
+                    stateDirectory,
+                    packagesPath,
+                    allowFinalFile: false))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    reportLogPath,
+                    [new ProjectProblem("packageOutputUnavailable", packagesPath)]);
+            }
+
             Directory.CreateDirectory(packagesPath);
             string destination = Path.Combine(packagesPath, Path.GetFileName(archives[0]));
-            File.Move(archives[0], destination, overwrite: true);
+            if (stateDirectory is not null
+                && (!ProjectBuilder.ReviewStateTreeIsPlain(stateDirectory)
+                    || !ProjectBuilder.ReviewStatePathIsPlain(
+                        stateDirectory,
+                        destination,
+                        allowFinalFile: true)
+                    || File.Exists(destination)
+                    || Directory.Exists(destination)))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    reportLogPath,
+                    [new ProjectProblem("packageOutputUnavailable", destination)]);
+            }
+
+            File.Move(
+                archives[0],
+                destination,
+                overwrite: stateDirectory is null);
+            if (stateDirectory is not null
+                && (!ProjectBuilder.ReviewStateTreeIsPlain(stateDirectory)
+                    || !ProjectBuilder.ReviewStatePathIsPlain(
+                        stateDirectory,
+                        destination,
+                        allowFinalFile: true)))
+            {
+                return Report(
+                    resolution.Inspection,
+                    null,
+                    [],
+                    reportLogPath,
+                    [new ProjectProblem("packageOutputUnavailable", destination)]);
+            }
+
             return Report(
                 resolution.Inspection,
-                RelativePath(root, destination),
+                stateDirectory is null ? RelativePath(root, destination) : destination,
                 validation.Entries,
-                ProjectBuilder.PackageLogPath,
+                reportLogPath,
                 []);
         }
         catch (Exception exception) when (exception is IOException
@@ -249,12 +401,12 @@ internal static class ProjectPackager
                 resolution.Inspection,
                 null,
                 [],
-                ProjectBuilder.PackageLogPath,
-                [new ProjectProblem("packageFailed", ProjectBuilder.PackageLogPath)]);
+                reportLogPath,
+                [new ProjectProblem("packageFailed", reportLogPath)]);
         }
         finally
         {
-            DeleteStagingDirectory(stagingRoot);
+            DeleteStagingDirectory(stagingRoot, stateDirectory);
         }
     }
 
@@ -395,7 +547,7 @@ internal static class ProjectPackager
         }
         finally
         {
-            DeleteStagingDirectory(stagingRoot);
+            DeleteStagingDirectory(stagingRoot, reviewStateDirectory: null);
         }
     }
 
@@ -689,12 +841,24 @@ internal static class ProjectPackager
             problems);
     }
 
-    private static void DeleteStagingDirectory(string path)
+    private static void DeleteStagingDirectory(
+        string path,
+        string? reviewStateDirectory)
     {
         try
         {
             if (Directory.Exists(path))
             {
+                if (reviewStateDirectory is not null
+                    && (!ProjectBuilder.ReviewStateTreeIsPlain(reviewStateDirectory)
+                        || !ProjectBuilder.ReviewStatePathIsPlain(
+                            reviewStateDirectory,
+                            path,
+                            allowFinalFile: false)))
+                {
+                    return;
+                }
+
                 Directory.Delete(path, recursive: true);
             }
         }
