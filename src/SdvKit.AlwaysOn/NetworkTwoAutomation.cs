@@ -414,20 +414,30 @@ internal sealed class NetworkTwoAutomation
             }
 
             Farmer farmhand = available[0];
-            if (!farmhand.isUnclaimedFarmhand)
-            {
-                throw new InvalidOperationException(
-                    "The exact host farmhand is already claimed instead of disposable.");
-            }
-
             if (farmhand.UniqueMultiplayerID != _launch.ExpectedFarmhandId)
             {
                 throw new InvalidOperationException(
                     "The host offered a different farmhand identity than the one declared by the hosting marker.");
             }
 
+            bool isFreshFarmhand = farmhand.isUnclaimedFarmhand;
+            bool isPersistedReviewFarmhand = !isFreshFarmhand
+                && MatchesPlayer(
+                    farmhand,
+                    NetworkTwoContract.FarmhandRole,
+                    NetworkTwoContract.FarmhandName);
+            if (!isFreshFarmhand && !isPersistedReviewFarmhand)
+            {
+                throw new InvalidOperationException(
+                    "The exact host farmhand is neither disposable nor the saved review farmhand.");
+            }
+
             ConfigureFarmhand(farmhand);
-            SetPhase("selectingFarmhand", "Selecting Stardew's one exact unclaimed farmhand.");
+            SetPhase(
+                "selectingFarmhand",
+                isFreshFarmhand
+                    ? "Selecting Stardew's one exact unclaimed farmhand."
+                    : "Selecting Stardew's one exact saved review farmhand.");
             FarmhandMenu farmhandMenu = TitleMenu.subMenu as FarmhandMenu
                 ?? throw new InvalidOperationException(
                     "Stardew closed the exact farmhand selection menu before activation.");
@@ -528,7 +538,7 @@ internal sealed class NetworkTwoAutomation
             && farmhands.Count == 1)
         {
             Farmer savedFarmhand = farmhands[0];
-            if (!savedFarmhand.isUnclaimedFarmhand
+            if (savedFarmhand.isUnclaimedFarmhand
                 || savedFarmhand.UniqueMultiplayerID == 0
                 || !MatchesPlayer(
                     savedFarmhand,
@@ -536,7 +546,7 @@ internal sealed class NetworkTwoAutomation
                     NetworkTwoContract.FarmhandName))
             {
                 throw new InvalidOperationException(
-                    "The loaded review save did not retain the exact unclaimed farmhand identity.");
+                    "The loaded review save did not retain the exact saved farmhand identity.");
             }
 
             return savedFarmhand;

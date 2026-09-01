@@ -84,13 +84,13 @@ public sealed class NetworkTwoAutomationSourceTests
             "farmhands.Count == 1",
             reviewMode,
             StringComparison.Ordinal);
-        int unclaimed = source.IndexOf(
-            "!savedFarmhand.isUnclaimedFarmhand",
+        int customized = source.IndexOf(
+            "if (savedFarmhand.isUnclaimedFarmhand",
             exactCount,
             StringComparison.Ordinal);
         int stableId = source.IndexOf(
             "savedFarmhand.UniqueMultiplayerID == 0",
-            unclaimed,
+            customized,
             StringComparison.Ordinal);
         int exactIdentity = source.IndexOf(
             "!MatchesPlayer(",
@@ -142,8 +142,8 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.True(preparation > saveIdentity);
         Assert.True(reviewMode > preparation);
         Assert.True(exactCount > reviewMode);
-        Assert.True(unclaimed > exactCount);
-        Assert.True(stableId > unclaimed);
+        Assert.True(customized > exactCount);
+        Assert.True(stableId > customized);
         Assert.True(exactIdentity > stableId);
         Assert.True(farmhandRole > exactIdentity);
         Assert.True(farmhandName > farmhandRole);
@@ -155,6 +155,57 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.True(exactBuild > buildMarker);
         Assert.True(roleMarker > exactBuild);
         Assert.True(exactRole > roleMarker);
+    }
+
+    [Fact]
+    public void FarmhandSelectionAcceptsOnlyFreshOrExactPersistedReviewIdentity()
+    {
+        string source = ReadAutomationSource();
+        int connecting = source.IndexOf(
+            "if (string.Equals(_phase, \"connecting\", StringComparison.Ordinal))",
+            StringComparison.Ordinal);
+        int stableId = source.IndexOf(
+            "farmhand.UniqueMultiplayerID != _launch.ExpectedFarmhandId",
+            connecting,
+            StringComparison.Ordinal);
+        int fresh = source.IndexOf(
+            "bool isFreshFarmhand = farmhand.isUnclaimedFarmhand;",
+            stableId,
+            StringComparison.Ordinal);
+        int persisted = source.IndexOf(
+            "bool isPersistedReviewFarmhand = !isFreshFarmhand",
+            fresh,
+            StringComparison.Ordinal);
+        int exactIdentity = source.IndexOf(
+            "&& MatchesPlayer(",
+            persisted,
+            StringComparison.Ordinal);
+        int farmhandRole = source.IndexOf(
+            "NetworkTwoContract.FarmhandRole",
+            exactIdentity,
+            StringComparison.Ordinal);
+        int farmhandName = source.IndexOf(
+            "NetworkTwoContract.FarmhandName",
+            farmhandRole,
+            StringComparison.Ordinal);
+        int rejection = source.IndexOf(
+            "if (!isFreshFarmhand && !isPersistedReviewFarmhand)",
+            farmhandName,
+            StringComparison.Ordinal);
+        int configuration = source.IndexOf(
+            "ConfigureFarmhand(farmhand);",
+            rejection,
+            StringComparison.Ordinal);
+
+        Assert.True(connecting >= 0);
+        Assert.True(stableId > connecting);
+        Assert.True(fresh > stableId);
+        Assert.True(persisted > fresh);
+        Assert.True(exactIdentity > persisted);
+        Assert.True(farmhandRole > exactIdentity);
+        Assert.True(farmhandName > farmhandRole);
+        Assert.True(rejection > farmhandName);
+        Assert.True(configuration > rejection);
     }
 
     [Fact]
