@@ -161,7 +161,7 @@ public static class CliApplication
     }
 
     private static string CurrentVersion =>
-        typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.4.0";
+        typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.4.1";
 
     private static int RunVersion(
         IReadOnlyList<string> arguments,
