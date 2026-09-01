@@ -855,6 +855,7 @@ public static class CliApplication
         output.WriteLine("  sdvkit fixture object clear-owned <alias-or-id>");
         output.WriteLine("  sdvkit fixture animal ensure <alias-or-id> white-cow");
         output.WriteLine("  sdvkit fixture enter <alias-or-id>");
+        output.WriteLine("  sdvkit fixture enter greenhouse");
         output.WriteLine("  sdvkit fixture farm");
     }
 }

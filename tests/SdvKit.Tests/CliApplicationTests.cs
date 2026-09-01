@@ -774,6 +774,8 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "  sdvkit fixture enter <alias-or-id>"
                 + Environment.NewLine
+                + "  sdvkit fixture enter greenhouse"
+                + Environment.NewLine
                 + "  sdvkit fixture farm"
                 + Environment.NewLine,
             error);
@@ -834,6 +836,7 @@ public sealed class CliApplicationTests
             "sdvkit fixture object clear-owned <alias-or-id>",
             "sdvkit fixture animal ensure <alias-or-id> white-cow",
             "sdvkit fixture enter <alias-or-id>",
+            "sdvkit fixture enter greenhouse",
             "sdvkit fixture farm",
         ];
         foreach (string fixtureConsoleLine in fixtureConsoleLines)
