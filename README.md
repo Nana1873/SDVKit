@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.4.0-win-x64.zip` and `SDVKit-0.4.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.4.1-win-x64.zip` and `SDVKit-0.4.1-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.4.0-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.4.0-win-x64.zip
-& .\SDVKit-0.4.0-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.4.1-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.4.1-win-x64.zip
+& .\SDVKit-0.4.1-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.4.0
+## What's new in v0.4.1
 
-Since `v0.3.0`, a ready root SMAPI content pack can itself be the target of a `project review` in the `single` topology. Its provider must be selected explicitly as a local companion, while content-pack targets remain fail-closed for `network-2`. Existing C# targets and `project smoke` keep their previous behavior.
+Since `v0.4.0`, an owned SMAPI code mod may create one new regular root `config.json` during `project smoke` or `project review` when the remaining staged file set still reproduces the original ownership identity exactly. The shared rule covers smoke targets, review code-mod targets, and explicitly selected code-mod companions, improving compatibility with normal SMAPI mods that create their configuration on first launch.
 
-The repository-owned `sdv-project-review` skill now documents functional, visual, real-restart, and cleanup acceptance for interactive reviews. SDVKit still performs no automatic mod or provider search, downloads nothing, and does not modify normal saves or the normal or mod-manager-owned `Mods` directory.
+Content packs, changes to packaged files, additional files, nested configuration files, and reparse points remain fail-closed. SDVKit does not parse or report configuration contents or possible shared secrets.
 
 ## Isolated singleplayer live lab
 
