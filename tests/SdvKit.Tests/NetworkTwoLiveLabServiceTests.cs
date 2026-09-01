@@ -677,6 +677,9 @@ public sealed class NetworkTwoLiveLabServiceTests
         public TestSavePreparation PrepareForStart() =>
             new(Launch);
 
+        public TestSavePreparation PrepareReviewForStart(bool resetFromBaseline) =>
+            new(Launch with { Mode = TestSaveContract.ReviewMode });
+
         public TestSaveCleanupResult CompleteStopped(
             TestSaveLaunchState launch,
             string launchId)

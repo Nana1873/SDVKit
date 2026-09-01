@@ -398,6 +398,104 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void SingleResetRestoresTheExactFixtureAndRemovesOnlyOwnedStaging()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageTargetAndCompanion(paths, temporary.Path);
+        TestSaveIdentity identity = WriteReviewFixture(paths);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.True(report.FixtureReset);
+        Assert.True(report.StagingRemoved);
+        Assert.Empty(report.Problems);
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+            Assert.False(Directory.Exists(artifact.StagingPath)));
+        Assert.Equal(
+            "baseline-save",
+            File.ReadAllText(Path.Combine(paths.TestSaveWorkPath, identity.SaveId)));
+        Assert.False(File.Exists(Path.Combine(paths.TestSaveWorkPath, "review-only")));
+    }
+
+    [Fact]
+    public void SingleResetWithRetainedSingleStateBlocksWithoutMutation()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageTargetAndCompanion(paths, temporary.Path);
+        WriteReviewFixture(paths);
+        new JsonLiveLabStateStore(paths.StatePath).Write(
+            ReviewState(paths, staging.TargetLaunchState));
+        string stateBefore = FileSnapshot(paths.StatePath);
+        string stagingBefore = TreeSnapshot(paths.ModsPath);
+        string fixtureBefore = TreeSnapshot(paths.TestSaveRoot);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.False(report.StagingRemoved);
+        Assert.Equal(
+            "reviewResetRequiresStoppedLab",
+            Assert.Single(report.Problems).Code);
+        Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+        Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+        Assert.Equal(fixtureBefore, TreeSnapshot(paths.TestSaveRoot));
+    }
+
+    [Fact]
+    public void SingleResetCannotConsumeARetainedNetworkReviewFixture()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging networkStaging = StageNetworkReviewSet(
+            paths,
+            temporary.Path);
+        WriteReviewFixture(paths);
+        string before = TreeSnapshot(paths.TestSaveRoot);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.Equal(
+            "reviewResetRequiresStoppedLab",
+            Assert.Single(report.Problems).Code);
+        Assert.Equal(before, TreeSnapshot(paths.TestSaveRoot));
+        Assert.True(File.Exists(networkStaging.OwnershipPath));
+    }
+
+    [Fact]
     public void StatusWithoutStateOrStagingIsStoppedWithoutDiscovery()
     {
         using TemporaryDirectory temporary = new();
@@ -430,6 +528,86 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void SingleStatusReportsTheExactLoadedFixtureIdentityAndOwnership()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity identity = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            identity,
+            Path.Combine(paths.SavesPath, identity.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity processIdentity, Process child) = StartRunningProcess(
+            temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    processIdentity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    testSave: new TestSaveStatusMarker(
+                        TestSaveContract.SchemaVersion,
+                        TestSaveContract.ReviewMode,
+                        "passed",
+                        identity.FixtureId,
+                        identity.SaveId,
+                        true,
+                        0,
+                        "Exact fixture loaded for interactive review.",
+                        paths.TestSaveScenarioLogPath));
+
+                LiveLabCommandResult result = ProjectReviewService.Execute(
+                    "status",
+                    temporary.Path,
+                    [],
+                    [],
+                    LiveLabState.SingleTopology,
+                    temporary.Path,
+                    () => throw new InvalidOperationException(
+                        "Status must not run doctor."));
+
+                ProjectReviewReport report =
+                    Assert.IsType<ProjectReviewReport>(result.Report);
+                Assert.Equal(0, result.ExitCode);
+                Assert.Equal("running", report.State);
+                TestSaveStatusReport fixture = Assert.IsType<TestSaveStatusReport>(
+                    report.TestSave);
+                Assert.Equal("ready", fixture.State);
+                Assert.Equal(TestSaveContract.ReviewMode, fixture.Mode);
+                Assert.Equal("passed", fixture.Phase);
+                Assert.Equal(identity.FixtureId, fixture.FixtureId);
+                Assert.Equal(identity.SaveId, fixture.SaveId);
+                Assert.True(fixture.IdentityVerified);
+                Assert.False(report.FixtureReset);
+                Assert.Empty(report.Problems);
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
     public void BindingMismatchRetainsExactStateAndStaging()
     {
         using TemporaryDirectory temporary = new();
@@ -459,6 +637,59 @@ public sealed class ProjectReviewServiceTests
         Assert.True(File.Exists(paths.StatePath));
         Assert.True(File.Exists(staging.OwnershipPath));
         Assert.True(Directory.Exists(staging.Target.StagingPath));
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void RetainedStartCannotChangeTheSingleTestSaveSelection(
+        bool retainedUsesTestSave,
+        bool requestedUsesTestSave)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        LiveLabState state = ReviewState(paths, staging.TargetLaunchState);
+        if (retainedUsesTestSave)
+        {
+            TestSaveIdentity identity = WriteReviewFixture(paths);
+            state = state with
+            {
+                TestSave = new TestSaveLaunchState(
+                    TestSaveContract.ReviewMode,
+                    identity,
+                    Path.Combine(paths.SavesPath, identity.SaveId),
+                    paths.TestSaveWorkPath,
+                    paths.TestSaveScenarioLogPath),
+            };
+        }
+
+        new JsonLiveLabStateStore(paths.StatePath).Write(state);
+        Directory.CreateDirectory(paths.TestSaveRoot);
+        string stateBefore = FileSnapshot(paths.StatePath);
+        string stagingBefore = TreeSnapshot(paths.ModsPath);
+        string fixtureBefore = TreeSnapshot(paths.TestSaveRoot);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "start",
+            staging.Target.SourceRoot,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Start must not run doctor."),
+            requestedUsesTestSave);
+
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(
+            "reviewTestSaveSelectionMismatch",
+            Assert.Single(report.Problems).Code);
+        Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+        Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+        Assert.Equal(fixtureBefore, TreeSnapshot(paths.TestSaveRoot));
     }
 
     [Fact]
@@ -778,6 +1009,108 @@ public sealed class ProjectReviewServiceTests
                     expectedProblem,
                     Assert.Single(report.Problems).Code);
                 Assert.Equal(0, sender.CallCount);
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("pending", false, "reviewConsoleTestSaveNotReady")]
+    [InlineData("loading", false, "reviewConsoleTestSaveNotReady")]
+    [InlineData("failed", false, "testSaveFailed")]
+    [InlineData("mismatch", false, "testSaveStatusMismatch")]
+    [InlineData("passed", true, null)]
+    public void CommandRequiresTheExactReviewFixtureToBeCurrentlyLoaded(
+        string fixtureState,
+        bool expectedWritten,
+        string? expectedProblem)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                string? markerPhase = fixtureState switch
+                {
+                    "pending" => null,
+                    "mismatch" => "passed",
+                    _ => fixtureState,
+                };
+                TestSaveStatusMarker? marker = markerPhase is null
+                    ? null
+                    : new TestSaveStatusMarker(
+                        TestSaveContract.SchemaVersion,
+                        TestSaveContract.ReviewMode,
+                        markerPhase,
+                        fixtureState == "mismatch"
+                            ? "cccccccccccccccccccccccccccccccc"
+                            : fixture.FixtureId,
+                        fixture.SaveId,
+                        IdentityVerified: markerPhase == "passed",
+                        WaitedTicks: 0,
+                        fixtureState,
+                        paths.TestSaveScenarioLogPath);
+                WriteLoadedStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    testSave: marker);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                    "sic-review set greenhouse fixture",
+                    temporary.Path,
+                    sender);
+
+                ProjectReviewCommandReport report =
+                    Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                Assert.Equal(expectedWritten ? 0 : 3, result.ExitCode);
+                Assert.Equal(expectedWritten, report.CommandWritten);
+                Assert.Equal(expectedWritten ? 1 : 0, sender.CallCount);
+                if (expectedWritten)
+                {
+                    Assert.Empty(report.Problems);
+                }
+                else
+                {
+                    Assert.Equal(
+                        expectedProblem,
+                        Assert.Single(report.Problems).Code);
+                }
+
                 Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
                 Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
             }
@@ -1157,7 +1490,8 @@ public sealed class ProjectReviewServiceTests
         LiveLabPaths paths,
         LiveLabState state,
         ProjectModLaunchState target,
-        bool isActive = true)
+        bool isActive = true,
+        TestSaveStatusMarker? testSave = null)
     {
         WriteStatus(
             paths,
@@ -1165,7 +1499,8 @@ public sealed class ProjectReviewServiceTests
             target,
             ProjectModContract.LoadedPhase,
             loadConfirmed: true,
-            isActive: isActive);
+            isActive: isActive,
+            testSave: testSave);
     }
 
     private static void WriteStatus(
@@ -1175,7 +1510,8 @@ public sealed class ProjectReviewServiceTests
         string phase,
         bool loadConfirmed,
         bool isActive = true,
-        string topLevelState = "active")
+        string topLevelState = "active",
+        TestSaveStatusMarker? testSave = null)
     {
         var marker = new AlwaysOnStatusMarker(
             1,
@@ -1187,6 +1523,7 @@ public sealed class ProjectReviewServiceTests
             IsActive: isActive,
             PauseWhenOutOfFocus: false,
             DateTimeOffset.UtcNow,
+            testSave,
             ProjectMod: new ProjectModStatusMarker(
                 ProjectModContract.SchemaVersion,
                 phase,

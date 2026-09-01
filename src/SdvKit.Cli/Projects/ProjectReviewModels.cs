@@ -123,6 +123,8 @@ internal sealed record ProjectReviewReport(
     IReadOnlyList<ProjectReviewArtifactReport> Artifacts,
     bool InteractiveConsole,
     string PersistentSavesPath,
+    TestSaveStatusReport? TestSave,
+    bool FixtureReset,
     bool StagingRemoved,
     IReadOnlyList<ProjectReviewProblem> Problems,
     IReadOnlyList<string> Warnings);

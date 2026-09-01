@@ -124,6 +124,25 @@ public sealed class TestSaveFixtureStoreTests
     }
 
     [Fact]
+    public void ReviewWithoutABaselineFailsWithTheExistingPreparationCommand()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        TestSaveFixtureStore store = CreateStore(paths, saves.Path, new FakeJunction());
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => store.PrepareReviewForStart(resetFromBaseline: false));
+
+        Assert.Contains(
+            "sdvkit lab test-save --topology single --json",
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.False(Directory.Exists(paths.TestSaveBaselinePath));
+        Assert.False(Directory.Exists(paths.TestSaveWorkPath));
+    }
+
+    [Fact]
     public void ReviewStartCanResetThenCleanStopPreservesWorkForResume()
     {
         using TemporaryDirectory project = new();

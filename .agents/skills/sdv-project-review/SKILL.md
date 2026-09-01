@@ -29,6 +29,14 @@ sdvkit project review start "<absolute-target-path>" --topology single --compani
 sdvkit project review status --topology single --json
 ```
 
+When the review needs the registered SDVKit-owned disposable world, first run `sdvkit lab test-save --topology single --json` while all roles are stopped, then add the explicit flag:
+
+```text
+sdvkit project review start "<absolute-target-path>" --topology single --test-save --companion "<absolute-companion-path>" --content-pack "<absolute-additional-pack-path>" --json
+```
+
+Omit unused repeatable options. Without `--test-save`, the existing plain single-review behavior is unchanged. With it, require `testSave.state=ready`, `testSave.phase=passed`, the exact fixture and Save IDs, and `testSave.identityVerified=true` before sending feature commands.
+
 For an explicitly requested C# multiplayer review:
 
 ```text
@@ -76,11 +84,11 @@ File existence, a hash, or `commandWritten=true` does not replace visual inspect
 For `single`, save through an existing game, SMAPI, target, or companion command and verify save completion. Then:
 
 1. `project review stop --topology single --json`; confirm the exact process stopped and owned review staging was removed.
-2. Run `start` again with the exact same target and explicit selection. The isolated profile and its saves persist even though the staging is prepared again.
+2. Run `start` again with the exact same target and explicit selection, including `--test-save` when selected initially. The isolated profile persists; an owned test-save review additionally remounts the same retained Work-Copy even though staging is prepared again.
 3. Reload the same isolated save through an existing command, then reconfirm state, target behavior, and required visual evidence.
 4. Perform any planned restore and final save, then run and verify a final `stop`.
 
-`single` has no `reset` command.
+For a plain single review, no fixture reset is needed. After the final stop of a `--test-save` review, run `project review reset --topology single --json` and require `fixtureReset=true` plus `stagingRemoved=true`. Reset must remain blocked while any single, host, or farmhand process is retained, while a network-2 review is retained, or when exact fixture/staging ownership cannot be proven.
 
 For `network-2`, use role-specific commands for host and farmhand. A clean `stop` preserves the owned work fixture and exact staging for restart. The required lifecycle is:
 

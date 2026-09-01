@@ -14,6 +14,8 @@ internal interface ITestSaveFixtureStore
 {
     TestSavePreparation PrepareForStart();
 
+    TestSavePreparation PrepareReviewForStart(bool resetFromBaseline);
+
     TestSaveCleanupResult CompleteStopped(
         TestSaveLaunchState launch,
         string launchId);
@@ -87,13 +89,14 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
 
     public TestSavePreparation PrepareReviewForStart(bool resetFromBaseline)
     {
-        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
-        if (!Directory.Exists(_paths.TestSaveBaselinePath))
+        if (!File.Exists(_paths.TestSaveManifestPath)
+            || !Directory.Exists(_paths.TestSaveBaselinePath))
         {
             throw new InvalidOperationException(
-                "Interactive review requires the existing disposable test-save baseline.");
+                "Interactive review requires the existing disposable test-save baseline. Prepare it with 'sdvkit lab test-save --topology single --json'.");
         }
 
+        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
         VerifyOwnedPayload(_paths.TestSaveBaselinePath, identity);
         VerifyRequiredStardewFiles(_paths.TestSaveBaselinePath, identity);
         if (resetFromBaseline)
@@ -111,13 +114,14 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
 
     public void ResetReview()
     {
-        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
-        if (!Directory.Exists(_paths.TestSaveBaselinePath))
+        if (!File.Exists(_paths.TestSaveManifestPath)
+            || !Directory.Exists(_paths.TestSaveBaselinePath))
         {
             throw new InvalidOperationException(
-                "Interactive review requires the existing disposable test-save baseline.");
+                "Interactive review requires the existing disposable test-save baseline. Prepare it with 'sdvkit lab test-save --topology single --json'.");
         }
 
+        TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
         ResetWorkFromBaseline(identity);
         _junction.VerifyInactive(
             _savesRoot,

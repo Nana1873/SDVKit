@@ -20,6 +20,7 @@ internal sealed class TestSaveAutomation
     private readonly TestSaveIdentity _identity;
     private readonly string _mode;
     private readonly string _scenarioLogPath;
+    private readonly bool _allowMultiplayer;
     private readonly IMonitor _monitor;
     private readonly Action _publishStatus;
     private readonly FieldInfo? _nameBox;
@@ -43,6 +44,7 @@ internal sealed class TestSaveAutomation
         TestSaveIdentity identity,
         string mode,
         string scenarioLogPath,
+        bool allowMultiplayer,
         IMonitor monitor,
         Action publishStatus,
         FieldInfo? nameBox,
@@ -54,6 +56,7 @@ internal sealed class TestSaveAutomation
         _identity = identity;
         _mode = mode;
         _scenarioLogPath = scenarioLogPath;
+        _allowMultiplayer = allowMultiplayer;
         _monitor = monitor;
         _publishStatus = publishStatus;
         _nameBox = nameBox;
@@ -81,6 +84,10 @@ internal sealed class TestSaveAutomation
         _scenarioLogPath);
 
     private bool IsTerminal => _phase is "created" or "passed" or "failed";
+
+    private bool IsPassedReview =>
+        string.Equals(_mode, TestSaveContract.ReviewMode, StringComparison.Ordinal)
+        && string.Equals(_phase, "passed", StringComparison.Ordinal);
 
     public static bool TryCreate(
         IMonitor monitor,
@@ -185,6 +192,7 @@ internal sealed class TestSaveAutomation
                 identity,
                 mode,
                 Path.GetFullPath(scenarioLogPath),
+                networkHost,
                 monitor,
                 publishStatus,
                 nameBox,
@@ -216,6 +224,7 @@ internal sealed class TestSaveAutomation
                     identity,
                     mode,
                     Path.GetFullPath(scenarioLogPath),
+                    networkHost,
                     monitor,
                     publishStatus,
                     null,
@@ -256,6 +265,12 @@ internal sealed class TestSaveAutomation
                 }
 
                 DriveDurableSave();
+                return;
+            }
+
+            if (IsPassedReview)
+            {
+                VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
                 return;
             }
 
@@ -473,6 +488,12 @@ internal sealed class TestSaveAutomation
     public void OnReturnedToTitle()
     {
         Game1.startingGameSeed = null;
+        if (IsPassedReview)
+        {
+            Fail("Stardew returned to title after the exact fixture was loaded for review.");
+            return;
+        }
+
         if (!IsTerminal)
         {
             Fail("Stardew returned to title before the test-save workflow completed.");
