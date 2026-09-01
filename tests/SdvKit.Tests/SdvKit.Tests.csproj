@@ -26,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewScreenshotCommand.cs" Link="AlwaysOn\ReviewScreenshotCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\StatusWriter.cs" Link="AlwaysOn\StatusWriter.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\WindowsForegroundWindowProbe.cs" Link="AlwaysOn\WindowsForegroundWindowProbe.cs" />
   </ItemGroup>
