@@ -181,6 +181,7 @@ internal static class AlwaysOnStatusReader
         {
             TestSaveContract.CreateMode => marker.Phase is "loading" or "waiting" or "passed",
             TestSaveContract.ScenarioMode => marker.Phase is "creating" or "created",
+            TestSaveContract.ReviewMode => marker.Phase is "creating" or "created" or "waiting",
             _ => true,
         };
         bool missingVerification = marker.Phase is "created" or "waiting" or "passed"

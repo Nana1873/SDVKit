@@ -61,6 +61,184 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.DoesNotContain("Game1.cabinsSeparate", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ReviewResumeUsesTheTestSaveModeAndOnlyTheExactSavedFarmhand()
+    {
+        string source = ReadAutomationSource();
+        int statusMode = source.IndexOf(
+            "VerifyHostFixtureBeforeHosting(testSave.Mode);",
+            StringComparison.Ordinal);
+        int saveIdentity = source.IndexOf(
+            "Constants.SaveFolderName, _launch.SaveId",
+            statusMode,
+            StringComparison.Ordinal);
+        int preparation = source.IndexOf(
+            "Farmer farmhand = PrepareHostFarmhand(testSaveMode);",
+            saveIdentity,
+            StringComparison.Ordinal);
+        int reviewMode = source.IndexOf(
+            "TestSaveContract.ReviewMode",
+            preparation,
+            StringComparison.Ordinal);
+        int exactCount = source.IndexOf(
+            "farmhands.Count == 1",
+            reviewMode,
+            StringComparison.Ordinal);
+        int customized = source.IndexOf(
+            "if (savedFarmhand.isUnclaimedFarmhand",
+            exactCount,
+            StringComparison.Ordinal);
+        int stableId = source.IndexOf(
+            "savedFarmhand.UniqueMultiplayerID == 0",
+            customized,
+            StringComparison.Ordinal);
+        int exactIdentity = source.IndexOf(
+            "!MatchesPlayer(",
+            stableId,
+            StringComparison.Ordinal);
+        int farmhandRole = source.IndexOf(
+            "NetworkTwoContract.FarmhandRole",
+            exactIdentity,
+            StringComparison.Ordinal);
+        int farmhandName = source.IndexOf(
+            "NetworkTwoContract.FarmhandName",
+            farmhandRole,
+            StringComparison.Ordinal);
+        int playerMatcher = source.IndexOf(
+            "private bool MatchesPlayer(Farmer player, string role, string name)",
+            farmhandName,
+            StringComparison.Ordinal);
+        int exactName = source.IndexOf(
+            "string.Equals(player.Name, name, StringComparison.Ordinal)",
+            playerMatcher,
+            StringComparison.Ordinal);
+        int fixtureMarker = source.IndexOf(
+            "TestSaveContract.FixtureMarkerKey",
+            exactName,
+            StringComparison.Ordinal);
+        int exactFixture = source.IndexOf(
+            "string.Equals(fixtureId, _launch.FixtureId, StringComparison.Ordinal)",
+            fixtureMarker,
+            StringComparison.Ordinal);
+        int buildMarker = source.IndexOf(
+            "NetworkTwoContract.BuildMarkerKey",
+            exactFixture,
+            StringComparison.Ordinal);
+        int exactBuild = source.IndexOf(
+            "string.Equals(buildIdentity, _loadedBuildIdentity, StringComparison.Ordinal)",
+            buildMarker,
+            StringComparison.Ordinal);
+        int roleMarker = source.IndexOf(
+            "NetworkTwoContract.RoleMarkerKey",
+            exactBuild,
+            StringComparison.Ordinal);
+        int exactRole = source.IndexOf(
+            "string.Equals(observedRole, role, StringComparison.Ordinal)",
+            roleMarker,
+            StringComparison.Ordinal);
+
+        Assert.True(statusMode >= 0);
+        Assert.True(saveIdentity > statusMode);
+        Assert.True(preparation > saveIdentity);
+        Assert.True(reviewMode > preparation);
+        Assert.True(exactCount > reviewMode);
+        Assert.True(customized > exactCount);
+        Assert.True(stableId > customized);
+        Assert.True(exactIdentity > stableId);
+        Assert.True(farmhandRole > exactIdentity);
+        Assert.True(farmhandName > farmhandRole);
+        Assert.True(playerMatcher > farmhandName);
+        Assert.True(exactName > playerMatcher);
+        Assert.True(fixtureMarker > exactName);
+        Assert.True(exactFixture > fixtureMarker);
+        Assert.True(buildMarker > exactFixture);
+        Assert.True(exactBuild > buildMarker);
+        Assert.True(roleMarker > exactBuild);
+        Assert.True(exactRole > roleMarker);
+    }
+
+    [Fact]
+    public void FarmhandSelectionAcceptsOnlyFreshOrExactPersistedReviewIdentity()
+    {
+        string source = ReadAutomationSource();
+        int connecting = source.IndexOf(
+            "if (string.Equals(_phase, \"connecting\", StringComparison.Ordinal))",
+            StringComparison.Ordinal);
+        int stableId = source.IndexOf(
+            "farmhand.UniqueMultiplayerID != _launch.ExpectedFarmhandId",
+            connecting,
+            StringComparison.Ordinal);
+        int fresh = source.IndexOf(
+            "bool isFreshFarmhand = farmhand.isUnclaimedFarmhand;",
+            stableId,
+            StringComparison.Ordinal);
+        int persisted = source.IndexOf(
+            "bool isPersistedReviewFarmhand = !isFreshFarmhand",
+            fresh,
+            StringComparison.Ordinal);
+        int exactIdentity = source.IndexOf(
+            "&& MatchesPlayer(",
+            persisted,
+            StringComparison.Ordinal);
+        int farmhandRole = source.IndexOf(
+            "NetworkTwoContract.FarmhandRole",
+            exactIdentity,
+            StringComparison.Ordinal);
+        int farmhandName = source.IndexOf(
+            "NetworkTwoContract.FarmhandName",
+            farmhandRole,
+            StringComparison.Ordinal);
+        int rejection = source.IndexOf(
+            "if (!isFreshFarmhand && !isPersistedReviewFarmhand)",
+            farmhandName,
+            StringComparison.Ordinal);
+        int configuration = source.IndexOf(
+            "ConfigureFarmhand(farmhand);",
+            rejection,
+            StringComparison.Ordinal);
+
+        Assert.True(connecting >= 0);
+        Assert.True(stableId > connecting);
+        Assert.True(fresh > stableId);
+        Assert.True(persisted > fresh);
+        Assert.True(exactIdentity > persisted);
+        Assert.True(farmhandRole > exactIdentity);
+        Assert.True(farmhandName > farmhandRole);
+        Assert.True(rejection > farmhandName);
+        Assert.True(configuration > rejection);
+    }
+
+    [Fact]
+    public void NonReviewModesKeepTheStrictEmptyFarmhandBaseline()
+    {
+        string source = ReadAutomationSource();
+        int preparation = source.IndexOf(
+            "private Farmer PrepareHostFarmhand(string testSaveMode)",
+            StringComparison.Ordinal);
+        int reviewMode = source.IndexOf(
+            "TestSaveContract.ReviewMode",
+            preparation,
+            StringComparison.Ordinal);
+        int savedReturn = source.IndexOf(
+            "return savedFarmhand;",
+            reviewMode,
+            StringComparison.Ordinal);
+        int strictEmpty = source.IndexOf(
+            "if (farmhands.Count != 0)",
+            savedReturn,
+            StringComparison.Ordinal);
+        int cabinBuild = source.IndexOf(
+            "Game1.getFarm().BuildStartingCabins();",
+            strictEmpty,
+            StringComparison.Ordinal);
+
+        Assert.True(preparation >= 0);
+        Assert.True(reviewMode > preparation);
+        Assert.True(savedReturn > reviewMode);
+        Assert.True(strictEmpty > savedReturn);
+        Assert.True(cabinBuild > strictEmpty);
+    }
+
     private static string ReadAutomationSource()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

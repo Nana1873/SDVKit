@@ -299,6 +299,43 @@ public sealed class AlwaysOnStatusReaderTests
         Assert.Equal("ready", completeWait.TestSave?.State);
     }
 
+    [Fact]
+    public void PassedReviewRequiresIdentityButNotTheBoundedScenarioWait()
+    {
+        using TemporaryDirectory temporary = new();
+        TestSaveLaunchState expected = TestSaveLaunch(temporary) with
+        {
+            Mode = TestSaveContract.ReviewMode,
+        };
+        string path = WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(expected, "passed", identityVerified: true, waitedTicks: 0));
+
+        AlwaysOnStatusReport passed = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("ready", passed.TestSave?.State);
+        Assert.Equal(TestSaveContract.ReviewMode, passed.TestSave?.Mode);
+
+        WriteMarker(
+            temporary,
+            Process(),
+            TestSaveMarker(expected, "created", identityVerified: true, waitedTicks: 0));
+        AlwaysOnStatusReport wrongPhase = AlwaysOnStatusReader.Read(
+            path,
+            "launch-1",
+            Process(),
+            ObservedAt,
+            expected);
+
+        Assert.Equal("invalid", wrongPhase.TestSave?.State);
+    }
+
     private static OwnedProcessIdentity Process() =>
         new(4242, StartedAt, @"E:\Games\StardewModdingAPI.exe");
 

@@ -25,11 +25,23 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
+            "sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review command <text> --json",
+            "sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review status [--topology <single|network-2>] --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review stop [--topology <single|network-2>] --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review reset --topology network-2 --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -344,11 +356,15 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
+            "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review command <text> --json",
+            "sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review reset --topology network-2 --json",
             output,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
@@ -365,18 +381,21 @@ public sealed class CliApplicationTests
         string? receivedTarget = null;
         IReadOnlyList<string>? receivedCompanions = null;
         IReadOnlyList<string>? receivedPacks = null;
+        string? receivedTopology = null;
         string? receivedLabRoot = null;
         ProjectReviewCommandRunner runner = (
             action,
             sourcePath,
             companionPaths,
             contentPackPaths,
+            topology,
             labRoot) =>
         {
             receivedAction = action;
             receivedTarget = sourcePath;
             receivedCompanions = companionPaths;
             receivedPacks = contentPackPaths;
+            receivedTopology = topology;
             receivedLabRoot = labRoot;
             return new LiveLabCommandResult(0, new
             {
@@ -390,6 +409,8 @@ public sealed class CliApplicationTests
             "project",
             "review",
             "start",
+            "--topology",
+            "network-2",
             "--companion",
             companionOne,
             target,
@@ -404,6 +425,7 @@ public sealed class CliApplicationTests
         Assert.Equal(target, receivedTarget);
         Assert.Equal([companionOne, companionTwo], receivedCompanions);
         Assert.Equal([contentPack], receivedPacks);
+        Assert.Equal("network-2", receivedTopology);
         Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
         Assert.Equal("running", JsonDocument.Parse(output).RootElement
             .GetProperty("state").GetString());
@@ -419,11 +441,13 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            topology,
             labRoot) =>
         {
             receivedTarget = sourcePath;
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
+            Assert.Equal("single", topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "running" });
         };
@@ -450,12 +474,14 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            topology,
             labRoot) =>
         {
             Assert.Equal(action, receivedAction);
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
+            Assert.Equal("single", topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "stopped" });
         };
@@ -471,17 +497,60 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Theory]
+    [InlineData("status")]
+    [InlineData("stop")]
+    public void ProjectReviewLifecycleCommandsCanAddressNetworkTwo(string action)
+    {
+        ProjectReviewCommandRunner runner = (
+            receivedAction,
+            sourcePath,
+            companionPaths,
+            contentPackPaths,
+            topology,
+            labRoot) =>
+        {
+            Assert.Equal(action, receivedAction);
+            Assert.Equal(Environment.CurrentDirectory, sourcePath);
+            Assert.Empty(companionPaths);
+            Assert.Empty(contentPackPaths);
+            Assert.Equal("network-2", topology);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            action,
+            "--topology",
+            "network-2",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+    }
+
     [Fact]
     public void ProjectReviewCommandDispatchesOneExactLineToTheCurrentLabOnly()
     {
         const string command = "sic-review set greenhouse fixture";
         string? receivedCommand = null;
+        string? receivedTopology = null;
+        string? receivedRole = "unexpected";
         string? receivedLabRoot = null;
-        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _) =>
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
-        ProjectReviewConsoleCommandRunner consoleRunner = (candidate, labRoot) =>
+        ProjectReviewConsoleCommandRunner consoleRunner = (
+            candidate,
+            topology,
+            role,
+            labRoot) =>
         {
             receivedCommand = candidate;
+            receivedTopology = topology;
+            receivedRole = role;
             receivedLabRoot = labRoot;
             return new LiveLabCommandResult(0, new
             {
@@ -502,9 +571,82 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(command, receivedCommand);
+        Assert.Equal("single", receivedTopology);
+        Assert.Null(receivedRole);
         Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
         Assert.True(JsonDocument.Parse(output).RootElement
             .GetProperty("commandWritten").GetBoolean());
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("host")]
+    [InlineData("farmhand")]
+    public void ProjectReviewNetworkCommandDispatchesOneExactRole(string expectedRole)
+    {
+        const string command = "sic-review set greenhouse fixture";
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _) =>
+            throw new InvalidOperationException("Review lifecycle should not run.");
+        ProjectReviewConsoleCommandRunner consoleRunner = (
+            candidate,
+            topology,
+            role,
+            labRoot) =>
+        {
+            Assert.Equal(command, candidate);
+            Assert.Equal("network-2", topology);
+            Assert.Equal(expectedRole, role);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { commandWritten = true });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            reviewRunner,
+            consoleRunner,
+            "project",
+            "review",
+            "command",
+            command,
+            "--topology",
+            "network-2",
+            "--role",
+            expectedRole,
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectReviewResetDispatchesOnlyExplicitNetworkTwo()
+    {
+        ProjectReviewCommandRunner runner = (
+            action,
+            sourcePath,
+            companionPaths,
+            contentPackPaths,
+            topology,
+            labRoot) =>
+        {
+            Assert.Equal("reset", action);
+            Assert.Equal(Environment.CurrentDirectory, sourcePath);
+            Assert.Empty(companionPaths);
+            Assert.Empty(contentPackPaths);
+            Assert.Equal("network-2", topology);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { state = "reset" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            "reset",
+            "--topology",
+            "network-2",
+            "--json");
+
+        Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, error);
     }
 
@@ -514,20 +656,32 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "start", "--json", "one", "two")]
     [InlineData("project", "review", "start", "--companion", "--json")]
     [InlineData("project", "review", "start", "--content-pack", "--json")]
-    [InlineData("project", "review", "start", "--topology", "single", "--json")]
+    [InlineData("project", "review", "start", "--topology", "invalid", "--json")]
+    [InlineData("project", "review", "start", "--topology", "single", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "start", "--role", "host", "--json")]
     [InlineData("project", "review", "status", "target", "--json")]
     [InlineData("project", "review", "status", "--companion", "mod", "--json")]
+    [InlineData("project", "review", "status", "--role", "host", "--json")]
     [InlineData("project", "review", "command", "--json")]
     [InlineData("project", "review", "command", "one", "two", "--json")]
     [InlineData("project", "review", "command", "one", "--json", "--json")]
     [InlineData("project", "review", "command", "--companion", "mod", "--json")]
     [InlineData("project", "review", "command", "--content-pack", "pack", "--json")]
     [InlineData("project", "review", "command", "one\ntwo", "--json")]
+    [InlineData("project", "review", "command", "one", "--role", "host", "--json")]
+    [InlineData("project", "review", "command", "one", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "command", "one", "--topology", "network-2", "--role", "invalid", "--json")]
+    [InlineData("project", "review", "command", "one", "--topology", "network-2", "--role", "host", "--role", "host", "--json")]
     [InlineData("project", "review", "stop", "--json", "--json")]
+    [InlineData("project", "review", "stop", "--role", "host", "--json")]
+    [InlineData("project", "review", "reset", "--json")]
+    [InlineData("project", "review", "reset", "--topology", "single", "--json")]
+    [InlineData("project", "review", "reset", "--topology", "network-2", "--role", "host", "--json")]
+    [InlineData("project", "review", "reset", "--topology", "network-2", "target", "--json")]
     [InlineData("project", "review", "restart", "--json")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -537,13 +691,15 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json"
+            "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json"
                 + Environment.NewLine
-                + "       sdvkit project review status --json"
+                + "       sdvkit project review status [--topology <single|network-2>] --json"
                 + Environment.NewLine
-                + "       sdvkit project review command <text> --json"
+                + "       sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json"
                 + Environment.NewLine
-                + "       sdvkit project review stop --json"
+                + "       sdvkit project review stop [--topology <single|network-2>] --json"
+                + Environment.NewLine
+                + "       sdvkit project review reset --topology network-2 --json"
                 + Environment.NewLine,
             error);
     }
@@ -551,7 +707,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewCommandRejectsALineOverTheBoundedMaximum()
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -565,7 +721,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Contains(
-            "project review command <text> --json",
+            "project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
             error,
             StringComparison.Ordinal);
     }
@@ -573,9 +729,10 @@ public sealed class CliApplicationTests
     [Theory]
     [InlineData("--help")]
     [InlineData("start", "--help")]
-    public void ProjectReviewHelpListsTheFocusedSingleplayerSurface(params string[] suffix)
+    [InlineData("reset", "--help")]
+    public void ProjectReviewHelpListsTheTopologyAddressedSurface(params string[] suffix)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
         string[] arguments = ["project", "review", .. suffix];
 
@@ -588,6 +745,8 @@ public sealed class CliApplicationTests
         Assert.Contains("project review status", output, StringComparison.Ordinal);
         Assert.Contains("project review command", output, StringComparison.Ordinal);
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
+        Assert.Contains("project review reset", output, StringComparison.Ordinal);
+        Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -962,7 +1121,7 @@ public sealed class CliApplicationTests
     {
         return RunWithProjectReview(
             runProjectReview,
-            (_, _) => throw new InvalidOperationException(
+            (_, _, _, _) => throw new InvalidOperationException(
                 "Project-review console command should not run."),
             arguments);
     }

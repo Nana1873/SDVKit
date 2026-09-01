@@ -5,6 +5,7 @@ internal static class TestSaveContract
     public const int SchemaVersion = 1;
     public const string CreateMode = "create";
     public const string ScenarioMode = "scenario";
+    public const string ReviewMode = "review";
     public const string PlayerName = "SDVKit";
     public const string FarmName = "SDVKit";
     public const string FavoriteThing = "Tests";
@@ -56,7 +57,9 @@ internal sealed record TestSaveLaunchState(
 {
     public void Validate()
     {
-        if (Mode is not (TestSaveContract.CreateMode or TestSaveContract.ScenarioMode))
+        if (Mode is not (TestSaveContract.CreateMode
+            or TestSaveContract.ScenarioMode
+            or TestSaveContract.ReviewMode))
         {
             throw new InvalidDataException("The SDVKit test-save launch mode is invalid.");
         }

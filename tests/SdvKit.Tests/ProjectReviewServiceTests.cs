@@ -11,6 +11,287 @@ public sealed class ProjectReviewServiceTests
     private const string LaunchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]
+    public void NetworkTwoStatusWithoutStateOrStagingIsStoppedWithDistinctProjectLocalDataPaths()
+    {
+        using TemporaryDirectory temporary = new();
+        var doctorCalled = false;
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "status",
+            temporary.Path,
+            [],
+            [],
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () =>
+            {
+                doctorCalled = true;
+                throw new InvalidOperationException("Status must not run doctor.");
+            });
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(NetworkTwoContract.Topology, report.Topology);
+        Assert.Equal("stopped", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.True(report.StagingRemoved);
+        Assert.Null(report.Network);
+        Assert.True(report.InteractiveConsole);
+        Assert.Empty(report.Problems);
+        Assert.False(doctorCalled);
+
+        ProjectNetworkReviewRoleReport host = Assert.Single(
+            report.Roles,
+            role => string.Equals(
+                role.Role,
+                NetworkTwoContract.HostRole,
+                StringComparison.Ordinal));
+        ProjectNetworkReviewRoleReport farmhand = Assert.Single(
+            report.Roles,
+            role => string.Equals(
+                role.Role,
+                NetworkTwoContract.FarmhandRole,
+                StringComparison.Ordinal));
+        Assert.Equal(
+            ".sdvkit/lab/profiles/network-2/host/AppData/Roaming/StardewValley",
+            host.StardewDataPath);
+        Assert.Equal(
+            ".sdvkit/lab/profiles/network-2/farmhand/AppData/Roaming/StardewValley",
+            farmhand.StardewDataPath);
+        Assert.NotEqual(host.StardewDataPath, farmhand.StardewDataPath);
+        Assert.NotEqual(host.SavesPath, farmhand.SavesPath);
+        Assert.All(report.Roles, role =>
+            Assert.StartsWith(
+                ".sdvkit/lab/profiles/network-2/",
+                role.StardewDataPath,
+                StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("stop")]
+    public void NetworkTwoStoppedReviewRetainsExactRoleStagingAndIdentity(string action)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        string networkRoot = Path.Combine(
+            temporary.Path,
+            ".sdvkit",
+            "lab",
+            NetworkTwoContract.Topology);
+        string before = TreeSnapshot(networkRoot);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            action,
+            staging.Target.SourceRoot,
+            staging.Artifacts
+                .Where(artifact => artifact.Role == ProjectReviewArtifactRole.Companion)
+                .Select(artifact => artifact.SourceRoot)
+                .ToArray(),
+            staging.Artifacts
+                .Where(artifact => artifact.Role == ProjectReviewArtifactRole.ContentPack)
+                .Select(artifact => artifact.SourceRoot)
+                .ToArray(),
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () => throw new InvalidOperationException(
+                $"{action} must not run doctor."));
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.False(report.StagingRemoved);
+        Assert.Null(report.Network);
+        Assert.Empty(report.Problems);
+        Assert.Equal(before, TreeSnapshot(networkRoot));
+        Assert.True(File.Exists(staging.OwnershipPath));
+
+        ProjectNetworkReviewRoleReport host = Assert.Single(
+            report.Roles,
+            role => role.Role == NetworkTwoContract.HostRole);
+        ProjectNetworkReviewRoleReport farmhand = Assert.Single(
+            report.Roles,
+            role => role.Role == NetworkTwoContract.FarmhandRole);
+        Assert.Equal(3, host.Artifacts.Count);
+        Assert.Equal(3, farmhand.Artifacts.Count);
+        Assert.Equal(
+            host.Artifacts.Select(ArtifactIdentity),
+            farmhand.Artifacts.Select(ArtifactIdentity));
+        Assert.All(host.Artifacts, artifact =>
+            Assert.Contains(
+                "/network-2/host/mods/",
+                artifact.StagingPath,
+                StringComparison.Ordinal));
+        Assert.All(farmhand.Artifacts, artifact =>
+            Assert.Contains(
+                "/network-2/farmhand/mods/",
+                artifact.StagingPath,
+                StringComparison.Ordinal));
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.True(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.HostRole)));
+            Assert.True(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole)));
+        });
+    }
+
+    [Fact]
+    public void NetworkTwoRetainedStartWithDifferentExplicitSetBlocksWithoutMutation()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        string networkRoot = Path.Combine(
+            temporary.Path,
+            ".sdvkit",
+            "lab",
+            NetworkTwoContract.Topology);
+        string before = TreeSnapshot(networkRoot);
+        var doctorCalled = false;
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "start",
+            Path.Combine(temporary.Path, "DifferentTarget"),
+            staging.Artifacts
+                .Where(artifact => artifact.Role == ProjectReviewArtifactRole.Companion)
+                .Select(artifact => artifact.SourceRoot)
+                .ToArray(),
+            staging.Artifacts
+                .Where(artifact => artifact.Role == ProjectReviewArtifactRole.ContentPack)
+                .Select(artifact => artifact.SourceRoot)
+                .ToArray(),
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () =>
+            {
+                doctorCalled = true;
+                throw new InvalidOperationException(
+                    "A retained set mismatch must not run doctor.");
+            });
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.False(report.StagingRemoved);
+        Assert.Equal("reviewSetMismatch", Assert.Single(report.Problems).Code);
+        Assert.False(doctorCalled);
+        Assert.Equal(before, TreeSnapshot(networkRoot));
+        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole).StatePath));
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole).StatePath));
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void NetworkTwoResetWithAnyRoleStateBlocksWithoutMutation(string role)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths rolePaths = LiveLabPaths.ResolveNetworkRole(paths, role);
+        new JsonLiveLabStateStore(rolePaths.StatePath).Write(
+            NetworkReviewState(paths, staging.TargetLaunchState, role));
+        string networkRoot = Path.Combine(
+            temporary.Path,
+            ".sdvkit",
+            "lab",
+            NetworkTwoContract.Topology);
+        string before = TreeSnapshot(networkRoot);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.FixtureReset);
+        Assert.False(report.StagingRemoved);
+        Assert.Equal(
+            "reviewResetRequiresStoppedLab",
+            Assert.Single(report.Problems).Code);
+        Assert.Equal(before, TreeSnapshot(networkRoot));
+        Assert.True(File.Exists(rolePaths.StatePath));
+        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.True(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.HostRole)));
+            Assert.True(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole)));
+        });
+    }
+
+    [Fact]
+    public void NetworkTwoResetRetriesOwnedPartialStagingCleanup()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        TestSaveIdentity identity = WriteReviewFixture(paths);
+        string alreadyRemoved = staging.Target.StagingPathFor(
+            NetworkTwoContract.HostRole);
+        Directory.Delete(alreadyRemoved, recursive: true);
+
+        ProjectReviewStagingResult strict = ProjectModStager.ReadReview(
+            paths,
+            NetworkTwoContract.Topology);
+        Assert.Null(strict.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipInvalid",
+            Assert.IsType<ProjectReviewProblem>(strict.Problem).Code);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.True(report.FixtureReset);
+        Assert.True(report.StagingRemoved);
+        Assert.Empty(report.Problems);
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.HostRole)));
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole)));
+        });
+        Assert.Equal(
+            "baseline-save",
+            File.ReadAllText(Path.Combine(
+                paths.TestSaveWorkPath,
+                identity.SaveId)));
+        Assert.False(File.Exists(Path.Combine(paths.TestSaveWorkPath, "review-only")));
+    }
+
+    [Fact]
     public void StatusWithoutStateOrStagingIsStoppedWithoutDiscovery()
     {
         using TemporaryDirectory temporary = new();
@@ -516,6 +797,133 @@ public sealed class ProjectReviewServiceTests
         ProjectReviewStagingResult result = ProjectModStager.StageReview([target], paths);
         Assert.Null(result.Problem);
         return Assert.IsType<ProjectReviewStaging>(result.Staging);
+    }
+
+    private static ProjectReviewStaging StageNetworkReviewSet(
+        LiveLabPaths paths,
+        string fixtureRoot)
+    {
+        ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
+            fixtureRoot,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target",
+            "1.2.0");
+        ProjectReviewPreparedArtifact companion = ProjectReviewStagerTests.Artifact(
+            fixtureRoot,
+            "Harness",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Harness");
+        ProjectReviewPreparedArtifact contentPack = ProjectReviewStagerTests.Artifact(
+            fixtureRoot,
+            "GreenhousePack",
+            ProjectReviewArtifactRole.ContentPack,
+            "Nana.Target.GreenhousePack",
+            contentPackFor: "Nana.Target",
+            contentPackForMinimumVersion: "1.0.0");
+        ProjectReviewStagingResult result = ProjectModStager.StageReview(
+            [target, companion, contentPack],
+            NetworkTwoContract.Topology,
+            paths);
+        Assert.Null(result.Problem);
+        return Assert.IsType<ProjectReviewStaging>(result.Staging);
+    }
+
+    private static TestSaveIdentity WriteReviewFixture(LiveLabPaths paths)
+    {
+        const long uniqueGameId = 123456789;
+        var identity = new TestSaveIdentity(
+            TestSaveContract.SchemaVersion,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            uniqueGameId,
+            TestSaveContract.GetSaveId(uniqueGameId),
+            TestSaveContract.PlayerName,
+            TestSaveContract.FarmName,
+            TestSaveContract.FavoriteThing);
+        string marker = JsonSerializer.Serialize(identity, LiveLabJsonOptions.CamelCase);
+        Directory.CreateDirectory(paths.TestSaveRoot);
+        File.WriteAllText(paths.TestSaveManifestPath, marker);
+        foreach (string payloadPath in new[]
+        {
+            paths.TestSaveBaselinePath,
+            paths.TestSaveWorkPath,
+        })
+        {
+            Directory.CreateDirectory(payloadPath);
+            File.WriteAllText(
+                Path.Combine(payloadPath, TestSaveContract.FixtureMarkerFileName),
+                marker);
+            File.WriteAllText(
+                Path.Combine(payloadPath, identity.SaveId),
+                payloadPath == paths.TestSaveBaselinePath
+                    ? "baseline-save"
+                    : "review-save");
+            File.WriteAllText(Path.Combine(payloadPath, "SaveGameInfo"), "save-info");
+        }
+
+        File.WriteAllText(
+            Path.Combine(paths.TestSaveWorkPath, "review-only"),
+            "review mutation");
+        return identity;
+    }
+
+    private static string ArtifactIdentity(ProjectReviewArtifactReport artifact) =>
+        string.Join(
+            "|",
+            artifact.Role,
+            artifact.Kind,
+            artifact.UniqueId,
+            artifact.Version,
+            artifact.ContentPackFor,
+            artifact.BuildIdentity);
+
+    private static LiveLabState NetworkReviewState(
+        LiveLabPaths paths,
+        ProjectModLaunchState target,
+        string role)
+    {
+        LiveLabPaths rolePaths = LiveLabPaths.ResolveNetworkRole(paths, role);
+        string fixtureId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const long uniqueGameId = 123456789;
+        string saveId = TestSaveContract.GetSaveId(uniqueGameId);
+        TestSaveLaunchState? testSave = role == NetworkTwoContract.HostRole
+            ? new TestSaveLaunchState(
+                TestSaveContract.ReviewMode,
+                new TestSaveIdentity(
+                    TestSaveContract.SchemaVersion,
+                    "cccccccccccccccccccccccccccccccc",
+                    fixtureId,
+                    uniqueGameId,
+                    saveId,
+                    TestSaveContract.PlayerName,
+                    TestSaveContract.FarmName,
+                    TestSaveContract.FavoriteThing),
+                Path.Combine(paths.TestSaveWorkPath, saveId),
+                paths.TestSaveWorkPath,
+                rolePaths.TestSaveScenarioLogPath)
+            : null;
+        var network = new NetworkTwoLaunchState(
+            role,
+            target.BuildIdentity,
+            fixtureId,
+            saveId,
+            Path.Combine(rolePaths.RuntimePath, "network-two.log"),
+            role == NetworkTwoContract.FarmhandRole ? 987654321 : null);
+        return new LiveLabState(
+            LiveLabState.CurrentSchemaVersion,
+            NetworkTwoContract.Topology,
+            Guid.NewGuid().ToString("N"),
+            new OwnedProcessIdentity(
+                int.MaxValue,
+                new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero),
+                Path.Combine(paths.ProjectRoot, "StardewModdingAPI.exe")),
+            rolePaths.ModsPath,
+            rolePaths.StatusPath,
+            rolePaths.StopRequestPath,
+            testSave,
+            network,
+            target);
     }
 
     private static LiveLabState ReviewState(

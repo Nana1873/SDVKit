@@ -20,10 +20,13 @@ internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
     string sourcePath,
     IReadOnlyList<string> companionPaths,
     IReadOnlyList<string> contentPackPaths,
+    string topology,
     string labRoot);
 
 internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
     string command,
+    string topology,
+    string? role,
     string labRoot);
 
 public static class CliApplication
@@ -38,13 +41,15 @@ public static class CliApplication
     private const string SmokeUsage =
         "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
     private const string ReviewStartUsage =
-        "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json";
+        "Usage: sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
-        "       sdvkit project review status --json";
+        "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
-        "       sdvkit project review command <text> --json";
+        "       sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json";
     private const string ReviewStopUsage =
-        "       sdvkit project review stop --json";
+        "       sdvkit project review stop [--topology <single|network-2>] --json";
+    private const string ReviewResetUsage =
+        "       sdvkit project review reset --topology network-2 --json";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -104,17 +109,19 @@ public static class CliApplication
                 sourcePath,
                 companionPaths,
                 contentPackPaths,
+                topology,
                 labRoot) => ProjectReviewService.Execute(
                     action,
                     sourcePath,
                     companionPaths,
                     contentPackPaths,
+                    topology,
                     labRoot,
                     discoverInstallations);
         }
 
-        runProjectReviewConsole ??= (command, labRoot) =>
-            ProjectReviewService.ExecuteCommand(command, labRoot);
+        runProjectReviewConsole ??= (command, topology, role, labRoot) =>
+            ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
@@ -388,7 +395,9 @@ public static class CliApplication
                 out string? path,
                 out IReadOnlyList<string>? companionPaths,
                 out IReadOnlyList<string>? contentPackPaths,
-                out string? command))
+                out string? command,
+                out string? topology,
+                out string? role))
         {
             WriteProjectReviewUsage(error);
             return UsageError;
@@ -398,12 +407,17 @@ public static class CliApplication
             action,
             "command",
             StringComparison.Ordinal)
-                ? runProjectReviewConsole(command!, Environment.CurrentDirectory)
+                ? runProjectReviewConsole(
+                    command!,
+                    topology!,
+                    role,
+                    Environment.CurrentDirectory)
                 : runProjectReview(
                     action!,
                     path!,
                     companionPaths!,
                     contentPackPaths!,
+                    topology!,
                     Environment.CurrentDirectory);
         WriteJson(output, result.Report);
         return result.ExitCode;
@@ -496,14 +510,18 @@ public static class CliApplication
         out string? path,
         out IReadOnlyList<string>? companionPaths,
         out IReadOnlyList<string>? contentPackPaths,
-        out string? command)
+        out string? command,
+        out string? topology,
+        out string? role)
     {
         action = arguments.Count > 2 ? arguments[2] : null;
         path = null;
         companionPaths = null;
         contentPackPaths = null;
         command = null;
-        if (action is not ("start" or "status" or "command" or "stop"))
+        topology = "single";
+        role = null;
+        if (action is not ("start" or "status" or "command" or "stop" or "reset"))
         {
             return false;
         }
@@ -512,12 +530,40 @@ public static class CliApplication
         var companions = new List<string>();
         var packs = new List<string>();
         var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var roleOptionCount = 0;
         for (var index = 3; index < arguments.Count; index++)
         {
             string argument = arguments[index];
             if (string.Equals(argument, "--json", StringComparison.Ordinal))
             {
                 jsonOptionCount++;
+                continue;
+            }
+
+            if (string.Equals(argument, "--topology", StringComparison.Ordinal))
+            {
+                topologyOptionCount++;
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                topology = arguments[++index];
+                continue;
+            }
+
+            if (string.Equals(argument, "--role", StringComparison.Ordinal))
+            {
+                roleOptionCount++;
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                role = arguments[++index];
                 continue;
             }
 
@@ -542,14 +588,22 @@ public static class CliApplication
 
         bool isStart = string.Equals(action, "start", StringComparison.Ordinal);
         bool isCommand = string.Equals(action, "command", StringComparison.Ordinal);
+        bool isReset = string.Equals(action, "reset", StringComparison.Ordinal);
+        bool networkTwo = string.Equals(topology, "network-2", StringComparison.Ordinal);
         if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || topology is not ("single" or "network-2")
+            || roleOptionCount > 1
+            || (role is not null && role is not ("host" or "farmhand"))
             || (isStart && operands.Count > 1)
             || (isCommand && (operands.Count != 1
                 || ProjectReviewConsoleLine.ValidationError(operands[0]) is not null))
-            || (!isStart && !isCommand && (operands.Count > 0
-                || companions.Count > 0
-                || packs.Count > 0))
-            || (isCommand && (companions.Count > 0 || packs.Count > 0))
+            || (!isStart && !isCommand && operands.Count > 0)
+            || (!isStart && (companions.Count > 0 || packs.Count > 0))
+            || (!isCommand && roleOptionCount > 0)
+            || (isCommand && networkTwo && roleOptionCount != 1)
+            || (isCommand && !networkTwo && roleOptionCount != 0)
+            || (isReset && (topologyOptionCount != 1 || !networkTwo))
             || (isStart && operands.Any(argument => argument.StartsWith('-'))))
         {
             return false;
@@ -715,9 +769,14 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project smoke [path] --topology <single|network-2> --json");
         output.WriteLine(
-            "  sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json");
-        output.WriteLine("  sdvkit project review command <text> --json");
-        output.WriteLine("  sdvkit project review <status|stop> --json");
+            "  sdvkit project review start [path] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json");
+        output.WriteLine(
+            "  sdvkit project review status [--topology <single|network-2>] --json");
+        output.WriteLine(
+            "  sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json");
+        output.WriteLine(
+            "  sdvkit project review stop [--topology <single|network-2>] --json");
+        output.WriteLine("  sdvkit project review reset --topology network-2 --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -728,7 +787,7 @@ public static class CliApplication
         output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
         output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
         output.WriteLine("  project smoke   Build and smoke-test one mod in the isolated live lab.");
-        output.WriteLine("  project review  Run an explicit local mod set in an interactive singleplayer lab.");
+        output.WriteLine("  project review  Run an explicit local mod set in an interactive single or network-2 lab.");
         output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
     }
 
@@ -751,6 +810,7 @@ public static class CliApplication
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
+        output.WriteLine(ReviewResetUsage);
     }
 
     private static void WriteProjectReviewUsage(TextWriter output)
@@ -759,5 +819,6 @@ public static class CliApplication
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
+        output.WriteLine(ReviewResetUsage);
     }
 }

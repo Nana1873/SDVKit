@@ -149,9 +149,11 @@ The resulting evidence means that a controlled package file set was staged and S
 
 This command never deploys to the normal or mod-manager-owned `Mods` directory, enumerates personal saves, creates a permanent deployment, performs hot reload, or introduces another process/save/multiplayer state machine.
 
-## Interactive singleplayer project review
+## Interactive project review
 
-Run one target code-mod project with only the local test companions and content packs named on the command line:
+### Default singleplayer review
+
+Run one target code-mod project with only the local test companions and content packs named on the command line. Omitting `--topology` selects `single`:
 
 ```powershell
 sdvkit project review start .\ExampleMod `
@@ -174,9 +176,49 @@ Commands supplied by a companion stay owned by that companion. For example, expl
 
 Code projects reuse inspection, the isolated Release build, and validated packaging. Ready mod directories and native content packs are copied through a strict plain-tree preparation path because they are already runtime artifacts; source projects, saves, secrets, executables, archives, game assemblies, reparse points, and nested manifests are rejected. Before any launch, the complete explicit set is checked case-insensitively for valid non-reserved `UniqueID` values, unique staging names, required dependency and minimum-version satisfaction, content-pack providers, and existing mod-group collisions. Only the target, named companions, named packs, and SDVKit AlwaysOn count as available dependencies.
 
-The whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target mod identity and version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and full file-set identity. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
+For `single`, the whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target mod identity and version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and full file-set identity. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
 
-Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unlike `project smoke`, review does not use the disposable fixture or stop after 120 ticks.
+Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unlike `project smoke`, the `single` review does not use the disposable fixture or stop after 120 ticks.
+
+### Bounded network-2 Greenhouse review
+
+Select the existing `network-2` topology explicitly to run exactly one local host and one local farmhand. Both roles require SDVKit AlwaysOn; there is no supported review mode that disables it. The target, every `--companion`, and every `--content-pack` are still selected only on `start`, prepared through the existing review staging path, and copied as one identical explicit file set to the isolated host and farmhand mod groups. The same target/build identity must be confirmed in both roles.
+
+```powershell
+$target = "<StardewInteriorChanger project>"
+$harness = "<existing review harness>"
+$greenhouseFixture = "<existing playable Greenhouse content pack>"
+sdvkit project review start $target `
+  --topology network-2 `
+  --companion $harness `
+  --content-pack $greenhouseFixture `
+  --json
+sdvkit project review status --topology network-2 --json
+sdvkit project review command "<existing host command>" --topology network-2 --role host --json
+sdvkit project review command "<existing farmhand command>" --topology network-2 --role farmhand --json
+sdvkit project review stop --topology network-2 --json
+```
+
+`network-2 command` requires exactly one `--role host` or `--role farmhand`; roles are rejected for `single`. It transports one existing SMAPI or harness console line only to that exact owned role. It does not create a multiplayer protocol or broadcast a command to the pair.
+
+A confirmed clean `network-2 stop` stops the farmhand and host through their existing exact-process lifecycle, unmounts the owned review fixture, archives the role logs, and deliberately preserves both the work save and exact review staging. Running the same explicit `start --topology network-2` selection again therefore exercises a real pair restart against the retained work state. Stop does not reset the fixture to baseline and does not remove the staged review set.
+
+After both roles are confirmed stopped, perform the final cleanup explicitly:
+
+```powershell
+sdvkit project review reset --topology network-2 --json
+```
+
+`reset` is invalid for `single`, while either role is active, or without the explicit `--topology network-2`. It restores the owned work fixture byte-for-byte from its registered baseline and removes only the verified host/farmhand review staging. A process-identity, fixture-ownership, or staged-file mismatch blocks mutation instead of risking normal saves or normal Mods.
+
+This review surface is intentionally limited to dogfooding StardewInteriorChanger with the existing playable Greenhouse fixture: the host switches the Greenhouse, host and farmhand are visually checked against the same expected custom interior, the selection is checked again after a real pair restart, and the final Vanilla restore is checked in both roles. That evidence applies only to this local two-role Greenhouse slice. It does not claim compatibility for other interiors, other mod behavior, more players, remote play, or Stardew multiplayer in general; matching logs or hashes also do not replace the separate visual comparison.
+
+Screenshot capture remains the separately developed SDVKit AlwaysOn command, not a second screenshot implementation or framework in this slice. Address that same `sdvkit screenshot <label>` command through the existing role-specific transport and use distinct labels, for example:
+
+```powershell
+sdvkit project review command "sdvkit screenshot host-greenhouse-custom" --topology network-2 --role host --json
+sdvkit project review command "sdvkit screenshot farmhand-greenhouse-custom" --topology network-2 --role farmhand --json
+```
 
 ## Agent workflow
 

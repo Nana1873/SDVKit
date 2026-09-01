@@ -215,11 +215,17 @@ internal sealed class LiveLabService
         TestSaveLaunchState? testSave,
         NetworkTwoLaunchState networkTwo,
         AlwaysOnBuildResult preparedBuild,
-        ProjectModLaunchState? projectMod = null)
+        ProjectModLaunchState? projectMod = null,
+        bool interactiveConsole = false)
     {
         ArgumentNullException.ThrowIfNull(networkTwo);
         ArgumentNullException.ThrowIfNull(preparedBuild);
-        return Start(testSave, networkTwo, preparedBuild, projectMod);
+        return Start(
+            testSave,
+            networkTwo,
+            preparedBuild,
+            projectMod,
+            interactiveConsole);
     }
 
     internal LiveLabCommandResult RunProjectTestSave(ProjectModLaunchState projectMod)
@@ -863,7 +869,8 @@ internal sealed class LiveLabService
             environment,
             _paths.StandardOutputPath,
             _paths.StandardErrorPath,
-            StartMinimizedWithoutActivation: networkTwo is not null,
+            StartMinimizedWithoutActivation: networkTwo is not null
+                && !interactiveConsole,
             InteractiveConsole: interactiveConsole);
         LabProcessStartResult started = _processHost.Start(specification);
         if (started.Identity is null)
