@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.4.1-win-x64.zip` and `SDVKit-0.4.1-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.5.0-win-x64.zip` and `SDVKit-0.5.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.4.1-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.4.1-win-x64.zip
-& .\SDVKit-0.4.1-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.5.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.5.0-win-x64.zip
+& .\SDVKit-0.5.0-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.4.1
+## What's new in v0.5.0
 
-Since `v0.4.0`, an owned SMAPI code mod may create one new regular root `config.json` during `project smoke` or `project review` when the remaining staged file set still reproduces the original ownership identity exactly. The shared rule covers smoke targets, review code-mod targets, and explicitly selected code-mod companions, improving compatibility with normal SMAPI mods that create their configuration on first launch.
+Since `v0.4.1`, an interactive `single` review may explicitly mount the SDVKit-owned test save with `--test-save`, retain its Work-Copy across a real stop and restart, and finish with a verified topology-specific reset. The bounded AlwaysOn fixture commands can inspect owned fixture state, ensure Deluxe Barns, owned objects, and White Cows, remove only an owned object, and move the current role into an owned building or back to the farm.
 
-Content packs, changes to packaged files, additional files, nested configuration files, and reparse points remain fail-closed. SDVKit does not parse or report configuration contents or possible shared secrets.
+In `network-2`, world mutations remain host-only while status, building entry, farm return, screenshots, and target behavior can be observed per role. These generic review tasks no longer require SICQA. Normal saves and the normal or mod-manager-owned `Mods` directory remain outside the workflow; this bounded surface is not general game automation, general multiplayer compatibility, or an MCP interface.
 
 ## Isolated singleplayer live lab
 
