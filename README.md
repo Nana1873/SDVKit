@@ -243,6 +243,8 @@ sdvkit project review command "sdvkit screenshot farmhand-greenhouse-custom" --t
 
 The repository-owned [`sdv-project-smoke`](.agents/skills/sdv-project-smoke/SKILL.md) skill guides agents through discovery, project inspection, the existing end-to-end smoke, and evidence-based JSON/log reporting. It uses `single` by default and `network-2` only when a user explicitly requests a multiplayer test.
 
+The repository-owned [`sdv-project-review`](.agents/skills/sdv-project-review/SKILL.md) skill guides interactive functional and visual `project review` work with explicit local targets, evidence-bounded commands, real restart checks, and fail-closed cleanup.
+
 ## First milestones
 
 1. Environment discovery and project inspection.
