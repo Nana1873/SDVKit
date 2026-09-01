@@ -108,6 +108,188 @@ public sealed class LiveLabServiceTests
     }
 
     [Fact]
+    public void ProjectReviewStartsTheExactOwnedTestSaveWithTheExistingInteractiveLifecycle()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeStateStore stateStore = new();
+        FakeProcessHost process = new()
+        {
+            StartResult = new LabProcessStartResult(
+                LabProcessStartStatus.Started,
+                Identity(gamePath)),
+        };
+        FakeTestSaveStore fixtureStore = new(paths);
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            process,
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.StartProjectReview(
+            projectMod,
+            useTestSave: true);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, fixtureStore.ReviewPrepareCount);
+        TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(
+            stateStore.State?.TestSave);
+        Assert.Equal(TestSaveContract.ReviewMode, launch.Mode);
+        Assert.Equal(fixtureStore.Identity, launch.Identity);
+        LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(
+            process.Specification);
+        Assert.True(specification.InteractiveConsole);
+        Assert.Equal(
+            TestSaveContract.ReviewMode,
+            specification.Environment["SDVKIT_TEST_SAVE_MODE"]);
+        Assert.Equal(
+            fixtureStore.Identity.SaveId,
+            specification.Environment["SDVKIT_TEST_SAVE_ID"]);
+        Assert.Equal(
+            fixtureStore.Identity.FixtureId,
+            specification.Environment["SDVKIT_TEST_SAVE_FIXTURE_ID"]);
+        Assert.Equal(projectMod, stateStore.State?.ProjectMod);
+        Assert.Null(stateStore.State?.NetworkTwo);
+    }
+
+    [Fact]
+    public void FailedProjectReviewStartAbortsOnlyThePreparedReviewFixture()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeStateStore stateStore = new();
+        FakeTestSaveStore fixtureStore = new(paths);
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            new FakeProcessHost(),
+            new DoctorReport(1, DoctorReport.NotFound, []),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.StartProjectReview(
+            ProjectModLaunch(),
+            useTestSave: true);
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(1, fixtureStore.ReviewPrepareCount);
+        Assert.Equal(1, fixtureStore.AbortCount);
+        Assert.Null(stateStore.State);
+        Assert.Contains(
+            Assert.IsType<LiveLabReport>(result.Report).Problems,
+            problem => string.Equals(
+                problem.Code,
+                "installationNotReady",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ThrownProjectReviewStartFailureAbortsOnlyThePreparedReviewFixture()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeStateStore stateStore = new();
+        FakeTestSaveStore fixtureStore = new(paths);
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder
+            {
+                ExceptionToThrow = new IOException("simulated build failure"),
+            },
+            new FakeProcessHost(),
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.StartProjectReview(
+            ProjectModLaunch(),
+            useTestSave: true);
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(1, fixtureStore.ReviewPrepareCount);
+        Assert.Equal(1, fixtureStore.AbortCount);
+        Assert.Null(stateStore.State);
+        Assert.Contains(
+            Assert.IsType<LiveLabReport>(result.Report).Problems,
+            problem => string.Equals(
+                problem.Code,
+                "testSaveStartFailed",
+                StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExitedProjectReviewAbortsItsExactFixtureBeforeReleasingOwnership(
+        bool fixtureLoaded)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        File.WriteAllText(paths.StopRequestPath, LaunchId);
+        FakeTestSaveStore fixtureStore = new(paths);
+        TestSaveLaunchState testSave = fixtureStore.PrepareReviewForStart(
+            resetFromBaseline: false).LaunchState;
+        ProjectModLaunchState projectMod = ProjectModLaunch();
+        LiveLabState state = State(paths, gamePath) with
+        {
+            ProjectMod = projectMod,
+            TestSave = testSave,
+        };
+        WriteStatusMarker(
+            paths,
+            state,
+            "active",
+            pauseWhenOutOfFocus: false,
+            testSave: fixtureLoaded
+                ? new TestSaveStatusMarker(
+                    TestSaveContract.SchemaVersion,
+                    TestSaveContract.ReviewMode,
+                    "passed",
+                    testSave.Identity.FixtureId,
+                    testSave.Identity.SaveId,
+                    true,
+                    0,
+                    "loaded",
+                    testSave.ScenarioLogPath)
+                : null,
+            projectMod: LoadedProjectMod(projectMod));
+        FakeStateStore stateStore = new() { State = state };
+        LiveLabService service = Service(
+            paths,
+            stateStore,
+            new FakeBuilder(),
+            new FakeProcessHost
+            {
+                InspectResult = new LabProcessInspectResult(
+                    LabProcessInspectStatus.Exited),
+            },
+            Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.FinalizeExitedProjectReview();
+
+        Assert.Equal(fixtureLoaded ? 0 : 3, result.ExitCode);
+        if (!fixtureLoaded)
+        {
+            Assert.Equal(
+                "testSaveIncomplete",
+                Assert.Single(Assert.IsType<LiveLabReport>(result.Report).Problems).Code);
+        }
+
+        Assert.Equal(1, fixtureStore.AbortCount);
+        Assert.Null(stateStore.State);
+        Assert.False(File.Exists(paths.StopRequestPath));
+    }
+
+    [Fact]
     public void ExitedProjectReviewCanReleaseOnlyItsRetainedRuntimeOwnership()
     {
         using TemporaryDirectory temporary = new();
@@ -1407,6 +1589,8 @@ public sealed class LiveLabServiceTests
 
         public int PrepareCount { get; private set; }
 
+        public int ReviewPrepareCount { get; private set; }
+
         public int CompleteCount { get; private set; }
 
         public int AbortCount { get; private set; }
@@ -1424,6 +1608,17 @@ public sealed class LiveLabServiceTests
                 mode,
                 Identity,
                 Path.Combine(_paths.ProjectRoot, "fake-saves", Identity.SaveId),
+                _paths.TestSaveWorkPath,
+                _paths.TestSaveScenarioLogPath));
+        }
+
+        public TestSavePreparation PrepareReviewForStart(bool resetFromBaseline)
+        {
+            ReviewPrepareCount++;
+            return new TestSavePreparation(new TestSaveLaunchState(
+                TestSaveContract.ReviewMode,
+                Identity,
+                Path.Combine(_paths.SavesPath, Identity.SaveId),
                 _paths.TestSaveWorkPath,
                 _paths.TestSaveScenarioLogPath));
         }

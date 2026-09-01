@@ -14,6 +14,7 @@ internal static class ProjectReviewService
         "Project review stages only the explicitly selected local target, companions, and content packs; SDVKit does not search for or download dependencies.",
         "The SMAPI process uses a separate interactive console, so stdout/stderr are not captured by SDVKit; SMAPI's own log and screenshots remain in the isolated single-role profile below .sdvkit.",
         "Review saves persist in the isolated single-role profile across process restarts. Normal saves and the normal or mod-manager-owned Mods directory are not selected or modified.",
+        "When --test-save is selected, only the registered SDVKit-owned Work-Copy is mounted and loaded. A clean stop preserves it for restart; explicit single reset restores its registered baseline.",
         "This is process-level data isolation, not a Windows sandbox; reviewed mods can still access shared machine resources.",
     ];
 
@@ -54,7 +55,8 @@ internal static class ProjectReviewService
         IReadOnlyList<string> contentPackPaths,
         string topology,
         string labRoot,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        bool useTestSave = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(action);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
@@ -71,6 +73,26 @@ internal static class ProjectReviewService
                 SafeFullPath(labRoot),
                 "blocked",
                 [Problem("reviewTopologyInvalid", null, $"Unsupported project-review topology: {topology}")]);
+        }
+
+        if (useTestSave
+            && (!string.Equals(action, "start", StringComparison.Ordinal)
+                || !string.Equals(
+                    topology,
+                    LiveLabState.SingleTopology,
+                    StringComparison.Ordinal)))
+        {
+            IReadOnlyList<ProjectReviewProblem> problems = [Problem(
+                "reviewTestSaveTopologyInvalid",
+                null,
+                "--test-save is available only for a single project-review start.")];
+            return string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
+                ? NetworkFailure(SafeFullPath(sourcePath), SafeFullPath(labRoot), problems)
+                : Failure(
+                    SafeFullPath(sourcePath),
+                    SafeFullPath(labRoot),
+                    "blocked",
+                    problems);
         }
 
         if (string.Equals(action, "start", StringComparison.Ordinal)
@@ -146,15 +168,7 @@ internal static class ProjectReviewService
 
             if (string.Equals(action, "reset", StringComparison.Ordinal))
             {
-                return Failure(
-                    SafeFullPath(sourcePath),
-                    paths.ProjectRoot,
-                    "blocked",
-                    [Problem(
-                        "reviewResetTopologyInvalid",
-                        null,
-                        "Project-review reset is available only for the retained network-2 review workflow.")],
-                    paths);
+                return ResetSingle(paths);
             }
 
             var stateStore = new JsonLiveLabStateStore(paths.StatePath);
@@ -173,7 +187,8 @@ internal static class ProjectReviewService
                     paths,
                     stateStore,
                     service,
-                    discoverInstallations),
+                    discoverInstallations,
+                    useTestSave),
                 "status" => Status(paths, stateStore, service),
                 "stop" => Stop(paths, stateStore, service),
                 _ => throw new ArgumentOutOfRangeException(nameof(action)),
@@ -197,7 +212,8 @@ internal static class ProjectReviewService
                     paths.ProjectRoot,
                     "blocked",
                     problems,
-                    paths);
+                    paths,
+                    stagingRemoved: false);
         }
     }
 
@@ -366,6 +382,21 @@ internal static class ProjectReviewService
                         "reviewConsoleTargetNotReady",
                         null,
                         "The exact target mod has not reached its fully confirmed loaded state; no console input was written.")]);
+            }
+
+            if (exactState.TestSave is not null
+                && !TestSaveReadyForConsole(lab.AlwaysOn, exactState.TestSave))
+            {
+                return CommandResult(
+                    paths,
+                    staged.Staging,
+                    "blocked",
+                    lab,
+                    commandWritten: false,
+                    [Problem(
+                        "reviewConsoleTestSaveNotReady",
+                        null,
+                        "The exact owned review fixture is not currently loaded and identity-verified; no console input was written.")]);
             }
 
             ProjectReviewConsoleInputResult sent =
@@ -794,6 +825,86 @@ internal static class ProjectReviewService
             problems);
     }
 
+    private static LiveLabCommandResult ResetSingle(LiveLabPaths paths)
+    {
+        ProjectReviewStagingResult staged = ProjectModStager.ReadReviewForCleanup(
+            paths,
+            LiveLabState.SingleTopology);
+        if (staged.Problem is not null)
+        {
+            return Failure(
+                null,
+                paths.ProjectRoot,
+                "blocked",
+                [staged.Problem],
+                paths,
+                stagingRemoved: false);
+        }
+
+        ProjectReviewStagingResult networkStaging =
+            ProjectModStager.ReadReviewForCleanup(
+                paths,
+                NetworkTwoContract.Topology);
+        if (networkStaging.Problem is not null)
+        {
+            return ReviewResult(
+                paths,
+                staged.Staging,
+                "blocked",
+                null,
+                stagingRemoved: false,
+                [networkStaging.Problem]);
+        }
+
+        (LiveLabState? Host, LiveLabState? Farmhand) networkStates =
+            ReadNetworkStates(paths);
+        LiveLabState? singleState = new JsonLiveLabStateStore(paths.StatePath).Read();
+        if (singleState is not null
+            || networkStates.Host is not null
+            || networkStates.Farmhand is not null
+            || networkStaging.Staging is not null)
+        {
+            return ReviewResult(
+                paths,
+                staged.Staging,
+                "blocked",
+                null,
+                stagingRemoved: false,
+                [Problem(
+                    "reviewResetRequiresStoppedLab",
+                    null,
+                    "Single review reset requires the single lab, host, and farmhand to be stopped and no retained network-2 review; nothing was changed.")]);
+        }
+
+        try
+        {
+            new TestSaveFixtureStore(paths).ResetReview();
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return ReviewResult(
+                paths,
+                staged.Staging,
+                "blocked",
+                null,
+                stagingRemoved: false,
+                [Problem("reviewFixtureResetFailed", null, exception.Message)]);
+        }
+
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
+        IReadOnlyList<ProjectReviewProblem> problems = cleanup.Problem is null
+            ? []
+            : [cleanup.Problem];
+        return ReviewResult(
+            paths,
+            staged.Staging,
+            cleanup.Removed ? "stopped" : "blocked",
+            null,
+            cleanup.Removed,
+            problems,
+            fixtureReset: true);
+    }
+
     private static LiveLabCommandResult ExecuteNetworkCommand(
         string command,
         string role,
@@ -944,7 +1055,8 @@ internal static class ProjectReviewService
         LiveLabPaths paths,
         JsonLiveLabStateStore stateStore,
         LiveLabService service,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        bool useTestSave)
     {
         ProjectReviewStagingResult retained = ProjectModStager.ReadReview(paths);
         if (retained.Problem is not null)
@@ -959,6 +1071,21 @@ internal static class ProjectReviewService
         }
 
         LiveLabState? existing = stateStore.Read();
+        if (existing is not null
+            && (existing.TestSave is not null) != useTestSave)
+        {
+            return ReviewResult(
+                paths,
+                retained.Staging,
+                "blocked",
+                null,
+                stagingRemoved: false,
+                [Problem(
+                    "reviewTestSaveSelectionMismatch",
+                    null,
+                    "The retained single review does not match the requested --test-save selection; nothing was changed.")]);
+        }
+
         if (existing is not null || retained.Staging is not null)
         {
             LiveLabCommandResult reconciled = ReconcileExisting(
@@ -972,6 +1099,41 @@ internal static class ProjectReviewService
                 || ProjectModStager.ReadReview(paths).Staging is not null)
             {
                 return reconciled;
+            }
+        }
+
+        if (useTestSave)
+        {
+            (LiveLabState? Host, LiveLabState? Farmhand) networkStates =
+                ReadNetworkStates(paths);
+            ProjectReviewStagingResult networkStaging = ProjectModStager.ReadReview(
+                paths,
+                NetworkTwoContract.Topology);
+            if (networkStaging.Problem is not null)
+            {
+                return Failure(
+                    SafeFullPath(sourcePath),
+                    paths.ProjectRoot,
+                    "blocked",
+                    [networkStaging.Problem],
+                    paths,
+                    stagingRemoved: false);
+            }
+
+            if (networkStates.Host is not null
+                || networkStates.Farmhand is not null
+                || networkStaging.Staging is not null)
+            {
+                return Failure(
+                    SafeFullPath(sourcePath),
+                    paths.ProjectRoot,
+                    "blocked",
+                    [Problem(
+                        "reviewFixtureInUse",
+                        null,
+                        "The shared SDVKit test-save is retained by network-2 review state or staging; stop and reset that review first.")],
+                    paths,
+                    stagingRemoved: true);
             }
         }
 
@@ -1059,7 +1221,8 @@ internal static class ProjectReviewService
         }
 
         LiveLabCommandResult started = service.StartProjectReview(
-            staged.Staging.TargetLaunchState);
+            staged.Staging.TargetLaunchState,
+            useTestSave);
         LiveLabReport? lab = started.Report as LiveLabReport;
         if (started.ExitCode == Success)
         {
@@ -1073,13 +1236,23 @@ internal static class ProjectReviewService
         }
 
         bool stateRetained = stateStore.Read() is not null;
-        ProjectReviewCleanupResult cleanup = stateRetained
+        bool fixtureCleanupDeferred = lab?.Problems.Any(problem =>
+            string.Equals(
+                problem.Code,
+                "testSaveCleanupDeferred",
+                StringComparison.Ordinal)
+            || string.Equals(
+                problem.Code,
+                "testSaveCleanupFailed",
+                StringComparison.Ordinal)) == true;
+        bool ownershipRetained = stateRetained || fixtureCleanupDeferred;
+        ProjectReviewCleanupResult cleanup = ownershipRetained
             ? new ProjectReviewCleanupResult(
                 false,
                 Problem(
                     "reviewStagingCleanupDeferred",
                     null,
-                    "The exact process outcome is uncertain, so the owned review staging was retained."))
+                    "The exact process or fixture cleanup outcome is uncertain, so the owned review staging was retained."))
             : ProjectModStager.RemoveReview(paths);
         var startProblems = LabProblems(lab).ToList();
         if (cleanup.Problem is not null)
@@ -1090,7 +1263,7 @@ internal static class ProjectReviewService
         return ReviewResult(
             paths,
             staged.Staging,
-            stateRetained || !cleanup.Removed ? "blocked" : "failed",
+            ownershipRetained || !cleanup.Removed ? "blocked" : "failed",
             lab,
             cleanup.Removed,
             startProblems);
@@ -1287,8 +1460,26 @@ internal static class ProjectReviewService
         }
 
         ProjectModLaunchState target = staging.TargetLaunchState;
+        TestSaveLaunchState? testSave = state.TestSave;
+        bool testSaveBindingValid = testSave is null
+            || (string.Equals(
+                    testSave.Mode,
+                    TestSaveContract.ReviewMode,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    testSave.WorkPath,
+                    paths.TestSaveWorkPath,
+                    PathComparison())
+                && string.Equals(
+                    testSave.ScenarioLogPath,
+                    paths.TestSaveScenarioLogPath,
+                    PathComparison())
+                && string.Equals(
+                    testSave.SlotPath,
+                    Path.Combine(paths.SavesPath, testSave.Identity.SaveId),
+                    PathComparison()));
         if (!string.Equals(state.Topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || state.TestSave is not null
+            || !testSaveBindingValid
             || state.NetworkTwo is not null
             || state.ProjectMod is null
             || !string.Equals(state.ModsPath, paths.ModsPath, PathComparison())
@@ -1440,6 +1631,37 @@ internal static class ProjectReviewService
                 projectMod.BuildIdentity,
                 expected.BuildIdentity,
                 StringComparison.Ordinal);
+    }
+
+    private static bool TestSaveReadyForConsole(
+        AlwaysOnStatusReport? alwaysOn,
+        TestSaveLaunchState expected)
+    {
+        TestSaveStatusReport? testSave = alwaysOn?.TestSave;
+        return string.Equals(
+                expected.Mode,
+                TestSaveContract.ReviewMode,
+                StringComparison.Ordinal)
+            && testSave is not null
+            && string.Equals(testSave.State, "ready", StringComparison.Ordinal)
+            && string.Equals(
+                testSave.Mode,
+                TestSaveContract.ReviewMode,
+                StringComparison.Ordinal)
+            && string.Equals(testSave.Phase, "passed", StringComparison.Ordinal)
+            && testSave.IdentityVerified == true
+            && string.Equals(
+                testSave.FixtureId,
+                expected.Identity.FixtureId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                testSave.SaveId,
+                expected.Identity.SaveId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                testSave.ScenarioLogPath,
+                expected.ScenarioLogPath,
+                PathComparison());
     }
 
     private static ProjectReviewProblem? ConsoleInputProblem(
@@ -1705,7 +1927,8 @@ internal static class ProjectReviewService
         string state,
         LiveLabReport? lab,
         bool stagingRemoved,
-        IReadOnlyList<ProjectReviewProblem> problems)
+        IReadOnlyList<ProjectReviewProblem> problems,
+        bool fixtureReset = false)
     {
         IReadOnlyList<ProjectReviewArtifactReport> artifacts = staging is null
             ? []
@@ -1729,6 +1952,8 @@ internal static class ProjectReviewService
             artifacts,
             true,
             RelativePath(paths.ProjectRoot, paths.SavesPath),
+            lab?.AlwaysOn?.TestSave,
+            fixtureReset,
             stagingRemoved,
             problems,
             Warnings);
@@ -1759,6 +1984,8 @@ internal static class ProjectReviewService
             [],
             true,
             savesPath,
+            null,
+            false,
             stagingRemoved,
             problems,
             Warnings);

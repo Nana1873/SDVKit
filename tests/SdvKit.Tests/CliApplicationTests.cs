@@ -25,7 +25,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
+            "sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -41,7 +41,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review reset --topology network-2 --json",
+            "sdvkit project review reset --topology <single|network-2> --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -356,7 +356,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json",
+            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -364,7 +364,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit project review reset --topology network-2 --json",
+            "sdvkit project review reset --topology <single|network-2> --json",
             output,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
@@ -388,6 +388,7 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            useTestSave,
             topology,
             labRoot) =>
         {
@@ -395,6 +396,7 @@ public sealed class CliApplicationTests
             receivedTarget = sourcePath;
             receivedCompanions = companionPaths;
             receivedPacks = contentPackPaths;
+            Assert.False(useTestSave);
             receivedTopology = topology;
             receivedLabRoot = labRoot;
             return new LiveLabCommandResult(0, new
@@ -441,12 +443,14 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            useTestSave,
             topology,
             labRoot) =>
         {
             receivedTarget = sourcePath;
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
+            Assert.False(useTestSave);
             Assert.Equal("single", topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "running" });
@@ -464,6 +468,39 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewStartDispatchesTheExplicitSingleTestSaveSelection()
+    {
+        bool? receivedUseTestSave = null;
+        ProjectReviewCommandRunner runner = (
+            _,
+            _,
+            _,
+            _,
+            useTestSave,
+            topology,
+            _) =>
+        {
+            receivedUseTestSave = useTestSave;
+            Assert.Equal("single", topology);
+            return new LiveLabCommandResult(0, new { state = "running" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            "start",
+            "--topology",
+            "single",
+            "--test-save",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.True(receivedUseTestSave);
+        Assert.Equal(string.Empty, error);
+    }
+
     [Theory]
     [InlineData("status")]
     [InlineData("stop")]
@@ -474,6 +511,7 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            useTestSave,
             topology,
             labRoot) =>
         {
@@ -481,6 +519,7 @@ public sealed class CliApplicationTests
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
+            Assert.False(useTestSave);
             Assert.Equal("single", topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "stopped" });
@@ -507,6 +546,7 @@ public sealed class CliApplicationTests
             sourcePath,
             companionPaths,
             contentPackPaths,
+            useTestSave,
             topology,
             labRoot) =>
         {
@@ -514,6 +554,7 @@ public sealed class CliApplicationTests
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
+            Assert.False(useTestSave);
             Assert.Equal("network-2", topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "ready" });
@@ -540,7 +581,7 @@ public sealed class CliApplicationTests
         string? receivedTopology = null;
         string? receivedRole = "unexpected";
         string? receivedLabRoot = null;
-        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _) =>
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
             candidate,
@@ -585,7 +626,7 @@ public sealed class CliApplicationTests
     public void ProjectReviewNetworkCommandDispatchesOneExactRole(string expectedRole)
     {
         const string command = "sic-review set greenhouse fixture";
-        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _) =>
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
             candidate,
@@ -617,14 +658,17 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
-    [Fact]
-    public void ProjectReviewResetDispatchesOnlyExplicitNetworkTwo()
+    [Theory]
+    [InlineData("single")]
+    [InlineData("network-2")]
+    public void ProjectReviewResetDispatchesOnlyTheExplicitTopology(string expectedTopology)
     {
         ProjectReviewCommandRunner runner = (
             action,
             sourcePath,
             companionPaths,
             contentPackPaths,
+            useTestSave,
             topology,
             labRoot) =>
         {
@@ -632,7 +676,8 @@ public sealed class CliApplicationTests
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
             Assert.Empty(companionPaths);
             Assert.Empty(contentPackPaths);
-            Assert.Equal("network-2", topology);
+            Assert.False(useTestSave);
+            Assert.Equal(expectedTopology, topology);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return new LiveLabCommandResult(0, new { state = "reset" });
         };
@@ -643,7 +688,7 @@ public sealed class CliApplicationTests
             "review",
             "reset",
             "--topology",
-            "network-2",
+            expectedTopology,
             "--json");
 
         Assert.Equal(0, exitCode);
@@ -659,9 +704,12 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "start", "--topology", "invalid", "--json")]
     [InlineData("project", "review", "start", "--topology", "single", "--topology", "network-2", "--json")]
     [InlineData("project", "review", "start", "--role", "host", "--json")]
+    [InlineData("project", "review", "start", "--test-save", "--test-save", "--json")]
+    [InlineData("project", "review", "start", "--topology", "network-2", "--test-save", "--json")]
     [InlineData("project", "review", "status", "target", "--json")]
     [InlineData("project", "review", "status", "--companion", "mod", "--json")]
     [InlineData("project", "review", "status", "--role", "host", "--json")]
+    [InlineData("project", "review", "status", "--test-save", "--json")]
     [InlineData("project", "review", "command", "--json")]
     [InlineData("project", "review", "command", "one", "two", "--json")]
     [InlineData("project", "review", "command", "one", "--json", "--json")]
@@ -674,14 +722,15 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "command", "one", "--topology", "network-2", "--role", "host", "--role", "host", "--json")]
     [InlineData("project", "review", "stop", "--json", "--json")]
     [InlineData("project", "review", "stop", "--role", "host", "--json")]
+    [InlineData("project", "review", "stop", "--test-save", "--json")]
     [InlineData("project", "review", "reset", "--json")]
-    [InlineData("project", "review", "reset", "--topology", "single", "--json")]
+    [InlineData("project", "review", "reset", "--topology", "single", "--test-save", "--json")]
     [InlineData("project", "review", "reset", "--topology", "network-2", "--role", "host", "--json")]
     [InlineData("project", "review", "reset", "--topology", "network-2", "target", "--json")]
     [InlineData("project", "review", "restart", "--json")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -691,7 +740,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json"
+            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json"
                 + Environment.NewLine
                 + "       sdvkit project review status [--topology <single|network-2>] --json"
                 + Environment.NewLine
@@ -699,7 +748,7 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
-                + "       sdvkit project review reset --topology network-2 --json"
+                + "       sdvkit project review reset --topology <single|network-2> --json"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine,
@@ -709,7 +758,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewCommandRejectsALineOverTheBoundedMaximum()
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -734,7 +783,7 @@ public sealed class CliApplicationTests
     [InlineData("reset", "--help")]
     public void ProjectReviewHelpListsTheTopologyAddressedSurface(params string[] suffix)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
         string[] arguments = ["project", "review", .. suffix];
 

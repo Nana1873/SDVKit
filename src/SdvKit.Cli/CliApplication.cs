@@ -20,6 +20,7 @@ internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
     string sourcePath,
     IReadOnlyList<string> companionPaths,
     IReadOnlyList<string> contentPackPaths,
+    bool useTestSave,
     string topology,
     string labRoot);
 
@@ -41,7 +42,7 @@ public static class CliApplication
     private const string SmokeUsage =
         "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
     private const string ReviewStartUsage =
-        "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json";
+        "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
         "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
@@ -49,7 +50,7 @@ public static class CliApplication
     private const string ReviewStopUsage =
         "       sdvkit project review stop [--topology <single|network-2>] --json";
     private const string ReviewResetUsage =
-        "       sdvkit project review reset --topology network-2 --json";
+        "       sdvkit project review reset --topology <single|network-2> --json";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -109,6 +110,7 @@ public static class CliApplication
                 sourcePath,
                 companionPaths,
                 contentPackPaths,
+                useTestSave,
                 topology,
                 labRoot) => ProjectReviewService.Execute(
                     action,
@@ -117,7 +119,8 @@ public static class CliApplication
                     contentPackPaths,
                     topology,
                     labRoot,
-                    discoverInstallations);
+                    discoverInstallations,
+                    useTestSave);
         }
 
         runProjectReviewConsole ??= (command, topology, role, labRoot) =>
@@ -397,7 +400,8 @@ public static class CliApplication
                 out IReadOnlyList<string>? contentPackPaths,
                 out string? command,
                 out string? topology,
-                out string? role))
+                out string? role,
+                out bool useTestSave))
         {
             WriteProjectReviewUsage(error);
             return UsageError;
@@ -417,6 +421,7 @@ public static class CliApplication
                     path!,
                     companionPaths!,
                     contentPackPaths!,
+                    useTestSave,
                     topology!,
                     Environment.CurrentDirectory);
         WriteJson(output, result.Report);
@@ -512,7 +517,8 @@ public static class CliApplication
         out IReadOnlyList<string>? contentPackPaths,
         out string? command,
         out string? topology,
-        out string? role)
+        out string? role,
+        out bool useTestSave)
     {
         action = arguments.Count > 2 ? arguments[2] : null;
         path = null;
@@ -521,6 +527,7 @@ public static class CliApplication
         command = null;
         topology = "single";
         role = null;
+        useTestSave = false;
         if (action is not ("start" or "status" or "command" or "stop" or "reset"))
         {
             return false;
@@ -532,6 +539,7 @@ public static class CliApplication
         var jsonOptionCount = 0;
         var topologyOptionCount = 0;
         var roleOptionCount = 0;
+        var testSaveOptionCount = 0;
         for (var index = 3; index < arguments.Count; index++)
         {
             string argument = arguments[index];
@@ -567,6 +575,13 @@ public static class CliApplication
                 continue;
             }
 
+            if (string.Equals(argument, "--test-save", StringComparison.Ordinal))
+            {
+                testSaveOptionCount++;
+                useTestSave = true;
+                continue;
+            }
+
             if (argument is "--companion" or "--content-pack")
             {
                 if (!string.Equals(action, "start", StringComparison.Ordinal)
@@ -594,6 +609,7 @@ public static class CliApplication
             || topologyOptionCount > 1
             || topology is not ("single" or "network-2")
             || roleOptionCount > 1
+            || testSaveOptionCount > 1
             || (role is not null && role is not ("host" or "farmhand"))
             || (isStart && operands.Count > 1)
             || (isCommand && (operands.Count != 1
@@ -603,7 +619,8 @@ public static class CliApplication
             || (!isCommand && roleOptionCount > 0)
             || (isCommand && networkTwo && roleOptionCount != 1)
             || (isCommand && !networkTwo && roleOptionCount != 0)
-            || (isReset && (topologyOptionCount != 1 || !networkTwo))
+            || (testSaveOptionCount > 0 && (!isStart || networkTwo))
+            || (isReset && topologyOptionCount != 1)
             || (isStart && operands.Any(argument => argument.StartsWith('-'))))
         {
             return false;
@@ -769,14 +786,14 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project smoke [path] --topology <single|network-2> --json");
         output.WriteLine(
-            "  sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--companion <path>]... [--content-pack <path>]... --json");
+            "  sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json");
         output.WriteLine(
             "  sdvkit project review status [--topology <single|network-2>] --json");
         output.WriteLine(
             "  sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
-        output.WriteLine("  sdvkit project review reset --topology network-2 --json");
+        output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();

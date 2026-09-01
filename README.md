@@ -195,7 +195,34 @@ Code projects reuse inspection, the isolated Release build, and validated packag
 
 For `single`, the whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. Existing JSON reports identify each artifact's role, kind, `UniqueID`, declared version, provider, and file-set identity. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target C# mod or content pack by exact `UniqueID` and canonical version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and file-set identity under the narrow code-mod configuration rule above. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
 
-Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unlike `project smoke`, the `single` review does not use the disposable fixture or stop after 120 ticks.
+Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unless `--test-save` is selected explicitly, the `single` review does not use the disposable fixture. It never stops automatically after 120 ticks.
+
+### Owned test save in single review
+
+First prepare the existing disposable baseline while every lab role is stopped:
+
+```powershell
+sdvkit lab test-save --topology single --json
+```
+
+Then select that exact project-owned Work-Copy explicitly:
+
+```powershell
+sdvkit project review start .\ExampleMod --topology single --test-save --json
+sdvkit project review status --topology single --json
+sdvkit project review stop --topology single --json
+sdvkit project review start .\ExampleMod --topology single --test-save --json
+```
+
+`--test-save` reuses the existing test-save fixture store and AlwaysOn loader. It mounts only the registered Work-Copy below `.sdvkit/lab/single/test-save`, loads only its exact Save ID, and fails closed with the preparation command above when the registered baseline is absent. The review report's `testSave` object exposes the Save ID, fixture ID, ownership verification, and load phase; accepted load proof is `state=ready`, `phase=passed`, and `identityVerified=true`.
+
+A confirmed `stop` unmounts the exact fixture but deliberately preserves its Work-Copy. Repeating `start` with the same explicit target selection and `--test-save` launches a new process against that retained work state. After the final stop, reset only that verified fixture and any retained exact single-review staging:
+
+```powershell
+sdvkit project review reset --topology single --json
+```
+
+Single reset requires the single, host, and farmhand roles to be stopped and no retained `network-2` review. It restores the Work-Copy byte-for-byte from the registered baseline. Missing or mismatched fixture ownership, an active mount, process state, or staging ownership blocks mutation; normal saves and normal or mod-manager-owned Mods are never selected.
 
 ### Bounded network-2 Greenhouse review
 
@@ -226,7 +253,7 @@ After both roles are confirmed stopped, perform the final cleanup explicitly:
 sdvkit project review reset --topology network-2 --json
 ```
 
-`reset` is invalid for `single`, while either role is active, or without the explicit `--topology network-2`. It restores the owned work fixture byte-for-byte from its registered baseline and removes only the verified host/farmhand review staging. A process-identity, fixture-ownership, or staged-file mismatch blocks mutation instead of risking normal saves or normal Mods.
+The network reset requires the explicit `--topology network-2` and is invalid while either role or the single lab is active. It restores the owned work fixture byte-for-byte from its registered baseline and removes only the verified host/farmhand review staging. A process-identity, fixture-ownership, or staged-file mismatch blocks mutation instead of risking normal saves or normal Mods.
 
 This review surface is intentionally limited to dogfooding StardewInteriorChanger with the existing playable Greenhouse fixture: the host switches the Greenhouse, host and farmhand are visually checked against the same expected custom interior, the selection is checked again after a real pair restart, and the final Vanilla restore is checked in both roles. That evidence applies only to this local two-role Greenhouse slice. It does not claim compatibility for other interiors, other mod behavior, more players, remote play, or Stardew multiplayer in general; matching logs or hashes also do not replace the separate visual comparison.
 
