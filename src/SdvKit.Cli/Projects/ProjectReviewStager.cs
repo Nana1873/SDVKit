@@ -271,6 +271,31 @@ internal static partial class ProjectModStager
             allowMissingStagingPaths: false);
     }
 
+    internal static ProjectReviewStagingResult ReadReviewForCleanup(
+        LiveLabPaths singlePaths,
+        string topology)
+    {
+        ArgumentNullException.ThrowIfNull(singlePaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(topology);
+        string ownershipPath;
+        try
+        {
+            ResolveReviewRolePaths(singlePaths, topology);
+            ownershipPath = ReviewOwnershipPath(singlePaths, topology);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return ReviewFailure("reviewTopologyInvalid", null, exception.Message);
+        }
+
+        return File.Exists(ownershipPath)
+            ? ReadReviewOwnership(
+                singlePaths,
+                topology,
+                allowMissingStagingPaths: true)
+            : ReadReview(singlePaths, topology);
+    }
+
     public static ProjectReviewCleanupResult RemoveReview(LiveLabPaths paths) =>
         RemoveReview(paths, LiveLabState.SingleTopology);
 

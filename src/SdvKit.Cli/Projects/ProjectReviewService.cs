@@ -714,7 +714,7 @@ internal static class ProjectReviewService
 
     private static LiveLabCommandResult ResetNetwork(LiveLabPaths paths)
     {
-        ProjectReviewStagingResult staged = ProjectModStager.ReadReview(
+        ProjectReviewStagingResult staged = ProjectModStager.ReadReviewForCleanup(
             paths,
             NetworkTwoContract.Topology);
         if (staged.Problem is not null)

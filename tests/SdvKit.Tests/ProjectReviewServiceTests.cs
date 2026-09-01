@@ -241,6 +241,57 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void NetworkTwoResetRetriesOwnedPartialStagingCleanup()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        TestSaveIdentity identity = WriteReviewFixture(paths);
+        string alreadyRemoved = staging.Target.StagingPathFor(
+            NetworkTwoContract.HostRole);
+        Directory.Delete(alreadyRemoved, recursive: true);
+
+        ProjectReviewStagingResult strict = ProjectModStager.ReadReview(
+            paths,
+            NetworkTwoContract.Topology);
+        Assert.Null(strict.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipInvalid",
+            Assert.IsType<ProjectReviewProblem>(strict.Problem).Code);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            temporary.Path,
+            [],
+            [],
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Reset must not run doctor."));
+
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.True(report.FixtureReset);
+        Assert.True(report.StagingRemoved);
+        Assert.Empty(report.Problems);
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+        {
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.HostRole)));
+            Assert.False(Directory.Exists(artifact.StagingPathFor(
+                NetworkTwoContract.FarmhandRole)));
+        });
+        Assert.Equal(
+            "baseline-save",
+            File.ReadAllText(Path.Combine(
+                paths.TestSaveWorkPath,
+                identity.SaveId)));
+        Assert.False(File.Exists(Path.Combine(paths.TestSaveWorkPath, "review-only")));
+    }
+
+    [Fact]
     public void StatusWithoutStateOrStagingIsStoppedWithoutDiscovery()
     {
         using TemporaryDirectory temporary = new();
@@ -776,6 +827,45 @@ public sealed class ProjectReviewServiceTests
             paths);
         Assert.Null(result.Problem);
         return Assert.IsType<ProjectReviewStaging>(result.Staging);
+    }
+
+    private static TestSaveIdentity WriteReviewFixture(LiveLabPaths paths)
+    {
+        const long uniqueGameId = 123456789;
+        var identity = new TestSaveIdentity(
+            TestSaveContract.SchemaVersion,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            uniqueGameId,
+            TestSaveContract.GetSaveId(uniqueGameId),
+            TestSaveContract.PlayerName,
+            TestSaveContract.FarmName,
+            TestSaveContract.FavoriteThing);
+        string marker = JsonSerializer.Serialize(identity, LiveLabJsonOptions.CamelCase);
+        Directory.CreateDirectory(paths.TestSaveRoot);
+        File.WriteAllText(paths.TestSaveManifestPath, marker);
+        foreach (string payloadPath in new[]
+        {
+            paths.TestSaveBaselinePath,
+            paths.TestSaveWorkPath,
+        })
+        {
+            Directory.CreateDirectory(payloadPath);
+            File.WriteAllText(
+                Path.Combine(payloadPath, TestSaveContract.FixtureMarkerFileName),
+                marker);
+            File.WriteAllText(
+                Path.Combine(payloadPath, identity.SaveId),
+                payloadPath == paths.TestSaveBaselinePath
+                    ? "baseline-save"
+                    : "review-save");
+            File.WriteAllText(Path.Combine(payloadPath, "SaveGameInfo"), "save-info");
+        }
+
+        File.WriteAllText(
+            Path.Combine(paths.TestSaveWorkPath, "review-only"),
+            "review mutation");
+        return identity;
     }
 
     private static string ArtifactIdentity(ProjectReviewArtifactReport artifact) =>
