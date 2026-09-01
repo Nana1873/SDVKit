@@ -445,10 +445,13 @@ public sealed class ReviewFixtureCommandTests
         Assert.Contains("existing.home?.id.Value == target.id.Value", source, StringComparison.Ordinal);
         Assert.Contains("animalHouse.animalsThatLiveHere.Contains(existing.myID.Value)", source, StringComparison.Ordinal);
         Assert.Contains("indoors.GetFirstPlayerWarp()", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.isTileLocationOpen(entry)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.IsTileOccupiedBy(entry)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.Objects.ContainsKey(entry)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.isTileOccupiedByFarmer(entry) is not null", source, StringComparison.Ordinal);
+        Assert.Contains("string.Equals(exit.TargetName, \"Farm\", StringComparison.Ordinal)", source, StringComparison.Ordinal);
+        Assert.Contains("indoors.isTileOnMap(entry)", source, StringComparison.Ordinal);
+        Assert.Contains("indoors.isTilePassable(entry)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("indoors.isTileLocationOpen(entry)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("indoors.IsTileOccupiedBy(entry)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("indoors.Objects.ContainsKey(entry)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("indoors.isTileOccupiedByFarmer(entry) is not null", source, StringComparison.Ordinal);
         Assert.Contains("mainPlayer={Context.IsMainPlayer}", source, StringComparison.Ordinal);
         Assert.Contains("multiplayer={Context.IsMultiplayer}", source, StringComparison.Ordinal);
         Assert.Contains("player={Game1.player.Name}", source, StringComparison.Ordinal);

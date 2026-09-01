@@ -1330,11 +1330,7 @@ internal sealed class StardewReviewFixtureRuntime(
         if (exit is null
             || !string.Equals(exit.TargetName, "Farm", StringComparison.Ordinal)
             || !indoors.isTileOnMap(entry)
-            || !indoors.isTilePassable(entry)
-            || !indoors.isTileLocationOpen(entry)
-            || indoors.IsTileOccupiedBy(entry)
-            || indoors.Objects.ContainsKey(entry)
-            || indoors.isTileOccupiedByFarmer(entry) is not null)
+            || !indoors.isTilePassable(entry))
         {
             error = "The fixture interior has no usable natural Farm warp and entry tile.";
             return false;
