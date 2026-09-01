@@ -571,6 +571,67 @@ public sealed class ProjectReviewServiceTests
         Assert.False(Directory.Exists(staging.Target.StagingPath));
     }
 
+    [Theory]
+    [InlineData("status", ProjectReviewArtifactRole.Target)]
+    [InlineData("stop", ProjectReviewArtifactRole.Target)]
+    [InlineData("status", ProjectReviewArtifactRole.Companion)]
+    [InlineData("stop", ProjectReviewArtifactRole.Companion)]
+    public void RuntimeRootConfigDoesNotBlockStatusOrStopForOwnedCodeMods(
+        string action,
+        string artifactRole)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        const string secret = "issue-40-service-secret-must-not-be-reported";
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTargetAndCompanion(paths, temporary.Path);
+        ProjectReviewOwnedArtifact runtimeArtifact = Assert.Single(
+            staging.Artifacts,
+            artifact => artifact.Role == artifactRole);
+        File.WriteAllText(
+            Path.Combine(runtimeArtifact.StagingPath, "config.json"),
+            $"{{\"SharedSecret\":\"{secret}\"}}");
+        LiveLabState state = ReviewState(paths, staging.TargetLaunchState);
+        new JsonLiveLabStateStore(paths.StatePath).Write(state);
+        WriteStatus(
+            paths,
+            state,
+            staging.TargetLaunchState,
+            ProjectModContract.LoadedPhase,
+            loadConfirmed: true,
+            topLevelState: action == "stop" ? "exiting" : "active");
+        File.WriteAllText(paths.StopRequestPath, LaunchId);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            action,
+            temporary.Path,
+            [],
+            [],
+            temporary.Path,
+            () => throw new InvalidOperationException(
+                $"{action} must not run doctor."));
+
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        string serializedReport = JsonSerializer.Serialize(
+            report,
+            LiveLabJsonOptions.CamelCase);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.True(report.StagingRemoved);
+        Assert.Empty(report.Problems);
+        Assert.DoesNotContain(secret, serializedReport, StringComparison.Ordinal);
+        Assert.False(File.Exists(paths.StatePath));
+        Assert.False(File.Exists(paths.StopRequestPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.All(staging.Artifacts, artifact =>
+            Assert.False(Directory.Exists(artifact.StagingPath)));
+    }
+
     [Fact]
     public void StatusReportsMarkerlessPartialStagingFailClosed()
     {
@@ -614,7 +675,14 @@ public sealed class ProjectReviewServiceTests
         using TemporaryDirectory temporary = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         paths.EnsureDirectories();
-        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        const string secret = "issue-40-command-secret-must-not-be-reported";
+        ProjectReviewStaging staging = StageTargetAndCompanion(paths, temporary.Path);
+        ProjectReviewOwnedArtifact companion = Assert.Single(
+            staging.Artifacts,
+            artifact => artifact.Role == ProjectReviewArtifactRole.Companion);
+        File.WriteAllText(
+            Path.Combine(companion.StagingPath, "config.json"),
+            $"{{\"SharedSecret\":\"{secret}\"}}");
         (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
         using (child)
         {
@@ -643,6 +711,10 @@ public sealed class ProjectReviewServiceTests
                 Assert.Equal(1, sender.CallCount);
                 Assert.Equal(identity, sender.Identity);
                 Assert.Equal("sic-review set greenhouse fixture", sender.Line);
+                Assert.DoesNotContain(
+                    secret,
+                    JsonSerializer.Serialize(report, LiveLabJsonOptions.CamelCase),
+                    StringComparison.Ordinal);
                 Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
                 Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
             }
@@ -905,6 +977,27 @@ public sealed class ProjectReviewServiceTests
         return Assert.IsType<ProjectReviewStaging>(result.Staging);
     }
 
+    private static ProjectReviewStaging StageTargetAndCompanion(
+        LiveLabPaths paths,
+        string fixtureRoot)
+    {
+        ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
+            fixtureRoot,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewPreparedArtifact companion = ProjectReviewStagerTests.Artifact(
+            fixtureRoot,
+            "Companion",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Companion");
+        ProjectReviewStagingResult result = ProjectModStager.StageReview(
+            [target, companion],
+            paths);
+        Assert.Null(result.Problem);
+        return Assert.IsType<ProjectReviewStaging>(result.Staging);
+    }
+
     private static ProjectReviewStaging StageNetworkReviewSet(
         LiveLabPaths paths,
         string fixtureRoot)
@@ -1081,14 +1174,15 @@ public sealed class ProjectReviewServiceTests
         ProjectModLaunchState target,
         string phase,
         bool loadConfirmed,
-        bool isActive = true)
+        bool isActive = true,
+        string topLevelState = "active")
     {
         var marker = new AlwaysOnStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
             state.OwnedProcessIdentity.StartTimeUtc,
-            "active",
+            topLevelState,
             600,
             IsActive: isActive,
             PauseWhenOutOfFocus: false,

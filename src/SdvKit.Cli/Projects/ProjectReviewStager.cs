@@ -776,10 +776,13 @@ internal static partial class ProjectModStager
                         manifest.Version,
                         artifact.Manifest.Version,
                         StringComparison.Ordinal)
-                    || !string.Equals(
-                        ModBuildIdentity.ComputeFileSet(stagingPath),
+                    || !ModBuildIdentity.MatchesFileSet(
+                        stagingPath,
                         artifact.BuildIdentity,
-                        StringComparison.Ordinal))
+                        allowNewRootConfigJson: string.Equals(
+                            artifact.Manifest.Kind,
+                            ProjectInspectionReport.SmapiMod,
+                            StringComparison.Ordinal)))
                 {
                     return ReviewProblem(
                         "reviewStagingOwnershipDrifted",

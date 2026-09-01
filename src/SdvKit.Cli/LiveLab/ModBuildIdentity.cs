@@ -7,6 +7,8 @@ namespace SdvKit.Cli.LiveLab;
 
 internal static class ModBuildIdentity
 {
+    private const string RuntimeConfigFileName = "config.json";
+
     private static readonly string[] RequiredFiles =
     [
         "SdvKit.AlwaysOn.dll",
@@ -57,38 +59,39 @@ internal static class ModBuildIdentity
 
     public static string ComputeFileSet(string rootPath)
     {
-        if (string.IsNullOrWhiteSpace(rootPath))
+        FileSetEntry[] files = InspectFileSet(rootPath);
+        (string fullIdentity, _) = ComputeFileSetIdentities(
+            files,
+            includeWithoutRuntimeConfig: false);
+        return fullIdentity;
+    }
+
+    public static bool MatchesFileSet(
+        string rootPath,
+        string expectedIdentity,
+        bool allowNewRootConfigJson)
+    {
+        if (!IsValid(expectedIdentity))
         {
-            throw new ArgumentException("The file-set root is required.", nameof(rootPath));
+            return false;
         }
 
-        string absoluteRoot = GetFullPath(rootPath, "The file-set root path is invalid.");
-        FileAttributes rootAttributes = GetAttributes(
-            absoluteRoot,
-            "The file-set root could not be inspected.");
-        if ((rootAttributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                $"The file-set root is not a directory: {absoluteRoot}");
-        }
-
-        RejectReparsePoint(absoluteRoot, rootAttributes);
-        FileSetEntry[] files = EnumerateRegularFiles(absoluteRoot);
-        if (files.Length == 0)
-        {
-            throw new InvalidDataException(
-                $"The file-set root does not contain any regular files: {absoluteRoot}");
-        }
-
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Span<byte> length = stackalloc byte[sizeof(long)];
-        byte[] buffer = new byte[81920];
-        foreach (FileSetEntry file in files)
-        {
-            AppendFile(hash, length, buffer, file);
-        }
-
-        return FormatHash(hash.GetHashAndReset());
+        FileSetEntry[] files = InspectFileSet(rootPath);
+        bool hasExactRootConfig = files.Any(file => string.Equals(
+            file.RelativePath,
+            RuntimeConfigFileName,
+            StringComparison.Ordinal));
+        (string fullIdentity, string? identityWithoutRuntimeConfig) =
+            ComputeFileSetIdentities(
+                files,
+                includeWithoutRuntimeConfig: allowNewRootConfigJson
+                    && hasExactRootConfig);
+        return string.Equals(fullIdentity, expectedIdentity, StringComparison.Ordinal)
+            || (identityWithoutRuntimeConfig is not null
+                && string.Equals(
+                    identityWithoutRuntimeConfig,
+                    expectedIdentity,
+                    StringComparison.Ordinal));
     }
 
     public static string ComputeFile(string path)
@@ -134,6 +137,34 @@ internal static class ModBuildIdentity
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
     }
 
+    private static FileSetEntry[] InspectFileSet(string rootPath)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath))
+        {
+            throw new ArgumentException("The file-set root is required.", nameof(rootPath));
+        }
+
+        string absoluteRoot = GetFullPath(rootPath, "The file-set root path is invalid.");
+        FileAttributes rootAttributes = GetAttributes(
+            absoluteRoot,
+            "The file-set root could not be inspected.");
+        if ((rootAttributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                $"The file-set root is not a directory: {absoluteRoot}");
+        }
+
+        RejectReparsePoint(absoluteRoot, rootAttributes);
+        FileSetEntry[] files = EnumerateRegularFiles(absoluteRoot);
+        if (files.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"The file-set root does not contain any regular files: {absoluteRoot}");
+        }
+
+        return files;
+    }
+
     private static FileSetEntry[] EnumerateRegularFiles(string absoluteRoot)
     {
         var files = new List<FileSetEntry>();
@@ -173,14 +204,24 @@ internal static class ModBuildIdentity
                     entry,
                     "A file-set entry could not be inspected.");
                 RejectReparsePoint(entry, attributes);
+                string relativePath = NormalizeRelativePath(absoluteRoot, entry);
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
+                    if (string.Equals(
+                            relativePath,
+                            RuntimeConfigFileName,
+                            StringComparison.Ordinal))
+                    {
+                        throw new InvalidDataException(
+                            "The root config.json entry is not a regular file.");
+                    }
+
                     pending.Push(entry);
                     continue;
                 }
 
                 RejectRegularFileViolation(entry, attributes);
-                files.Add(new FileSetEntry(entry, NormalizeRelativePath(absoluteRoot, entry)));
+                files.Add(new FileSetEntry(entry, relativePath));
             }
         }
 
@@ -189,8 +230,43 @@ internal static class ModBuildIdentity
             .ToArray();
     }
 
+    private static (string FullIdentity, string? IdentityWithoutRuntimeConfig)
+        ComputeFileSetIdentities(
+            IReadOnlyList<FileSetEntry> files,
+            bool includeWithoutRuntimeConfig)
+    {
+        using IncrementalHash fullHash =
+            IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using IncrementalHash? hashWithoutRuntimeConfig = includeWithoutRuntimeConfig
+            ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256)
+            : null;
+        Span<byte> length = stackalloc byte[sizeof(long)];
+        byte[] buffer = new byte[81920];
+        foreach (FileSetEntry file in files)
+        {
+            bool appendToAlternative = hashWithoutRuntimeConfig is not null
+                && !string.Equals(
+                    file.RelativePath,
+                    RuntimeConfigFileName,
+                    StringComparison.Ordinal);
+            AppendFile(
+                fullHash,
+                appendToAlternative ? hashWithoutRuntimeConfig : null,
+                length,
+                buffer,
+                file);
+        }
+
+        return (
+            FormatHash(fullHash.GetHashAndReset()),
+            hashWithoutRuntimeConfig is null
+                ? null
+                : FormatHash(hashWithoutRuntimeConfig.GetHashAndReset()));
+    }
+
     private static void AppendFile(
         IncrementalHash hash,
+        IncrementalHash? additionalHash,
         Span<byte> length,
         byte[] buffer,
         FileSetEntry file)
@@ -209,12 +285,16 @@ internal static class ModBuildIdentity
             hash.AppendData(name);
             hash.AppendData([0]);
             hash.AppendData(length);
+            additionalHash?.AppendData(name);
+            additionalHash?.AppendData([0]);
+            additionalHash?.AppendData(length);
 
             long totalRead = 0;
             int read;
             while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
             {
                 hash.AppendData(buffer, 0, read);
+                additionalHash?.AppendData(buffer, 0, read);
                 totalRead = checked(totalRead + read);
             }
 
