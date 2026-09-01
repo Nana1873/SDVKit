@@ -595,7 +595,9 @@ public sealed class ProjectModStagerTests
     [InlineData("0.1.0", null)]
     [InlineData("0.1.1", null)]
     [InlineData("0.2.0", null)]
-    [InlineData("0.2.1", "runtimeDependencyUnavailable")]
+    [InlineData("0.2.1", null)]
+    [InlineData("0.3.0", null)]
+    [InlineData("0.3.1", "runtimeDependencyUnavailable")]
     [InlineData("999.0.0", "runtimeDependencyUnavailable")]
     public void RequiredAlwaysOnMinimumVersionMustBeProvidedByTheLab(
         string minimumVersion,

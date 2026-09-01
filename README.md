@@ -34,13 +34,23 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.2.0-win-x64.zip` and `SDVKit-0.2.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.3.0-win-x64.zip` and `SDVKit-0.3.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.2.0-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.2.0-win-x64.zip
-& .\SDVKit-0.2.0-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.3.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.3.0-win-x64.zip
+& .\SDVKit-0.3.0-win-x64\sdvkit.exe --help
 ```
+
+Before replacing the program files, cleanly stop any active SDVKit lab or project review.
+
+## What's new in v0.3.0
+
+Since `v0.2.0`, SDVKit adds an interactive singleplayer review for one target project plus explicitly named local companion mods and content packs. The `project review start|status|command|stop` surface uses an exact-process-bound Windows console transport, and the built-in `sdvkit screenshot <label>` command captures Stardew's native current-location map image rather than a window, UI, or desktop screenshot. Persistent isolated review data supports a real stop/restart reload check.
+
+The release also adds a deliberately bounded `network-2` review for one local host and farmhand. Commands are addressed to one role at a time, AlwaysOn is required in both roles, a confirmed stop retains the work fixture and exact staging for restart, and `project review reset --topology network-2` performs the explicit final fixture reset and staging cleanup. Lifecycle fixes resume the saved farmhand correctly and make a failed reset safe to retry.
+
+These workflows provide process isolation, not a Windows sandbox. Normal saves and the normal or mod-manager-owned `Mods` directory remain outside automatic operations, while game binaries are read from the detected installation without making a game copy. SDVKit does not download dependencies or search for companion mods automatically. `commandWritten=true` confirms only that a console line was delivered; the receiving command and its result still need separate evidence. Screenshots are not evaluated automatically. The multiplayer evidence is limited to one local host/farmhand Greenhouse slice and is not a claim of general Stardew or mod multiplayer compatibility.
 
 ## Isolated singleplayer live lab
 
