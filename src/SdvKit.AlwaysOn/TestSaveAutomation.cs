@@ -252,6 +252,30 @@ internal sealed class TestSaveAutomation
         }
     }
 
+    public bool TryVerifyReviewFixture(
+        out string fixtureId,
+        out string reason)
+    {
+        fixtureId = _identity.FixtureId;
+        if (!IsPassedReview)
+        {
+            reason = "Fixture commands require the exact test save in passed review mode.";
+            return false;
+        }
+
+        try
+        {
+            VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
+            reason = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            reason = exception.GetBaseException().Message;
+            return false;
+        }
+    }
+
     public void OnUpdateTicked()
     {
         try

@@ -26,6 +26,40 @@ public sealed class NetworkTwoStateTests
     }
 
     [Theory]
+    [InlineData(NetworkTwoContract.HostRole, "SDVKit_123", "SDVKit_123", 123L, true)]
+    [InlineData(NetworkTwoContract.HostRole, "SDVKit_123", "_123", 123L, false)]
+    [InlineData(NetworkTwoContract.FarmhandRole, "SDVKit_123", "SDVKit_123", 123L, true)]
+    [InlineData(NetworkTwoContract.FarmhandRole, "SDVKit_123", "_123", 123L, true)]
+    [InlineData(NetworkTwoContract.FarmhandRole, "SDVKit_123", "_123", 456L, false)]
+    [InlineData(NetworkTwoContract.FarmhandRole, "Other_123", "_123", 123L, false)]
+    [InlineData(NetworkTwoContract.FarmhandRole, "SDVKit_123", "_123", 0L, false)]
+    public void ReviewSaveIdentityKeepsTheHostExactAndUsesTheFarmhandGameId(
+        string role,
+        string expectedSaveId,
+        string observedSaveFolderName,
+        long uniqueGameId,
+        bool expected)
+    {
+        bool actual = NetworkTwoContract.MatchesReviewSaveIdentity(
+            role,
+            expectedSaveId,
+            observedSaveFolderName,
+            (ulong)uniqueGameId);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void FarmhandReviewSaveIdentityRejectsAnOverflowingGameId()
+    {
+        Assert.False(NetworkTwoContract.MatchesReviewSaveIdentity(
+            NetworkTwoContract.FarmhandRole,
+            "SDVKit_123",
+            "_123",
+            ulong.MaxValue));
+    }
+
+    [Theory]
     [InlineData(NetworkTwoContract.HostRole, null)]
     [InlineData(NetworkTwoContract.FarmhandRole, 987654321L)]
     [InlineData(NetworkTwoContract.FarmhandRole, -987654321L)]

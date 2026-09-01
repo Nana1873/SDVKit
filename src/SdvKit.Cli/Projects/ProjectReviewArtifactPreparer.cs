@@ -37,7 +37,8 @@ internal static partial class ProjectModStager
         IReadOnlyList<string> companionPaths,
         IReadOnlyList<string> contentPackPaths,
         LiveLabPaths paths,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        DotNetBuildRunner? runner = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
         ArgumentNullException.ThrowIfNull(companionPaths);
@@ -77,6 +78,7 @@ internal static partial class ProjectModStager
                         preparationRoot,
                         artifacts.Count,
                         frozenDoctor,
+                        runner,
                         out problem);
             if (target is null)
             {
@@ -94,6 +96,7 @@ internal static partial class ProjectModStager
                         preparationRoot,
                         artifacts.Count,
                         frozenDoctor,
+                        runner,
                         out problem)
                     : PrepareReadyDirectory(
                         ProjectReviewArtifactRole.Companion,
@@ -155,7 +158,12 @@ internal static partial class ProjectModStager
 
         string parent = Path.Combine(paths.SingleRoot, "review-prepared");
         string candidate = Path.GetFullPath(preparationRoot);
-        return IsBelow(parent, candidate) && DeleteKnownDirectory(candidate);
+        return IsBelow(parent, candidate)
+            && ProjectBuilder.ReviewStatePathIsPlain(
+                parent,
+                parent,
+                allowFinalFile: false)
+            && DeleteReviewPreparation(candidate, parent);
     }
 
     internal static ProjectReviewManifest? ReadReviewManifest(
@@ -297,6 +305,7 @@ internal static partial class ProjectModStager
         string preparationRoot,
         int index,
         Func<DoctorReport> discoverInstallations,
+        DotNetBuildRunner? runner,
         out ProjectReviewProblem? problem)
     {
         ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(sourcePath);
@@ -317,9 +326,15 @@ internal static partial class ProjectModStager
             return null;
         }
 
-        ProjectBuildReport build = ProjectBuilder.Build(
+        string itemRoot = Path.Combine(
+            preparationRoot,
+            index.ToString("D4", CultureInfo.InvariantCulture));
+        string stateRoot = Path.Combine(itemRoot, "build-state");
+        ProjectBuildReport build = ProjectBuilder.BuildForReview(
             resolution.Inspection.Root,
-            discoverInstallations);
+            stateRoot,
+            discoverInstallations,
+            runner);
         if (build.Problems.Count > 0)
         {
             ProjectProblem sourceProblem = build.Problems[0];
@@ -330,9 +345,11 @@ internal static partial class ProjectModStager
             return null;
         }
 
-        ProjectPackageReport package = ProjectPackager.Package(
+        ProjectPackageReport package = ProjectPackager.PackageForReview(
             resolution.Inspection.Root,
-            discoverInstallations);
+            stateRoot,
+            discoverInstallations,
+            runner);
         if (package.Problems.Count > 0)
         {
             ProjectProblem sourceProblem = package.Problems[0];
@@ -373,12 +390,18 @@ internal static partial class ProjectModStager
         }
 
         string archivePath = Path.GetFullPath(FromSlashPath(package.Archive), package.Root);
-        if (!IsBelow(package.Root, archivePath) || !File.Exists(archivePath))
+        if (!IsBelow(preparationRoot, archivePath)
+            || !ProjectBuilder.ReviewStateTreeIsPlain(preparationRoot)
+            || !ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                archivePath,
+                allowFinalFile: true)
+            || !File.Exists(archivePath))
         {
             problem = ReviewProblem(
                 "packageArchiveUnavailable",
                 package.Archive,
-                "The validated project package is no longer available below its source .sdvkit directory.");
+                "The validated project package is no longer available below its isolated review preparation directory.");
             return null;
         }
 
@@ -387,8 +410,69 @@ internal static partial class ProjectModStager
             index.ToString("D4", CultureInfo.InvariantCulture));
         string frozenArchive = Path.Combine(itemRoot, "package.zip");
         string extractionRoot = Path.Combine(itemRoot, "content");
+        if (!ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                frozenArchive,
+                allowFinalFile: true)
+            || !ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                extractionRoot,
+                allowFinalFile: false)
+            || File.Exists(frozenArchive)
+            || Directory.Exists(frozenArchive))
+        {
+            problem = ReviewProblem(
+                "reviewPreparationFailed",
+                package.Archive,
+                "The isolated review preparation paths are no longer plain directories.");
+            return null;
+        }
+
         Directory.CreateDirectory(extractionRoot);
-        File.Copy(archivePath, frozenArchive, overwrite: false);
+        if (!ProjectBuilder.ReviewStateTreeIsPlain(preparationRoot)
+            || !ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                archivePath,
+                allowFinalFile: true)
+            || !ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                frozenArchive,
+                allowFinalFile: true))
+        {
+            problem = ReviewProblem(
+                "reviewPreparationFailed",
+                package.Archive,
+                "The isolated review package path became unsafe before it could be frozen.");
+            return null;
+        }
+
+        using (FileStream input = new(
+                   archivePath,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.Read))
+        using (FileStream output = new(
+                   frozenArchive,
+                   FileMode.CreateNew,
+                   FileAccess.Write,
+                   FileShare.None))
+        {
+            input.CopyTo(output);
+        }
+
+        if (!ProjectBuilder.ReviewStateTreeIsPlain(preparationRoot)
+            || !ProjectBuilder.ReviewStatePathIsPlain(
+                preparationRoot,
+                frozenArchive,
+                allowFinalFile: true))
+        {
+            problem = ReviewProblem(
+                "reviewPreparationFailed",
+                package.Archive,
+                "The frozen review package path is unsafe.");
+            return null;
+        }
+
         using ZipArchive archive = ZipFile.OpenRead(frozenArchive);
         ZipArchiveEntry[] files = archive.Entries
             .Where(entry => !entry.FullName.EndsWith('/'))
@@ -687,6 +771,81 @@ internal static partial class ProjectModStager
                     "reviewPreparationCleanupIncomplete",
                     null,
                     $"{problem.Message} The exact temporary preparation directory could not be removed."));
+    }
+
+    private static bool DeleteReviewPreparation(string path, string parent)
+    {
+        try
+        {
+            if (!TryGetReviewAttributes(path, out FileAttributes attributes))
+            {
+                return true;
+            }
+
+            string? candidateParent = Path.GetDirectoryName(path);
+            if (candidateParent is null
+                || !ProjectBuilder.ReviewStatePathIsPlain(
+                    parent,
+                    candidateParent,
+                    allowFinalFile: false))
+            {
+                return false;
+            }
+
+            DeleteReviewEntry(path, attributes);
+            return !TryGetReviewAttributes(path, out _);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return false;
+        }
+    }
+
+    private static void DeleteReviewEntry(string path, FileAttributes attributes)
+    {
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                Directory.Delete(path, recursive: false);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+
+            return;
+        }
+
+        if ((attributes & FileAttributes.Directory) == 0)
+        {
+            File.Delete(path);
+            return;
+        }
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            DeleteReviewEntry(entry, File.GetAttributes(entry));
+        }
+
+        Directory.Delete(path, recursive: false);
+    }
+
+    private static bool TryGetReviewAttributes(
+        string path,
+        out FileAttributes attributes)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            return true;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException
+            or DirectoryNotFoundException)
+        {
+            attributes = default;
+            return false;
+        }
     }
 
     private sealed class ReviewDependencyComparer

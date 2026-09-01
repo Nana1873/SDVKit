@@ -286,6 +286,29 @@ internal sealed class NetworkTwoAutomation
         }
     }
 
+    public bool TryVerifyReviewFixture(
+        out string fixtureId,
+        out string role,
+        out string reason)
+    {
+        fixtureId = _launch.FixtureId;
+        role = _launch.Role;
+        if (!string.Equals(_phase, "passed", StringComparison.Ordinal))
+        {
+            reason = "Fixture commands require a passed network-2 review pair.";
+            return false;
+        }
+
+        if (!TryVerifyJoinedPair())
+        {
+            reason = "The exact live network-2 review pair could not be freshly verified.";
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
+    }
+
     public void OnUpdateTicked()
     {
         if (IsTerminal)
@@ -622,7 +645,13 @@ internal sealed class NetworkTwoAutomation
 
     private bool TryVerifyJoinedPair()
     {
-        if (!Context.IsWorldReady || !Context.IsMultiplayer)
+        if (!Context.IsWorldReady
+            || !Context.IsMultiplayer
+            || !NetworkTwoContract.MatchesReviewSaveIdentity(
+                _launch.Role,
+                _launch.SaveId,
+                Constants.SaveFolderName,
+                Game1.uniqueIDForThisGame))
         {
             return false;
         }

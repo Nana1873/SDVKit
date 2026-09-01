@@ -23,6 +23,35 @@ internal static class NetworkTwoContract
             ? checked(currentCount + 1)
             : 0;
     }
+
+    public static bool MatchesReviewSaveIdentity(
+        string role,
+        string expectedSaveId,
+        string? observedSaveFolderName,
+        ulong uniqueGameId)
+    {
+        if (!IsRole(role)
+            || string.IsNullOrWhiteSpace(expectedSaveId)
+            || string.IsNullOrWhiteSpace(observedSaveFolderName))
+        {
+            return false;
+        }
+
+        if (string.Equals(
+                observedSaveFolderName,
+                expectedSaveId,
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return string.Equals(role, FarmhandRole, StringComparison.Ordinal)
+            && uniqueGameId is > 0 and <= long.MaxValue
+            && string.Equals(
+                TestSaveContract.GetSaveId((long)uniqueGameId),
+                expectedSaveId,
+                StringComparison.Ordinal);
+    }
 }
 
 internal sealed record NetworkTwoLaunchState(

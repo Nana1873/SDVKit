@@ -33,6 +33,10 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
+            "Owned review-fixture console lines are transported as <text>",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "sdvkit project review status [--topology <single|network-2>] --json",
             output,
             StringComparison.Ordinal);
@@ -367,6 +371,10 @@ public sealed class CliApplicationTests
             "sdvkit project review reset --topology <single|network-2> --json",
             output,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>",
+            output,
+            StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -374,7 +382,7 @@ public sealed class CliApplicationTests
     public void ProjectReviewStartDispatchesOnlyTheExplicitOrderedSources()
     {
         string target = Path.Combine(Environment.CurrentDirectory, "Target");
-        string companionOne = Path.Combine(Environment.CurrentDirectory, "Harness");
+        string companionOne = Path.Combine(Environment.CurrentDirectory, "CompanionOne");
         string companionTwo = Path.Combine(Environment.CurrentDirectory, "ReadyMod");
         string contentPack = Path.Combine(Environment.CurrentDirectory, "Pack");
         string? receivedAction = null;
@@ -576,7 +584,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewCommandDispatchesOneExactLineToTheCurrentLabOnly()
     {
-        const string command = "sic-review set greenhouse fixture";
+        const string command = "sdvkit fixture status";
         string? receivedCommand = null;
         string? receivedTopology = null;
         string? receivedRole = "unexpected";
@@ -625,7 +633,7 @@ public sealed class CliApplicationTests
     [InlineData("farmhand")]
     public void ProjectReviewNetworkCommandDispatchesOneExactRole(string expectedRole)
     {
-        const string command = "sic-review set greenhouse fixture";
+        const string command = "sdvkit fixture status";
         ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
@@ -751,6 +759,22 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review reset --topology <single|network-2> --json"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
+                + Environment.NewLine
+                + "AlwaysOn fixture console lines (quote one as <text> for project review command; not top-level CLI):"
+                + Environment.NewLine
+                + "  sdvkit fixture status"
+                + Environment.NewLine
+                + "  sdvkit fixture building ensure <alias> deluxe-barn <x> <y>"
+                + Environment.NewLine
+                + "  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>"
+                + Environment.NewLine
+                + "  sdvkit fixture object clear-owned <alias-or-id>"
+                + Environment.NewLine
+                + "  sdvkit fixture animal ensure <alias-or-id> white-cow"
+                + Environment.NewLine
+                + "  sdvkit fixture enter <alias-or-id>"
+                + Environment.NewLine
+                + "  sdvkit fixture farm"
                 + Environment.NewLine,
             error);
     }
@@ -802,6 +826,22 @@ public sealed class CliApplicationTests
             "Content-pack targets require --topology single and an explicit provider --companion.",
             output,
             StringComparison.Ordinal);
+        string[] fixtureConsoleLines =
+        [
+            "sdvkit fixture status",
+            "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>",
+            "sdvkit fixture object ensure <alias-or-id> <qualified-item-id>",
+            "sdvkit fixture object clear-owned <alias-or-id>",
+            "sdvkit fixture animal ensure <alias-or-id> white-cow",
+            "sdvkit fixture enter <alias-or-id>",
+            "sdvkit fixture farm",
+        ];
+        foreach (string fixtureConsoleLine in fixtureConsoleLines)
+        {
+            Assert.Contains(fixtureConsoleLine, output, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("not top-level CLI", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -1114,6 +1154,16 @@ public sealed class CliApplicationTests
     public void UnknownCommandReturnsUsageError()
     {
         (int exitCode, string output, string error) = Run("save-everything");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("Unknown command", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FixtureConsoleLinesAreNotATopLevelCliCommand()
+    {
+        (int exitCode, string output, string error) = Run("fixture", "status");
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);

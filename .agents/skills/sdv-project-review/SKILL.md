@@ -65,6 +65,34 @@ Do not pass `--role` for `single`. Companion or target commands are examples of 
 
 `commandWritten=true` proves only delivery of one console line. The message `Sent debug command ... but there was no output` is neutral: it proves neither success nor failure. Confirm each intended effect through the most direct available evidence, such as a matching isolated log entry, a state change, verified save/reload behavior, or a visual result. Do not infer completion from silence.
 
+### Prepare generic state with the owned fixture surface
+
+Use the AlwaysOn fixture surface only when the currently running role has freshly verified the exact SDVKit-owned review fixture and Save identity. For `single`, this requires the explicit `--test-save` selection and the accepted test-save status above. For `network-2`, require the exact joined-pair and owned-fixture proof from both roles first. Never use these commands against a plain single review, smoke run, personal save, or an unverified world.
+
+These are game-console lines, not top-level CLI commands:
+
+```text
+sdvkit fixture status
+sdvkit fixture building ensure <alias> deluxe-barn <x> <y>
+sdvkit fixture object ensure <alias-or-id> <qualified-item-id>
+sdvkit fixture object clear-owned <alias-or-id>
+sdvkit fixture animal ensure <alias-or-id> white-cow
+sdvkit fixture enter <alias-or-id>
+sdvkit fixture farm
+```
+
+Transport one quoted line at a time through `project review command`. For example:
+
+```text
+sdvkit project review command "sdvkit fixture status" --topology single --json
+sdvkit project review command "sdvkit fixture building ensure barn_a deluxe-barn 16 20" --topology network-2 --role host --json
+sdvkit project review command "sdvkit fixture enter barn_a" --topology network-2 --role farmhand --json
+```
+
+World mutations (`building ensure`, `object ensure`, `object clear-owned`, and `animal ensure`) are valid only for the singleplayer main role or the `network-2` host. `status`, `enter`, and `farm` are role-local and may also target the verified farmhand; every `network-2` command still needs exactly one role. Ensure operations must be idempotent for the same SDVKit-owned alias and requested state. `object clear-owned` may remove only the exact SDVKit-owned fixture object, never an entire object collection or an unowned object.
+
+Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The fixture surface has no save or sleep command; use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
+
 Request screenshots only through the existing AlwaysOn command, with a unique label:
 
 ```text
@@ -88,7 +116,7 @@ For `single`, save through an existing game, SMAPI, target, or companion command
 3. Reload the same isolated save through an existing command, then reconfirm state, target behavior, and required visual evidence.
 4. Perform any planned restore and final save, then run and verify a final `stop`.
 
-For a plain single review, no fixture reset is needed. After the final stop of a `--test-save` review, run `project review reset --topology single --json` and require `fixtureReset=true` plus `stagingRemoved=true`. Reset must remain blocked while any single, host, or farmhand process is retained, while a network-2 review is retained, or when exact fixture/staging ownership cannot be proven.
+For a plain single review, no fixture reset is needed. After the final stop of a `--test-save` review, run `project review reset --topology single --json` and require `fixtureReset=true` plus `stagingRemoved=true`. Reset must remain blocked while any single, host, or farmhand process is retained, while a network-2 review is retained, or when exact fixture/staging ownership cannot be proven. A fixture-backed review is incomplete until this final reset succeeds.
 
 For `network-2`, use role-specific commands for host and farmhand. A clean `stop` preserves the owned work fixture and exact staging for restart. The required lifecycle is:
 
@@ -99,7 +127,7 @@ stop --topology network-2
 reset --topology network-2
 ```
 
-Between the second `start` and `stop`, reload or resume the retained work state and reconfirm both roles independently. Call `reset` only after both roles are confirmed stopped; require the fixture reset and verified host/farmhand staging removal.
+Between the second `start` and `stop`, reload or resume the retained work state and reconfirm both roles independently. Call `reset` only after both roles are confirmed stopped; require the fixture reset and verified host/farmhand staging removal. A fixture-backed network review is incomplete until this final reset succeeds.
 
 If process identity is uncertain, staged files drift, ownership cannot be proven, or stop/reset/cleanup is unconfirmed, remain fail-closed. Do not kill by process name, delete markers or staging manually, retry destructive cleanup speculatively, or claim teardown success.
 

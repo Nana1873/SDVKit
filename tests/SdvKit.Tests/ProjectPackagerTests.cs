@@ -6,6 +6,26 @@ namespace SdvKit.Tests;
 public sealed class ProjectPackagerTests
 {
     [Fact]
+    public void ReviewStateOverrideRejectsContentPacksWithoutWritingState()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = CreateProject(
+            temporary,
+            ProjectCreator.ContentPack,
+            "ExamplePack");
+        string reviewState = System.IO.Path.Combine(temporary.Path, "review-state");
+
+        ProjectPackageReport report = ProjectPackager.PackageForReview(
+            target,
+            reviewState,
+            () => throw new InvalidOperationException("Doctor should not run."));
+
+        Assert.Equal("projectNotPackageable", Assert.Single(report.Problems).Code);
+        Assert.False(Directory.Exists(reviewState));
+        Assert.False(Directory.Exists(System.IO.Path.Combine(target, ".sdvkit")));
+    }
+
+    [Fact]
     public void GeneratedContentPackProducesOnlyRuntimeFiles()
     {
         using TemporaryDirectory temporary = new();

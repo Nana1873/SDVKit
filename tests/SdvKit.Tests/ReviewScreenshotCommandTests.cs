@@ -155,6 +155,44 @@ public sealed class ReviewScreenshotCommandTests
         Assert.True(Path.IsPathFullyQualified(expectedPath));
     }
 
+    [Fact]
+    public void OneSdvkitRootRoutesScreenshotAndFixtureActions()
+    {
+        string source = ReadSource("ReviewScreenshotCommand.cs");
+        string modEntry = ReadSource("ModEntry.cs");
+
+        Assert.Equal(
+            1,
+            source.Split("ConsoleCommands.Add(", StringSplitOptions.None).Length - 1);
+        Assert.Contains("private const string RootCommand = \"sdvkit\";", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewScreenshotCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
+    }
+
+    private static string ReadSource(string fileName)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string path = Path.Combine(
+                directory.FullName,
+                "src",
+                "SdvKit.AlwaysOn",
+                fileName);
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path).ReplaceLineEndings("\n");
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not find the SDVKit repository above '{AppContext.BaseDirectory}'.");
+    }
+
     private sealed class FakeRuntime(string screenshotFolder) : IReviewScreenshotRuntime
     {
         public bool IsWorldReady { get; init; } = true;

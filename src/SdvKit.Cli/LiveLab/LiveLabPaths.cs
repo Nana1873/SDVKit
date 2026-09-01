@@ -162,7 +162,15 @@ internal sealed record LiveLabPaths(
 
             foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
             {
-                FileAttributes attributes = File.GetAttributes(entry);
+                // Atomic writers can remove their transient replacement file after
+                // enumeration but before inspection. A vanished entry is no longer
+                // a path we can follow; every observed reparse point and every
+                // non-missing inspection failure still fails closed.
+                if (!TryGetAttributes(entry, out FileAttributes attributes))
+                {
+                    continue;
+                }
+
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {
                     throw new InvalidOperationException(

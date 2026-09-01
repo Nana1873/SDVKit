@@ -49,6 +49,33 @@ internal static class ProjectBuilder
         Func<DoctorReport> discoverInstallations,
         DotNetBuildRunner? runner = null)
     {
+        return Build(
+            path,
+            discoverInstallations,
+            stateDirectory: null,
+            runner);
+    }
+
+    internal static ProjectBuildReport BuildForReview(
+        string path,
+        string stateDirectory,
+        Func<DoctorReport> discoverInstallations,
+        DotNetBuildRunner? runner = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+        return Build(
+            path,
+            discoverInstallations,
+            Path.GetFullPath(stateDirectory),
+            runner);
+    }
+
+    private static ProjectBuildReport Build(
+        string path,
+        Func<DoctorReport> discoverInstallations,
+        string? stateDirectory,
+        DotNetBuildRunner? runner)
+    {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
 
@@ -65,17 +92,23 @@ internal static class ProjectBuilder
         }
 
         string root = resolution.Target.Inspection.Root;
-        ProjectProblem? stateProblem = CheckStateDirectory(root);
-        if (stateProblem is not null)
+        if (stateDirectory is null)
         {
-            return Report(resolution, null, [stateProblem]);
+            ProjectProblem? stateProblem = CheckStateDirectory(root);
+            if (stateProblem is not null)
+            {
+                return Report(resolution, null, [stateProblem]);
+            }
         }
 
-        string logPath = Path.Combine(root, FromSlashPath(BuildLogPath));
-        string artifactsPath = Path.Combine(root, ".sdvkit", "build");
+        string stateRoot = stateDirectory ?? Path.Combine(root, ".sdvkit");
+        string logPath = Path.Combine(stateRoot, "logs", "build.log");
+        string reportLogPath = stateDirectory is null ? BuildLogPath : logPath;
+        string artifactsPath = Path.Combine(stateRoot, "build");
         ProjectProblem? outputProblem = PrepareOutputIsolation(
             artifactsPath,
-            "buildOutputUnavailable");
+            "buildOutputUnavailable",
+            stateDirectory);
         if (outputProblem is not null)
         {
             return Report(resolution, null, [outputProblem]);
@@ -87,13 +120,17 @@ internal static class ProjectBuilder
             gamePath!,
             enableZip: false,
             zipPath: null);
-        DotNetBuildResult result = RunAndLog(command, logPath, runner ?? RunDotNet);
+        DotNetBuildResult result = RunAndLog(
+            command,
+            logPath,
+            runner ?? RunDotNet,
+            stateDirectory);
         IReadOnlyList<ProjectProblem> problems = ProcessProblems(
             result,
-            BuildLogPath,
+            reportLogPath,
             "buildFailed",
             "buildLogUnavailable");
-        return Report(resolution, BuildLogPath, problems);
+        return Report(resolution, reportLogPath, problems);
     }
 
     internal static ModBuildTargetResolution ResolveTarget(string path)
@@ -223,7 +260,8 @@ internal static class ProjectBuilder
 
     internal static ProjectProblem? PrepareOutputIsolation(
         string artifactsPath,
-        string failureCode)
+        string failureCode,
+        string? reviewStateDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(artifactsPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(failureCode);
@@ -298,8 +336,45 @@ internal static class ProjectBuilder
 
         try
         {
+            if (reviewStateDirectory is not null
+                && (!ReviewStateTreeIsPlain(reviewStateDirectory)
+                    || !ReviewStatePathIsPlain(
+                        reviewStateDirectory,
+                        artifactsPath,
+                        allowFinalFile: false)))
+            {
+                return new ProjectProblem(failureCode, artifactsPath);
+            }
+
             Directory.CreateDirectory(artifactsPath);
+            if (reviewStateDirectory is not null
+                && !ReviewStatePathIsPlain(
+                    reviewStateDirectory,
+                    artifactsPath,
+                    allowFinalFile: false))
+            {
+                return new ProjectProblem(failureCode, artifactsPath);
+            }
+
+            if (reviewStateDirectory is not null
+                && !ReviewStatePathIsPlain(
+                    reviewStateDirectory,
+                    propsPath,
+                    allowFinalFile: true))
+            {
+                return new ProjectProblem(failureCode, propsPath);
+            }
+
             WriteBuildFile(propsPath, propsContents);
+            if (reviewStateDirectory is not null
+                && !ReviewStatePathIsPlain(
+                    reviewStateDirectory,
+                    targetsPath,
+                    allowFinalFile: true))
+            {
+                return new ProjectProblem(failureCode, targetsPath);
+            }
+
             WriteBuildFile(targetsPath, targetsContents);
             return null;
         }
@@ -387,11 +462,22 @@ internal static class ProjectBuilder
     internal static DotNetBuildResult RunAndLog(
         DotNetBuildCommand command,
         string logPath,
-        DotNetBuildRunner runner)
+        DotNetBuildRunner runner,
+        string? reviewStateDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(logPath);
         ArgumentNullException.ThrowIfNull(runner);
+
+        if (reviewStateDirectory is not null
+            && !ReviewStateTreeIsPlain(reviewStateDirectory))
+        {
+            return new DotNetBuildResult(
+                null,
+                string.Empty,
+                "The isolated review state contains a reparse point.",
+                LogWritten: false);
+        }
 
         DotNetBuildResult result;
         try
@@ -408,12 +494,55 @@ internal static class ProjectBuilder
         try
         {
             string? logDirectory = Path.GetDirectoryName(logPath);
+            if (reviewStateDirectory is not null
+                && (!ReviewStateTreeIsPlain(reviewStateDirectory)
+                    || logDirectory is null
+                    || !ReviewStatePathIsPlain(
+                        reviewStateDirectory,
+                        logDirectory,
+                        allowFinalFile: false)
+                    || !ReviewStatePathIsPlain(
+                        reviewStateDirectory,
+                        logPath,
+                        allowFinalFile: true)
+                    || PathExists(logPath)))
+            {
+                return new DotNetBuildResult(
+                    result.ExitCode,
+                    result.Output,
+                    result.StartError,
+                    LogWritten: false);
+            }
+
             if (logDirectory is not null)
             {
                 Directory.CreateDirectory(logDirectory);
             }
 
-            File.WriteAllText(logPath, FormatLog(command, result), new UTF8Encoding(false));
+            if (reviewStateDirectory is not null
+                && (!ReviewStatePathIsPlain(
+                        reviewStateDirectory,
+                        logDirectory!,
+                        allowFinalFile: false)
+                    || !ReviewStatePathIsPlain(
+                        reviewStateDirectory,
+                        logPath,
+                        allowFinalFile: true)))
+            {
+                return new DotNetBuildResult(
+                    result.ExitCode,
+                    result.Output,
+                    result.StartError,
+                    LogWritten: false);
+            }
+
+            using var stream = new FileStream(
+                logPath,
+                reviewStateDirectory is null ? FileMode.Create : FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+            writer.Write(FormatLog(command, result));
         }
         catch (Exception exception) when (exception is IOException
             or SecurityException
@@ -427,6 +556,160 @@ internal static class ProjectBuilder
         }
 
         return result;
+    }
+
+    internal static bool ReviewStatePathIsPlain(
+        string stateDirectory,
+        string path,
+        bool allowFinalFile)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        try
+        {
+            string stateRoot = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(stateDirectory));
+            string candidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+            StringComparison comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (!string.Equals(stateRoot, candidate, comparison)
+                && !candidate.StartsWith(
+                    stateRoot + Path.DirectorySeparatorChar,
+                    comparison))
+            {
+                return false;
+            }
+
+            return ExistingPathComponentsArePlain(candidate, allowFinalFile);
+        }
+        catch (Exception exception) when (exception is ArgumentException
+            or IOException
+            or NotSupportedException
+            or SecurityException
+            or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool ReviewStateTreeIsPlain(string stateDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+
+        try
+        {
+            string stateRoot = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(stateDirectory));
+            if (!ReviewStatePathIsPlain(
+                    stateRoot,
+                    stateRoot,
+                    allowFinalFile: false))
+            {
+                return false;
+            }
+
+            if (!Directory.Exists(stateRoot))
+            {
+                return true;
+            }
+
+            var pending = new Stack<string>();
+            pending.Push(stateRoot);
+            while (pending.Count > 0)
+            {
+                string directory = pending.Pop();
+                foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    FileAttributes attributes = File.GetAttributes(entry);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        return false;
+                    }
+
+                    if ((attributes & FileAttributes.Directory) != 0)
+                    {
+                        pending.Push(entry);
+                    }
+                }
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (exception is ArgumentException
+            or IOException
+            or NotSupportedException
+            or SecurityException
+            or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ExistingPathComponentsArePlain(
+        string path,
+        bool allowFinalFile)
+    {
+        string? root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        if (!TryGetAttributes(root, out FileAttributes rootAttributes)
+            || (rootAttributes & FileAttributes.ReparsePoint) != 0
+            || (rootAttributes & FileAttributes.Directory) == 0)
+        {
+            return false;
+        }
+
+        string[] segments = path[root.Length..].Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        string current = root;
+        for (var index = 0; index < segments.Length; index++)
+        {
+            current = Path.Combine(current, segments[index]);
+            if (!TryGetAttributes(current, out FileAttributes attributes))
+            {
+                break;
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                return false;
+            }
+
+            bool final = index == segments.Length - 1;
+            if ((attributes & FileAttributes.Directory) == 0
+                && (!final || !allowFinalFile))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool PathExists(string path) =>
+        TryGetAttributes(path, out _);
+
+    private static bool TryGetAttributes(
+        string path,
+        out FileAttributes attributes)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            return true;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException
+            or DirectoryNotFoundException)
+        {
+            attributes = default;
+            return false;
+        }
     }
 
     internal static IReadOnlyList<ProjectProblem> ProcessProblems(

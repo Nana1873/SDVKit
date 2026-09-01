@@ -58,6 +58,53 @@ public sealed class TestSaveAutomationSourceTests
         Assert.True(terminalGuard > failure);
     }
 
+    [Fact]
+    public void FixtureCommandAuthorizationFreshlyVerifiesPassedReviewWorld()
+    {
+        string source = ReadAutomationSource();
+        int authorization = source.IndexOf(
+            "public bool TryVerifyReviewFixture(",
+            StringComparison.Ordinal);
+        int passedReview = source.IndexOf(
+            "if (!IsPassedReview)",
+            authorization,
+            StringComparison.Ordinal);
+        int verification = source.IndexOf(
+            "VerifyExactWorld(allowMultiplayer: _allowMultiplayer);",
+            passedReview,
+            StringComparison.Ordinal);
+
+        Assert.True(authorization >= 0);
+        Assert.True(passedReview > authorization);
+        Assert.True(verification > passedReview);
+    }
+
+    [Fact]
+    public void PassedReviewRequiresReviewModeAndPassedPhase()
+    {
+        string source = ReadAutomationSource();
+        int definition = source.IndexOf(
+            "private bool IsPassedReview =>",
+            StringComparison.Ordinal);
+        int reviewMode = source.IndexOf(
+            "TestSaveContract.ReviewMode",
+            definition,
+            StringComparison.Ordinal);
+        int passedPhase = source.IndexOf(
+            "_phase, \"passed\"",
+            reviewMode,
+            StringComparison.Ordinal);
+        int authorization = source.IndexOf(
+            "public bool TryVerifyReviewFixture(",
+            passedPhase,
+            StringComparison.Ordinal);
+
+        Assert.True(definition >= 0);
+        Assert.True(reviewMode > definition);
+        Assert.True(passedPhase > reviewMode);
+        Assert.True(authorization > passedPhase);
+    }
+
     private static string ReadAutomationSource()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

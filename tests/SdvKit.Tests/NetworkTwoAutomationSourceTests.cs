@@ -239,6 +239,37 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.True(cabinBuild > strictEmpty);
     }
 
+    [Fact]
+    public void FixtureCommandAuthorizationFreshlyReverifiesThePassedPairAndSave()
+    {
+        string source = ReadAutomationSource();
+        int authorization = source.IndexOf(
+            "public bool TryVerifyReviewFixture(",
+            StringComparison.Ordinal);
+        int passed = source.IndexOf(
+            "!string.Equals(_phase, \"passed\", StringComparison.Ordinal)",
+            authorization,
+            StringComparison.Ordinal);
+        int pair = source.IndexOf(
+            "if (!TryVerifyJoinedPair())",
+            passed,
+            StringComparison.Ordinal);
+        int pairMethod = source.IndexOf(
+            "private bool TryVerifyJoinedPair()",
+            pair,
+            StringComparison.Ordinal);
+        int save = source.IndexOf(
+            "NetworkTwoContract.MatchesReviewSaveIdentity(",
+            pairMethod,
+            StringComparison.Ordinal);
+
+        Assert.True(authorization >= 0);
+        Assert.True(passed > authorization);
+        Assert.True(pair > passed);
+        Assert.True(pairMethod > pair);
+        Assert.True(save > pairMethod);
+    }
+
     private static string ReadAutomationSource()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
