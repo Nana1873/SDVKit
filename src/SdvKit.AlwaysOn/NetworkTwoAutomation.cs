@@ -647,10 +647,11 @@ internal sealed class NetworkTwoAutomation
     {
         if (!Context.IsWorldReady
             || !Context.IsMultiplayer
-            || !string.Equals(
-                Constants.SaveFolderName,
+            || !NetworkTwoContract.MatchesReviewSaveIdentity(
+                _launch.Role,
                 _launch.SaveId,
-                StringComparison.Ordinal))
+                Constants.SaveFolderName,
+                Game1.uniqueIDForThisGame))
         {
             return false;
         }

@@ -259,7 +259,7 @@ public sealed class NetworkTwoAutomationSourceTests
             pair,
             StringComparison.Ordinal);
         int save = source.IndexOf(
-            "Constants.SaveFolderName",
+            "NetworkTwoContract.MatchesReviewSaveIdentity(",
             pairMethod,
             StringComparison.Ordinal);
 
