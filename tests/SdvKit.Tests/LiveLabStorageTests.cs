@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
@@ -79,6 +80,62 @@ public sealed class LiveLabStorageTests
                 .Select(path => Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+    }
+
+    [Fact]
+    public async Task EnsureDirectoriesToleratesAtomicStatusReplacementTempFiles()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        var writer = new StatusWriter(
+            Guid.NewGuid().ToString("N"),
+            paths.StatusPath);
+        writer.Write("active", 0, isActive: false, pauseWhenOutOfFocus: false);
+        using var start = new Barrier(2);
+        var successfulWrites = 0;
+
+        Task writes = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            for (var tick = 1; tick <= 750; tick++)
+            {
+                try
+                {
+                    writer.Write(
+                        "active",
+                        tick,
+                        isActive: false,
+                        pauseWhenOutOfFocus: false);
+                    Interlocked.Increment(ref successfulWrites);
+                }
+                catch (Exception exception) when (exception is IOException
+                    or UnauthorizedAccessException)
+                {
+                    // The real game loop also retries a transient status-write
+                    // failure. This regression targets the concurrent lab scan.
+                }
+            }
+        });
+
+        start.SignalAndWait();
+        Exception? scanFailure = null;
+        try
+        {
+            for (var index = 0; index < 2_500; index++)
+            {
+                paths.EnsureDirectories();
+            }
+        }
+        catch (Exception exception)
+        {
+            scanFailure = exception;
+        }
+
+        await writes;
+        Assert.Null(scanFailure);
+        Assert.True(successfulWrites > 0);
+        Assert.True(File.Exists(paths.StatusPath));
     }
 
     [Fact]
