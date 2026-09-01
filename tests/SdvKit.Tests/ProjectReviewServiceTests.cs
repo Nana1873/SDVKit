@@ -8,6 +8,112 @@ namespace SdvKit.Tests;
 [Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewServiceTests
 {
+    [Fact]
+    public void ContentPackTargetNetworkTwoFailsBeforeLabMutationOrDiscovery()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = temporary.WriteFile(
+            "source/TargetPack/manifest.json",
+            """
+            {
+              "Name": "Target pack",
+              "Author": "Nana",
+              "UniqueID": "Nana.TargetPack",
+              "Version": "1.0.0",
+              "Description": "Review target.",
+              "ContentPackFor": { "UniqueID": "Nana.Provider" }
+            }
+            """);
+        target = Path.GetDirectoryName(target)!;
+        temporary.WriteFile("source/TargetPack/content.json", "{}");
+        string provider = Path.GetDirectoryName(temporary.WriteFile(
+            "source/Provider/manifest.json",
+            """
+            {
+              "Name": "Provider",
+              "Author": "Nana",
+              "UniqueID": "Nana.Provider",
+              "Version": "1.0.0",
+              "Description": "Review provider.",
+              "EntryDll": "Provider.dll"
+            }
+            """))!;
+        temporary.WriteFile("source/Provider/Provider.dll", "assembly");
+        string labRoot = Path.Combine(temporary.Path, "lab");
+        string before = ModBuildIdentity.ComputeFileSet(target);
+        var doctorCalled = false;
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "start",
+            target,
+            [provider],
+            [],
+            NetworkTwoContract.Topology,
+            labRoot,
+            () =>
+            {
+                doctorCalled = true;
+                return new DoctorReport(1, DoctorReport.NotFound, []);
+            });
+
+        Assert.Equal(3, result.ExitCode);
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(
+            "reviewTargetTopologyUnsupported",
+            Assert.Single(report.Problems).Code);
+        Assert.False(doctorCalled);
+        Assert.False(Directory.Exists(Path.Combine(labRoot, ".sdvkit")));
+        Assert.Equal(before, ModBuildIdentity.ComputeFileSet(target));
+    }
+
+    [Fact]
+    public void ContentPackTargetStatusReportsExistingKindAndIdentityFields()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
+            temporary.Path,
+            "TargetPack",
+            ProjectReviewArtifactRole.Target,
+            "Nana.TargetPack",
+            "1.0",
+            contentPackFor: "Nana.Provider",
+            kind: ProjectInspectionReport.ContentPack);
+        ProjectReviewPreparedArtifact provider = ProjectReviewStagerTests.Artifact(
+            temporary.Path,
+            "Provider",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Provider",
+            "2.0.0");
+        ProjectReviewStagingResult staged = ProjectModStager.StageReview(
+            [target, provider],
+            paths);
+        Assert.NotNull(staged.Staging);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "status",
+            temporary.Path,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Status must not discover installations."));
+
+        Assert.Equal(3, result.ExitCode);
+        ProjectReviewReport report = Assert.IsType<ProjectReviewReport>(result.Report);
+        ProjectReviewArtifactReport targetReport = report.Artifacts.Single(artifact =>
+            artifact.Role == ProjectReviewArtifactRole.Target);
+        Assert.Equal(ProjectInspectionReport.ContentPack, targetReport.Kind);
+        Assert.Equal("Nana.TargetPack", targetReport.UniqueId);
+        Assert.Equal("1.0", targetReport.Version);
+        Assert.Equal("Nana.Provider", targetReport.ContentPackFor);
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
+        Assert.True(cleanup.Removed);
+        Assert.Null(cleanup.Problem);
+    }
+
     private const string LaunchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]

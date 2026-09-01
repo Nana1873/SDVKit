@@ -55,16 +55,29 @@ internal static partial class ProjectModStager
             Directory.CreateDirectory(preparationRoot);
             RefuseReparsePoint(preparationRoot);
 
-            DoctorReport doctor = discoverInstallations();
-            Func<DoctorReport> frozenDoctor = () => doctor;
+            DoctorReport? doctor = null;
+            DoctorReport FrozenDoctor() => doctor ??= discoverInstallations();
+
+            Func<DoctorReport> frozenDoctor = FrozenDoctor;
             var artifacts = new List<ProjectReviewPreparedArtifact>();
-            ProjectReviewPreparedArtifact? target = PrepareProject(
-                ProjectReviewArtifactRole.Target,
-                targetPath,
-                preparationRoot,
-                artifacts.Count,
-                frozenDoctor,
-                out ProjectReviewProblem? problem);
+            ProjectReviewProblem? problem;
+            ProjectInspectionReport targetInspection = ProjectInspector.Inspect(targetPath);
+            ProjectReviewPreparedArtifact? target = Directory.Exists(targetPath)
+                && targetInspection.ProjectFiles.Count == 0
+                    ? PrepareReadyDirectory(
+                        ProjectReviewArtifactRole.Target,
+                        ProjectInspectionReport.ContentPack,
+                        targetPath,
+                        preparationRoot,
+                        artifacts.Count,
+                        out problem)
+                    : PrepareProject(
+                        ProjectReviewArtifactRole.Target,
+                        targetPath,
+                        preparationRoot,
+                        artifacts.Count,
+                        frozenDoctor,
+                        out problem);
             if (target is null)
             {
                 return PreparationFailure(preparationRoot, paths, problem!);
@@ -84,6 +97,7 @@ internal static partial class ProjectModStager
                         out problem)
                     : PrepareReadyDirectory(
                         ProjectReviewArtifactRole.Companion,
+                        ProjectInspectionReport.SmapiMod,
                         source,
                         preparationRoot,
                         artifacts.Count,
@@ -100,6 +114,7 @@ internal static partial class ProjectModStager
             {
                 ProjectReviewPreparedArtifact? contentPack = PrepareReadyDirectory(
                     ProjectReviewArtifactRole.ContentPack,
+                    ProjectInspectionReport.ContentPack,
                     source,
                     preparationRoot,
                     artifacts.Count,
@@ -497,18 +512,13 @@ internal static partial class ProjectModStager
 
     private static ProjectReviewPreparedArtifact? PrepareReadyDirectory(
         string role,
+        string expectedKind,
         string sourcePath,
         string preparationRoot,
         int index,
         out ProjectReviewProblem? problem)
     {
         ProjectInspectionReport inspection = ProjectInspector.Inspect(sourcePath);
-        string expectedKind = string.Equals(
-            role,
-            ProjectReviewArtifactRole.ContentPack,
-            StringComparison.Ordinal)
-                ? ProjectInspectionReport.ContentPack
-                : ProjectInspectionReport.SmapiMod;
         if (inspection.Problems.Count > 0
             || inspection.ProjectFiles.Count != 0
             || inspection.Manifests.Count != 1
@@ -524,8 +534,8 @@ internal static partial class ProjectModStager
             problem = ReviewProblem(
                 sourceProblem.Code,
                 sourceProblem.Path,
-                string.Equals(role, ProjectReviewArtifactRole.ContentPack, StringComparison.Ordinal)
-                    ? "An explicit content pack must be one ready root content-pack directory without a C# project."
+                string.Equals(expectedKind, ProjectInspectionReport.ContentPack, StringComparison.Ordinal)
+                    ? "A content-pack review source must be one ready root content-pack directory without a C# project."
                     : "A ready companion must be one root code-mod directory without a C# project.");
             return null;
         }

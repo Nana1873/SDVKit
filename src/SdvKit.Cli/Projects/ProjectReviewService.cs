@@ -73,6 +73,19 @@ internal static class ProjectReviewService
                 [Problem("reviewTopologyInvalid", null, $"Unsupported project-review topology: {topology}")]);
         }
 
+        if (string.Equals(action, "start", StringComparison.Ordinal)
+            && string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
+            && IsContentPackTargetCandidate(sourcePath))
+        {
+            return NetworkFailure(
+                SafeFullPath(sourcePath),
+                SafeFullPath(labRoot),
+                [Problem(
+                    "reviewTargetTopologyUnsupported",
+                    SafeFullPath(sourcePath),
+                    "A content-pack review target supports only topology single; nothing was launched or changed.")]);
+        }
+
         LiveLabPaths paths;
         try
         {
@@ -1771,6 +1784,15 @@ internal static class ProjectReviewService
         {
             return path;
         }
+    }
+
+    private static bool IsContentPackTargetCandidate(string sourcePath)
+    {
+        ProjectInspectionReport inspection = ProjectInspector.Inspect(sourcePath);
+        return inspection.Manifests.Any(manifest => string.Equals(
+            manifest.Kind,
+            ProjectInspectionReport.ContentPack,
+            StringComparison.Ordinal));
     }
 
     private static StringComparison PathComparison() =>

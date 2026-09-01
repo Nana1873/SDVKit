@@ -163,7 +163,7 @@ This command never deploys to the normal or mod-manager-owned `Mods` directory, 
 
 ### Default singleplayer review
 
-Run one target code-mod project with only the local test companions and content packs named on the command line. Omitting `--topology` selects `single`:
+Run one target C# mod project or one ready root SMAPI content pack with only the local test companions and additional content packs named on the command line. Omitting `--topology` selects `single`:
 
 ```powershell
 sdvkit project review start .\ExampleMod `
@@ -176,7 +176,16 @@ sdvkit project review command "sicqa create" --json
 sdvkit project review stop --json
 ```
 
-Run all review commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one SMAPI C# target project; every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value must explicitly name one ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
+For an inverted content-pack review, select the pack itself as the target and its provider explicitly as a companion:
+
+```powershell
+sdvkit project review start .\ExamplePack `
+  --topology single `
+  --companion .\ExampleProvider `
+  --json
+```
+
+Run all review commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one standalone SMAPI C# target project or one ready root content-pack directory. A content-pack target supports only `single`, and its `ContentPackFor.UniqueID` provider must be an explicitly selected local `--companion`; `network-2` rejects that target before launch or lab mutation. Every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value still explicitly names one additional ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
 
 `command` writes exactly one complete, quoted SMAPI or harness console line to the currently active exact review process; it does not discover or download anything. Use it only while the interactive console prompt is idle, with no partially typed command or parallel manual console input. A successful JSON result sets `commandWritten` to `true` only after the complete line was added to the Windows console input buffer; it does not confirm that SMAPI recognized or successfully executed the command.
 
@@ -184,15 +193,15 @@ AlwaysOn itself provides one built-in review action: `sdvkit screenshot <label>`
 
 Commands supplied by a companion stay owned by that companion. For example, explicitly pass a local ready SMAPI Console Commands directory through `--companion` at `start`, then use `sdvkit project review command "debug sleep" --json`; SDVKit transports that existing command but neither reimplements nor locates the companion.
 
-Code projects reuse inspection, the isolated Release build, and validated packaging. Ready mod directories and native content packs are copied through a strict plain-tree preparation path because they are already runtime artifacts; source projects, saves, secrets, executables, archives, game assemblies, reparse points, and nested manifests are rejected. Before any launch, the complete explicit set is checked case-insensitively for valid non-reserved `UniqueID` values, unique staging names, required dependency and minimum-version satisfaction, content-pack providers, and existing mod-group collisions. Only the target, named companions, named packs, and SDVKit AlwaysOn count as available dependencies.
+Code projects reuse inspection, the isolated Release build, and validated packaging. Ready mod directories, additional native content packs, and a content-pack target are copied through the same strict plain-tree preparation path because they are already runtime artifacts; source projects, saves, secrets, executables, archives, game assemblies, reparse points, and nested manifests are rejected. Before any launch, the complete explicit set is checked case-insensitively for valid non-reserved `UniqueID` values, unique staging names, required dependency and minimum-version satisfaction, content-pack providers, and existing mod-group collisions. A content-pack target's provider must be a named code-mod companion. Only the target, named companions, named packs, and SDVKit AlwaysOn count as available dependencies.
 
-For `single`, the whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target mod identity and version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and full file-set identity. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
+For `single`, the whole set is installed below `.sdvkit/lab/single/mods` under one atomic review ownership marker. Existing JSON reports identify each artifact's role, kind, `UniqueID`, declared version, provider, and file-set identity. The existing exact PID/start-time/executable lifecycle still controls the process, while AlwaysOn confirms the target C# mod or content pack by exact `UniqueID` and canonical version. `stop` removes review directories only after the exact process is confirmed stopped and every owned directory still matches its recorded manifest and full file-set identity. An ownership mismatch, drift, unreadable process, or uncertain exit retains state and staging. Any confirmed exit of the exact review process is finalized on the next `project review status`, `stop`, or `start`; an unreadable or uncertain process remains fail-closed.
 
 Review launches the detected `StardewModdingAPI.exe` directly in a separate interactive Windows console, so existing SMAPI and harness commands can be typed normally. It does not add an RPC, scenario, or automation protocol. That console owns its normal input/output instead of SDVKit's captured stdout/stderr files; SMAPI's standard log and Stardew screenshots still resolve below the persistent isolated profile at `.sdvkit/lab/profiles/single`. Saves created there remain across a real process stop/start for reload testing, while normal saves, the normal or mod-manager-owned `Mods`, and the real game installation remain untouched. Unlike `project smoke`, the `single` review does not use the disposable fixture or stop after 120 ticks.
 
 ### Bounded network-2 Greenhouse review
 
-Select the existing `network-2` topology explicitly to run exactly one local host and one local farmhand. Both roles require SDVKit AlwaysOn; there is no supported review mode that disables it. The target, every `--companion`, and every `--content-pack` are still selected only on `start`, prepared through the existing review staging path, and copied as one identical explicit file set to the isolated host and farmhand mod groups. The same target/build identity must be confirmed in both roles.
+Select the existing `network-2` topology explicitly to run exactly one local host and one local farmhand for a standalone C# target project. Content-pack targets are singleplayer-only and fail before lab mutation. Both roles require SDVKit AlwaysOn; there is no supported review mode that disables it. The C# target, every `--companion`, and every additional `--content-pack` are still selected only on `start`, prepared through the existing review staging path, and copied as one identical explicit file set to the isolated host and farmhand mod groups. The same target/build identity must be confirmed in both roles.
 
 ```powershell
 $target = "<StardewInteriorChanger project>"

@@ -671,7 +671,8 @@ public sealed class ProjectReviewStagerTests
         string version = "1.0.0",
         IReadOnlyList<ProjectReviewDependency>? requiredDependencies = null,
         string? contentPackFor = null,
-        string? contentPackForMinimumVersion = null)
+        string? contentPackForMinimumVersion = null,
+        string? kind = null)
     {
         string preparedPath = Path.Combine(
             root,
@@ -680,9 +681,14 @@ public sealed class ProjectReviewStagerTests
             topLevelDirectory);
         Directory.CreateDirectory(preparedPath);
         bool contentPack = string.Equals(
-            role,
-            ProjectReviewArtifactRole.ContentPack,
-            StringComparison.Ordinal);
+            kind,
+            ProjectInspectionReport.ContentPack,
+            StringComparison.Ordinal)
+            || (kind is null
+                && string.Equals(
+                    role,
+                    ProjectReviewArtifactRole.ContentPack,
+                    StringComparison.Ordinal));
         string? entryDll = contentPack ? null : $"{topLevelDirectory}.dll";
         var manifest = new ProjectReviewManifest(
             contentPack

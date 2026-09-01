@@ -36,16 +36,33 @@ internal static partial class ProjectModStager
 
         try
         {
-            ReviewRolePaths[] rolePaths = ResolveReviewRolePaths(singlePaths, topology);
-            foreach (ReviewRolePaths rolePath in rolePaths)
-            {
-                rolePath.Paths.EnsureDirectories();
-            }
-
             ProjectReviewProblem? setProblem = ValidateReviewSet(artifacts);
             if (setProblem is not null)
             {
                 return new ProjectReviewStagingResult(null, setProblem);
+            }
+
+            ProjectReviewPreparedArtifact reviewTarget = artifacts.Single(artifact =>
+                string.Equals(
+                    artifact.Role,
+                    ProjectReviewArtifactRole.Target,
+                    StringComparison.Ordinal));
+            if (string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
+                && string.Equals(
+                    reviewTarget.Manifest.Kind,
+                    ProjectInspectionReport.ContentPack,
+                    StringComparison.Ordinal))
+            {
+                return ReviewFailure(
+                    "reviewTargetTopologyUnsupported",
+                    reviewTarget.SourceRoot,
+                    "A content-pack review target supports only topology single.");
+            }
+
+            ReviewRolePaths[] rolePaths = ResolveReviewRolePaths(singlePaths, topology);
+            foreach (ReviewRolePaths rolePath in rolePaths)
+            {
+                rolePath.Paths.EnsureDirectories();
             }
 
             string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
@@ -427,7 +444,10 @@ internal static partial class ProjectModStager
         {
             bool expectedKind = artifact.Role switch
             {
-                ProjectReviewArtifactRole.Target or ProjectReviewArtifactRole.Companion =>
+                ProjectReviewArtifactRole.Target =>
+                    artifact.Manifest.Kind is ProjectInspectionReport.SmapiMod
+                        or ProjectInspectionReport.ContentPack,
+                ProjectReviewArtifactRole.Companion =>
                     string.Equals(
                         artifact.Manifest.Kind,
                         ProjectInspectionReport.SmapiMod,
@@ -511,15 +531,49 @@ internal static partial class ProjectModStager
         available.Add(AlwaysOnUniqueId, AlwaysOnVersion);
         foreach (ProjectReviewPreparedArtifact artifact in artifacts)
         {
-            var required = artifact.Manifest.RequiredDependencies.ToList();
             if (artifact.Manifest.ContentPackFor is not null)
             {
-                required.Add(new ProjectReviewDependency(
-                    artifact.Manifest.ContentPackFor,
-                    artifact.Manifest.ContentPackForMinimumVersion));
+                ProjectReviewPreparedArtifact? provider = artifacts.SingleOrDefault(candidate =>
+                    string.Equals(
+                        candidate.Manifest.UniqueId,
+                        artifact.Manifest.ContentPackFor,
+                        StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(
+                        candidate.Manifest.Kind,
+                        ProjectInspectionReport.SmapiMod,
+                        StringComparison.Ordinal));
+                bool targetContentPack = string.Equals(
+                    artifact.Role,
+                    ProjectReviewArtifactRole.Target,
+                    StringComparison.Ordinal);
+                if (provider is null
+                    || (targetContentPack
+                        && !string.Equals(
+                            provider.Role,
+                            ProjectReviewArtifactRole.Companion,
+                            StringComparison.Ordinal)))
+                {
+                    return ReviewProblem(
+                        "reviewDependencyUnavailable",
+                        artifact.SourceRoot,
+                        $"{artifact.Manifest.UniqueId} requires explicit local provider {artifact.Manifest.ContentPackFor}"
+                            + (targetContentPack
+                                ? " as --companion; SDVKit does not search for or download it."
+                                : "; SDVKit does not search for or download it."));
+                }
+
+                if (!IsMinimumVersionSatisfied(
+                        provider.Manifest.Version,
+                        artifact.Manifest.ContentPackForMinimumVersion))
+                {
+                    return ReviewProblem(
+                        "reviewDependencyVersionMismatch",
+                        artifact.SourceRoot,
+                        $"{artifact.Manifest.UniqueId} requires {artifact.Manifest.ContentPackFor} >= {artifact.Manifest.ContentPackForMinimumVersion}, but the explicit set provides {provider.Manifest.Version}.");
+                }
             }
 
-            foreach (ProjectReviewDependency dependency in required)
+            foreach (ProjectReviewDependency dependency in artifact.Manifest.RequiredDependencies)
             {
                 if (!available.TryGetValue(dependency.UniqueId, out string? version))
                 {
