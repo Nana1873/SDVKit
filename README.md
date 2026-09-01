@@ -213,7 +213,7 @@ sdvkit project review reset --topology network-2 --json
 
 This review surface is intentionally limited to dogfooding StardewInteriorChanger with the existing playable Greenhouse fixture: the host switches the Greenhouse, host and farmhand are visually checked against the same expected custom interior, the selection is checked again after a real pair restart, and the final Vanilla restore is checked in both roles. That evidence applies only to this local two-role Greenhouse slice. It does not claim compatibility for other interiors, other mod behavior, more players, remote play, or Stardew multiplayer in general; matching logs or hashes also do not replace the separate visual comparison.
 
-Screenshot capture remains the separately developed SDVKit AlwaysOn command, not a second screenshot implementation or framework in this slice. Once `sdvkit screenshot <label>` is merged, address that same command through the existing role-specific transport and use distinct labels, for example:
+Screenshot capture remains the separately developed SDVKit AlwaysOn command, not a second screenshot implementation or framework in this slice. Address that same `sdvkit screenshot <label>` command through the existing role-specific transport and use distinct labels, for example:
 
 ```powershell
 sdvkit project review command "sdvkit screenshot host-greenhouse-custom" --topology network-2 --role host --json
