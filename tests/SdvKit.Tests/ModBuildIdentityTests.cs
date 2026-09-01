@@ -156,6 +156,173 @@ public sealed class ModBuildIdentityTests
     }
 
     [Fact]
+    public void MatchesFileSetAllowsOnlyANewRegularRootConfigJson()
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        const string secret = "SharedSecret=runtime-only-value";
+        build.WriteFile("config.json", $"not-json::{secret}");
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: false));
+        Assert.True(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+    }
+
+    [Fact]
+    public void MatchesFileSetKeepsPackagedConfigJsonInsideTheNormalIdentity()
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string configPath = build.WriteFile("config.json", "packaged config");
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+
+        Assert.True(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: false));
+        Assert.True(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+
+        File.WriteAllText(configPath, "changed config");
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+
+        File.Delete(configPath);
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+    }
+
+    [Theory]
+    [InlineData("ExampleMod.dll")]
+    [InlineData("manifest.json")]
+    [InlineData("LICENSE")]
+    public void MatchesFileSetDoesNotHidePackagedFileDriftBehindRootConfigJson(
+        string changedFile)
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        build.WriteFile("config.json", "runtime config");
+        File.AppendAllText(Path.Combine(build.Path, changedFile), "drift");
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MatchesFileSetRejectsPackagedFileDeletionOrRenameBehindRootConfigJson(
+        bool rename)
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        build.WriteFile("config.json", "runtime config");
+        string license = Path.Combine(build.Path, "LICENSE");
+        if (rename)
+        {
+            File.Move(license, Path.Combine(build.Path, "COPYING"));
+        }
+        else
+        {
+            File.Delete(license);
+        }
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+    }
+
+    [Theory]
+    [InlineData("runtime.tmp")]
+    [InlineData("Config.json")]
+    [InlineData("nested/config.json")]
+    public void MatchesFileSetRejectsEveryOtherRuntimeAddition(string additionalPath)
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        if (!string.Equals(additionalPath, "Config.json", StringComparison.Ordinal))
+        {
+            build.WriteFile("config.json", "runtime config");
+        }
+
+        build.WriteFile(additionalPath, "additional runtime file");
+
+        Assert.False(ModBuildIdentity.MatchesFileSet(
+            build.Path,
+            expectedIdentity,
+            allowNewRootConfigJson: true));
+    }
+
+    [Fact]
+    public void MatchesFileSetRejectsAConfigJsonDirectoryEvenWhenTheFilesStillMatch()
+    {
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        Directory.CreateDirectory(Path.Combine(build.Path, "config.json"));
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            ModBuildIdentity.MatchesFileSet(
+                build.Path,
+                expectedIdentity,
+                allowNewRootConfigJson: true));
+
+        Assert.Contains("regular file", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MatchesFileSetRejectsAConfigJsonReparsePointWithoutReadingItsTarget()
+    {
+        using TemporaryDirectory outside = new();
+        using TemporaryDirectory build = new();
+        WriteProjectModFileSet(build);
+        string expectedIdentity = ModBuildIdentity.ComputeFileSet(build.Path);
+        const string secret = "SharedSecret=outside-sentinel";
+        string target = outside.WriteFile("external-config.json", secret);
+        string link = Path.Combine(build.Path, "config.json");
+        try
+        {
+            File.CreateSymbolicLink(link, target);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        InvalidDataException result = Assert.Throws<InvalidDataException>(() =>
+            ModBuildIdentity.MatchesFileSet(
+                build.Path,
+                expectedIdentity,
+                allowNewRootConfigJson: true));
+
+        Assert.Contains("reparse point", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(secret, result.Message, StringComparison.Ordinal);
+        Assert.Equal(secret, File.ReadAllText(target));
+    }
+
+    [Fact]
     public void ComputeFileReturnsTheCanonicalContentHash()
     {
         using TemporaryDirectory package = new();
@@ -185,5 +352,12 @@ public sealed class ModBuildIdentityTests
     {
         directory.WriteFile("SdvKit.AlwaysOn.dll", assembly);
         directory.WriteFile("manifest.json", manifest);
+    }
+
+    private static void WriteProjectModFileSet(TemporaryDirectory directory)
+    {
+        directory.WriteFile("ExampleMod.dll", "assembly");
+        directory.WriteFile("manifest.json", "manifest");
+        directory.WriteFile("LICENSE", "license");
     }
 }

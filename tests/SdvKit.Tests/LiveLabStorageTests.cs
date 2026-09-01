@@ -142,6 +142,7 @@ public sealed class LiveLabStorageTests
     {
         using TemporaryDirectory project = new();
         using TemporaryDirectory target = new();
+        string sentinel = target.WriteFile("sentinel.txt", "outside");
         string singleRoot = Path.Combine(project.Path, ".sdvkit", "lab", "single");
         Directory.CreateDirectory(singleRoot);
         string link = Path.Combine(singleRoot, "linked");
@@ -160,6 +161,7 @@ public sealed class LiveLabStorageTests
             () => LiveLabPaths.Resolve(project.Path));
 
         Assert.Contains("reparse point", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("outside", File.ReadAllText(sentinel));
     }
 
     [Fact]

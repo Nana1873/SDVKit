@@ -658,10 +658,10 @@ internal static partial class ProjectModStager
                     ownership.UniqueId,
                     StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(manifest.Manifest.Version, ownership.Version, StringComparison.Ordinal)
-                || !string.Equals(
-                    ModBuildIdentity.ComputeFileSet(path),
+                || !ModBuildIdentity.MatchesFileSet(
+                    path,
                     ownership.BuildIdentity,
-                    StringComparison.Ordinal))
+                    allowNewRootConfigJson: true))
             {
                 return Problem(
                     "stagingOwnershipDrifted",

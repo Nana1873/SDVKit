@@ -66,6 +66,37 @@ public sealed class ProjectModStagerTests
     }
 
     [Fact]
+    public void RuntimeCreatedRootConfigJsonAllowsExactOwnedSmokeCleanup()
+    {
+        using TemporaryDirectory project = new();
+        PackageFixture fixture = CreatePackage(project, archiveName: "runtime-config.zip");
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        WriteAlwaysOn(paths, "always-on sentinel");
+        ProjectModStaging staging = AssertSuccessful(ProjectModStager.Stage(
+            fixture.Package,
+            fixture.Target,
+            LiveLabState.SingleTopology,
+            paths));
+        string stagingPath = Assert.Single(staging.StagingPaths);
+        const string secret = "SharedSecret=runtime-only-value";
+        File.WriteAllText(
+            Path.Combine(stagingPath, "config.json"),
+            $"{{\"SharedSecret\":\"{secret}\"}}");
+
+        string ownershipMarker = File.ReadAllText(staging.OwnershipPath);
+        ProjectModCleanupResult cleanup = ProjectModStager.Remove(staging);
+
+        Assert.DoesNotContain(secret, ownershipMarker, StringComparison.Ordinal);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.False(Directory.Exists(stagingPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.Equal(
+            "always-on sentinel",
+            File.ReadAllText(Path.Combine(paths.AlwaysOnModPath, "sentinel.txt")));
+    }
+
+    [Fact]
     public void NetworkStageCopiesOneIdenticalBuildToHostAndFarmhand()
     {
         using TemporaryDirectory project = new();
@@ -388,6 +419,10 @@ public sealed class ProjectModStagerTests
             firstPackage.Target,
             LiveLabState.SingleTopology,
             paths));
+        string stagingPath = Assert.Single(first.StagingPaths);
+        const string retainedSecret = "SharedSecret=retained-runtime-value";
+        string retainedConfigPath = Path.Combine(stagingPath, "config.json");
+        File.WriteAllText(retainedConfigPath, retainedSecret);
         PackageFixture secondPackage = CreatePackage(
             project,
             archiveName: "second.zip",
@@ -408,10 +443,18 @@ public sealed class ProjectModStagerTests
         Assert.Equal(
             "stagingOwnershipPresent",
             Assert.IsType<ProjectSmokeProblem>(replacementResult.Problem).Code);
-        string stagingPath = Assert.Single(first.StagingPaths);
         Assert.Equal("old", File.ReadAllText(Path.Combine(stagingPath, "old-only.txt")));
         Assert.False(File.Exists(Path.Combine(stagingPath, "new-only.txt")));
         Assert.Equal("first assembly", File.ReadAllText(Path.Combine(stagingPath, ModEntryDll)));
+        Assert.Equal(retainedSecret, File.ReadAllText(retainedConfigPath));
+        Assert.DoesNotContain(
+            retainedSecret,
+            Assert.IsType<ProjectSmokeProblem>(replacementResult.Problem).Message,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            retainedSecret,
+            File.ReadAllText(first.OwnershipPath),
+            StringComparison.Ordinal);
         Assert.True(File.Exists(first.OwnershipPath));
         Assert.True(ProjectModStager.Remove(first).Removed);
     }
@@ -428,6 +471,8 @@ public sealed class ProjectModStagerTests
             LiveLabState.SingleTopology,
             paths));
         string stagingPath = Assert.Single(owned.StagingPaths);
+        const string secret = "SharedSecret=must-not-be-reported";
+        File.WriteAllText(Path.Combine(stagingPath, "config.json"), secret);
         File.AppendAllText(Path.Combine(stagingPath, ModEntryDll), "drift");
         PackageFixture replacementPackage = CreatePackage(
             project,
@@ -449,6 +494,18 @@ public sealed class ProjectModStagerTests
         Assert.Equal(
             "stagingOwnershipDrifted",
             Assert.IsType<ProjectSmokeProblem>(cleanup.Problem).Code);
+        Assert.DoesNotContain(
+            secret,
+            Assert.IsType<ProjectSmokeProblem>(replacement.Problem).Message,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            secret,
+            Assert.IsType<ProjectSmokeProblem>(cleanup.Problem).Message,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            secret,
+            File.ReadAllText(owned.OwnershipPath),
+            StringComparison.Ordinal);
         Assert.True(Directory.Exists(stagingPath));
         Assert.EndsWith(
             "drift",

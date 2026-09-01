@@ -663,6 +663,125 @@ public sealed class ProjectReviewStagerTests
         Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
     }
 
+    [Fact]
+    public void RuntimeRootConfigIsAcceptedForCodeModTargetAndCompanion()
+    {
+        const string secret = "issue-40-secret-must-not-be-reported";
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewPreparedArtifact companion = Artifact(
+            temporary.Path,
+            "Companion",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Companion");
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(
+            ProjectModStager.StageReview([target, companion], paths).Staging);
+        foreach (ProjectReviewOwnedArtifact artifact in staging.Artifacts)
+        {
+            File.WriteAllText(Path.Combine(artifact.StagingPath, "config.json"), secret);
+        }
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
+
+        Assert.NotNull(read.Staging);
+        Assert.Null(read.Problem);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.DoesNotContain(
+            secret,
+            JsonSerializer.Serialize(read),
+            StringComparison.Ordinal);
+        Assert.All(
+            staging.Artifacts,
+            artifact => Assert.False(Directory.Exists(artifact.StagingPath)));
+        Assert.False(File.Exists(staging.OwnershipPath));
+    }
+
+    [Fact]
+    public void RuntimeRootConfigRemainsDriftForAContentPack()
+    {
+        const string secret = "issue-40-content-pack-secret-must-not-be-reported";
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewPreparedArtifact contentPack = Artifact(
+            temporary.Path,
+            "Pack",
+            ProjectReviewArtifactRole.ContentPack,
+            "Nana.Target.Pack",
+            contentPackFor: "Nana.Target");
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(
+            ProjectModStager.StageReview([target, contentPack], paths).Staging);
+        ProjectReviewOwnedArtifact stagedPack = staging.Artifacts.Single(artifact =>
+            string.Equals(
+                artifact.Role,
+                ProjectReviewArtifactRole.ContentPack,
+                StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(stagedPack.StagingPath, "config.json"), secret);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
+
+        Assert.Null(read.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipDrifted",
+            Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
+        Assert.False(cleanup.Removed);
+        ProjectReviewProblem cleanupProblem = Assert.IsType<ProjectReviewProblem>(
+            cleanup.Problem);
+        Assert.Equal("reviewStagingOwnershipDrifted", cleanupProblem.Code);
+        Assert.DoesNotContain(secret, cleanupProblem.Message, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(stagedPack.StagingPath));
+        Assert.True(File.Exists(staging.OwnershipPath));
+    }
+
+    [Fact]
+    public void RuntimeRootConfigCleanupFailureRetainsReviewOwnership()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        const string secret = "issue-40-cleanup-secret-must-not-be-reported";
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(
+            ProjectModStager.StageReview([target], paths).Staging);
+        File.WriteAllText(
+            Path.Combine(staging.Target.StagingPath, "config.json"),
+            secret);
+        string stagedDll = Path.Combine(staging.Target.StagingPath, "Target.dll");
+
+        ProjectReviewCleanupResult blocked;
+        using (new FileStream(stagedDll, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            blocked = ProjectModStager.RemoveReview(paths);
+        }
+
+        Assert.False(blocked.Removed);
+        ProjectReviewProblem problem = Assert.IsType<ProjectReviewProblem>(blocked.Problem);
+        Assert.Equal("reviewStagingCleanupFailed", problem.Code);
+        Assert.DoesNotContain(secret, problem.Message, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(staging.Target.StagingPath));
+        Assert.True(File.Exists(staging.OwnershipPath));
+    }
+
     internal static ProjectReviewPreparedArtifact Artifact(
         string root,
         string topLevelDirectory,
