@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Text.Json;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
+[Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewServiceTests
 {
     private const string LaunchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -211,6 +213,297 @@ public sealed class ProjectReviewServiceTests
         Assert.Equal("partial", File.ReadAllText(partial));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CommandWritesOnlyToTheExactRunningReadyLoadedReviewWithoutMutatingOwnership(
+        bool isActive)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState, isActive);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                    "sic-review set greenhouse fixture",
+                    temporary.Path,
+                    sender);
+
+                ProjectReviewCommandReport report =
+                    Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                Assert.Equal(0, result.ExitCode);
+                Assert.Equal("running", report.State);
+                Assert.True(report.CommandWritten);
+                Assert.Empty(report.Problems);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.Equal("sic-review set greenhouse fixture", sender.Line);
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(
+        ProjectModContract.WaitingForGameLaunchPhase,
+        false,
+        "reviewConsoleTargetNotReady")]
+    [InlineData(ProjectModContract.LoadedPhase, false, "projectModStatusMismatch")]
+    public void CommandDoesNotSendUntilTheExactRunningReviewIsReadyAndLoadConfirmed(
+        string phase,
+        bool loadConfirmed,
+        string expectedProblem)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    phase,
+                    loadConfirmed);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                    "sic-review set greenhouse fixture",
+                    temporary.Path,
+                    sender);
+
+                ProjectReviewCommandReport report =
+                    Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.False(report.CommandWritten);
+                Assert.Equal(
+                    expectedProblem,
+                    Assert.Single(report.Problems).Code);
+                Assert.Equal(0, sender.CallCount);
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void CommandDoesNotSendWhenReviewOwnershipDoesNotBindExactly()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        LiveLabState state = ReviewState(
+            paths,
+            staging.TargetLaunchState with { UniqueId = "Nana.OtherTarget" });
+        new JsonLiveLabStateStore(paths.StatePath).Write(state);
+        string stateBefore = FileSnapshot(paths.StatePath);
+        string stagingBefore = TreeSnapshot(paths.ModsPath);
+        var sender = new RecordingConsoleInputSender(
+            new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written));
+
+        LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+            "sic-review set greenhouse fixture",
+            temporary.Path,
+            sender);
+
+        ProjectReviewCommandReport report =
+            Assert.IsType<ProjectReviewCommandReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.CommandWritten);
+        Assert.Equal("reviewOwnershipMismatch", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, sender.CallCount);
+        Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+        Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+    }
+
+    [Fact]
+    public void CommandDoesNotSendWhenTheExactlyBoundProcessIsNotRunning()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        LiveLabState state = ReviewState(paths, staging.TargetLaunchState);
+        new JsonLiveLabStateStore(paths.StatePath).Write(state);
+        WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+        string stateBefore = FileSnapshot(paths.StatePath);
+        string stagingBefore = TreeSnapshot(paths.ModsPath);
+        var sender = new RecordingConsoleInputSender(
+            new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written));
+
+        LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+            "sic-review set greenhouse fixture",
+            temporary.Path,
+            sender);
+
+        ProjectReviewCommandReport report =
+            Assert.IsType<ProjectReviewCommandReport>(result.Report);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.CommandWritten);
+        Assert.Equal("ownedProcessExited", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, sender.CallCount);
+        Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+        Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+    }
+
+    [Fact]
+    public void CommandServiceRejectsControlCharactersAndOverlongLinesBeforeSending()
+    {
+        using TemporaryDirectory temporary = new();
+        var sender = new RecordingConsoleInputSender(
+            new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written));
+
+        foreach (string command in new[]
+        {
+            "sic-review\nset",
+            new string('x', ProjectReviewConsoleLine.MaximumLength + 1),
+        })
+        {
+            LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                command,
+                temporary.Path,
+                sender);
+
+            ProjectReviewCommandReport report =
+                Assert.IsType<ProjectReviewCommandReport>(result.Report);
+            Assert.Equal(3, result.ExitCode);
+            Assert.Equal("blocked", report.State);
+            Assert.False(report.CommandWritten);
+            Assert.Equal(
+                "reviewConsoleCommandInvalid",
+                Assert.Single(report.Problems).Code);
+        }
+
+        Assert.Equal(0, sender.CallCount);
+    }
+
+    [Theory]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WorkerStartFailed,
+        false,
+        "reviewConsoleWorkerStartFailed")]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WorkerParentMismatch,
+        false,
+        "reviewConsoleWorkerParentMismatch")]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WrittenDetachFailed,
+        true,
+        "reviewConsoleDetachFailed")]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WrittenProcessExited,
+        true,
+        "reviewConsoleProcessExitedAfterWrite")]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WrittenProcessUnreadable,
+        true,
+        "reviewConsoleProcessUnreadableAfterWrite")]
+    [InlineData(
+        (int)ProjectReviewConsoleInputStatus.WrittenConsoleChanged,
+        true,
+        "reviewConsoleOwnershipChangedAfterWrite")]
+    public void CommandMapsWorkerAndPostWriteFailuresWithoutMutatingOwnership(
+        int statusValue,
+        bool expectedCommandWritten,
+        string expectedProblem)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        (ProjectReviewConsoleInputStatus)statusValue));
+
+                LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                    "sic-review set greenhouse fixture",
+                    temporary.Path,
+                    sender);
+
+                ProjectReviewCommandReport report =
+                    Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Equal(expectedCommandWritten, report.CommandWritten);
+                Assert.Equal(expectedProblem, Assert.Single(report.Problems).Code);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
     private static ProjectReviewStaging StageTarget(
         LiveLabPaths paths,
         string fixtureRoot)
@@ -227,12 +520,13 @@ public sealed class ProjectReviewServiceTests
 
     private static LiveLabState ReviewState(
         LiveLabPaths paths,
-        ProjectModLaunchState target) =>
+        ProjectModLaunchState target,
+        OwnedProcessIdentity? processIdentity = null) =>
         new(
             LiveLabState.CurrentSchemaVersion,
             LiveLabState.SingleTopology,
             LaunchId,
-            new OwnedProcessIdentity(
+            processIdentity ?? new OwnedProcessIdentity(
                 int.MaxValue,
                 new DateTimeOffset(2026, 8, 31, 10, 0, 0, TimeSpan.Zero),
                 Path.Combine(paths.ProjectRoot, "StardewModdingAPI.exe")),
@@ -255,7 +549,25 @@ public sealed class ProjectReviewServiceTests
     private static void WriteLoadedStatus(
         LiveLabPaths paths,
         LiveLabState state,
-        ProjectModLaunchState target)
+        ProjectModLaunchState target,
+        bool isActive = true)
+    {
+        WriteStatus(
+            paths,
+            state,
+            target,
+            ProjectModContract.LoadedPhase,
+            loadConfirmed: true,
+            isActive: isActive);
+    }
+
+    private static void WriteStatus(
+        LiveLabPaths paths,
+        LiveLabState state,
+        ProjectModLaunchState target,
+        string phase,
+        bool loadConfirmed,
+        bool isActive = true)
     {
         var marker = new AlwaysOnStatusMarker(
             1,
@@ -264,21 +576,99 @@ public sealed class ProjectReviewServiceTests
             state.OwnedProcessIdentity.StartTimeUtc,
             "active",
             600,
-            IsActive: true,
+            IsActive: isActive,
             PauseWhenOutOfFocus: false,
-            state.OwnedProcessIdentity.StartTimeUtc.AddSeconds(10),
+            DateTimeOffset.UtcNow,
             ProjectMod: new ProjectModStatusMarker(
                 ProjectModContract.SchemaVersion,
-                ProjectModContract.LoadedPhase,
+                phase,
                 target.UniqueId,
                 target.Version,
-                target.UniqueId,
-                target.Version,
+                loadConfirmed ? target.UniqueId : null,
+                loadConfirmed ? target.Version : null,
                 target.BuildIdentity,
-                LoadConfirmed: true,
-                "Loaded by SMAPI."));
+                LoadConfirmed: loadConfirmed,
+                loadConfirmed ? "Loaded by SMAPI." : "Waiting for game launch."));
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
+    }
+
+    private static (OwnedProcessIdentity Identity, Process Process) StartRunningProcess(
+        string projectRoot)
+    {
+        var host = new WindowsLabProcessHost();
+        string executable = Path.Combine(
+            Environment.SystemDirectory,
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        LabProcessStartResult started = host.Start(new LabProcessStartSpec(
+            executable,
+            Path.GetDirectoryName(executable)!,
+            [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ],
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            Path.Combine(projectRoot, ".sdvkit", "test-runtime", "stdout.log"),
+            Path.Combine(projectRoot, ".sdvkit", "test-runtime", "stderr.log")));
+        Assert.Equal(LabProcessStartStatus.Started, started.Status);
+        OwnedProcessIdentity identity = Assert.IsType<OwnedProcessIdentity>(started.Identity);
+        return (identity, Process.GetProcessById(identity.ProcessId));
+    }
+
+    private static string FileSnapshot(string path) =>
+        Convert.ToBase64String(File.ReadAllBytes(path));
+
+    private static string TreeSnapshot(string root)
+    {
+        return string.Join(
+            "\n",
+            Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path =>
+                    $"{Path.GetRelativePath(root, path)}:{FileSnapshot(path)}"));
+    }
+
+    private static void EnsureExited(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: false);
+                process.WaitForExit(5000);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The short-lived game-free test process already exited.
+        }
+    }
+
+    private sealed class RecordingConsoleInputSender(
+        ProjectReviewConsoleInputResult result) : IProjectReviewConsoleInputSender
+    {
+        public int CallCount { get; private set; }
+
+        public OwnedProcessIdentity? Identity { get; private set; }
+
+        public string? Line { get; private set; }
+
+        public ProjectReviewConsoleInputResult SendLine(
+            OwnedProcessIdentity expected,
+            string line)
+        {
+            CallCount++;
+            Identity = expected;
+            Line = line;
+            return result;
+        }
     }
 }

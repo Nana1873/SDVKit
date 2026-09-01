@@ -17,6 +17,12 @@ internal static class ProjectReviewService
         "This is process-level data isolation, not a Windows sandbox; reviewed mods can still access shared machine resources.",
     ];
 
+    private static readonly string[] CommandWarnings =
+    [
+        "commandWritten=true confirms that one complete text line plus Enter was enqueued into the exact owned SMAPI console; it does not confirm that SMAPI accepted or completed the command.",
+        "Submit console input only at an idle SMAPI prompt and do not type concurrently; classic Windows console input cannot prove that no partially typed cooked line already exists.",
+    ];
+
     public static LiveLabCommandResult Execute(
         string action,
         string sourcePath,
@@ -93,6 +99,148 @@ internal static class ProjectReviewService
                 "blocked",
                 [Problem("projectReviewFailed", null, exception.Message)],
                 paths);
+        }
+    }
+
+    internal static LiveLabCommandResult ExecuteCommand(
+        string command,
+        string labRoot,
+        IProjectReviewConsoleInputSender? inputSender = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(labRoot);
+
+        string? validationError = ProjectReviewConsoleLine.ValidationError(command);
+        if (validationError is not null)
+        {
+            return CommandFailure(
+                SafeFullPath(labRoot),
+                [Problem("reviewConsoleCommandInvalid", null, validationError)]);
+        }
+
+        LiveLabPaths paths;
+        try
+        {
+            paths = LiveLabPaths.Resolve(labRoot);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return CommandFailure(
+                SafeFullPath(labRoot),
+                [Problem("labPathInvalid", null, exception.Message)]);
+        }
+
+        try
+        {
+            using LiveLabOperationLock? operationLock =
+                LiveLabOperationLock.TryAcquire(paths.ProjectRoot);
+            if (operationLock is null)
+            {
+                return CommandResult(
+                    paths,
+                    null,
+                    "blocked",
+                    null,
+                    commandWritten: false,
+                    [Problem(
+                        "labBusy",
+                        null,
+                        "Another live-lab operation is still running for this lab root.")]);
+            }
+
+            ProjectReviewStagingResult staged = ProjectModStager.ReadReview(paths);
+            if (staged.Problem is not null)
+            {
+                return CommandResult(
+                    paths,
+                    null,
+                    "blocked",
+                    null,
+                    commandWritten: false,
+                    [staged.Problem]);
+            }
+
+            var stateStore = new JsonLiveLabStateStore(paths.StatePath);
+            LiveLabState? state = stateStore.Read();
+            ProjectReviewProblem? bindingProblem = ReviewBindingProblem(
+                state,
+                staged.Staging,
+                paths);
+            if (bindingProblem is not null)
+            {
+                return CommandResult(
+                    paths,
+                    staged.Staging,
+                    "blocked",
+                    null,
+                    commandWritten: false,
+                    [bindingProblem]);
+            }
+
+            var service = new LiveLabService(
+                paths,
+                stateStore,
+                new AlwaysOnBuilder(),
+                new WindowsLabProcessHost(),
+                () => throw new InvalidOperationException(
+                    "Project-review console input must not run installation discovery."));
+            LiveLabCommandResult status = service.StatusProjectReview();
+            LiveLabReport lab = (LiveLabReport)status.Report;
+            if (status.ExitCode != Success
+                || !string.Equals(lab.State, "running", StringComparison.Ordinal))
+            {
+                IReadOnlyList<ProjectReviewProblem> problems = LabProblems(lab).ToArray();
+                return CommandResult(
+                    paths,
+                    staged.Staging,
+                    "blocked",
+                    lab,
+                    commandWritten: false,
+                    problems.Count > 0
+                        ? problems
+                        : [Problem(
+                            "reviewConsoleNotRunning",
+                            null,
+                            "The exact owned project-review process is not running; no console input was written.")]);
+            }
+
+            LiveLabState exactState = state!;
+            if (!ProjectModReadyForConsole(lab.AlwaysOn, exactState.ProjectMod!))
+            {
+                return CommandResult(
+                    paths,
+                    staged.Staging,
+                    "blocked",
+                    lab,
+                    commandWritten: false,
+                    [Problem(
+                        "reviewConsoleTargetNotReady",
+                        null,
+                        "The exact target mod has not reached its fully confirmed loaded state; no console input was written.")]);
+            }
+
+            ProjectReviewConsoleInputResult sent =
+                (inputSender ?? new WindowsProjectReviewConsoleInputSender()).SendLine(
+                    exactState.OwnedProcessIdentity,
+                    command);
+            ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
+            return CommandResult(
+                paths,
+                staged.Staging,
+                inputProblem is null ? "running" : "blocked",
+                lab,
+                sent.CommandWritten,
+                inputProblem is null ? [] : [inputProblem]);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return CommandResult(
+                paths,
+                null,
+                "blocked",
+                null,
+                commandWritten: false,
+                [Problem("projectReviewConsoleFailed", null, exception.Message)]);
         }
     }
 
@@ -473,6 +621,142 @@ internal static class ProjectReviewService
     private static IEnumerable<ProjectReviewProblem> LabProblems(LiveLabReport? report) =>
         report?.Problems.Select(problem => Problem(problem.Code, null, problem.Message))
         ?? [];
+
+    private static bool ProjectModReadyForConsole(
+        AlwaysOnStatusReport? alwaysOn,
+        ProjectModLaunchState expected)
+    {
+        ProjectModStatusReport? projectMod = alwaysOn?.ProjectMod;
+        return string.Equals(alwaysOn?.State, "active", StringComparison.Ordinal)
+            && alwaysOn?.PauseWhenOutOfFocus == false
+            && projectMod is not null
+            && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.Phase,
+                ProjectModContract.LoadedPhase,
+                StringComparison.Ordinal)
+            && projectMod.LoadConfirmed == true
+            && string.Equals(
+                projectMod.LoadedUniqueId,
+                expected.UniqueId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.LoadedVersion,
+                expected.Version,
+                StringComparison.Ordinal)
+            && string.Equals(
+                projectMod.BuildIdentity,
+                expected.BuildIdentity,
+                StringComparison.Ordinal);
+    }
+
+    private static ProjectReviewProblem? ConsoleInputProblem(
+        ProjectReviewConsoleInputResult result)
+    {
+        if (result.Status == ProjectReviewConsoleInputStatus.Written)
+        {
+            return null;
+        }
+
+        string message = result.Error ?? result.Status switch
+        {
+            ProjectReviewConsoleInputStatus.WrittenDetachFailed =>
+                "The command was fully enqueued, but the one-shot console worker did not detach cleanly; do not retry it automatically.",
+            ProjectReviewConsoleInputStatus.WrittenProcessExited =>
+                "The command was fully enqueued, but the exact SMAPI process exited before delivery could be rechecked; do not retry it automatically.",
+            ProjectReviewConsoleInputStatus.WrittenProcessUnreadable =>
+                "The command was fully enqueued, but the exact SMAPI process became unreadable before delivery could be rechecked; do not retry it automatically.",
+            ProjectReviewConsoleInputStatus.WrittenConsoleChanged =>
+                "The command was fully enqueued, but the console process set changed before delivery could be rechecked; do not retry it automatically.",
+            ProjectReviewConsoleInputStatus.ProcessExited =>
+                "The exact owned SMAPI process exited before console input.",
+            ProjectReviewConsoleInputStatus.ProcessIdentityMismatch =>
+                "The PID no longer identifies the exact owned SMAPI process; no console input was written.",
+            ProjectReviewConsoleInputStatus.ProcessUnreadable =>
+                "The exact owned SMAPI process could not be verified; no console input was written.",
+            ProjectReviewConsoleInputStatus.AttachFailed =>
+                "The one-shot worker could not attach to the exact owned SMAPI console; no console input was written.",
+            ProjectReviewConsoleInputStatus.SharedConsole =>
+                "The SMAPI console has unexpected attached processes; no console input was written.",
+            ProjectReviewConsoleInputStatus.InputBusy =>
+                "The SMAPI console has pending input; no console input was written.",
+            ProjectReviewConsoleInputStatus.InputOpenFailed =>
+                "The exact SMAPI console input buffer could not be opened; no console input was written.",
+            ProjectReviewConsoleInputStatus.WriteFailed =>
+                "Windows did not enqueue any console input records.",
+            ProjectReviewConsoleInputStatus.PartialWrite =>
+                "Windows may have enqueued only part of the command; delivery is unknown and must not be retried automatically.",
+            ProjectReviewConsoleInputStatus.WorkerTimedOut =>
+                "The one-shot console worker timed out; delivery is unknown and must not be retried automatically.",
+            ProjectReviewConsoleInputStatus.WorkerStartFailed =>
+                "The one-shot console worker could not be started; no console input was written.",
+            ProjectReviewConsoleInputStatus.WorkerParentMismatch =>
+                "The internal console worker was not started by the exact SDVKit parent process; no console input was written.",
+            _ => "The one-shot console worker failed; delivery is unknown and must not be retried automatically.",
+        };
+        string code = result.Status switch
+        {
+            ProjectReviewConsoleInputStatus.WrittenDetachFailed => "reviewConsoleDetachFailed",
+            ProjectReviewConsoleInputStatus.WrittenProcessExited => "reviewConsoleProcessExitedAfterWrite",
+            ProjectReviewConsoleInputStatus.WrittenProcessUnreadable => "reviewConsoleProcessUnreadableAfterWrite",
+            ProjectReviewConsoleInputStatus.WrittenConsoleChanged => "reviewConsoleOwnershipChangedAfterWrite",
+            ProjectReviewConsoleInputStatus.ProcessExited => "reviewConsoleProcessExited",
+            ProjectReviewConsoleInputStatus.ProcessIdentityMismatch => "reviewConsoleIdentityMismatch",
+            ProjectReviewConsoleInputStatus.ProcessUnreadable => "reviewConsoleProcessUnreadable",
+            ProjectReviewConsoleInputStatus.AttachFailed => "reviewConsoleAttachFailed",
+            ProjectReviewConsoleInputStatus.SharedConsole => "reviewConsoleShared",
+            ProjectReviewConsoleInputStatus.InputBusy => "reviewConsoleInputBusy",
+            ProjectReviewConsoleInputStatus.InputOpenFailed => "reviewConsoleInputOpenFailed",
+            ProjectReviewConsoleInputStatus.WriteFailed => "reviewConsoleWriteFailed",
+            ProjectReviewConsoleInputStatus.PartialWrite => "reviewConsolePartialWrite",
+            ProjectReviewConsoleInputStatus.WorkerTimedOut => "reviewConsoleWorkerTimedOut",
+            ProjectReviewConsoleInputStatus.WorkerStartFailed => "reviewConsoleWorkerStartFailed",
+            ProjectReviewConsoleInputStatus.WorkerParentMismatch => "reviewConsoleWorkerParentMismatch",
+            ProjectReviewConsoleInputStatus.InvalidRequest => "reviewConsoleCommandInvalid",
+            _ => "reviewConsoleWorkerFailed",
+        };
+        return Problem(code, null, message);
+    }
+
+    private static LiveLabCommandResult CommandResult(
+        LiveLabPaths paths,
+        ProjectReviewStaging? staging,
+        string state,
+        LiveLabReport? lab,
+        bool? commandWritten,
+        IReadOnlyList<ProjectReviewProblem> problems)
+    {
+        var report = new ProjectReviewCommandReport(
+            1,
+            staging?.Target.SourceRoot,
+            paths.ProjectRoot,
+            state,
+            lab,
+            commandWritten,
+            problems,
+            [.. Warnings, .. CommandWarnings]);
+        return new LiveLabCommandResult(
+            problems.Count == 0 && commandWritten == true
+                ? Success
+                : OperationFailed,
+            report);
+    }
+
+    private static LiveLabCommandResult CommandFailure(
+        string labRoot,
+        IReadOnlyList<ProjectReviewProblem> problems)
+    {
+        var report = new ProjectReviewCommandReport(
+            1,
+            null,
+            labRoot,
+            "blocked",
+            null,
+            false,
+            problems,
+            [.. Warnings, .. CommandWarnings]);
+        return new LiveLabCommandResult(OperationFailed, report);
+    }
 
     private static LiveLabCommandResult ReviewResult(
         LiveLabPaths paths,

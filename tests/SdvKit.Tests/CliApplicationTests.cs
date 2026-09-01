@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SdvKit.Cli;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
@@ -25,6 +26,10 @@ public sealed class CliApplicationTests
             StringComparison.Ordinal);
         Assert.Contains(
             "sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review command <text> --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -342,6 +347,10 @@ public sealed class CliApplicationTests
             "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json",
             output,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review command <text> --json",
+            output,
+            StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -462,6 +471,43 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewCommandDispatchesOneExactLineToTheCurrentLabOnly()
+    {
+        const string command = "sic-review set greenhouse fixture";
+        string? receivedCommand = null;
+        string? receivedLabRoot = null;
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _) =>
+            throw new InvalidOperationException("Review lifecycle should not run.");
+        ProjectReviewConsoleCommandRunner consoleRunner = (candidate, labRoot) =>
+        {
+            receivedCommand = candidate;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(0, new
+            {
+                schemaVersion = 1,
+                state = "running",
+                commandWritten = true,
+            });
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            reviewRunner,
+            consoleRunner,
+            "project",
+            "review",
+            "command",
+            command,
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(command, receivedCommand);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        Assert.True(JsonDocument.Parse(output).RootElement
+            .GetProperty("commandWritten").GetBoolean());
+        Assert.Equal(string.Empty, error);
+    }
+
     [Theory]
     [InlineData("project", "review")]
     [InlineData("project", "review", "start")]
@@ -471,6 +517,12 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "start", "--topology", "single", "--json")]
     [InlineData("project", "review", "status", "target", "--json")]
     [InlineData("project", "review", "status", "--companion", "mod", "--json")]
+    [InlineData("project", "review", "command", "--json")]
+    [InlineData("project", "review", "command", "one", "two", "--json")]
+    [InlineData("project", "review", "command", "one", "--json", "--json")]
+    [InlineData("project", "review", "command", "--companion", "mod", "--json")]
+    [InlineData("project", "review", "command", "--content-pack", "pack", "--json")]
+    [InlineData("project", "review", "command", "one\ntwo", "--json")]
     [InlineData("project", "review", "stop", "--json", "--json")]
     [InlineData("project", "review", "restart", "--json")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
@@ -489,9 +541,33 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review status --json"
                 + Environment.NewLine
+                + "       sdvkit project review command <text> --json"
+                + Environment.NewLine
                 + "       sdvkit project review stop --json"
                 + Environment.NewLine,
             error);
+    }
+
+    [Fact]
+    public void ProjectReviewCommandRejectsALineOverTheBoundedMaximum()
+    {
+        ProjectReviewCommandRunner runner = (_, _, _, _, _) =>
+            throw new InvalidOperationException("Project review should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            runner,
+            "project",
+            "review",
+            "command",
+            new string('x', ProjectReviewConsoleLine.MaximumLength + 1),
+            "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains(
+            "project review command <text> --json",
+            error,
+            StringComparison.Ordinal);
     }
 
     [Theory]
@@ -510,6 +586,7 @@ public sealed class CliApplicationTests
         Assert.Equal(0, exitCode);
         Assert.Contains("project review start", output, StringComparison.Ordinal);
         Assert.Contains("project review status", output, StringComparison.Ordinal);
+        Assert.Contains("project review command", output, StringComparison.Ordinal);
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
@@ -883,6 +960,18 @@ public sealed class CliApplicationTests
         ProjectReviewCommandRunner runProjectReview,
         params string[] arguments)
     {
+        return RunWithProjectReview(
+            runProjectReview,
+            (_, _) => throw new InvalidOperationException(
+                "Project-review console command should not run."),
+            arguments);
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReview(
+        ProjectReviewCommandRunner runProjectReview,
+        ProjectReviewConsoleCommandRunner runProjectReviewConsole,
+        params string[] arguments)
+    {
         using StringWriter output = new();
         using StringWriter error = new();
         int exitCode = CliApplication.Run(
@@ -890,7 +979,8 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReview: runProjectReview);
+            runProjectReview: runProjectReview,
+            runProjectReviewConsole: runProjectReviewConsole);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

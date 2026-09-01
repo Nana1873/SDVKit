@@ -160,10 +160,15 @@ sdvkit project review start .\ExampleMod `
   --content-pack .\tests\fixtures\ExamplePack `
   --json
 sdvkit project review status --json
+sdvkit project review command "sicqa create" --json
 sdvkit project review stop --json
 ```
 
-Run all three commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one SMAPI C# target project; every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value must explicitly name one ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
+Run all review commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one SMAPI C# target project; every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value must explicitly name one ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
+
+`command` writes exactly one complete, quoted SMAPI or harness console line to the currently active exact review process; it does not discover or download anything. Use it only while the interactive console prompt is idle, with no partially typed command or parallel manual console input. A successful JSON result sets `commandWritten` to `true` only after the complete line was added to the Windows console input buffer; it does not confirm that SMAPI recognized or successfully executed the command.
+
+Commands supplied by a companion stay owned by that companion. For example, explicitly pass a local ready SMAPI Console Commands directory through `--companion` at `start`, then use `sdvkit project review command "debug sleep" --json`; SDVKit transports that existing command but neither reimplements nor locates the companion.
 
 Code projects reuse inspection, the isolated Release build, and validated packaging. Ready mod directories and native content packs are copied through a strict plain-tree preparation path because they are already runtime artifacts; source projects, saves, secrets, executables, archives, game assemblies, reparse points, and nested manifests are rejected. Before any launch, the complete explicit set is checked case-insensitively for valid non-reserved `UniqueID` values, unique staging names, required dependency and minimum-version satisfaction, content-pack providers, and existing mod-group collisions. Only the target, named companions, named packs, and SDVKit AlwaysOn count as available dependencies.
 

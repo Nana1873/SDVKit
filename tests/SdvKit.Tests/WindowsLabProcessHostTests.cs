@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
+using System.Reflection;
+using System.Text;
 using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
@@ -116,6 +119,148 @@ public sealed class WindowsLabProcessHostTests
         Assert.Throws<Win32Exception>(() => WindowsProcessLauncher.Start(specification));
         Assert.False(File.Exists(stdout));
         Assert.False(File.Exists(stderr));
+    }
+
+    [Fact]
+    public void ConsoleWorkerStartInfoUsesStrictUtf8AndExactParentIdentity()
+    {
+        using TemporaryDirectory temporary = new();
+        using Process parent = Process.GetCurrentProcess();
+        string fakeAppHost = Path.Combine(temporary.Path, "sdvkit.exe");
+        FieldInfo processPathField = typeof(Environment).GetField(
+            "s_processPath",
+            BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "The runtime process-path cache is unavailable for this isolated test.");
+        string? originalProcessPath = (string?)processPathField.GetValue(null);
+        var expected = new OwnedProcessIdentity(
+            12345,
+            new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero),
+            Path.Combine(temporary.Path, "StardewModdingAPI.exe"));
+
+        try
+        {
+            processPathField.SetValue(null, fakeAppHost);
+
+            ProcessStartInfo startInfo =
+                WindowsProjectReviewConsoleInputSender.CreateWorkerStartInfo(expected);
+
+            Assert.Equal(fakeAppHost, startInfo.FileName);
+            Assert.False(startInfo.UseShellExecute);
+            Assert.True(startInfo.CreateNoWindow);
+            Assert.True(startInfo.RedirectStandardInput);
+            Assert.True(startInfo.RedirectStandardOutput);
+            Assert.True(startInfo.RedirectStandardError);
+            AssertStrictUtf8(startInfo.StandardInputEncoding);
+            AssertStrictUtf8(startInfo.StandardOutputEncoding);
+            AssertStrictUtf8(startInfo.StandardErrorEncoding);
+            Assert.Equal(
+                [
+                    WindowsProjectReviewConsoleInputWorker.Argument,
+                    expected.ProcessId.ToString(CultureInfo.InvariantCulture),
+                    expected.StartTimeUtc.UtcTicks.ToString(CultureInfo.InvariantCulture),
+                    expected.ExecutablePath,
+                    parent.Id.ToString(CultureInfo.InvariantCulture),
+                    parent.StartTime.ToUniversalTime().Ticks.ToString(
+                        CultureInfo.InvariantCulture),
+                ],
+                startInfo.ArgumentList.ToArray());
+        }
+        finally
+        {
+            processPathField.SetValue(null, originalProcessPath);
+        }
+    }
+
+    [Fact]
+    public void ConsoleInputRecordsPreserveUnicodeAndTerminateWithEnter()
+    {
+        const string line = "sic ü 😀";
+
+        WindowsProjectReviewConsoleInputWorker.ConsoleInputRecord[] records =
+            WindowsProjectReviewConsoleInputWorker.CreateInputRecords(line);
+
+        Assert.Equal(checked((line.Length + 1) * 2), records.Length);
+        for (var index = 0; index < line.Length; index++)
+        {
+            Assert.True(records[index * 2].KeyEvent.KeyDown);
+            Assert.False(records[(index * 2) + 1].KeyEvent.KeyDown);
+            Assert.Equal(line[index], records[index * 2].KeyEvent.UnicodeChar);
+            Assert.Equal(line[index], records[(index * 2) + 1].KeyEvent.UnicodeChar);
+        }
+
+        Assert.True(records[^2].KeyEvent.KeyDown);
+        Assert.False(records[^1].KeyEvent.KeyDown);
+        Assert.Equal('\r', records[^2].KeyEvent.UnicodeChar);
+        Assert.Equal('\r', records[^1].KeyEvent.UnicodeChar);
+        Assert.Equal(checked((ushort)0x000D), records[^2].KeyEvent.VirtualKeyCode);
+        Assert.Equal(checked((ushort)0x000D), records[^1].KeyEvent.VirtualKeyCode);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ConsoleLineRejectsMalformedUtf16(int sample)
+    {
+        string line = sample switch
+        {
+            0 => new string(checked((char)0xD800), 1),
+            1 => new string(checked((char)0xDC00), 1),
+            _ => string.Concat("x", checked((char)0xD800), "y"),
+        };
+
+        string? error = ProjectReviewConsoleLine.ValidationError(line);
+
+        Assert.NotNull(error);
+        Assert.Contains("well-formed UTF-16", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DirectConsoleWorkerInvocationRejectsANonParentProcess()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string assemblyDirectory = Path.GetDirectoryName(
+            typeof(WindowsProjectReviewConsoleInputWorker).Assembly.Location)!;
+        string appHost = Path.Combine(assemblyDirectory, "sdvkit.exe");
+        var strictUtf8 = new UTF8Encoding(
+            encoderShouldEmitUTF8Identifier: false,
+            throwOnInvalidBytes: true);
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = appHost,
+            WorkingDirectory = assemblyDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardInputEncoding = strictUtf8,
+            StandardOutputEncoding = strictUtf8,
+            StandardErrorEncoding = strictUtf8,
+        };
+        startInfo.ArgumentList.Add(WindowsProjectReviewConsoleInputWorker.Argument);
+        startInfo.ArgumentList.Add("1");
+        startInfo.ArgumentList.Add("1");
+        startInfo.ArgumentList.Add(Path.Combine(Environment.SystemDirectory, "cmd.exe"));
+        startInfo.ArgumentList.Add(int.MaxValue.ToString(CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add(
+            DateTimeOffset.UtcNow.UtcTicks.ToString(CultureInfo.InvariantCulture));
+
+        using Process worker = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The direct worker process did not start.");
+        worker.StandardInput.Close();
+        string output = worker.StandardOutput.ReadToEnd();
+        string error = worker.StandardError.ReadToEnd();
+
+        Assert.True(worker.WaitForExit(5000));
+        Assert.Equal((int)ProjectReviewConsoleInputStatus.WorkerParentMismatch, worker.ExitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("exact SDVKit parent process", error, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -416,6 +561,14 @@ public sealed class WindowsLabProcessHostTests
         {
             // The game-free test child already exited.
         }
+    }
+
+    private static void AssertStrictUtf8(Encoding? encoding)
+    {
+        UTF8Encoding utf8 = Assert.IsType<UTF8Encoding>(encoding);
+        Assert.Empty(utf8.GetPreamble());
+        Assert.IsType<EncoderExceptionFallback>(utf8.EncoderFallback);
+        Assert.IsType<DecoderExceptionFallback>(utf8.DecoderFallback);
     }
 }
 

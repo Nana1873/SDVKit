@@ -22,6 +22,10 @@ internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
     IReadOnlyList<string> contentPackPaths,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
+    string command,
+    string labRoot);
+
 public static class CliApplication
 {
     private const int Success = 0;
@@ -37,6 +41,8 @@ public static class CliApplication
         "Usage: sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
         "       sdvkit project review status --json";
+    private const string ReviewCommandUsage =
+        "       sdvkit project review command <text> --json";
     private const string ReviewStopUsage =
         "       sdvkit project review stop --json";
     private const string LabSingleUsage =
@@ -64,7 +70,8 @@ public static class CliApplication
         Func<DoctorReport> discoverInstallations,
         LiveLabCommandRunner? runLiveLab = null,
         ProjectSmokeCommandRunner? runProjectSmoke = null,
-        ProjectReviewCommandRunner? runProjectReview = null)
+        ProjectReviewCommandRunner? runProjectReview = null,
+        ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -106,6 +113,9 @@ public static class CliApplication
                     discoverInstallations);
         }
 
+        runProjectReviewConsole ??= (command, labRoot) =>
+            ProjectReviewService.ExecuteCommand(command, labRoot);
+
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
             WriteHelp(output);
@@ -130,7 +140,8 @@ public static class CliApplication
                 error,
                 discoverInstallations,
                 runProjectSmoke,
-                runProjectReview);
+                runProjectReview,
+                runProjectReviewConsole);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -203,7 +214,8 @@ public static class CliApplication
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
         ProjectSmokeCommandRunner runProjectSmoke,
-        ProjectReviewCommandRunner runProjectReview)
+        ProjectReviewCommandRunner runProjectReview,
+        ProjectReviewConsoleCommandRunner runProjectReviewConsole)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -225,7 +237,12 @@ public static class CliApplication
             "build" => RunProjectBuild(arguments, output, error, discoverInstallations),
             "package" => RunProjectPackage(arguments, output, error, discoverInstallations),
             "smoke" => RunProjectSmoke(arguments, output, error, runProjectSmoke),
-            "review" => RunProjectReview(arguments, output, error, runProjectReview),
+            "review" => RunProjectReview(
+                arguments,
+                output,
+                error,
+                runProjectReview,
+                runProjectReviewConsole),
             _ => ProjectUsageError(error),
         };
     }
@@ -355,7 +372,8 @@ public static class CliApplication
         IReadOnlyList<string> arguments,
         TextWriter output,
         TextWriter error,
-        ProjectReviewCommandRunner runProjectReview)
+        ProjectReviewCommandRunner runProjectReview,
+        ProjectReviewConsoleCommandRunner runProjectReviewConsole)
     {
         if ((arguments.Count == 3 && IsHelp(arguments[2]))
             || (arguments.Count == 4 && IsHelp(arguments[3])))
@@ -369,18 +387,24 @@ public static class CliApplication
                 out string? action,
                 out string? path,
                 out IReadOnlyList<string>? companionPaths,
-                out IReadOnlyList<string>? contentPackPaths))
+                out IReadOnlyList<string>? contentPackPaths,
+                out string? command))
         {
             WriteProjectReviewUsage(error);
             return UsageError;
         }
 
-        LiveLabCommandResult result = runProjectReview(
-            action!,
-            path!,
-            companionPaths!,
-            contentPackPaths!,
-            Environment.CurrentDirectory);
+        LiveLabCommandResult result = string.Equals(
+            action,
+            "command",
+            StringComparison.Ordinal)
+                ? runProjectReviewConsole(command!, Environment.CurrentDirectory)
+                : runProjectReview(
+                    action!,
+                    path!,
+                    companionPaths!,
+                    contentPackPaths!,
+                    Environment.CurrentDirectory);
         WriteJson(output, result.Report);
         return result.ExitCode;
     }
@@ -471,13 +495,15 @@ public static class CliApplication
         out string? action,
         out string? path,
         out IReadOnlyList<string>? companionPaths,
-        out IReadOnlyList<string>? contentPackPaths)
+        out IReadOnlyList<string>? contentPackPaths,
+        out string? command)
     {
         action = arguments.Count > 2 ? arguments[2] : null;
         path = null;
         companionPaths = null;
         contentPackPaths = null;
-        if (action is not ("start" or "status" or "stop"))
+        command = null;
+        if (action is not ("start" or "status" or "command" or "stop"))
         {
             return false;
         }
@@ -515,12 +541,16 @@ public static class CliApplication
         }
 
         bool isStart = string.Equals(action, "start", StringComparison.Ordinal);
+        bool isCommand = string.Equals(action, "command", StringComparison.Ordinal);
         if (jsonOptionCount != 1
-            || operands.Any(argument => argument.StartsWith('-'))
             || (isStart && operands.Count > 1)
-            || (!isStart && (operands.Count > 0
+            || (isCommand && (operands.Count != 1
+                || ProjectReviewConsoleLine.ValidationError(operands[0]) is not null))
+            || (!isStart && !isCommand && (operands.Count > 0
                 || companions.Count > 0
-                || packs.Count > 0)))
+                || packs.Count > 0))
+            || (isCommand && (companions.Count > 0 || packs.Count > 0))
+            || (isStart && operands.Any(argument => argument.StartsWith('-'))))
         {
             return false;
         }
@@ -530,6 +560,7 @@ public static class CliApplication
             : Environment.CurrentDirectory;
         companionPaths = companions;
         contentPackPaths = packs;
+        command = isCommand ? operands[0] : null;
         return true;
     }
 
@@ -685,6 +716,7 @@ public static class CliApplication
             "  sdvkit project smoke [path] --topology <single|network-2> --json");
         output.WriteLine(
             "  sdvkit project review start [path] [--companion <path>]... [--content-pack <path>]... --json");
+        output.WriteLine("  sdvkit project review command <text> --json");
         output.WriteLine("  sdvkit project review <status|stop> --json");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
@@ -717,6 +749,7 @@ public static class CliApplication
         output.WriteLine(SmokeUsage);
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
+        output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
     }
 
@@ -724,6 +757,7 @@ public static class CliApplication
     {
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
+        output.WriteLine(ReviewCommandUsage);
         output.WriteLine(ReviewStopUsage);
     }
 }

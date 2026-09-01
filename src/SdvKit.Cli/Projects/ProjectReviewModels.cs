@@ -105,3 +105,13 @@ internal sealed record ProjectReviewReport(
     bool StagingRemoved,
     IReadOnlyList<ProjectReviewProblem> Problems,
     IReadOnlyList<string> Warnings);
+
+internal sealed record ProjectReviewCommandReport(
+    int SchemaVersion,
+    string? Root,
+    string LabRoot,
+    string State,
+    LiveLabReport? Lab,
+    bool? CommandWritten,
+    IReadOnlyList<ProjectReviewProblem> Problems,
+    IReadOnlyList<string> Warnings);
