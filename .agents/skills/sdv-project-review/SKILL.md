@@ -78,6 +78,7 @@ sdvkit fixture object ensure <alias-or-id> <qualified-item-id>
 sdvkit fixture object clear-owned <alias-or-id>
 sdvkit fixture animal ensure <alias-or-id> white-cow
 sdvkit fixture enter <alias-or-id>
+sdvkit fixture enter greenhouse
 sdvkit fixture farm
 ```
 
@@ -89,7 +90,7 @@ sdvkit project review command "sdvkit fixture building ensure barn_a deluxe-barn
 sdvkit project review command "sdvkit fixture enter barn_a" --topology network-2 --role farmhand --json
 ```
 
-World mutations (`building ensure`, `object ensure`, `object clear-owned`, and `animal ensure`) are valid only for the singleplayer main role or the `network-2` host. `status`, `enter`, and `farm` are role-local and may also target the verified farmhand; every `network-2` command still needs exactly one role. Ensure operations must be idempotent for the same SDVKit-owned alias and requested state. `object clear-owned` may remove only the exact SDVKit-owned fixture object, never an entire object collection or an unowned object.
+World mutations (`building ensure`, `object ensure`, `object clear-owned`, and `animal ensure`) are valid only for the singleplayer main role or the `network-2` host. `status`, `enter`, and `farm` are role-local and may also target the verified farmhand; every `network-2` command still needs exactly one role. `farm` may follow only a natural Farm exit from the current review FarmHouse, exact Greenhouse, or owned fixture interior. For `enter`, the exact `greenhouse` token selects the one loaded Greenhouse and its natural entry; owned mutations still resolve their normal alias or GUID, and an existing owned `greenhouse` alias remains addressable for entry by GUID. These are bounded fixture transitions, not general warps. Ensure operations must be idempotent for the same SDVKit-owned alias and requested state. `object clear-owned` may remove only the exact SDVKit-owned fixture object, never an entire object collection or an unowned object.
 
 Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The fixture surface has no save or sleep command; use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
 

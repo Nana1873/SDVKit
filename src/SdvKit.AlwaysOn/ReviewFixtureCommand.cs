@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.Locations;
 using StardewValley.TerrainFeatures;
 #endif
 
@@ -18,6 +19,8 @@ internal static class ReviewFixtureContract
     internal const string AnimalKindMarkerKey = "SDVKit.AlwaysOn/FixtureAnimalKind";
     internal const string DeluxeBarnKind = "deluxe-barn";
     internal const string DeluxeBarnBuildingType = "Deluxe Barn";
+    internal const string GreenhouseTarget = "greenhouse";
+    internal const string GreenhouseBuildingType = "Greenhouse";
     internal const string WhiteCowKind = "white-cow";
     internal const string WhiteCowType = "White Cow";
     internal const string ReviewEnvironmentName = "SDVKIT_PROJECT_REVIEW";
@@ -60,7 +63,7 @@ internal static class ReviewFixtureArguments
         + "object ensure <alias-or-id> <qualified-item-id> | "
         + "object clear-owned <alias-or-id> | "
         + "animal ensure <alias-or-id> white-cow | "
-        + "enter <alias-or-id> | farm";
+        + "enter <alias-or-id> | enter greenhouse | farm";
     internal const string AliasError =
         "A fixture alias must contain 1-32 lowercase ASCII letters, digits, '-' or '_' and start with a letter.";
     internal const string BuildingError =
@@ -186,6 +189,9 @@ internal static class ReviewFixtureArguments
     public static bool IsValidBuildingToken(string? value) =>
         IsValidAlias(value)
         || (Guid.TryParseExact(value, "D", out Guid id) && id != Guid.Empty);
+
+    public static bool IsGreenhouseNavigationTarget(string? value) =>
+        string.Equals(value, ReviewFixtureContract.GreenhouseTarget, StringComparison.Ordinal);
 
     private static bool IsValidQualifiedItemId(string? value) =>
         !string.IsNullOrWhiteSpace(value)
@@ -348,6 +354,14 @@ internal sealed record ReviewFixtureResourceClumpState(
     int Height,
     bool HasModData);
 
+internal sealed record ReviewFixtureWarpState(
+    int X,
+    int Y,
+    string TargetName,
+    int TargetX,
+    int TargetY,
+    bool NpcOnly);
+
 internal static class ReviewFixturePolicy
 {
     private static readonly Dictionary<string, (string Name, string Type, int Fragility)>
@@ -483,6 +497,21 @@ internal static class ReviewFixturePolicy
         || string.Equals(buildableProperty, "true", StringComparison.OrdinalIgnoreCase)
         || (hasDiggableProperty
             && !string.Equals(buildableProperty, "f", StringComparison.OrdinalIgnoreCase));
+
+    public static bool TrySelectNaturalFarmWarp(
+        IReadOnlyList<ReviewFixtureWarpState>? warps,
+        out ReviewFixtureWarpState? selected)
+    {
+        ReviewFixtureWarpState[] matches = warps?
+            .Where(warp =>
+                !warp.NpcOnly
+                && string.Equals(warp.TargetName, "Farm", StringComparison.Ordinal))
+            .Take(2)
+            .ToArray()
+            ?? [];
+        selected = matches.Length == 1 ? matches[0] : null;
+        return selected is not null;
+    }
 }
 
 #if SDVKIT_GAME_AVAILABLE
@@ -843,14 +872,23 @@ internal sealed class StardewReviewFixtureRuntime(
         string building)
     {
         string fixtureId = RequiredFixtureId(access);
-        if (!TryResolveOwnedBuilding(building, fixtureId, out Building target, out GameLocation indoors, out string error))
+        if (!TryResolveEnterBuilding(
+                building,
+                fixtureId,
+                out Building target,
+                out GameLocation indoors,
+                out bool isGreenhouse,
+                out string error))
         {
             return Failure(error);
         }
 
+        string targetDescription = isGreenhouse
+            ? $"Greenhouse {target.id.Value:D}"
+            : $"fixture building {target.id.Value:D}";
         if (ReferenceEquals(Game1.currentLocation, indoors))
         {
-            return Success($"Player is already inside fixture building {target.id.Value:D}.");
+            return Success($"Player is already inside {targetDescription}.");
         }
 
         if (!ReferenceEquals(Game1.currentLocation, Game1.getFarm()))
@@ -865,7 +903,7 @@ internal sealed class StardewReviewFixtureRuntime(
 
         Game1.warpFarmer(indoors.NameOrUniqueName, (int)entry.X, (int)entry.Y, false);
         return Success(
-            $"Warped through the natural entry of fixture building {target.id.Value:D} at {entry.X},{entry.Y}.");
+            $"Warped through the natural entry of {targetDescription} at {entry.X},{entry.Y}.");
     }
 
     public ReviewFixtureResult Farm(ReviewFixtureAccess access)
@@ -877,14 +915,35 @@ internal sealed class StardewReviewFixtureRuntime(
             return Success("Player is already on the Farm.");
         }
 
-        Building? parent = GetOwnedBuildings(farm, fixtureId).SingleOrDefault(building =>
-            ReferenceEquals(building.GetIndoors(), Game1.currentLocation));
-        if (parent?.GetIndoors() is not GameLocation indoors)
+        GameLocation? current = Game1.currentLocation;
+        if (current is null)
         {
-            return Failure("Farm is allowed only from the Farm or an owned fixture interior.");
+            return Failure("The current review location is unavailable.");
         }
 
-        if (!TryGetNaturalExit(indoors, out Warp exit, out _, out string error))
+        Building? parent = GetOwnedBuildings(farm, fixtureId).SingleOrDefault(building =>
+            ReferenceEquals(building.GetIndoors(), current));
+        Building? greenhouse = null;
+        bool isGreenhouse = TryResolveGreenhouse(
+                farm,
+                out Building resolvedGreenhouse,
+                out GameLocation greenhouseIndoors,
+                out _)
+            && ReferenceEquals(greenhouseIndoors, current);
+        if (isGreenhouse)
+        {
+            greenhouse = resolvedGreenhouse;
+        }
+
+        if (parent is null
+            && greenhouse is null
+            && !IsExactReviewFarmHouse(farm, current))
+        {
+            return Failure(
+                "Farm is allowed only from the Farm, a review FarmHouse, the exact Greenhouse, or an owned fixture interior.");
+        }
+
+        if (!TryGetNaturalExit(current, out Warp exit, out _, out string error))
         {
             return Failure(error);
         }
@@ -896,8 +955,13 @@ internal sealed class StardewReviewFixtureRuntime(
         }
 
         Game1.warpFarmer("Farm", exit.TargetX, exit.TargetY, false);
+        string sourceDescription = parent is not null
+            ? $"fixture building {parent.id.Value:D}"
+            : greenhouse is not null
+                ? $"Greenhouse {greenhouse.id.Value:D}"
+                : $"review FarmHouse '{current.NameOrUniqueName}'";
         return Success(
-            $"Warped through fixture building {parent.id.Value:D}'s natural Farm exit at {target.X},{target.Y}.");
+            $"Warped through the natural Farm exit of {sourceDescription} at {target.X},{target.Y}.");
     }
 
     private static ReviewFixtureAccess Denied(string message) =>
@@ -1040,6 +1104,72 @@ internal sealed class StardewReviewFixtureRuntime(
 
         error = string.Empty;
         return true;
+    }
+
+    private static bool TryResolveEnterBuilding(
+        string token,
+        string fixtureId,
+        out Building building,
+        out GameLocation indoors,
+        out bool isGreenhouse,
+        out string error)
+    {
+        isGreenhouse = ReviewFixtureArguments.IsGreenhouseNavigationTarget(token);
+        if (isGreenhouse)
+        {
+            return TryResolveGreenhouse(Game1.getFarm(), out building, out indoors, out error);
+        }
+
+        return TryResolveOwnedBuilding(token, fixtureId, out building, out indoors, out error);
+    }
+
+    private static bool TryResolveGreenhouse(
+        Farm farm,
+        out Building building,
+        out GameLocation indoors,
+        out string error)
+    {
+        GameLocation? canonical = Game1.getLocationFromName(
+            ReviewFixtureContract.GreenhouseBuildingType);
+        Building[] matches = farm.buildings
+            .Where(candidate =>
+                candidate is GreenhouseBuilding
+                && string.Equals(
+                    candidate.buildingType.Value,
+                    ReviewFixtureContract.GreenhouseBuildingType,
+                    StringComparison.Ordinal)
+                && ReferenceEquals(candidate.GetIndoors(), canonical))
+            .ToArray();
+        if (matches.Length != 1 || canonical is null)
+        {
+            building = null!;
+            indoors = null!;
+            error = matches.Length > 1
+                ? "The exact review fixture has multiple canonical Greenhouse buildings."
+                : "The exact review fixture has no canonical loaded Greenhouse building.";
+            return false;
+        }
+
+        building = matches[0];
+        indoors = canonical;
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool IsExactReviewFarmHouse(Farm farm, GameLocation current)
+    {
+        if (current is not FarmHouse)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(Game1.getLocationFromName(current.NameOrUniqueName), current))
+        {
+            return true;
+        }
+
+        return farm.buildings.Count(building =>
+            ReferenceEquals(building.GetIndoors(), current)) == 1;
     }
 
     private static bool TryValidateBuildingFootprint(
@@ -1323,16 +1453,39 @@ internal sealed class StardewReviewFixtureRuntime(
         out Vector2 entry,
         out string error)
     {
-        exit = indoors.GetFirstPlayerWarp();
-        entry = exit is null
-            ? Vector2.Zero
-            : new Vector2(exit.X, exit.Y - 1);
-        if (exit is null
-            || !string.Equals(exit.TargetName, "Farm", StringComparison.Ordinal)
-            || !indoors.isTileOnMap(entry)
+        ReviewFixtureWarpState[] warps = indoors.warps
+            .Select(warp => new ReviewFixtureWarpState(
+                warp.X,
+                warp.Y,
+                warp.TargetName,
+                warp.TargetX,
+                warp.TargetY,
+                warp.npcOnly.Value))
+            .ToArray();
+        if (!ReviewFixturePolicy.TrySelectNaturalFarmWarp(
+                warps,
+                out ReviewFixtureWarpState? selected)
+            || selected is null)
+        {
+            exit = null!;
+            entry = Vector2.Zero;
+            error = "The review interior does not have exactly one natural player warp to the Farm.";
+            return false;
+        }
+
+        ReviewFixtureWarpState selectedWarp = selected;
+        exit = indoors.warps.Single(warp =>
+            warp.X == selectedWarp.X
+            && warp.Y == selectedWarp.Y
+            && string.Equals(warp.TargetName, selectedWarp.TargetName, StringComparison.Ordinal)
+            && warp.TargetX == selectedWarp.TargetX
+            && warp.TargetY == selectedWarp.TargetY
+            && warp.npcOnly.Value == selectedWarp.NpcOnly);
+        entry = new Vector2(selectedWarp.X, selectedWarp.Y - 1);
+        if (!indoors.isTileOnMap(entry)
             || !indoors.isTilePassable(entry))
         {
-            error = "The fixture interior has no usable natural Farm warp and entry tile.";
+            error = "The review interior's natural Farm warp has no usable entry tile.";
             return false;
         }
 

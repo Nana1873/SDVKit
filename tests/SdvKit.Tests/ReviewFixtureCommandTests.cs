@@ -43,6 +43,9 @@ public sealed class ReviewFixtureCommandTests
             "barn-a",
             "white-cow"));
         Assert.IsType<ReviewFixtureEnterRequest>(Parse("fixture", "enter", "barn-a"));
+        ReviewFixtureEnterRequest greenhouse = Assert.IsType<ReviewFixtureEnterRequest>(
+            Parse("fixture", "enter", "greenhouse"));
+        Assert.Equal(ReviewFixtureContract.GreenhouseTarget, greenhouse.Building);
         Assert.IsType<ReviewFixtureFarmRequest>(Parse("fixture", "farm"));
     }
 
@@ -73,6 +76,7 @@ public sealed class ReviewFixtureCommandTests
     [InlineData("fixture", "Status")]
     [InlineData("Fixture", "status")]
     [InlineData("fixture", "building")]
+    [InlineData("fixture", "enter", "Greenhouse")]
     [InlineData("fixture", "farm", "extra")]
     public void ParserRejectsUnknownCaseAndArity(params string[] arguments)
     {
@@ -162,7 +166,9 @@ public sealed class ReviewFixtureCommandTests
         Assert.True(
             ReviewFixtureOperation.Execute(new ReviewFixtureStatusRequest(), runtime).Succeeded);
         Assert.True(
-            ReviewFixtureOperation.Execute(new ReviewFixtureEnterRequest("barn"), runtime).Succeeded);
+            ReviewFixtureOperation.Execute(
+                new ReviewFixtureEnterRequest(ReviewFixtureContract.GreenhouseTarget),
+                runtime).Succeeded);
         Assert.True(
             ReviewFixtureOperation.Execute(new ReviewFixtureFarmRequest(), runtime).Succeeded);
 
@@ -408,6 +414,31 @@ public sealed class ReviewFixtureCommandTests
     }
 
     [Fact]
+    public void NaturalFarmWarpMustBeOneExactPlayerWarp()
+    {
+        var expected = new ReviewFixtureWarpState(3, 7, "Farm", 64, 15, NpcOnly: false);
+        var npc = expected with { X = 4, NpcOnly = true };
+        var other = expected with { X = 5, TargetName = "Town" };
+
+        Assert.True(
+            ReviewFixturePolicy.TrySelectNaturalFarmWarp(
+                [npc, other, expected],
+                out ReviewFixtureWarpState? selected));
+        Assert.Equal(expected, selected);
+
+        Assert.False(ReviewFixturePolicy.TrySelectNaturalFarmWarp(null, out _));
+        Assert.False(ReviewFixturePolicy.TrySelectNaturalFarmWarp([], out _));
+        Assert.False(
+            ReviewFixturePolicy.TrySelectNaturalFarmWarp(
+                [expected with { TargetName = "farm" }],
+                out _));
+        Assert.False(
+            ReviewFixturePolicy.TrySelectNaturalFarmWarp(
+                [expected, expected with { X = 9 }],
+                out _));
+    }
+
+    [Fact]
     public void GameRuntimeSourceRetainsOwnershipAndSafetyBoundaries()
     {
         string source = ReadSource();
@@ -444,8 +475,14 @@ public sealed class ReviewFixtureCommandTests
         Assert.Contains("animalHouse.adoptAnimal(animal)", source, StringComparison.Ordinal);
         Assert.Contains("existing.home?.id.Value == target.id.Value", source, StringComparison.Ordinal);
         Assert.Contains("animalHouse.animalsThatLiveHere.Contains(existing.myID.Value)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.GetFirstPlayerWarp()", source, StringComparison.Ordinal);
-        Assert.Contains("string.Equals(exit.TargetName, \"Farm\", StringComparison.Ordinal)", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewFixturePolicy.TrySelectNaturalFarmWarp(", source, StringComparison.Ordinal);
+        Assert.Contains("string.Equals(warp.TargetName, \"Farm\", StringComparison.Ordinal)", source, StringComparison.Ordinal);
+        Assert.Contains("warp.npcOnly.Value", source, StringComparison.Ordinal);
+        Assert.Contains("current is not FarmHouse", source, StringComparison.Ordinal);
+        Assert.Contains("TryResolveEnterBuilding(", source, StringComparison.Ordinal);
+        Assert.Contains("candidate is GreenhouseBuilding", source, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(candidate.GetIndoors(), canonical)", source, StringComparison.Ordinal);
+        Assert.Contains(ReviewFixtureContract.GreenhouseBuildingType, source, StringComparison.Ordinal);
         Assert.Contains("indoors.isTileOnMap(entry)", source, StringComparison.Ordinal);
         Assert.Contains("indoors.isTilePassable(entry)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("indoors.isTileLocationOpen(entry)", source, StringComparison.Ordinal);
