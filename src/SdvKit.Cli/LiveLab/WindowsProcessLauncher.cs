@@ -15,6 +15,7 @@ internal sealed record WindowsProcessLaunchResult(
 
 internal static partial class WindowsProcessLauncher
 {
+    private const uint CreateNewConsole = 0x00000010;
     private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
     private const int StartfUseShowWindow = 0x00000001;
@@ -29,7 +30,12 @@ internal static partial class WindowsProcessLauncher
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException(
-                "Direct persistent process logging is implemented for Windows only.");
+                "Direct live-lab process launch is implemented for Windows only.");
+        }
+
+        if (specification.InteractiveConsole)
+        {
+            return StartInteractive(specification);
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(specification.StandardOutputPath)!);
@@ -135,13 +141,15 @@ internal static partial class WindowsProcessLauncher
             {
                 fixed (char* commandLinePointer = commandLine)
                 {
+                    (bool inheritHandles, uint creationFlags) =
+                        GetProcessCreationSettings(specification);
                     created = CreateProcessExtended(
                         specification.ExecutablePath,
                         commandLinePointer,
                         IntPtr.Zero,
                         IntPtr.Zero,
-                        InheritHandles: true,
-                        CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
+                        inheritHandles,
+                        creationFlags,
                         pinnedEnvironment.AddrOfPinnedObject(),
                         specification.WorkingDirectory,
                         ref startup,
@@ -199,13 +207,94 @@ internal static partial class WindowsProcessLauncher
         }
     }
 
+    private static WindowsProcessLaunchResult StartInteractive(
+        LabProcessStartSpec specification)
+    {
+        byte[] environment = CreateEnvironmentBlock(specification.Environment);
+        GCHandle pinnedEnvironment = GCHandle.Alloc(environment, GCHandleType.Pinned);
+        ProcessInformation processInformation = default;
+        try
+        {
+            StartupInfo startup = new()
+            {
+                Size = Marshal.SizeOf<StartupInfo>(),
+            };
+            char[] commandLine = (BuildCommandLine(
+                specification.ExecutablePath,
+                specification.Arguments) + '\0').ToCharArray();
+            bool created;
+            unsafe
+            {
+                fixed (char* commandLinePointer = commandLine)
+                {
+                    (bool inheritHandles, uint creationFlags) =
+                        GetProcessCreationSettings(specification);
+                    created = CreateProcessBasic(
+                        specification.ExecutablePath,
+                        commandLinePointer,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        inheritHandles,
+                        creationFlags,
+                        pinnedEnvironment.AddrOfPinnedObject(),
+                        specification.WorkingDirectory,
+                        ref startup,
+                        out processInformation);
+                }
+            }
+
+            if (!created)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "CreateProcessW couldn't start the interactive lab process.");
+            }
+
+            SafeProcessHandle processHandle = new(
+                processInformation.ProcessHandle,
+                ownsHandle: true);
+            processInformation.ProcessHandle = IntPtr.Zero;
+            return new WindowsProcessLaunchResult(
+                checked((int)processInformation.ProcessId),
+                processHandle);
+        }
+        finally
+        {
+            if (processInformation.ThreadHandle != IntPtr.Zero)
+            {
+                CloseHandle(processInformation.ThreadHandle);
+            }
+
+            if (processInformation.ProcessHandle != IntPtr.Zero)
+            {
+                CloseHandle(processInformation.ProcessHandle);
+            }
+
+            pinnedEnvironment.Free();
+        }
+    }
+
     internal static (int Flags, short ShowWindow) GetStartupWindowSettings(
         LabProcessStartSpec specification)
     {
         ArgumentNullException.ThrowIfNull(specification);
+        if (specification.InteractiveConsole)
+        {
+            return (0, 0);
+        }
+
         return specification.StartMinimizedWithoutActivation
             ? (StartfUseStdHandles | StartfUseShowWindow, SwShowMinNoActive)
             : (StartfUseStdHandles, (short)0);
+    }
+
+    internal static (bool InheritHandles, uint CreationFlags) GetProcessCreationSettings(
+        LabProcessStartSpec specification)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+        return specification.InteractiveConsole
+            ? (false, CreateUnicodeEnvironment | CreateNewConsole)
+            : (true, CreateUnicodeEnvironment | ExtendedStartupInfoPresent);
     }
 
     private static byte[] CreateEnvironmentBlock(IReadOnlyDictionary<string, string> overrides)
@@ -367,6 +456,24 @@ internal static partial class WindowsProcessLauncher
         IntPtr Environment,
         string CurrentDirectory,
         ref StartupInfoEx StartupInfo,
+        out ProcessInformation ProcessInformation);
+
+    [LibraryImport(
+        "kernel32.dll",
+        EntryPoint = "CreateProcessW",
+        SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool CreateProcessBasic(
+        string? ApplicationName,
+        char* CommandLine,
+        IntPtr ProcessAttributes,
+        IntPtr ThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool InheritHandles,
+        uint CreationFlags,
+        IntPtr Environment,
+        string CurrentDirectory,
+        ref StartupInfo StartupInfo,
         out ProcessInformation ProcessInformation);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

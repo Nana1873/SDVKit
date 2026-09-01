@@ -118,11 +118,25 @@ internal sealed class WindowsLabProcessHost : ILabProcessHost
         ArgumentNullException.ThrowIfNull(expected);
         EnsureWindows();
 
+        using SafeProcessHandle? handle = OpenVerifiedProcess(
+            expected,
+            out LabProcessInspectResult result);
+        return result;
+    }
+
+    internal static SafeProcessHandle? OpenVerifiedProcess(
+        OwnedProcessIdentity expected,
+        out LabProcessInspectResult result)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        EnsureWindows();
+
         if (!IsValid(expected, out string? validationError))
         {
-            return new LabProcessInspectResult(
+            result = new LabProcessInspectResult(
                 LabProcessInspectStatus.Unreadable,
                 validationError);
+            return null;
         }
 
         SafeProcessHandle handle = OpenProcess(
@@ -133,31 +147,56 @@ internal sealed class WindowsLabProcessHost : ILabProcessHost
         {
             int error = Marshal.GetLastWin32Error();
             handle.Dispose();
-            return IsMissingProcessError(error)
+            result = IsMissingProcessError(error)
                 ? new LabProcessInspectResult(LabProcessInspectStatus.Exited)
                 : new LabProcessInspectResult(
                     LabProcessInspectStatus.Unreadable,
                     DescribeWindowsError("Windows could not inspect the owned process", error));
+            return null;
         }
 
-        using (handle)
+        Verification verification = VerifyExpectedIdentity(
+            handle,
+            expected,
+            out string? verificationError);
+        result = verification switch
         {
-            Verification verification = VerifyExpectedIdentity(
-                handle,
-                expected,
-                out string? verificationError);
-            return verification switch
-            {
-                Verification.Running => new LabProcessInspectResult(LabProcessInspectStatus.Running),
-                Verification.Exited => new LabProcessInspectResult(LabProcessInspectStatus.Exited),
-                Verification.IdentityMismatch => new LabProcessInspectResult(
-                    LabProcessInspectStatus.IdentityMismatch,
-                    "The PID no longer has the recorded start time and executable identity."),
-                _ => new LabProcessInspectResult(
-                    LabProcessInspectStatus.Unreadable,
-                    verificationError),
-            };
+            Verification.Running => new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            Verification.Exited => new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+            Verification.IdentityMismatch => new LabProcessInspectResult(
+                LabProcessInspectStatus.IdentityMismatch,
+                "The PID no longer has the recorded start time and executable identity."),
+            _ => new LabProcessInspectResult(
+                LabProcessInspectStatus.Unreadable,
+                verificationError),
+        };
+        if (verification == Verification.Running)
+        {
+            return handle;
         }
+
+        handle.Dispose();
+        return null;
+    }
+
+    internal static LabProcessInspectResult InspectVerifiedProcessHandle(
+        SafeProcessHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        if (handle.IsInvalid || handle.IsClosed)
+        {
+            return new LabProcessInspectResult(
+                LabProcessInspectStatus.Unreadable,
+                "The verified process handle is not readable.");
+        }
+
+        RunningState running = ReadRunningState(handle, out string? error);
+        return running switch
+        {
+            RunningState.Running => new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            RunningState.Exited => new LabProcessInspectResult(LabProcessInspectStatus.Exited),
+            _ => new LabProcessInspectResult(LabProcessInspectStatus.Unreadable, error),
+        };
     }
 
     public LabProcessWaitResult WaitForExit(

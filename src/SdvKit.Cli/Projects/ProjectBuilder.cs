@@ -247,6 +247,7 @@ internal static class ProjectBuilder
               <Import Project="$(_SdvKitOriginalProps)" Condition="'$(_SdvKitOriginalProps)' != '' and Exists('$(_SdvKitOriginalProps)')" />
               <PropertyGroup>
                 <_SdvKitProjectKey>$(MSBuildProjectName)-$([MSBuild]::StableStringHash(&quot;$(MSBuildProjectFullPath)&quot;))</_SdvKitProjectKey>
+                <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)/obj/**</DefaultItemExcludes>
                 <BaseOutputPath>{SecurityElement.Escape(baseOutputPath)}</BaseOutputPath>
                 <BaseIntermediateOutputPath>{SecurityElement.Escape(baseIntermediateOutputPath)}</BaseIntermediateOutputPath>
                 <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>

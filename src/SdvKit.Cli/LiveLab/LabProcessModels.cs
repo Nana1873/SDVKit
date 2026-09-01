@@ -12,7 +12,8 @@ internal sealed record LabProcessStartSpec(
     IReadOnlyDictionary<string, string> Environment,
     string StandardOutputPath,
     string StandardErrorPath,
-    bool StartMinimizedWithoutActivation = false);
+    bool StartMinimizedWithoutActivation = false,
+    bool InteractiveConsole = false);
 
 internal interface ILabProcessHost
 {
