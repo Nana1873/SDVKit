@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.5.1-win-x64.zip` and `SDVKit-0.5.1-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.5.2-win-x64.zip` and `SDVKit-0.5.2-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.5.1-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.5.1-win-x64.zip
-& .\SDVKit-0.5.1-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.5.2-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.5.2-win-x64.zip
+& .\SDVKit-0.5.2-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.5.1
+## What's new in v0.5.2
 
-Since `v0.5.0`, the bounded AlwaysOn fixture surface can follow a review FarmHouse's or exact Greenhouse's one natural player warp back to the Farm, and `fixture enter greenhouse` can follow the exact Greenhouse's natural entry from the Farm. This closes the command-only navigation gap found while dogfooding the public v0.5.0 artifact without adding a general warp command.
+Since `v0.5.1`, the strict building preflight recognizes the two missing vanilla natural-debris variants `(O)294` Twig and `(O)675` Weeds. Fixed-coordinate fixture buildings no longer depend on a lucky test-save seed when either variant occurs inside their footprint.
 
-All existing `v0.5.0` ownership boundaries remain: world mutations are still host-only in `network-2`, navigation is role-local, normal saves and the normal or mod-manager-owned `Mods` directory stay outside the workflow, and the fixture surface is not general game automation, general multiplayer compatibility, or an MCP interface.
+All existing state and ownership checks remain fail-closed. This is an exact allowlist extension, not blanket farm-object removal; normal saves and the normal or mod-manager-owned `Mods` directory stay outside the workflow.
 
 ## Isolated singleplayer live lab
 
