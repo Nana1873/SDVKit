@@ -368,11 +368,13 @@ internal static class ReviewFixturePolicy
         DisposableObjectKinds = new Dictionary<string, (string Name, string Type, int Fragility)>(
             StringComparer.Ordinal)
         {
+            ["294"] = ("Twig", "Litter", 2),
             ["295"] = ("Twig", "Litter", 2),
             ["343"] = ("Stone", "Litter", 0),
             ["450"] = ("Stone", "Litter", 0),
             ["590"] = ("Artifact Spot", "asdf", 0),
             ["674"] = ("Weeds", "Litter", 2),
+            ["675"] = ("Weeds", "Litter", 2),
             ["784"] = ("Weeds", "Litter", 2),
         };
 
