@@ -10,15 +10,26 @@ public sealed class ReviewScreenshotCommandTests
         Assert.True(
             ReviewScreenshotArguments.TryParse(
                 ["screenshot", "Vanilla_1"],
-                out string label,
+                out ReviewScreenshotRequest? request,
                 out string acceptedError),
             acceptedError);
-        Assert.Equal("Vanilla_1", label);
+        Assert.Equal(ReviewScreenshotKind.Map, request!.Kind);
+        Assert.Equal("Vanilla_1", request.Label);
+
+        Assert.True(
+            ReviewScreenshotArguments.TryParse(
+                ["screenshot", "viewport", "Menu_1"],
+                out request,
+                out acceptedError),
+            acceptedError);
+        Assert.Equal(ReviewScreenshotKind.Viewport, request!.Kind);
+        Assert.Equal("Menu_1", request.Label);
 
         Assert.False(ReviewScreenshotArguments.TryParse([], out _, out _));
         Assert.False(ReviewScreenshotArguments.TryParse(["status"], out _, out _));
         Assert.False(ReviewScreenshotArguments.TryParse(["Screenshot", "x"], out _, out _));
         Assert.False(ReviewScreenshotArguments.TryParse(["screenshot"], out _, out _));
+        Assert.False(ReviewScreenshotArguments.TryParse(["screenshot", "Viewport", "x"], out _, out _));
         Assert.False(
             ReviewScreenshotArguments.TryParse(
                 ["screenshot", "x", "extra"],
@@ -59,7 +70,9 @@ public sealed class ReviewScreenshotCommandTests
         using TemporaryDirectory temporary = new();
         var runtime = new FakeRuntime(temporary.Path);
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("../escape", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(
+            new ReviewScreenshotRequest(ReviewScreenshotKind.Map, "../escape"),
+            runtime);
 
         Assert.False(result.Succeeded);
         Assert.Equal(0, runtime.FolderRequests);
@@ -83,7 +96,7 @@ public sealed class ReviewScreenshotCommandTests
             ScreenshotBusy = screenshotBusy,
         };
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("blocked", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("blocked"), runtime);
 
         Assert.False(result.Succeeded);
         Assert.Equal(0, runtime.TakeRequests);
@@ -97,7 +110,7 @@ public sealed class ReviewScreenshotCommandTests
         string expectedPath = Path.Combine(temporary.Path, "SDVKit-existing.png");
         runtime.Files.Add(expectedPath);
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("existing", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("existing"), runtime);
 
         Assert.False(result.Succeeded);
         Assert.Contains(expectedPath, result.Message, StringComparison.Ordinal);
@@ -114,7 +127,7 @@ public sealed class ReviewScreenshotCommandTests
             CreateConcreteTarget = true,
         };
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("review", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("review"), runtime);
 
         Assert.False(result.Succeeded);
         Assert.Equal(1, runtime.TakeRequests);
@@ -129,7 +142,7 @@ public sealed class ReviewScreenshotCommandTests
             ReturnedFileName = "SDVKit-review.png",
         };
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("review", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("review"), runtime);
 
         Assert.False(result.Succeeded);
         Assert.Equal(1, runtime.TakeRequests);
@@ -145,7 +158,7 @@ public sealed class ReviewScreenshotCommandTests
             CreateConcreteTarget = true,
         };
 
-        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute("Vanilla_1", runtime);
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("Vanilla_1"), runtime);
 
         string expectedPath = Path.Combine(temporary.Path, "SDVKit-Vanilla_1.png");
         Assert.True(result.Succeeded, result.Message);
@@ -153,6 +166,27 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Equal(1, runtime.FolderRequests);
         Assert.Contains(expectedPath, result.Message, StringComparison.Ordinal);
         Assert.True(Path.IsPathFullyQualified(expectedPath));
+    }
+
+    [Fact]
+    public void ViewportCaptureConfirmsTheExactPngWithoutUsingTheMapApi()
+    {
+        using TemporaryDirectory temporary = new();
+        var runtime = new FakeRuntime(temporary.Path)
+        {
+            CreateViewportTarget = true,
+        };
+
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(
+            new ReviewScreenshotRequest(ReviewScreenshotKind.Viewport, "menu"),
+            runtime);
+
+        string expectedPath = Path.Combine(temporary.Path, "SDVKit-menu.png");
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(0, runtime.TakeRequests);
+        Assert.Equal(1, runtime.ViewportRequests);
+        Assert.Equal(expectedPath, runtime.RequestedViewportPath);
+        Assert.Contains("viewport screenshot", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -166,10 +200,14 @@ public sealed class ReviewScreenshotCommandTests
             source.Split("ConsoleCommands.Add(", StringSplitOptions.None).Length - 1);
         Assert.Contains("private const string RootCommand = \"sdvkit\";", source, StringComparison.Ordinal);
         Assert.Contains("ReviewScreenshotCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewInputCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
         Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
     }
+
+    private static ReviewScreenshotRequest Map(string label) =>
+        new(ReviewScreenshotKind.Map, label);
 
     private static string ReadSource(string fileName)
     {
@@ -205,13 +243,19 @@ public sealed class ReviewScreenshotCommandTests
 
         public bool CreateConcreteTarget { get; init; }
 
+        public bool CreateViewportTarget { get; init; }
+
         public HashSet<string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public int FolderRequests { get; private set; }
 
         public int TakeRequests { get; private set; }
 
+        public int ViewportRequests { get; private set; }
+
         public string? RequestedScreenshotName { get; private set; }
+
+        public string? RequestedViewportPath { get; private set; }
 
         public string GetScreenshotFolder()
         {
@@ -231,6 +275,19 @@ public sealed class ReviewScreenshotCommandTests
             }
 
             return ReturnedFileName;
+        }
+
+        public bool TryTakeViewportScreenshot(string path, out string error)
+        {
+            ViewportRequests++;
+            RequestedViewportPath = path;
+            if (CreateViewportTarget)
+            {
+                Files.Add(path);
+            }
+
+            error = CreateViewportTarget ? string.Empty : "capture failed";
+            return CreateViewportTarget;
         }
     }
 }

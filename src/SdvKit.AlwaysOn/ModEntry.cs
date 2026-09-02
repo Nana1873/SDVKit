@@ -88,6 +88,10 @@ public sealed class ModEntry : Mod
             Monitor,
             () => _testSave,
             () => _networkTwo);
+        if (!ReviewVirtualCursor.TryInstall(out string virtualCursorError))
+        {
+            Monitor.Log(virtualCursorError, LogLevel.Error);
+        }
 
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
@@ -139,6 +143,7 @@ public sealed class ModEntry : Mod
             _testSave?.OnSaving();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
+            ReviewVirtualCursor.Clear();
             _backgroundRun.ResetAfterReturnToTitle();
             _testSave?.OnReturnedToTitle();
             _networkTwo?.OnReturnedToTitle();
@@ -286,6 +291,7 @@ public sealed class ModEntry : Mod
         }
 
         int tick = Game1.ticks;
+        ReviewVirtualCursor.Clear();
         WindowsForegroundWindowObservation? foregroundWindow =
             _networkTwo?.ForegroundWindow;
         bool isActive = GetReportedIsActive(foregroundWindow);

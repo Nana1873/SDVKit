@@ -65,6 +65,18 @@ Do not pass `--role` for `single`. Companion or target commands are examples of 
 
 `commandWritten=true` proves only delivery of one console line. The message `Sent debug command ... but there was no output` is neutral: it proves neither success nor failure. Confirm each intended effect through the most direct available evidence, such as a matching isolated log entry, a state change, verified save/reload behavior, or a visual result. Do not infer completion from silence.
 
+### Drive review input without desktop automation
+
+Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:
+
+```text
+sdvkit input press <SButton>
+sdvkit input cursor <ui-x> <ui-y>
+sdvkit input cursor clear
+```
+
+Transport one line at a time through `project review command`, with the required role for `network-2`. `press` accepts one exact SMAPI `SButton` name, such as `F8`, `Enter`, `MouseLeft`, `MouseWheelDown`, `ControllerA`, or `DPadDown`, releases it on the next input tick, and permits Stardew's own background menu-input path only for the bounded dispatch interval. `cursor` enables a process-local virtual cursor only at a coordinate inside the current `Game1.uiViewport`; neither action may focus a window or move the user's physical pointer. Clear the override explicitly when the mouse path is complete. A successful AlwaysOn result proves the input was injected or the virtual coordinate was set; prove the intended target-mod effect separately through state, logs, or a viewport screenshot.
+
 ### Prepare generic state with the owned fixture surface
 
 Use the AlwaysOn fixture surface only when the currently running role has freshly verified the exact SDVKit-owned review fixture and Save identity. For `single`, this requires the explicit `--test-save` selection and the accepted test-save status above. For `network-2`, require the exact joined-pair and owned-fixture proof from both roles first. Never use these commands against a plain single review, smoke run, personal save, or an unverified world.
@@ -94,10 +106,11 @@ World mutations (`building ensure`, `object ensure`, `object clear-owned`, and `
 
 Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The fixture surface has no save or sleep command; use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
 
-Request screenshots only through the existing AlwaysOn command, with a unique label:
+Request screenshots only through the existing AlwaysOn commands, with a unique label. Use the map form for world layout and the viewport form for menus or HUD:
 
 ```text
 sdvkit project review command "sdvkit screenshot <unique-label>" --topology single --json
+sdvkit project review command "sdvkit screenshot viewport <unique-label>" --topology single --json
 ```
 
 For `network-2`, add `--role host` or `--role farmhand` and use distinct labels. A screenshot succeeds only when all three gates pass:

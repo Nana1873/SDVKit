@@ -21,6 +21,10 @@
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(SdvGamePath)\smapi-internal\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="StardewValley">
       <HintPath>$(SdvGamePath)\Stardew Valley.dll</HintPath>
       <Private>false</Private>
@@ -51,6 +55,9 @@
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\StardewModdingAPI.dll')"
       Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\StardewModdingAPI.dll'." />
+    <Error
+      Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\smapi-internal\0Harmony.dll')"
+      Text="SdvKit.AlwaysOn requires SMAPI's bundled 'smapi-internal\0Harmony.dll'." />
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\Stardew Valley.dll')"
       Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\Stardew Valley.dll'." />
