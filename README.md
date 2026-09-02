@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.5.2-win-x64.zip` and `SDVKit-0.5.2-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.5.3-win-x64.zip` and `SDVKit-0.5.3-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.5.2-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.5.2-win-x64.zip
-& .\SDVKit-0.5.2-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.5.3-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.5.3-win-x64.zip
+& .\SDVKit-0.5.3-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.5.2
+## What's new in v0.5.3
 
-Since `v0.5.1`, the strict building preflight recognizes the two missing vanilla natural-debris variants `(O)294` Twig and `(O)675` Weeds. Fixed-coordinate fixture buildings no longer depend on a lucky test-save seed when either variant occurs inside their footprint.
+Since `v0.5.2`, `fixture building ensure` derives its exact placement area from Stardew's `BuildingData` and prepares tile-bound dynamic content there by category, without a vanilla object-ID allowlist. Content outside that derived area remains untouched.
 
-All existing state and ownership checks remain fail-closed. This is an exact allowlist extension, not blanket farm-object removal; normal saves and the normal or mod-manager-owned `Mods` directory stay outside the workflow.
+Structural blockers and all save, fixture, role, and ownership boundaries remain fail-closed. `object clear-owned` remains separate and marker-strict.
 
 ## Isolated singleplayer live lab
 
