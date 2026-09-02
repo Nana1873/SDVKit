@@ -806,6 +806,13 @@ internal sealed class StardewReviewFixtureRuntime(
                 $"Fixture building '{alias}' already exists as {existing.id.Value:D} at {x},{y}.");
         }
 
+        if (!ReferenceEquals(Game1.currentLocation, farm))
+        {
+            return Failure(
+                "A new fixture building can be prepared only while the main player is on the Farm. "
+                + "Run 'sdvkit fixture farm' first; no placement content was changed.");
+        }
+
         if (!TryPlanBuildingPlacement(
                 farm,
                 x,
