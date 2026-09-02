@@ -219,6 +219,8 @@ public sealed class TestSaveFixtureStoreTests
         TestSaveLaunchState create = store.PrepareForStart().LaunchState;
         WriteCompleteSavePayload(paths, create.Identity, "baseline save", "baseline info");
         store.CompleteStopped(create, LaunchId);
+        Dictionary<string, byte[]> expectedBaseline = ReadTree(
+            paths.TestSaveBaselinePath);
         TestSaveLaunchState review = store.PrepareReviewForStart(resetFromBaseline: true)
             .LaunchState;
         string savePath = Path.Combine(paths.TestSaveWorkPath, create.Identity.SaveId);
@@ -241,6 +243,11 @@ public sealed class TestSaveFixtureStoreTests
             "baseline info",
             File.ReadAllText(Path.Combine(paths.TestSaveWorkPath, "SaveGameInfo")));
         Assert.False(File.Exists(reviewOnlyPath));
+        Dictionary<string, byte[]> retainedBaseline = ReadTree(paths.TestSaveBaselinePath);
+        Dictionary<string, byte[]> restoredWork = ReadTree(paths.TestSaveWorkPath);
+        AssertTreesEqual(expectedBaseline, retainedBaseline);
+        AssertTreesEqual(expectedBaseline, restoredWork);
+
         Assert.Empty(Directory.EnumerateDirectories(
             paths.TestSaveRoot,
             ".*.tmp",
@@ -521,6 +528,26 @@ public sealed class TestSaveFixtureStoreTests
         File.WriteAllText(
             Path.Combine(paths.TestSaveWorkPath, "SaveGameInfo"),
             infoContent);
+    }
+
+    private static Dictionary<string, byte[]> ReadTree(string root) =>
+        Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .ToDictionary(
+                path => Path.GetRelativePath(root, path).Replace('\\', '/'),
+                File.ReadAllBytes,
+                StringComparer.Ordinal);
+
+    private static void AssertTreesEqual(
+        Dictionary<string, byte[]> expected,
+        Dictionary<string, byte[]> actual)
+    {
+        Assert.Equal(
+            expected.Keys.Order(StringComparer.Ordinal),
+            actual.Keys.Order(StringComparer.Ordinal));
+        foreach ((string relativePath, byte[] expectedBytes) in expected)
+        {
+            Assert.Equal(expectedBytes, actual[relativePath]);
+        }
     }
 
     private sealed class FakeJunction : IDirectChildJunction

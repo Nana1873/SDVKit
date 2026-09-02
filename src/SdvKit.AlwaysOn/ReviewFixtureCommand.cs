@@ -6,6 +6,7 @@ using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
 using StardewValley.Locations;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 #endif
 
@@ -320,39 +321,43 @@ internal sealed record ReviewFixtureAnimalState(
     bool HasExactHome,
     bool HasExactAssignment);
 
-internal sealed record ReviewFixtureObjectClutterState(
-    string ItemId,
-    string Name,
-    string Type,
-    int Stack,
-    bool CanBeSetDown,
-    bool CanBeGrabbed,
-    bool IsSpawnedObject,
-    bool IsQuestItem,
-    bool IsBigCraftable,
-    bool HasHeldObject,
-    int Fragility,
-    int Price,
-    bool HasModData);
+internal readonly record struct ReviewFixtureTile(int X, int Y);
 
-internal enum ReviewFixtureTerrainKind
-{
-    Grass,
-    Tree,
-    Other,
-}
-
-internal sealed record ReviewFixtureTerrainClutterState(
-    ReviewFixtureTerrainKind Kind,
-    bool IsTapped,
-    bool IsStump,
-    bool HasModData);
-
-internal sealed record ReviewFixtureResourceClumpState(
-    int ParentSheetIndex,
+internal sealed record ReviewFixtureAdditionalPlacementArea(
+    int X,
+    int Y,
     int Width,
     int Height,
-    bool HasModData);
+    bool OnlyNeedsToBePassable);
+
+internal sealed class ReviewFixtureBuildingPlacementArea(
+    IEnumerable<ReviewFixtureTile> footprintTiles,
+    IEnumerable<ReviewFixtureTile> buildableTiles,
+    IEnumerable<ReviewFixtureTile> passableTiles,
+    IEnumerable<ReviewFixtureTile> tiles)
+{
+    private readonly HashSet<ReviewFixtureTile> _footprintTiles = [.. footprintTiles];
+    private readonly HashSet<ReviewFixtureTile> _buildableTiles = [.. buildableTiles];
+    private readonly HashSet<ReviewFixtureTile> _passableTiles = [.. passableTiles];
+
+    public IReadOnlyList<ReviewFixtureTile> Tiles { get; } = tiles
+        .OrderBy(tile => tile.Y)
+        .ThenBy(tile => tile.X)
+        .ToArray();
+
+    public IReadOnlyList<ReviewFixtureTile> SelectOccupiedTiles(
+        Func<ReviewFixtureTile, bool> isOccupied)
+    {
+        ArgumentNullException.ThrowIfNull(isOccupied);
+        return Tiles.Where(isOccupied).ToArray();
+    }
+
+    public bool IsFootprint(ReviewFixtureTile tile) => _footprintTiles.Contains(tile);
+
+    public bool MustBeBuildable(ReviewFixtureTile tile) => _buildableTiles.Contains(tile);
+
+    public bool MustBePassable(ReviewFixtureTile tile) => _passableTiles.Contains(tile);
+}
 
 internal sealed record ReviewFixtureWarpState(
     int X,
@@ -364,20 +369,6 @@ internal sealed record ReviewFixtureWarpState(
 
 internal static class ReviewFixturePolicy
 {
-    private static readonly Dictionary<string, (string Name, string Type, int Fragility)>
-        DisposableObjectKinds = new Dictionary<string, (string Name, string Type, int Fragility)>(
-            StringComparer.Ordinal)
-        {
-            ["294"] = ("Twig", "Litter", 2),
-            ["295"] = ("Twig", "Litter", 2),
-            ["343"] = ("Stone", "Litter", 0),
-            ["450"] = ("Stone", "Litter", 0),
-            ["590"] = ("Artifact Spot", "asdf", 0),
-            ["674"] = ("Weeds", "Litter", 2),
-            ["675"] = ("Weeds", "Litter", 2),
-            ["784"] = ("Weeds", "Litter", 2),
-        };
-
     public static ReviewFixtureEnsureDecision DecideBuildingEnsure(
         IReadOnlyList<ReviewFixtureBuildingState> aliasMatches,
         string fixtureId,
@@ -460,37 +451,130 @@ internal static class ReviewFixturePolicy
         string.Equals(fixtureMarker, fixtureId, StringComparison.Ordinal)
         && string.Equals(objectMarker, buildingId, StringComparison.Ordinal);
 
-    public static bool IsDisposableObjectClutter(ReviewFixtureObjectClutterState item) =>
-        DisposableObjectKinds.TryGetValue(
-            item.ItemId,
-            out (string Name, string Type, int Fragility) kind)
-        && string.Equals(item.Name, kind.Name, StringComparison.Ordinal)
-        && string.Equals(item.Type, kind.Type, StringComparison.Ordinal)
-        && item.Stack == 1
-        && item.CanBeSetDown
-        && item.CanBeGrabbed
-        && !item.IsSpawnedObject
-        && !item.IsQuestItem
-        && !item.IsBigCraftable
-        && !item.HasHeldObject
-        && item.Fragility == kind.Fragility
-        && item.Price == 0
-        && !item.HasModData;
+    public static bool TryCreateBuildingPlacementArea(
+        int x,
+        int y,
+        int width,
+        int height,
+        IReadOnlyList<ReviewFixtureAdditionalPlacementArea>? additionalAreas,
+        ReviewFixtureTile? humanDoor,
+        int mapWidth,
+        int mapHeight,
+        out ReviewFixtureBuildingPlacementArea? placementArea,
+        out string error)
+    {
+        placementArea = null;
+        var footprintTiles = new HashSet<ReviewFixtureTile>();
+        var buildableTiles = new HashSet<ReviewFixtureTile>();
+        var passableTiles = new HashSet<ReviewFixtureTile>();
+        var allTiles = new HashSet<ReviewFixtureTile>();
 
-    public static bool IsDisposableTerrainClutter(
-        ReviewFixtureTerrainClutterState terrain) =>
-        !terrain.HasModData
-        && (terrain.Kind == ReviewFixtureTerrainKind.Grass
-            || (terrain.Kind == ReviewFixtureTerrainKind.Tree
-                && !terrain.IsTapped
-                && !terrain.IsStump));
+        if (width <= 0
+            || height <= 0
+            || mapWidth <= 0
+            || mapHeight <= 0
+            || !TryAddArea(
+                x,
+                y,
+                width,
+                height,
+                mapWidth,
+                mapHeight,
+                footprintTiles,
+                out error))
+        {
+            error = "Stardew's exact building footprint is invalid or outside the Farm map.";
+            return false;
+        }
 
-    public static bool IsDisposableResourceClump(
-        ReviewFixtureResourceClumpState clump) =>
-        clump.ParentSheetIndex == 600
-        && clump.Width == 2
-        && clump.Height == 2
-        && !clump.HasModData;
+        buildableTiles.UnionWith(footprintTiles);
+        allTiles.UnionWith(footprintTiles);
+        foreach (ReviewFixtureAdditionalPlacementArea additional in additionalAreas ?? [])
+        {
+            var areaTiles = new HashSet<ReviewFixtureTile>();
+            if (!TryAddArea(
+                    (long)x + additional.X,
+                    (long)y + additional.Y,
+                    additional.Width,
+                    additional.Height,
+                    mapWidth,
+                    mapHeight,
+                    areaTiles,
+                    out error))
+            {
+                error = "Stardew's additional building placement area is invalid or outside the Farm map.";
+                return false;
+            }
+
+            allTiles.UnionWith(areaTiles);
+            (additional.OnlyNeedsToBePassable ? passableTiles : buildableTiles)
+                .UnionWith(areaTiles);
+        }
+
+        if (humanDoor is ReviewFixtureTile door)
+        {
+            var accessTiles = new HashSet<ReviewFixtureTile>();
+            if (!TryAddArea(
+                    (long)x + door.X,
+                    (long)y + door.Y + 1,
+                    1,
+                    1,
+                    mapWidth,
+                    mapHeight,
+                    accessTiles,
+                    out error))
+            {
+                error = "Stardew's human-door access tile is outside the Farm map.";
+                return false;
+            }
+
+            allTiles.UnionWith(accessTiles);
+            passableTiles.UnionWith(accessTiles);
+        }
+
+        placementArea = new ReviewFixtureBuildingPlacementArea(
+            footprintTiles,
+            buildableTiles,
+            passableTiles,
+            allTiles);
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool TryAddArea(
+        long x,
+        long y,
+        int width,
+        int height,
+        int mapWidth,
+        int mapHeight,
+        HashSet<ReviewFixtureTile> target,
+        out string error)
+    {
+        long right = x + width;
+        long bottom = y + height;
+        if (width < 0
+            || height < 0
+            || x < 0
+            || y < 0
+            || right > mapWidth
+            || bottom > mapHeight)
+        {
+            error = "The area is invalid or outside the map.";
+            return false;
+        }
+
+        for (long tileY = y; tileY < bottom; tileY++)
+        {
+            for (long tileX = x; tileX < right; tileX++)
+            {
+                target.Add(new ReviewFixtureTile((int)tileX, (int)tileY));
+            }
+        }
+
+        error = string.Empty;
+        return true;
+    }
 
     public static bool IsBuildableMapTile(
         string? buildableProperty,
@@ -549,6 +633,23 @@ internal sealed class StardewReviewFixtureRuntime(
     Func<NetworkTwoAutomation?> networkTwo,
     Func<long> getNewMultiplayerId) : IReviewFixtureRuntime
 {
+    private sealed record BuildingPlacementPreparation(
+        IReadOnlyList<ReviewFixtureTile> ObjectTiles,
+        IReadOnlyList<ReviewFixtureTile> TerrainFeatureTiles,
+        IReadOnlyList<ResourceClump> ResourceClumps,
+        IReadOnlyList<Furniture> Furniture);
+
+    private readonly record struct BuildingPreparationCounts(
+        int Objects,
+        int TerrainFeatures,
+        int ResourceClumps,
+        int Furniture)
+    {
+        public override string ToString() =>
+            $"objects={Objects} terrainFeatures={TerrainFeatures} "
+            + $"resourceClumps={ResourceClumps} furniture={Furniture}";
+    }
+
     public ReviewFixtureAccess VerifyExactReviewFixture()
     {
         if (!string.Equals(
@@ -705,33 +806,57 @@ internal sealed class StardewReviewFixtureRuntime(
                 $"Fixture building '{alias}' already exists as {existing.id.Value:D} at {x},{y}.");
         }
 
-        if (!TryValidateBuildingFootprint(farm, x, y, out string footprintError))
+        if (!TryPlanBuildingPlacement(
+                farm,
+                x,
+                y,
+                out BuildingPlacementPreparation? preparation,
+                out string footprintError))
         {
             return Failure(footprintError);
         }
 
-        // The registered disposable baseline has ordinary debris in these exact
-        // acceptance-test footprints. The narrow preflight permits only that
-        // explicit disposable clutter and fails closed on every other world state.
-        // Stardew may retain allowed objects or clumps beneath the building; the
-        // final fixture reset restores the entire baseline either way.
-        if (!farm.buildStructure(
-                ReviewFixtureContract.DeluxeBarnBuildingType,
-                new Vector2(x, y),
-                Game1.player,
-                out Building constructed,
-                magicalConstruction: false,
-                skipSafetyChecks: true))
+        if (!TryApplyBuildingPlacementPreparation(
+                farm,
+                preparation!,
+                out BuildingPreparationCounts removed,
+                out string preparationError))
         {
             return Failure(
-                $"Stardew rejected the safe Deluxe Barn placement for '{alias}' at {x},{y}.");
+                $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                + $"{preparationError} Reset the disposable fixture before retrying.");
         }
 
-        constructed.modData[ReviewFixtureContract.FixtureIdMarkerKey] = fixtureId;
-        constructed.modData[ReviewFixtureContract.BuildingAliasMarkerKey] = alias;
-        constructed.FinishConstruction(onGameStart: false);
-        return Success(
-            $"Created finished fixture building '{alias}' as {constructed.id.Value:D} at {x},{y}.");
+        try
+        {
+            if (!farm.buildStructure(
+                    ReviewFixtureContract.DeluxeBarnBuildingType,
+                    new Vector2(x, y),
+                    Game1.player,
+                    out Building constructed,
+                    magicalConstruction: false,
+                    skipSafetyChecks: false))
+            {
+                return Failure(
+                    $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                    + $"Stardew rejected the placement for '{alias}'. "
+                    + "Reset the disposable fixture before retrying.");
+            }
+
+            constructed.modData[ReviewFixtureContract.FixtureIdMarkerKey] = fixtureId;
+            constructed.modData[ReviewFixtureContract.BuildingAliasMarkerKey] = alias;
+            constructed.FinishConstruction(onGameStart: false);
+            return Success(
+                $"Created finished fixture building '{alias}' as {constructed.id.Value:D} at {x},{y}; "
+                + $"removed {removed} from the exact placement area.");
+        }
+        catch (Exception exception)
+        {
+            return Failure(
+                $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                + $"Stardew failed while creating '{alias}': {exception.GetBaseException().Message}. "
+                + "Reset the disposable fixture before retrying.");
+        }
     }
 
     public ReviewFixtureResult EnsureObject(
@@ -1174,12 +1299,14 @@ internal sealed class StardewReviewFixtureRuntime(
             ReferenceEquals(building.GetIndoors(), current)) == 1;
     }
 
-    private static bool TryValidateBuildingFootprint(
+    private static bool TryPlanBuildingPlacement(
         Farm farm,
         int x,
         int y,
+        out BuildingPlacementPreparation? preparation,
         out string error)
     {
+        preparation = null;
         if (!Game1.buildingData.TryGetValue(
                 ReviewFixtureContract.DeluxeBarnBuildingType,
                 out StardewValley.GameData.Buildings.BuildingData? buildingData)
@@ -1191,89 +1318,81 @@ internal sealed class StardewReviewFixtureRuntime(
         }
 
         xTile.Layers.Layer? back = farm.Map.GetLayer("Back");
-        if (back is null
-            || (long)x + buildingData.Size.X > back.LayerWidth
-            || (long)y + buildingData.Size.Y > back.LayerHeight)
+        if (back is null)
         {
-            error = $"The Deluxe Barn footprint at {x},{y} is outside the Farm map.";
+            error = "The Farm map has no Back layer for Deluxe Barn placement.";
             return false;
         }
 
-        var requested = new Rectangle(
-            x,
-            y,
-            buildingData.Size.X,
-            buildingData.Size.Y);
-        var footprintTiles = new HashSet<Point>();
-        AddTiles(footprintTiles, requested);
-        var buildableTiles = new HashSet<Point>(footprintTiles);
-        var passableTiles = new HashSet<Point>();
-        var protectedTiles = new HashSet<Point>(footprintTiles);
-        foreach (StardewValley.GameData.Buildings.BuildingPlacementTile placement
-            in buildingData.AdditionalPlacementTiles ?? [])
+        ReviewFixtureAdditionalPlacementArea[] additionalAreas = (buildingData
+                .AdditionalPlacementTiles ?? [])
+            .Select(placement => new ReviewFixtureAdditionalPlacementArea(
+                placement.TileArea.X,
+                placement.TileArea.Y,
+                placement.TileArea.Width,
+                placement.TileArea.Height,
+                placement.OnlyNeedsToBePassable))
+            .ToArray();
+        ReviewFixtureTile? humanDoor = buildingData.HumanDoor == new Point(-1, -1)
+            ? null
+            : new ReviewFixtureTile(buildingData.HumanDoor.X, buildingData.HumanDoor.Y);
+        if (!ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+                x,
+                y,
+                buildingData.Size.X,
+                buildingData.Size.Y,
+                additionalAreas,
+                humanDoor,
+                back.LayerWidth,
+                back.LayerHeight,
+                out ReviewFixtureBuildingPlacementArea? placementArea,
+                out string placementAreaError))
         {
-            Rectangle area = placement.TileArea;
-            var absoluteArea = new Rectangle(
-                x + area.X,
-                y + area.Y,
-                area.Width,
-                area.Height);
-            AddTiles(protectedTiles, absoluteArea);
-            AddTiles(
-                placement.OnlyNeedsToBePassable ? passableTiles : buildableTiles,
-                absoluteArea);
-        }
-
-        if (buildingData.HumanDoor.X >= 0 && buildingData.HumanDoor.Y >= 0)
-        {
-            var landing = new Point(
-                x + buildingData.HumanDoor.X,
-                y + buildingData.HumanDoor.Y + 1);
-            protectedTiles.Add(landing);
-            passableTiles.Add(landing);
+            error = $"The Deluxe Barn placement at {x},{y} is invalid. {placementAreaError}";
+            return false;
         }
 
         // Farm.isBuildable also evaluates current occupancy, which would reject
-        // the explicitly allowed baseline clutter. Validate its occupancy-neutral
-        // map placement and Buildable/Diggable rules here; stricter occupancy
-        // checks follow.
+        // the dynamic contents which this explicit disposable-work-copy operation
+        // prepares. Validate the occupancy-neutral map rules here, then all
+        // structural blockers, before removing any content.
         Rectangle buildableArea = farm.GetBuildableRectangle();
-        foreach (Point tile in protectedTiles)
+        foreach (ReviewFixtureTile tile in placementArea!.Tiles)
         {
             var vector = new Vector2(tile.X, tile.Y);
-            if (tile.X < 0
-                || tile.Y < 0
-                || tile.X >= back.LayerWidth
-                || tile.Y >= back.LayerHeight)
-            {
-                error = $"The Deluxe Barn placement tile {tile.X},{tile.Y} is outside the Farm map.";
-                return false;
-            }
-
-            if (buildableTiles.Contains(tile)
+            string buildableProperty = farm.doesTileHavePropertyNoNull(
+                tile.X,
+                tile.Y,
+                "Buildable",
+                "Back");
+            if (farm.isWaterTile(tile.X, tile.Y)
+                || string.Equals(buildableProperty, "f", StringComparison.OrdinalIgnoreCase)
+                || (placementArea.MustBeBuildable(tile)
                 && ((buildableArea != Rectangle.Empty
-                        && !buildableArea.Contains(tile))
+                        && !buildableArea.Contains(new Point(tile.X, tile.Y)))
                     || !farm.isTilePlaceable(vector, itemIsPassable: false)
                     || !ReviewFixturePolicy.IsBuildableMapTile(
-                        farm.doesTileHavePropertyNoNull(
-                            tile.X,
-                            tile.Y,
-                            "Buildable",
-                            "Back"),
+                        buildableProperty,
                         farm.doesTileHaveProperty(
                             tile.X,
                             tile.Y,
                             "Diggable",
                             "Back",
-                            ignoreTileSheetProperties: false) is not null)))
+                            ignoreTileSheetProperties: false) is not null))))
             {
                 error = $"The Deluxe Barn footprint tile {tile.X},{tile.Y} is water, NoBuild, NoFurniture, or otherwise not buildable.";
+                return false;
+            }
+
+            if (!farm.isTilePassable(vector))
+            {
+                error = $"The Deluxe Barn placement tile {tile.X},{tile.Y} is blocked by the Farm map collision layer.";
                 return false;
             }
         }
 
         Building? overlap = farm.buildings.FirstOrDefault(existing =>
-            protectedTiles.Any(tile =>
+            placementArea.Tiles.Any(tile =>
                 existing.occupiesTile(tile.X, tile.Y, applyTilePropertyRadius: false)));
         if (overlap is not null)
         {
@@ -1281,44 +1400,12 @@ internal sealed class StardewReviewFixtureRuntime(
             return false;
         }
 
-        foreach (Point tile in protectedTiles)
+        foreach (ReviewFixtureTile tile in placementArea.Tiles)
         {
-            var vector = new Vector2(tile.X, tile.Y);
-            bool inFootprint = footprintTiles.Contains(tile);
-            if (farm.GetFurnitureAt(vector) is not null)
-            {
-                error = $"The Deluxe Barn placement at {x},{y} overlaps furniture at {tile.X},{tile.Y}.";
-                return false;
-            }
-
-            if (farm.Objects.TryGetValue(vector, out StardewValley.Object? item)
-                && (!inFootprint || !IsDisposableObjectClutter(item)))
-            {
-                error = $"The Deluxe Barn placement at {x},{y} would overwrite non-disposable object '{item.QualifiedItemId}' at {tile.X},{tile.Y}.";
-                return false;
-            }
-
-            if (farm.terrainFeatures.TryGetValue(vector, out TerrainFeature? terrain)
-                && (!inFootprint
-                    ? terrain is not Grass || terrain.modData.Count() > 0
-                    : !IsDisposableTerrainClutter(terrain)))
-            {
-                error = $"The Deluxe Barn placement at {x},{y} would overwrite non-disposable terrain at {tile.X},{tile.Y}.";
-                return false;
-            }
-
-            if (passableTiles.Contains(tile)
-                && !buildableTiles.Contains(tile)
-                && !farm.isTilePassable(vector))
-            {
-                error = $"The Deluxe Barn access tile {tile.X},{tile.Y} is not passable.";
-                return false;
-            }
-
             Rectangle tileBounds = GetTileBounds(tile);
             if (farm.farmers.Any(farmer => farmer.GetBoundingBox().Intersects(tileBounds))
                 || farm.characters.Any(character => character.GetBoundingBox().Intersects(tileBounds))
-                || farm.getAllFarmAnimals().Any(animal => animal.GetBoundingBox().Intersects(tileBounds)))
+                || farm.animals.Values.Any(animal => animal.GetBoundingBox().Intersects(tileBounds)))
             {
                 error = $"The Deluxe Barn placement at {x},{y} is occupied by a player, character, or animal at {tile.X},{tile.Y}.";
                 return false;
@@ -1332,84 +1419,264 @@ internal sealed class StardewReviewFixtureRuntime(
             }
         }
 
-        foreach (ResourceClump clump in farm.resourceClumps)
+        IReadOnlyList<ReviewFixtureTile> objectTiles = placementArea.SelectOccupiedTiles(tile =>
+            farm.Objects.ContainsKey(new Vector2(tile.X, tile.Y)));
+        IReadOnlyList<ReviewFixtureTile> terrainFeatureTiles = placementArea.SelectOccupiedTiles(tile =>
+            farm.terrainFeatures.ContainsKey(new Vector2(tile.X, tile.Y)));
+        ResourceClump[] resourceClumps = farm.resourceClumps
+            .Where(clump => placementArea.Tiles.Any(tile =>
+                clump.occupiesTile(tile.X, tile.Y)))
+            .OrderBy(clump => clump.Tile.Y)
+            .ThenBy(clump => clump.Tile.X)
+            .ToArray();
+        Furniture[] selectedFurniture = farm.furniture
+            .Where(item => placementArea.Tiles.Any(tile =>
+                item.GetBoundingBox().Intersects(GetTileBounds(tile))))
+            .OrderBy(item => item.TileLocation.Y)
+            .ThenBy(item => item.TileLocation.X)
+            .ToArray();
+        HashSet<ReviewFixtureTile> plannedObjectTiles = [.. objectTiles];
+        if (!TryOrderFurniturePreparation(
+                farm,
+                selectedFurniture,
+                plannedObjectTiles,
+                out Furniture[] orderedFurniture,
+                out Furniture? unsafeFurniture))
         {
-            bool overlapsFootprint = footprintTiles.Any(tile =>
-                clump.occupiesTile(tile.X, tile.Y));
-            bool overlapsProtected = overlapsFootprint || protectedTiles.Any(tile =>
-                clump.occupiesTile(tile.X, tile.Y));
-            if (overlapsProtected
-                && (!overlapsFootprint || !IsDisposableResourceClump(clump)))
-            {
-                error = $"The Deluxe Barn placement at {x},{y} overlaps a non-disposable resource clump.";
-                return false;
-            }
+            error = $"The Deluxe Barn placement at {x},{y} overlaps furniture at "
+                + $"{unsafeFurniture!.TileLocation.X},{unsafeFurniture.TileLocation.Y} "
+                + "which Stardew cannot safely and synchronously remove.";
+            return false;
         }
 
+        preparation = new BuildingPlacementPreparation(
+            objectTiles,
+            terrainFeatureTiles,
+            resourceClumps,
+            orderedFurniture);
         error = string.Empty;
         return true;
     }
 
-    private static void AddTiles(HashSet<Point> target, Rectangle area)
+    private static bool TryApplyBuildingPlacementPreparation(
+        Farm farm,
+        BuildingPlacementPreparation preparation,
+        out BuildingPreparationCounts removed,
+        out string error)
     {
-        for (int tileX = area.Left; tileX < area.Right; tileX++)
+        var objectCount = 0;
+        var terrainFeatureCount = 0;
+        var resourceClumpCount = 0;
+        var furnitureCount = 0;
+        try
         {
-            for (int tileY = area.Top; tileY < area.Bottom; tileY++)
+            foreach (ReviewFixtureTile tile in preparation.ObjectTiles)
             {
-                target.Add(new Point(tileX, tileY));
+                if (!farm.Objects.Remove(new Vector2(tile.X, tile.Y)))
+                {
+                    return Failed(
+                        $"Farm object removal drifted at {tile.X},{tile.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                objectCount++;
             }
+
+            foreach (ReviewFixtureTile tile in preparation.TerrainFeatureTiles)
+            {
+                if (!farm.terrainFeatures.Remove(new Vector2(tile.X, tile.Y)))
+                {
+                    return Failed(
+                        $"Terrain-feature removal drifted at {tile.X},{tile.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                terrainFeatureCount++;
+            }
+
+            foreach (ResourceClump clump in preparation.ResourceClumps)
+            {
+                if (!farm.resourceClumps.Contains(clump))
+                {
+                    return Failed(
+                        $"Resource-clump removal drifted at {clump.Tile.X},{clump.Tile.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                farm.resourceClumps.Remove(clump);
+                if (farm.resourceClumps.Contains(clump))
+                {
+                    return Failed(
+                        $"Stardew did not remove the resource clump at {clump.Tile.X},{clump.Tile.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                resourceClumpCount++;
+            }
+
+            foreach (Furniture item in preparation.Furniture)
+            {
+                if (!farm.furniture.Contains(item)
+                    || !item.canBeRemoved(Game1.player)
+                    || !HasSynchronousFurnitureRemoval(item))
+                {
+                    return Failed(
+                        $"Furniture removal drifted at {item.TileLocation.X},{item.TileLocation.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                Furniture? removedFurniture = null;
+                item.AttemptRemoval(candidate =>
+                {
+                    removedFurniture = candidate;
+                    candidate.performRemoveAction();
+                    farm.furniture.Remove(candidate);
+                });
+                if (!ReferenceEquals(removedFurniture, item)
+                    || farm.furniture.Contains(item))
+                {
+                    return Failed(
+                        $"Stardew did not remove the furniture at {item.TileLocation.X},{item.TileLocation.Y}.",
+                        out removed,
+                        out error);
+                }
+
+                furnitureCount++;
+            }
+
+            removed = new BuildingPreparationCounts(
+                objectCount,
+                terrainFeatureCount,
+                resourceClumpCount,
+                furnitureCount);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            return Failed(
+                $"Stardew threw while preparing the placement area: {exception.GetBaseException().Message}.",
+                out removed,
+                out error);
+        }
+
+        bool Failed(
+            string message,
+            out BuildingPreparationCounts observed,
+            out string failure)
+        {
+            observed = new BuildingPreparationCounts(
+                objectCount,
+                terrainFeatureCount,
+                resourceClumpCount,
+                furnitureCount);
+            failure = message;
+            return false;
         }
     }
 
-    private static Rectangle GetTileBounds(Point tile) => new(
+    private static bool HasSynchronousFurnitureRemoval(Furniture item) =>
+        item.GetType().GetMethod(
+            nameof(Furniture.AttemptRemoval),
+            [typeof(Action<Furniture>)])?.DeclaringType == typeof(Furniture);
+
+    private static bool CanPrepareFurniture(
+        Farm farm,
+        Furniture item,
+        HashSet<ReviewFixtureTile> plannedObjectTiles,
+        IReadOnlyList<Furniture> scheduledFurniture)
+    {
+        if (!HasSynchronousFurnitureRemoval(item))
+        {
+            return false;
+        }
+
+        if (item.canBeRemoved(Game1.player))
+        {
+            return true;
+        }
+
+        // Base Furniture only rejects an otherwise removable passable item when
+        // another object or furniture occupies its tiles. Objects already selected
+        // for this exact placement area disappear before the normal removal API is
+        // invoked, so account for only that scheduled state change here. Overrides
+        // remain fail-closed because their additional contracts aren't predictable.
+        if (item.GetType().GetMethod(
+                nameof(Furniture.canBeRemoved),
+                [typeof(Farmer)])?.DeclaringType != typeof(Furniture)
+            || !item.AllowLocalRemoval
+            || !ReferenceEquals(item.Location, farm)
+            || item.HasSittingFarmers()
+            || item.heldObject.Value is not null
+            || !item.isPassable())
+        {
+            return false;
+        }
+
+        Rectangle bounds = item.GetBoundingBox();
+        if (farm.furniture.Any(other =>
+            !ReferenceEquals(other, item)
+            && !scheduledFurniture.Any(scheduled => ReferenceEquals(scheduled, other))
+            && other.GetBoundingBox().Intersects(bounds)))
+        {
+            return false;
+        }
+
+        for (int x = bounds.Left / Game1.tileSize; x < bounds.Right / Game1.tileSize; x++)
+        {
+            for (int y = bounds.Top / Game1.tileSize; y < bounds.Bottom / Game1.tileSize; y++)
+            {
+                var tile = new ReviewFixtureTile(x, y);
+                if (farm.Objects.ContainsKey(new Vector2(x, y))
+                    && !plannedObjectTiles.Contains(tile))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryOrderFurniturePreparation(
+        Farm farm,
+        IReadOnlyList<Furniture> selectedFurniture,
+        HashSet<ReviewFixtureTile> plannedObjectTiles,
+        out Furniture[] orderedFurniture,
+        out Furniture? unsafeFurniture)
+    {
+        var remaining = new List<Furniture>(selectedFurniture);
+        var scheduled = new List<Furniture>(selectedFurniture.Count);
+        while (remaining.Count > 0)
+        {
+            Furniture? next = remaining.FirstOrDefault(item =>
+                CanPrepareFurniture(farm, item, plannedObjectTiles, scheduled));
+            if (next is null)
+            {
+                orderedFurniture = [];
+                unsafeFurniture = remaining[0];
+                return false;
+            }
+
+            scheduled.Add(next);
+            remaining.Remove(next);
+        }
+
+        orderedFurniture = [.. scheduled];
+        unsafeFurniture = null;
+        return true;
+    }
+
+    private static Rectangle GetTileBounds(ReviewFixtureTile tile) => new(
         tile.X * Game1.tileSize,
         tile.Y * Game1.tileSize,
         Game1.tileSize,
         Game1.tileSize);
-
-    private static bool IsDisposableObjectClutter(StardewValley.Object item) =>
-        ReviewFixturePolicy.IsDisposableObjectClutter(new ReviewFixtureObjectClutterState(
-            item.ItemId,
-            item.Name,
-            item.Type,
-            item.Stack,
-            item.CanBeSetDown,
-            item.CanBeGrabbed,
-            item.IsSpawnedObject,
-            item.questItem.Value,
-            item.bigCraftable.Value,
-            item.heldObject.Value is not null,
-            item.Fragility,
-            item.Price,
-            item.modData.Count() > 0));
-
-    private static bool IsDisposableTerrainClutter(TerrainFeature terrain) =>
-        ReviewFixturePolicy.IsDisposableTerrainClutter(
-            terrain switch
-            {
-                Grass grass => new ReviewFixtureTerrainClutterState(
-                    ReviewFixtureTerrainKind.Grass,
-                    IsTapped: false,
-                    IsStump: false,
-                    grass.modData.Count() > 0),
-                Tree tree => new ReviewFixtureTerrainClutterState(
-                    ReviewFixtureTerrainKind.Tree,
-                    tree.tapped.Value,
-                    tree.stump.Value,
-                    tree.modData.Count() > 0),
-                _ => new ReviewFixtureTerrainClutterState(
-                    ReviewFixtureTerrainKind.Other,
-                    IsTapped: false,
-                    IsStump: false,
-                    terrain.modData.Count() > 0),
-            });
-
-    private static bool IsDisposableResourceClump(ResourceClump clump) =>
-        ReviewFixturePolicy.IsDisposableResourceClump(new ReviewFixtureResourceClumpState(
-            clump.parentSheetIndex.Value,
-            clump.width.Value,
-            clump.height.Value,
-            clump.modData.Count() > 0));
 
     private static Vector2 FindValidObjectTile(GameLocation indoors)
     {

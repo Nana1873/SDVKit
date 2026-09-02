@@ -308,88 +308,155 @@ public sealed class ReviewFixtureCommandTests
             ReviewFixturePolicy.DecideAnimalEnsure([exact, exact], 2, 12));
     }
 
+    [Fact]
+    public void BuildingPlacementAreaCombinesFootprintAdditionalAreasAndHumanDoorAccess()
+    {
+        Assert.True(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x: 10,
+            y: 20,
+            width: 2,
+            height: 2,
+            additionalAreas:
+            [
+                new ReviewFixtureAdditionalPlacementArea(
+                    X: -1,
+                    Y: 2,
+                    Width: 4,
+                    Height: 1,
+                    OnlyNeedsToBePassable: false),
+                new ReviewFixtureAdditionalPlacementArea(
+                    X: 2,
+                    Y: 0,
+                    Width: 1,
+                    Height: 2,
+                    OnlyNeedsToBePassable: true),
+            ],
+            humanDoor: new ReviewFixtureTile(0, 1),
+            mapWidth: 100,
+            mapHeight: 100,
+            out ReviewFixtureBuildingPlacementArea? area,
+            out string error), error);
+
+        ReviewFixtureTile[] expected =
+        [
+            new(10, 20),
+            new(11, 20),
+            new(12, 20),
+            new(10, 21),
+            new(11, 21),
+            new(12, 21),
+            new(9, 22),
+            new(10, 22),
+            new(11, 22),
+            new(12, 22),
+        ];
+        Assert.Equal(expected, area!.Tiles);
+        Assert.True(area.IsFootprint(new ReviewFixtureTile(10, 20)));
+        Assert.False(area.IsFootprint(new ReviewFixtureTile(12, 20)));
+        Assert.True(area.MustBePassable(new ReviewFixtureTile(12, 20)));
+        Assert.False(area.MustBeBuildable(new ReviewFixtureTile(12, 20)));
+        Assert.True(area.MustBePassable(new ReviewFixtureTile(10, 22)));
+        Assert.True(area.MustBeBuildable(new ReviewFixtureTile(10, 22)));
+    }
+
+    [Fact]
+    public void BuildingPlacementAreaSelectionIgnoresObjectIdentityAndModData()
+    {
+        Assert.True(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x: 16,
+            y: 20,
+            width: 2,
+            height: 2,
+            additionalAreas: null,
+            humanDoor: null,
+            mapWidth: 100,
+            mapHeight: 100,
+            out ReviewFixtureBuildingPlacementArea? area,
+            out string error), error);
+        var contents = new[]
+        {
+            new
+            {
+                Tile = new ReviewFixtureTile(16, 20),
+                ItemId = "future-vanilla-id",
+                HasModData = true,
+            },
+            new
+            {
+                Tile = new ReviewFixtureTile(18, 20),
+                ItemId = "outside",
+                HasModData = false,
+            },
+        }.ToDictionary(content => content.Tile);
+
+        ReviewFixtureTile[] selectedTiles = area!
+            .SelectOccupiedTiles(contents.ContainsKey)
+            .ToArray();
+
+        ReviewFixtureTile selected = Assert.Single(selectedTiles);
+        Assert.Equal("future-vanilla-id", contents[selected].ItemId);
+        Assert.True(contents[selected].HasModData);
+        Assert.DoesNotContain(new ReviewFixtureTile(18, 20), selectedTiles);
+    }
+
     [Theory]
-    [InlineData("294", "Twig", "Litter", 2)]
-    [InlineData("295", "Twig", "Litter", 2)]
-    [InlineData("343", "Stone", "Litter", 0)]
-    [InlineData("450", "Stone", "Litter", 0)]
-    [InlineData("590", "Artifact Spot", "asdf", 0)]
-    [InlineData("674", "Weeds", "Litter", 2)]
-    [InlineData("675", "Weeds", "Litter", 2)]
-    [InlineData("784", "Weeds", "Litter", 2)]
-    public void BuildingPreflightAllowsOnlyExactNaturalBaselineObjectClutter(
-        string itemId,
-        string name,
-        string type,
-        int fragility)
+    [InlineData(99, 20, 2, 2, 100, 100)]
+    [InlineData(10, 99, 2, 2, 100, 100)]
+    [InlineData(-1, 20, 2, 2, 100, 100)]
+    public void BuildingPlacementAreaRejectsOutOfMapFootprints(
+        int x,
+        int y,
+        int width,
+        int height,
+        int mapWidth,
+        int mapHeight)
     {
-        Assert.True(ReviewFixturePolicy.IsDisposableObjectClutter(
-            NaturalObject(itemId, name, type, fragility)));
+        Assert.False(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x,
+            y,
+            width,
+            height,
+            additionalAreas: null,
+            humanDoor: null,
+            mapWidth,
+            mapHeight,
+            out _,
+            out _));
     }
 
     [Fact]
-    public void BuildingPreflightRejectsUnknownOrModifiedObjects()
+    public void BuildingPlacementAreaRejectsOutOfMapAdditionalAndDoorTiles()
     {
-        ReviewFixtureObjectClutterState weeds = NaturalObject(
-            "674",
-            "Weeds",
-            "Litter",
-            2);
-
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { ItemId = "388", Name = "Wood" }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { Name = "Chest" }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { Stack = 2 }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { IsBigCraftable = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { HasHeldObject = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { HasModData = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableObjectClutter(
-            weeds with { Fragility = 0 }));
-    }
-
-    [Fact]
-    public void BuildingPreflightAllowsOnlyUnownedGrassOrUntappedNonStumpTrees()
-    {
-        var grass = new ReviewFixtureTerrainClutterState(
-            ReviewFixtureTerrainKind.Grass,
-            IsTapped: false,
-            IsStump: false,
-            HasModData: false);
-        var tree = grass with { Kind = ReviewFixtureTerrainKind.Tree };
-
-        Assert.True(ReviewFixturePolicy.IsDisposableTerrainClutter(grass));
-        Assert.True(ReviewFixturePolicy.IsDisposableTerrainClutter(tree));
-        Assert.False(ReviewFixturePolicy.IsDisposableTerrainClutter(
-            tree with { IsTapped = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableTerrainClutter(
-            tree with { IsStump = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableTerrainClutter(
-            tree with { HasModData = true }));
-        Assert.False(ReviewFixturePolicy.IsDisposableTerrainClutter(
-            tree with { Kind = ReviewFixtureTerrainKind.Other }));
-    }
-
-    [Fact]
-    public void BuildingPreflightAllowsOnlyTheExactNaturalStumpClump()
-    {
-        var exact = new ReviewFixtureResourceClumpState(
-            ParentSheetIndex: 600,
-            Width: 2,
-            Height: 2,
-            HasModData: false);
-
-        Assert.True(ReviewFixturePolicy.IsDisposableResourceClump(exact));
-        Assert.False(ReviewFixturePolicy.IsDisposableResourceClump(
-            exact with { ParentSheetIndex = 602 }));
-        Assert.False(ReviewFixturePolicy.IsDisposableResourceClump(
-            exact with { Width = 3 }));
-        Assert.False(ReviewFixturePolicy.IsDisposableResourceClump(
-            exact with { HasModData = true }));
+        Assert.False(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x: 98,
+            y: 20,
+            width: 2,
+            height: 2,
+            additionalAreas:
+            [
+                new ReviewFixtureAdditionalPlacementArea(
+                    X: 2,
+                    Y: 0,
+                    Width: 1,
+                    Height: 1,
+                    OnlyNeedsToBePassable: true),
+            ],
+            humanDoor: null,
+            mapWidth: 100,
+            mapHeight: 100,
+            out _,
+            out _));
+        Assert.False(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x: 10,
+            y: 98,
+            width: 2,
+            height: 2,
+            additionalAreas: null,
+            humanDoor: new ReviewFixtureTile(0, 1),
+            mapWidth: 100,
+            mapHeight: 100,
+            out _,
+            out _));
     }
 
     [Theory]
@@ -444,26 +511,91 @@ public sealed class ReviewFixtureCommandTests
     public void GameRuntimeSourceRetainsOwnershipAndSafetyBoundaries()
     {
         string source = ReadSource();
+        int ensure = source.IndexOf(
+            "public ReviewFixtureResult EnsureBuilding(",
+            StringComparison.Ordinal);
+        int planCall = source.IndexOf(
+            "if (!TryPlanBuildingPlacement(",
+            ensure,
+            StringComparison.Ordinal);
+        int applyCall = source.IndexOf(
+            "if (!TryApplyBuildingPlacementPreparation(",
+            planCall,
+            StringComparison.Ordinal);
+        int buildCall = source.IndexOf(
+            "if (!farm.buildStructure(",
+            applyCall,
+            StringComparison.Ordinal);
+        int planDefinition = source.IndexOf(
+            "private static bool TryPlanBuildingPlacement(",
+            StringComparison.Ordinal);
+        int applyDefinition = source.IndexOf(
+            "private static bool TryApplyBuildingPlacementPreparation(",
+            planDefinition,
+            StringComparison.Ordinal);
+        string preflight = source[planDefinition..applyDefinition];
 
-        Assert.Contains("skipSafetyChecks: true", source, StringComparison.Ordinal);
-        Assert.Contains("TryValidateBuildingFootprint(farm, x, y", source, StringComparison.Ordinal);
-        Assert.Contains("(long)x + buildingData.Size.X > back.LayerWidth", source, StringComparison.Ordinal);
-        Assert.Contains("existing.occupiesTile(tile.X, tile.Y", source, StringComparison.Ordinal);
-        Assert.Contains("IsDisposableObjectClutter(item)", source, StringComparison.Ordinal);
-        Assert.Contains("IsDisposableTerrainClutter(terrain)", source, StringComparison.Ordinal);
-        Assert.Contains("IsDisposableResourceClump(clump)", source, StringComparison.Ordinal);
-        Assert.Contains("farm.farmers.Any(", source, StringComparison.Ordinal);
-        Assert.Contains("farm.characters.Any(", source, StringComparison.Ordinal);
-        Assert.Contains("farm.getAllFarmAnimals().Any(", source, StringComparison.Ordinal);
-        Assert.Contains("farm.GetBuildableRectangle()", source, StringComparison.Ordinal);
-        Assert.Contains("farm.isTilePlaceable(vector, itemIsPassable: false)", source, StringComparison.Ordinal);
-        Assert.Contains("farm.GetFurnitureAt(vector) is not null", source, StringComparison.Ordinal);
-        Assert.Contains("\"Buildable\"", source, StringComparison.Ordinal);
-        Assert.Contains("\"Diggable\"", source, StringComparison.Ordinal);
-        Assert.Contains("placement.OnlyNeedsToBePassable", source, StringComparison.Ordinal);
-        Assert.Contains("passableTiles.Contains(tile)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("farm.Objects.Remove", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("terrainFeatures.Remove", source, StringComparison.Ordinal);
+        Assert.True(ensure >= 0);
+        Assert.True(planCall > ensure);
+        Assert.True(applyCall > planCall);
+        Assert.True(buildCall > applyCall);
+        Assert.True(planDefinition > buildCall);
+        Assert.True(applyDefinition > planDefinition);
+        Assert.Contains("skipSafetyChecks: false", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("skipSafetyChecks: true", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewFixturePolicy.TryCreateBuildingPlacementArea(", preflight, StringComparison.Ordinal);
+        Assert.Contains("buildingData.Size.X", preflight, StringComparison.Ordinal);
+        Assert.Contains(".AdditionalPlacementTiles", preflight, StringComparison.Ordinal);
+        Assert.Contains("buildingData.HumanDoor", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.buildings.FirstOrDefault", preflight, StringComparison.Ordinal);
+        Assert.Contains("existing.occupiesTile(tile.X, tile.Y", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.farmers.Any(", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.characters.Any(", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.animals.Values.Any(", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.largeTerrainFeatures.Any(", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.GetBuildableRectangle()", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.isWaterTile(tile.X, tile.Y)", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.isTilePlaceable(vector, itemIsPassable: false)", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.isTilePassable(vector)", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.furniture", preflight, StringComparison.Ordinal);
+        Assert.Contains("item.GetBoundingBox().Intersects(GetTileBounds(tile))", preflight, StringComparison.Ordinal);
+        Assert.Contains("TryOrderFurniturePreparation(", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.Objects.ContainsKey(new Vector2(tile.X, tile.Y))", preflight, StringComparison.Ordinal);
+        Assert.Contains("farm.terrainFeatures.ContainsKey(new Vector2(tile.X, tile.Y))", preflight, StringComparison.Ordinal);
+        Assert.Contains("clump.occupiesTile(tile.X, tile.Y)", preflight, StringComparison.Ordinal);
+        Assert.Contains("\"Buildable\"", preflight, StringComparison.Ordinal);
+        Assert.Contains("\"Diggable\"", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Remove(", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain("QualifiedItemId", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ItemId", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Name", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Type", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".modData", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Fragility", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Price", preflight, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisposableObjectKinds", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsDisposable", source, StringComparison.Ordinal);
+        Assert.Contains("farm.Objects.Remove(new Vector2(tile.X, tile.Y))", source, StringComparison.Ordinal);
+        Assert.Contains("farm.terrainFeatures.Remove(new Vector2(tile.X, tile.Y))", source, StringComparison.Ordinal);
+        Assert.Contains("farm.resourceClumps.Remove(clump)", source, StringComparison.Ordinal);
+        Assert.Contains("item.AttemptRemoval(candidate =>", source, StringComparison.Ordinal);
+        Assert.Contains("candidate.performRemoveAction()", source, StringComparison.Ordinal);
+        Assert.Contains("farm.furniture.Remove(candidate)", source, StringComparison.Ordinal);
+        Assert.Contains("item.canBeRemoved(Game1.player)", source, StringComparison.Ordinal);
+        Assert.Contains("CanPrepareFurniture(farm, item, plannedObjectTiles, scheduled)", source, StringComparison.Ordinal);
+        Assert.Contains("item.AllowLocalRemoval", source, StringComparison.Ordinal);
+        Assert.Contains("item.HasSittingFarmers()", source, StringComparison.Ordinal);
+        Assert.Contains("!plannedObjectTiles.Contains(tile)", source, StringComparison.Ordinal);
+        Assert.Contains("Stardew threw while preparing the placement area", source, StringComparison.Ordinal);
+        Assert.Contains("Reset the disposable fixture before retrying", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "$\"objects={Objects} terrainFeatures={TerrainFeatures} \"",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "+ $\"resourceClumps={ResourceClumps} furniture={Furniture}\"",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("FinishConstruction(onGameStart: false)", source, StringComparison.Ordinal);
         Assert.Contains("ItemRegistry.Create<StardewValley.Object>", source, StringComparison.Ordinal);
         Assert.Contains("ItemRegistry.IsQualifiedItemId(qualifiedItemId)", source, StringComparison.Ordinal);
@@ -537,25 +669,6 @@ public sealed class ReviewFixtureCommandTests
             error);
         return Assert.IsAssignableFrom<ReviewFixtureRequest>(request);
     }
-
-    private static ReviewFixtureObjectClutterState NaturalObject(
-        string itemId,
-        string name,
-        string type,
-        int fragility) => new(
-            itemId,
-            name,
-            type,
-            Stack: 1,
-            CanBeSetDown: true,
-            CanBeGrabbed: true,
-            IsSpawnedObject: false,
-            IsQuestItem: false,
-            IsBigCraftable: false,
-            HasHeldObject: false,
-            fragility,
-            Price: 0,
-            HasModData: false);
 
     private static string ReadSource()
     {
