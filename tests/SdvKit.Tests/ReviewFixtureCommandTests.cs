@@ -309,11 +309,13 @@ public sealed class ReviewFixtureCommandTests
     }
 
     [Theory]
+    [InlineData("294", "Twig", "Litter", 2)]
     [InlineData("295", "Twig", "Litter", 2)]
     [InlineData("343", "Stone", "Litter", 0)]
     [InlineData("450", "Stone", "Litter", 0)]
     [InlineData("590", "Artifact Spot", "asdf", 0)]
     [InlineData("674", "Weeds", "Litter", 2)]
+    [InlineData("675", "Weeds", "Litter", 2)]
     [InlineData("784", "Weeds", "Litter", 2)]
     public void BuildingPreflightAllowsOnlyExactNaturalBaselineObjectClutter(
         string itemId,
