@@ -220,10 +220,10 @@ Once that exact owned review world is loaded, AlwaysOn exposes this bounded fixt
 
 ```powershell
 sdvkit project review command "sdvkit fixture status" --topology single --json
-sdvkit project review command "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>" --topology single --json
+sdvkit project review command "sdvkit fixture building ensure <alias> <building-kind> <x> <y>" --topology single --json
 sdvkit project review command "sdvkit fixture object ensure <alias-or-id> <qualified-item-id>" --topology single --json
 sdvkit project review command "sdvkit fixture object clear-owned <alias-or-id>" --topology single --json
-sdvkit project review command "sdvkit fixture animal ensure <alias-or-id> white-cow" --topology single --json
+sdvkit project review command "sdvkit fixture animal ensure <alias-or-id> <animal-kind>" --topology single --json
 sdvkit project review command "sdvkit fixture enter <alias-or-id>" --topology single --json
 sdvkit project review command "sdvkit fixture enter greenhouse" --topology single --json
 sdvkit project review command "sdvkit fixture farm" --topology single --json
@@ -231,7 +231,9 @@ sdvkit project review command "sdvkit fixture farm" --topology single --json
 
 Every fixture invocation freshly verifies the active review process, exact fixture and Save identities, ownership marker, load phase, and current role before it reads or changes the world. It is unavailable in a plain single review, a smoke run, or any unverified or foreign save. `building ensure`, `object ensure`, `object clear-owned`, and `animal ensure` mutate only from the singleplayer main role or the `network-2` host. `status`, `enter`, and `farm` are role-local and can also be addressed to the verified farmhand. `fixture farm` follows only a natural Farm exit from the current review FarmHouse, the exact Greenhouse, or an owned fixture interior; for `enter`, the exact `greenhouse` token selects the one loaded Greenhouse and its natural entry. Owned building mutations keep resolving their normal alias or GUID, including an existing `greenhouse` alias; use its GUID when entering that owned building. Neither navigation command is a general warp surface. For `network-2`, send every line through the same transport with exactly one `--role host` or `--role farmhand` as appropriate.
 
-The ensure operations are idempotent for the same SDVKit-owned alias and exact requested state. The only building kind is `deluxe-barn`, and the only animal kind is `white-cow`. Run `sdvkit fixture farm` before creating a new barn; Stardew requires the main player to be on the Farm, and `building ensure` fails before changing placement content otherwise. Before a new barn is placed, `building ensure` derives the exact placement area from Stardew's current `BuildingData`: the footprint, every additional placement tile, and the human-door access tile. It checks map rules, existing buildings, players, characters, animals, large terrain features, and furniture removability before mutation. Only then, and only in that disposable placement area, it removes tile-bound Farm objects, ordinary terrain features, overlapping resource clumps, and furniture which Stardew reports as safely removable. Object identity and `modData` do not control this preparation; content outside the derived area is not selected. The result reports every removed category count, and a later Stardew placement rejection requires fixture reset before retrying.
+The ensure operations are idempotent for the same SDVKit-owned alias and exact requested state. Run `sdvkit fixture farm` before creating a new building; Stardew requires the main player to be on the Farm, and `building ensure` fails before instantiation, placement planning, or changed placement content otherwise. Building kinds resolve from the live `BuildingData` dictionary and animal kinds from the live canonical FarmAnimal data using stable internal data IDs, never localized display names. CLI tokens are case-insensitive and normalize the separators in those IDs, so the existing `deluxe-barn` and `white-cow` tokens remain compatible while kinds such as `coop` and `white-chicken` use the same resolver. Unknown or normalization-colliding tokens, building data which Stardew cannot instantiate or place, and animal/building combinations which Stardew marks incompatible fail closed before world mutation. The exact available kinds can vary with the Stardew version and data loaded for the isolated review world; errors show only a bounded set of canonical candidates instead of dumping the data dictionaries.
+
+Before a new building is placed, `building ensure` derives the exact placement area from that resolved `BuildingData`: the footprint, every additional placement tile, and the human-door access tile. It checks map rules, existing buildings, players, characters, animals, large terrain features, and furniture removability before mutation. Only then, and only in that disposable placement area, it removes tile-bound Farm objects, ordinary terrain features, overlapping resource clumps, and furniture which Stardew reports as safely removable. Object identity and `modData` do not control this preparation; content outside the derived area is not selected. The result reports every removed category count, and a later Stardew placement rejection requires fixture reset before retrying. `animal ensure` checks the resolved canonical animal kind against the concrete target `AnimalHouse`; it never converts or moves an existing animal.
 
 `object clear-owned` remains separate and removes only the fixture object carrying SDVKit's exact ownership markers; it does not clear a building's object collection or touch an unowned object. Fixture status and results report only generic SDVKit-owned world facts. They do not interpret a target mod's state, special-case StardewInteriorChanger, or enumerate or expose foreign `modData`.
 
@@ -257,7 +259,7 @@ sdvkit project review start $target `
 sdvkit project review status --topology network-2 --json
 sdvkit project review command "sdvkit fixture status" --topology network-2 --role host --json
 sdvkit project review command "sdvkit fixture status" --topology network-2 --role farmhand --json
-sdvkit project review command "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>" --topology network-2 --role host --json
+sdvkit project review command "sdvkit fixture building ensure <alias> <building-kind> <x> <y>" --topology network-2 --role host --json
 sdvkit project review stop --topology network-2 --json
 ```
 

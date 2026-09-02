@@ -1,10 +1,13 @@
 using System.Globalization;
+using System.Text;
 
 #if SDVKIT_GAME_AVAILABLE
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.GameData.Buildings;
+using StardewValley.GameData.FarmAnimals;
 using StardewValley.Locations;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
@@ -18,12 +21,8 @@ internal static class ReviewFixtureContract
     internal const string BuildingAliasMarkerKey = "SDVKit.AlwaysOn/FixtureBuildingAlias";
     internal const string ObjectMarkerKey = "SDVKit.AlwaysOn/FixtureObject";
     internal const string AnimalKindMarkerKey = "SDVKit.AlwaysOn/FixtureAnimalKind";
-    internal const string DeluxeBarnKind = "deluxe-barn";
-    internal const string DeluxeBarnBuildingType = "Deluxe Barn";
     internal const string GreenhouseTarget = "greenhouse";
     internal const string GreenhouseBuildingType = "Greenhouse";
-    internal const string WhiteCowKind = "white-cow";
-    internal const string WhiteCowType = "White Cow";
     internal const string ReviewEnvironmentName = "SDVKIT_PROJECT_REVIEW";
     internal const string ReviewEnvironmentValue = "1";
 }
@@ -35,6 +34,7 @@ internal sealed record ReviewFixtureStatusRequest()
 
 internal sealed record ReviewFixtureBuildingEnsureRequest(
     string Alias,
+    string Kind,
     int X,
     int Y)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
@@ -47,7 +47,9 @@ internal sealed record ReviewFixtureObjectEnsureRequest(
 internal sealed record ReviewFixtureObjectClearOwnedRequest(string Building)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 
-internal sealed record ReviewFixtureAnimalEnsureRequest(string Building)
+internal sealed record ReviewFixtureAnimalEnsureRequest(
+    string Building,
+    string Kind)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 
 internal sealed record ReviewFixtureEnterRequest(string Building)
@@ -60,10 +62,10 @@ internal static class ReviewFixtureArguments
 {
     internal const string Usage =
         "Usage: sdvkit fixture status | "
-        + "building ensure <alias> deluxe-barn <x> <y> | "
+        + "building ensure <alias> <building-kind> <x> <y> | "
         + "object ensure <alias-or-id> <qualified-item-id> | "
         + "object clear-owned <alias-or-id> | "
-        + "animal ensure <alias-or-id> white-cow | "
+        + "animal ensure <alias-or-id> <animal-kind> | "
         + "enter <alias-or-id> | enter greenhouse | farm";
     internal const string AliasError =
         "A fixture alias must contain 1-32 lowercase ASCII letters, digits, '-' or '_' and start with a letter.";
@@ -91,8 +93,7 @@ internal static class ReviewFixtureArguments
         }
         else if (arguments.Count == 7
             && string.Equals(arguments[1], "building", StringComparison.Ordinal)
-            && string.Equals(arguments[2], "ensure", StringComparison.Ordinal)
-            && string.Equals(arguments[4], ReviewFixtureContract.DeluxeBarnKind, StringComparison.Ordinal))
+            && string.Equals(arguments[2], "ensure", StringComparison.Ordinal))
         {
             if (!IsValidAlias(arguments[3]))
             {
@@ -107,7 +108,17 @@ internal static class ReviewFixtureArguments
                 return false;
             }
 
-            request = new ReviewFixtureBuildingEnsureRequest(arguments[3], x, y);
+            if (!IsValidKindInput(arguments[4]))
+            {
+                error = "A fixture building kind must be one bounded non-empty token.";
+                return false;
+            }
+
+            request = new ReviewFixtureBuildingEnsureRequest(
+                arguments[3],
+                arguments[4],
+                x,
+                y);
         }
         else if (arguments.Count == 5
             && string.Equals(arguments[1], "object", StringComparison.Ordinal)
@@ -141,8 +152,7 @@ internal static class ReviewFixtureArguments
         }
         else if (arguments.Count == 5
             && string.Equals(arguments[1], "animal", StringComparison.Ordinal)
-            && string.Equals(arguments[2], "ensure", StringComparison.Ordinal)
-            && string.Equals(arguments[4], ReviewFixtureContract.WhiteCowKind, StringComparison.Ordinal))
+            && string.Equals(arguments[2], "ensure", StringComparison.Ordinal))
         {
             if (!IsValidBuildingToken(arguments[3]))
             {
@@ -150,7 +160,13 @@ internal static class ReviewFixtureArguments
                 return false;
             }
 
-            request = new ReviewFixtureAnimalEnsureRequest(arguments[3]);
+            if (!IsValidKindInput(arguments[4]))
+            {
+                error = "A fixture animal kind must be one bounded non-empty token.";
+                return false;
+            }
+
+            request = new ReviewFixtureAnimalEnsureRequest(arguments[3], arguments[4]);
         }
         else if (arguments.Count == 3
             && string.Equals(arguments[1], "enter", StringComparison.Ordinal))
@@ -194,6 +210,11 @@ internal static class ReviewFixtureArguments
     public static bool IsGreenhouseNavigationTarget(string? value) =>
         string.Equals(value, ReviewFixtureContract.GreenhouseTarget, StringComparison.Ordinal);
 
+    private static bool IsValidKindInput(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= 128
+        && !value.Any(char.IsControl);
+
     private static bool IsValidQualifiedItemId(string? value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= 128
@@ -205,6 +226,139 @@ internal static class ReviewFixtureArguments
             NumberStyles.None,
             CultureInfo.InvariantCulture,
             out coordinate);
+}
+
+internal sealed record ReviewFixtureKindResolution(
+    string CanonicalId,
+    string CanonicalToken);
+
+internal static class ReviewFixtureKindResolver
+{
+    private const int CandidateLimit = 5;
+
+    public static bool TryResolve(
+        string input,
+        IEnumerable<string> canonicalIds,
+        string kindDescription,
+        out ReviewFixtureKindResolution? resolution,
+        out string error)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(canonicalIds);
+        if (string.IsNullOrWhiteSpace(kindDescription))
+        {
+            throw new ArgumentException(
+                "A kind description is required.",
+                nameof(kindDescription));
+        }
+
+        resolution = null;
+        string normalizedInput = Normalize(input);
+        if (normalizedInput.Length == 0)
+        {
+            error = $"The {kindDescription} kind '{input}' has no stable token characters.";
+            return false;
+        }
+
+        (string CanonicalId, string Token)[] candidates = canonicalIds
+            .Where(id => !string.IsNullOrWhiteSpace(id)
+                && id.Length <= 128
+                && !id.Any(char.IsControl))
+            .Distinct(StringComparer.Ordinal)
+            .Select(id => (CanonicalId: id, Token: Normalize(id)))
+            .Where(candidate => candidate.Token.Length > 0)
+            .ToArray();
+        (string CanonicalId, string Token)[] matches = candidates
+            .Where(candidate => string.Equals(
+                candidate.Token,
+                normalizedInput,
+                StringComparison.Ordinal))
+            .Take(CandidateLimit + 1)
+            .ToArray();
+        if (matches.Length == 1)
+        {
+            resolution = new ReviewFixtureKindResolution(
+                matches[0].CanonicalId,
+                matches[0].Token);
+            error = string.Empty;
+            return true;
+        }
+
+        if (matches.Length > 1)
+        {
+            error = $"The {kindDescription} kind '{input}' is ambiguous: "
+                + string.Join(
+                    ", ",
+                    matches.Take(CandidateLimit).Select(DescribeCandidate))
+                + ".";
+            return false;
+        }
+
+        string[] suggestions = candidates
+            .OrderBy(candidate => EditDistance(normalizedInput, candidate.Token))
+            .ThenBy(candidate => candidate.Token, StringComparer.Ordinal)
+            .Take(CandidateLimit)
+            .Select(DescribeCandidate)
+            .ToArray();
+        error = $"Stardew's loaded data has no unambiguous {kindDescription} kind '{input}'."
+            + (suggestions.Length == 0
+                ? string.Empty
+                : $" Canonical candidates: {string.Join(", ", suggestions)}.");
+        return false;
+    }
+
+    public static string Normalize(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var token = new StringBuilder(value.Length);
+        var pendingSeparator = false;
+        foreach (char character in value.Trim())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSeparator && token.Length > 0)
+                {
+                    token.Append('-');
+                }
+
+                token.Append(char.ToLowerInvariant(character));
+                pendingSeparator = false;
+            }
+            else
+            {
+                pendingSeparator = true;
+            }
+        }
+
+        return token.ToString();
+    }
+
+    private static string DescribeCandidate((string CanonicalId, string Token) candidate) =>
+        string.Equals(candidate.CanonicalId, candidate.Token, StringComparison.Ordinal)
+            ? candidate.Token
+            : $"{candidate.Token} ('{candidate.CanonicalId}')";
+
+    private static int EditDistance(string left, string right)
+    {
+        int[] previous = Enumerable.Range(0, right.Length + 1).ToArray();
+        var current = new int[right.Length + 1];
+        for (var leftIndex = 1; leftIndex <= left.Length; leftIndex++)
+        {
+            current[0] = leftIndex;
+            for (var rightIndex = 1; rightIndex <= right.Length; rightIndex++)
+            {
+                int substitution = previous[rightIndex - 1]
+                    + (left[leftIndex - 1] == right[rightIndex - 1] ? 0 : 1);
+                current[rightIndex] = Math.Min(
+                    Math.Min(previous[rightIndex] + 1, current[rightIndex - 1] + 1),
+                    substitution);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[right.Length];
+    }
 }
 
 internal sealed record ReviewFixtureAccess(
@@ -225,6 +379,7 @@ internal interface IReviewFixtureRuntime
     ReviewFixtureResult EnsureBuilding(
         ReviewFixtureAccess access,
         string alias,
+        string kind,
         int x,
         int y);
 
@@ -239,7 +394,8 @@ internal interface IReviewFixtureRuntime
 
     ReviewFixtureResult EnsureAnimal(
         ReviewFixtureAccess access,
-        string building);
+        string building,
+        string kind);
 
     ReviewFixtureResult Enter(
         ReviewFixtureAccess access,
@@ -284,6 +440,7 @@ internal static class ReviewFixtureOperation
             ReviewFixtureBuildingEnsureRequest building => runtime.EnsureBuilding(
                 access,
                 building.Alias,
+                building.Kind,
                 building.X,
                 building.Y),
             ReviewFixtureObjectEnsureRequest item => runtime.EnsureObject(
@@ -295,7 +452,8 @@ internal static class ReviewFixtureOperation
                 clear.Building),
             ReviewFixtureAnimalEnsureRequest animal => runtime.EnsureAnimal(
                 access,
-                animal.Building),
+                animal.Building,
+                animal.Kind),
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
             _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
@@ -317,6 +475,7 @@ internal sealed record ReviewFixtureBuildingState(
     int Y);
 
 internal sealed record ReviewFixtureAnimalState(
+    string Kind,
     string Type,
     bool HasExactHome,
     bool HasExactAssignment);
@@ -372,6 +531,7 @@ internal static class ReviewFixturePolicy
     public static ReviewFixtureEnsureDecision DecideBuildingEnsure(
         IReadOnlyList<ReviewFixtureBuildingState> aliasMatches,
         string fixtureId,
+        string buildingType,
         int x,
         int y)
     {
@@ -389,7 +549,7 @@ internal static class ReviewFixturePolicy
         return string.Equals(existing.FixtureId, fixtureId, StringComparison.Ordinal)
             && string.Equals(
                 existing.Type,
-                ReviewFixtureContract.DeluxeBarnBuildingType,
+                buildingType,
                 StringComparison.Ordinal)
             && existing.X == x
             && existing.Y == y
@@ -417,6 +577,8 @@ internal static class ReviewFixturePolicy
 
     public static ReviewFixtureEnsureDecision DecideAnimalEnsure(
         IReadOnlyList<ReviewFixtureAnimalState> ownedForBuilding,
+        string animalKind,
+        string animalType,
         int assignedAnimalCount,
         int animalCapacity)
     {
@@ -433,15 +595,22 @@ internal static class ReviewFixturePolicy
         }
 
         ReviewFixtureAnimalState existing = ownedForBuilding[0];
-        return string.Equals(
+        return string.Equals(existing.Kind, animalKind, StringComparison.Ordinal)
+            && string.Equals(
                 existing.Type,
-                ReviewFixtureContract.WhiteCowType,
+                animalType,
                 StringComparison.Ordinal)
             && existing.HasExactHome
             && existing.HasExactAssignment
                 ? ReviewFixtureEnsureDecision.Confirm
                 : ReviewFixtureEnsureDecision.Reject;
     }
+
+    public static bool IsAnimalHouseCompatible(
+        string? animalHouse,
+        IReadOnlyList<string>? validOccupantTypes) =>
+        !string.IsNullOrWhiteSpace(animalHouse)
+        && validOccupantTypes?.Contains(animalHouse, StringComparer.Ordinal) == true;
 
     public static bool IsOwnedObject(
         string? fixtureMarker,
@@ -755,7 +924,7 @@ internal sealed class StardewReviewFixtureRuntime(
                 + $"interior={indoors?.NameOrUniqueName ?? "<none>"} "
                 + $"map={indoors?.mapPath.Value ?? "<none>"} "
                 + $"players={players} objects={objects} animals={animals} "
-                + $"ownedObjects={ownedObjects} ownedWhiteCows={ownedAnimals}");
+                + $"ownedObjects={ownedObjects} ownedAnimals={ownedAnimals}");
         }
 
         return Success(string.Join(Environment.NewLine, lines));
@@ -764,11 +933,31 @@ internal sealed class StardewReviewFixtureRuntime(
     public ReviewFixtureResult EnsureBuilding(
         ReviewFixtureAccess access,
         string alias,
+        string kind,
         int x,
         int y)
     {
         Farm farm = Game1.getFarm();
         string fixtureId = RequiredFixtureId(access);
+        if (!ReviewFixtureKindResolver.TryResolve(
+                kind,
+                Game1.buildingData.Keys,
+                "building",
+                out ReviewFixtureKindResolution? resolved,
+                out string resolutionError)
+            || resolved is null)
+        {
+            return Failure(resolutionError);
+        }
+
+        if (!Game1.buildingData.TryGetValue(
+                resolved.CanonicalId,
+                out BuildingData? buildingData))
+        {
+            return Failure(
+                $"Stardew's loaded building data changed while resolving '{kind}'.");
+        }
+
         Building[] aliases = farm.buildings
             .Where(building => building.modData.TryGetValue(
                 ReviewFixtureContract.BuildingAliasMarkerKey,
@@ -786,6 +975,7 @@ internal sealed class StardewReviewFixtureRuntime(
                 existing.tileX.Value,
                 existing.tileY.Value)).ToArray(),
             fixtureId,
+            resolved.CanonicalId,
             x,
             y);
         if (decision == ReviewFixtureEnsureDecision.Reject)
@@ -803,7 +993,8 @@ internal sealed class StardewReviewFixtureRuntime(
             }
 
             return Success(
-                $"Fixture building '{alias}' already exists as {existing.id.Value:D} at {x},{y}.");
+                $"Fixture building '{alias}' already exists as {existing.id.Value:D} "
+                + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} at {x},{y}.");
         }
 
         if (!ReferenceEquals(Game1.currentLocation, farm))
@@ -813,8 +1004,41 @@ internal sealed class StardewReviewFixtureRuntime(
                 + "Run 'sdvkit fixture farm' first; no placement content was changed.");
         }
 
+        if (!GameStateQuery.CheckConditions(
+                buildingData.BuildCondition,
+                farm,
+                Game1.player))
+        {
+            return Failure(
+                $"Canonical building kind '{resolved.CanonicalId}' isn't currently buildable in this review world.");
+        }
+
+        try
+        {
+            Building candidate = Building.CreateInstanceFromId(
+                resolved.CanonicalId,
+                new Vector2(x, y));
+            if (candidate is null
+                || !string.Equals(
+                    candidate.buildingType.Value,
+                    resolved.CanonicalId,
+                    StringComparison.Ordinal))
+            {
+                return Failure(
+                    $"Stardew can't instantiate canonical building kind '{resolved.CanonicalId}'.");
+            }
+        }
+        catch (Exception exception)
+        {
+            return Failure(
+                $"Stardew can't instantiate canonical building kind '{resolved.CanonicalId}': "
+                + exception.GetBaseException().Message);
+        }
+
         if (!TryPlanBuildingPlacement(
                 farm,
+                resolved.CanonicalId,
+                buildingData,
                 x,
                 y,
                 out BuildingPlacementPreparation? preparation,
@@ -830,38 +1054,51 @@ internal sealed class StardewReviewFixtureRuntime(
                 out string preparationError))
         {
             return Failure(
-                $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                $"Prepared '{resolved.CanonicalId}' placement at {x},{y}: removed {removed}. "
                 + $"{preparationError} Reset the disposable fixture before retrying.");
         }
 
+        Building? constructed = null;
         try
         {
             if (!farm.buildStructure(
-                    ReviewFixtureContract.DeluxeBarnBuildingType,
+                    resolved.CanonicalId,
+                    buildingData,
                     new Vector2(x, y),
                     Game1.player,
-                    out Building constructed,
+                    out Building placed,
                     magicalConstruction: false,
                     skipSafetyChecks: false))
             {
+                constructed = placed;
+                bool rollbackConfirmed = TryRollbackFailedBuilding(farm, constructed);
                 return Failure(
-                    $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                    $"Prepared '{resolved.CanonicalId}' placement at {x},{y}: removed {removed}. "
                     + $"Stardew rejected the placement for '{alias}'. "
+                    + (rollbackConfirmed
+                        ? "No partial building remains. "
+                        : "The exact partial building couldn't be removed. ")
                     + "Reset the disposable fixture before retrying.");
             }
 
+            constructed = placed;
             constructed.modData[ReviewFixtureContract.FixtureIdMarkerKey] = fixtureId;
             constructed.modData[ReviewFixtureContract.BuildingAliasMarkerKey] = alias;
             constructed.FinishConstruction(onGameStart: false);
             return Success(
-                $"Created finished fixture building '{alias}' as {constructed.id.Value:D} at {x},{y}; "
+                $"Created finished fixture building '{alias}' as {constructed.id.Value:D} "
+                + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} at {x},{y}; "
                 + $"removed {removed} from the exact placement area.");
         }
         catch (Exception exception)
         {
+            bool rollbackConfirmed = TryRollbackFailedBuilding(farm, constructed);
             return Failure(
-                $"Prepared Deluxe Barn placement at {x},{y}: removed {removed}. "
+                $"Prepared '{resolved.CanonicalId}' placement at {x},{y}: removed {removed}. "
                 + $"Stardew failed while creating '{alias}': {exception.GetBaseException().Message}. "
+                + (rollbackConfirmed
+                    ? "No partial building remains. "
+                    : "The exact partial building couldn't be removed. ")
                 + "Reset the disposable fixture before retrying.");
         }
     }
@@ -952,10 +1189,31 @@ internal sealed class StardewReviewFixtureRuntime(
 
     public ReviewFixtureResult EnsureAnimal(
         ReviewFixtureAccess access,
-        string building)
+        string building,
+        string kind)
     {
         Farm farm = Game1.getFarm();
         string fixtureId = RequiredFixtureId(access);
+        Dictionary<string, FarmAnimalData> animalKinds = DataLoader.FarmAnimals(Game1.content);
+        if (!ReviewFixtureKindResolver.TryResolve(
+                kind,
+                animalKinds.Keys,
+                "animal",
+                out ReviewFixtureKindResolution? resolved,
+                out string resolutionError)
+            || resolved is null)
+        {
+            return Failure(resolutionError);
+        }
+
+        if (!animalKinds.TryGetValue(
+                resolved.CanonicalId,
+                out FarmAnimalData? animalData))
+        {
+            return Failure(
+                $"Stardew's loaded animal data changed while resolving '{kind}'.");
+        }
+
         if (!TryResolveOwnedBuilding(building, fixtureId, out Building target, out GameLocation indoors, out string error))
         {
             return Failure(error);
@@ -966,14 +1224,29 @@ internal sealed class StardewReviewFixtureRuntime(
             return Failure($"Fixture building {target.id.Value:D} is not an AnimalHouse.");
         }
 
+        BuildingData? targetData = target.GetData();
+        if (targetData is null
+            || !ReviewFixturePolicy.IsAnimalHouseCompatible(
+                animalData.House,
+                targetData.ValidOccupantTypes))
+        {
+            return Failure(
+                $"Canonical animal kind '{resolved.CanonicalId}' requires occupant type "
+                + $"'{animalData.House}', which fixture building {target.id.Value:D} "
+                + $"type='{target.buildingType.Value}' doesn't accept.");
+        }
+
         FarmAnimal[] ownedAnimals = GetAllFarmAnimals(farm)
             .Where(animal => IsOwnedAnimal(animal, fixtureId, target.id.Value))
             .ToArray();
         ReviewFixtureEnsureDecision decision = ReviewFixturePolicy.DecideAnimalEnsure(
             ownedAnimals.Select(existing => new ReviewFixtureAnimalState(
+                GetOwnedAnimalKind(existing, target.id.Value) ?? string.Empty,
                 existing.type.Value,
                 existing.home?.id.Value == target.id.Value,
                 animalHouse.animalsThatLiveHere.Contains(existing.myID.Value))).ToArray(),
+            resolved.CanonicalToken,
+            resolved.CanonicalId,
             animalHouse.animalsThatLiveHere.Count,
             animalHouse.animalLimit.Value);
         if (decision == ReviewFixtureEnsureDecision.Reject)
@@ -986,19 +1259,56 @@ internal sealed class StardewReviewFixtureRuntime(
         {
             FarmAnimal existing = ownedAnimals[0];
             return Success(
-                $"Owned White Cow {existing.myID.Value} already belongs to {target.id.Value:D}.");
+                $"Owned fixture animal {existing.myID.Value} already exists "
+                + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} "
+                + $"home={target.id.Value:D} assigned=true.");
         }
 
         var animal = new FarmAnimal(
-            ReviewFixtureContract.WhiteCowType,
+            resolved.CanonicalId,
             getNewMultiplayerId(),
             Game1.player.UniqueMultiplayerID);
+        if (!animal.CanLiveIn(target))
+        {
+            return Failure(
+                $"Stardew rejected canonical animal kind '{resolved.CanonicalId}' "
+                + $"for fixture building {target.id.Value:D} before adoption.");
+        }
+
         animal.modData[ReviewFixtureContract.FixtureIdMarkerKey] = fixtureId;
         animal.modData[ReviewFixtureContract.AnimalKindMarkerKey] =
-            GetAnimalMarker(target.id.Value);
-        animalHouse.adoptAnimal(animal);
+            GetAnimalMarker(resolved.CanonicalToken, target.id.Value);
+        try
+        {
+            animalHouse.adoptAnimal(animal);
+        }
+        catch (Exception exception)
+        {
+            bool rollbackConfirmed = TryRollbackFailedAnimal(animalHouse, animal);
+            return Failure(
+                $"Stardew failed while adopting canonical animal kind '{resolved.CanonicalId}': "
+                + exception.GetBaseException().Message
+                + (rollbackConfirmed
+                    ? ". No partial animal remains."
+                    : ". The exact partial animal couldn't be removed; reset the disposable fixture."));
+        }
+
+        bool hasExactAssignment = animalHouse.animalsThatLiveHere.Contains(animal.myID.Value);
+        bool hasExactHome = animal.home?.id.Value == target.id.Value;
+        if (!hasExactAssignment || !hasExactHome)
+        {
+            bool rollbackConfirmed = TryRollbackFailedAnimal(animalHouse, animal);
+            return Failure(
+                $"Stardew didn't retain the exact home and assignment for animal {animal.myID.Value}. "
+                + (rollbackConfirmed
+                    ? "No partial animal remains."
+                    : "The exact partial animal couldn't be removed; reset the disposable fixture."));
+        }
+
         return Success(
-            $"Created owned White Cow {animal.myID.Value} in {target.id.Value:D}.");
+            $"Created owned fixture animal {animal.myID.Value} "
+            + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} "
+            + $"home={target.id.Value:D} assigned=true.");
     }
 
     public ReviewFixtureResult Enter(
@@ -1156,13 +1466,40 @@ internal sealed class StardewReviewFixtureRuntime(
         && animal.modData.TryGetValue(
             ReviewFixtureContract.AnimalKindMarkerKey,
             out string observedKind)
-        && string.Equals(
-            observedKind,
-            GetAnimalMarker(buildingId),
-            StringComparison.Ordinal);
+        && TryParseAnimalMarker(observedKind, out _, out Guid observedBuildingId)
+        && observedBuildingId == buildingId;
 
-    private static string GetAnimalMarker(Guid buildingId) =>
-        $"{ReviewFixtureContract.WhiteCowKind}:{buildingId:D}";
+    private static string GetAnimalMarker(string animalKind, Guid buildingId) =>
+        $"{animalKind}:{buildingId:D}";
+
+    private static string? GetOwnedAnimalKind(FarmAnimal animal, Guid buildingId) =>
+        animal.modData.TryGetValue(
+                ReviewFixtureContract.AnimalKindMarkerKey,
+                out string observedKind)
+            && TryParseAnimalMarker(
+                observedKind,
+                out string animalKind,
+                out Guid observedBuildingId)
+            && observedBuildingId == buildingId
+                ? animalKind
+                : null;
+
+    private static bool TryParseAnimalMarker(
+        string marker,
+        out string animalKind,
+        out Guid buildingId)
+    {
+        int separator = marker.LastIndexOf(':');
+        animalKind = separator > 0 ? marker[..separator] : string.Empty;
+        buildingId = Guid.Empty;
+        return animalKind.Length > 0
+            && string.Equals(
+                animalKind,
+                ReviewFixtureKindResolver.Normalize(animalKind),
+                StringComparison.Ordinal)
+            && Guid.TryParseExact(marker[(separator + 1)..], "D", out buildingId)
+            && buildingId != Guid.Empty;
+    }
 
     private static FarmAnimal[] GetAllFarmAnimals(Farm farm)
     {
@@ -1186,6 +1523,23 @@ internal sealed class StardewReviewFixtureRuntime(
         }
 
         return animals.Values.ToArray();
+    }
+
+    private static bool TryRollbackFailedAnimal(
+        AnimalHouse animalHouse,
+        FarmAnimal animal)
+    {
+        try
+        {
+            animalHouse.animals.Remove(animal.myID.Value);
+            animalHouse.animalsThatLiveHere.Remove(animal.myID.Value);
+            return !animalHouse.animals.ContainsKey(animal.myID.Value)
+                && !animalHouse.animalsThatLiveHere.Contains(animal.myID.Value);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryResolveOwnedBuilding(
@@ -1308,26 +1662,25 @@ internal sealed class StardewReviewFixtureRuntime(
 
     private static bool TryPlanBuildingPlacement(
         Farm farm,
+        string buildingType,
+        BuildingData buildingData,
         int x,
         int y,
         out BuildingPlacementPreparation? preparation,
         out string error)
     {
         preparation = null;
-        if (!Game1.buildingData.TryGetValue(
-                ReviewFixtureContract.DeluxeBarnBuildingType,
-                out StardewValley.GameData.Buildings.BuildingData? buildingData)
-            || buildingData.Size.X <= 0
+        if (buildingData.Size.X <= 0
             || buildingData.Size.Y <= 0)
         {
-            error = "Stardew's exact Deluxe Barn footprint is unavailable.";
+            error = $"Stardew's exact '{buildingType}' footprint is unavailable.";
             return false;
         }
 
         xTile.Layers.Layer? back = farm.Map.GetLayer("Back");
         if (back is null)
         {
-            error = "The Farm map has no Back layer for Deluxe Barn placement.";
+            error = $"The Farm map has no Back layer for '{buildingType}' placement.";
             return false;
         }
 
@@ -1355,7 +1708,7 @@ internal sealed class StardewReviewFixtureRuntime(
                 out ReviewFixtureBuildingPlacementArea? placementArea,
                 out string placementAreaError))
         {
-            error = $"The Deluxe Barn placement at {x},{y} is invalid. {placementAreaError}";
+            error = $"The '{buildingType}' placement at {x},{y} is invalid. {placementAreaError}";
             return false;
         }
 
@@ -1387,13 +1740,13 @@ internal sealed class StardewReviewFixtureRuntime(
                             "Back",
                             ignoreTileSheetProperties: false) is not null))))
             {
-                error = $"The Deluxe Barn footprint tile {tile.X},{tile.Y} is water, NoBuild, NoFurniture, or otherwise not buildable.";
+                error = $"The '{buildingType}' footprint tile {tile.X},{tile.Y} is water, NoBuild, NoFurniture, or otherwise not buildable.";
                 return false;
             }
 
             if (!farm.isTilePassable(vector))
             {
-                error = $"The Deluxe Barn placement tile {tile.X},{tile.Y} is blocked by the Farm map collision layer.";
+                error = $"The '{buildingType}' placement tile {tile.X},{tile.Y} is blocked by the Farm map collision layer.";
                 return false;
             }
         }
@@ -1403,7 +1756,7 @@ internal sealed class StardewReviewFixtureRuntime(
                 existing.occupiesTile(tile.X, tile.Y, applyTilePropertyRadius: false)));
         if (overlap is not null)
         {
-            error = $"The Deluxe Barn footprint at {x},{y} overlaps existing building {overlap.id.Value:D}.";
+            error = $"The '{buildingType}' footprint at {x},{y} overlaps existing building {overlap.id.Value:D}.";
             return false;
         }
 
@@ -1414,14 +1767,14 @@ internal sealed class StardewReviewFixtureRuntime(
                 || farm.characters.Any(character => character.GetBoundingBox().Intersects(tileBounds))
                 || farm.animals.Values.Any(animal => animal.GetBoundingBox().Intersects(tileBounds)))
             {
-                error = $"The Deluxe Barn placement at {x},{y} is occupied by a player, character, or animal at {tile.X},{tile.Y}.";
+                error = $"The '{buildingType}' placement at {x},{y} is occupied by a player, character, or animal at {tile.X},{tile.Y}.";
                 return false;
             }
 
             if (farm.largeTerrainFeatures.Any(feature =>
                 feature.getBoundingBox().Intersects(tileBounds)))
             {
-                error = $"The Deluxe Barn placement at {x},{y} overlaps a large terrain feature at {tile.X},{tile.Y}.";
+                error = $"The '{buildingType}' placement at {x},{y} overlaps a large terrain feature at {tile.X},{tile.Y}.";
                 return false;
             }
         }
@@ -1450,7 +1803,7 @@ internal sealed class StardewReviewFixtureRuntime(
                 out Furniture[] orderedFurniture,
                 out Furniture? unsafeFurniture))
         {
-            error = $"The Deluxe Barn placement at {x},{y} overlaps furniture at "
+            error = $"The '{buildingType}' placement at {x},{y} overlaps furniture at "
                 + $"{unsafeFurniture!.TileLocation.X},{unsafeFurniture.TileLocation.Y} "
                 + "which Stardew cannot safely and synchronously remove.";
             return false;
@@ -1463,6 +1816,24 @@ internal sealed class StardewReviewFixtureRuntime(
             orderedFurniture);
         error = string.Empty;
         return true;
+    }
+
+    private static bool TryRollbackFailedBuilding(Farm farm, Building? building)
+    {
+        if (building is null || !farm.buildings.Contains(building))
+        {
+            return true;
+        }
+
+        try
+        {
+            return farm.destroyStructure(building)
+                && !farm.buildings.Contains(building);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryApplyBuildingPlacementPreparation(

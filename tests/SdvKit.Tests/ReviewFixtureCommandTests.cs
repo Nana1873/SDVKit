@@ -19,6 +19,7 @@ public sealed class ReviewFixtureCommandTests
                 "16",
                 "20"));
         Assert.Equal("barn-a", building.Alias);
+        Assert.Equal("deluxe-barn", building.Kind);
         Assert.Equal(16, building.X);
         Assert.Equal(20, building.Y);
 
@@ -36,12 +37,14 @@ public sealed class ReviewFixtureCommandTests
             "object",
             "clear-owned",
             Guid.NewGuid().ToString("D")));
-        Assert.IsType<ReviewFixtureAnimalEnsureRequest>(Parse(
+        ReviewFixtureAnimalEnsureRequest animal =
+            Assert.IsType<ReviewFixtureAnimalEnsureRequest>(Parse(
             "fixture",
             "animal",
             "ensure",
             "barn-a",
             "white-cow"));
+        Assert.Equal("white-cow", animal.Kind);
         Assert.IsType<ReviewFixtureEnterRequest>(Parse("fixture", "enter", "barn-a"));
         ReviewFixtureEnterRequest greenhouse = Assert.IsType<ReviewFixtureEnterRequest>(
             Parse("fixture", "enter", "greenhouse"));
@@ -105,6 +108,64 @@ public sealed class ReviewFixtureCommandTests
                 out _));
     }
 
+    [Theory]
+    [InlineData("deluxe-barn", "Deluxe Barn", "deluxe-barn")]
+    [InlineData("DELUXE-BARN", "Deluxe Barn", "deluxe-barn")]
+    [InlineData("coop", "Coop", "coop")]
+    [InlineData("white-cow", "White Cow", "white-cow")]
+    [InlineData("White_Chicken", "White Chicken", "white-chicken")]
+    public void KindResolverUsesStableCanonicalIdsThroughOneNormalizedPath(
+        string input,
+        string expectedId,
+        string expectedToken)
+    {
+        Assert.True(
+            ReviewFixtureKindResolver.TryResolve(
+                input,
+                ["Deluxe Barn", "Coop", "White Cow", "White Chicken"],
+                "fixture",
+                out ReviewFixtureKindResolution? resolved,
+                out string error),
+            error);
+        Assert.Equal(expectedId, resolved!.CanonicalId);
+        Assert.Equal(expectedToken, resolved.CanonicalToken);
+    }
+
+    [Fact]
+    public void KindResolverRejectsUnknownAndLocalizedDisplayNames()
+    {
+        string[] canonicalIds = ["Deluxe Barn", "Coop"];
+
+        Assert.False(ReviewFixtureKindResolver.TryResolve(
+            "shed-that-does-not-exist",
+            canonicalIds,
+            "building",
+            out _,
+            out string unknownError));
+        Assert.Contains("Canonical candidates:", unknownError, StringComparison.Ordinal);
+        Assert.False(ReviewFixtureKindResolver.TryResolve(
+            "Hühnerstall",
+            canonicalIds,
+            "building",
+            out _,
+            out string localizedError));
+        Assert.Contains("no unambiguous building kind", localizedError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void KindResolverRejectsNormalizationCollisionsBeforeSelection()
+    {
+        Assert.False(ReviewFixtureKindResolver.TryResolve(
+            "future-building",
+            ["Future Building", "future_building"],
+            "building",
+            out _,
+            out string error));
+        Assert.Contains("ambiguous", error, StringComparison.Ordinal);
+        Assert.Contains("Future Building", error, StringComparison.Ordinal);
+        Assert.Contains("future_building", error, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EveryOperationFreshlyVerifiesBeforeDispatch()
     {
@@ -112,10 +173,10 @@ public sealed class ReviewFixtureCommandTests
         ReviewFixtureRequest[] requests =
         [
             new ReviewFixtureStatusRequest(),
-            new ReviewFixtureBuildingEnsureRequest("barn", 1, 2),
+            new ReviewFixtureBuildingEnsureRequest("barn", "deluxe-barn", 1, 2),
             new ReviewFixtureObjectEnsureRequest("barn", "(O)388"),
             new ReviewFixtureObjectClearOwnedRequest("barn"),
-            new ReviewFixtureAnimalEnsureRequest("barn"),
+            new ReviewFixtureAnimalEnsureRequest("barn", "white-cow"),
             new ReviewFixtureEnterRequest("barn"),
             new ReviewFixtureFarmRequest(),
         ];
@@ -174,10 +235,10 @@ public sealed class ReviewFixtureCommandTests
 
         ReviewFixtureRequest[] mutations =
         [
-            new ReviewFixtureBuildingEnsureRequest("barn", 1, 2),
+            new ReviewFixtureBuildingEnsureRequest("barn", "deluxe-barn", 1, 2),
             new ReviewFixtureObjectEnsureRequest("barn", "(O)388"),
             new ReviewFixtureObjectClearOwnedRequest("barn"),
-            new ReviewFixtureAnimalEnsureRequest("barn"),
+            new ReviewFixtureAnimalEnsureRequest("barn", "white-cow"),
         ];
         foreach (ReviewFixtureRequest mutation in mutations)
         {
@@ -191,23 +252,27 @@ public sealed class ReviewFixtureCommandTests
     public void BuildingEnsureConfirmsOnlyOneExactOwnedAlias()
     {
         const string fixtureId = "fixture-a";
+        const string buildingType = "Deluxe Barn";
         var exact = new ReviewFixtureBuildingState(
             fixtureId,
-            ReviewFixtureContract.DeluxeBarnBuildingType,
+            buildingType,
             16,
             20);
 
         Assert.Equal(
             ReviewFixtureEnsureDecision.Create,
-            ReviewFixturePolicy.DecideBuildingEnsure([], fixtureId, 16, 20));
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [], fixtureId, buildingType, 16, 20));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Confirm,
-            ReviewFixturePolicy.DecideBuildingEnsure([exact], fixtureId, 16, 20));
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact], fixtureId, buildingType, 16, 20));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
             ReviewFixturePolicy.DecideBuildingEnsure(
                 [exact with { FixtureId = "other-fixture" }],
                 fixtureId,
+                buildingType,
                 16,
                 20));
         Assert.Equal(
@@ -215,14 +280,50 @@ public sealed class ReviewFixtureCommandTests
             ReviewFixturePolicy.DecideBuildingEnsure(
                 [exact with { Type = "Barn" }],
                 fixtureId,
+                buildingType,
                 16,
                 20));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
-            ReviewFixturePolicy.DecideBuildingEnsure([exact], fixtureId, 32, 20));
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact], fixtureId, buildingType, 32, 20));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
-            ReviewFixturePolicy.DecideBuildingEnsure([exact, exact], fixtureId, 16, 20));
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact, exact], fixtureId, buildingType, 16, 20));
+    }
+
+    [Fact]
+    public void CoopBuildingEnsureUsesTheSameGenericIdempotencePolicy()
+    {
+        Assert.True(ReviewFixtureKindResolver.TryResolve(
+            "CoOp",
+            ["Deluxe Barn", "Coop"],
+            "building",
+            out ReviewFixtureKindResolution? resolved,
+            out string error), error);
+        var exact = new ReviewFixtureBuildingState(
+            "fixture-a",
+            resolved!.CanonicalId,
+            24,
+            18);
+
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Create,
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [], "fixture-a", resolved.CanonicalId, 24, 18));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Confirm,
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact], "fixture-a", resolved.CanonicalId, 24, 18));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact], "fixture-a", "Deluxe Barn", 24, 18));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [exact], "fixture-a", resolved.CanonicalId, 25, 18));
     }
 
     [Fact]
@@ -271,41 +372,123 @@ public sealed class ReviewFixtureCommandTests
     [Fact]
     public void AnimalEnsureHonorsIdempotenceHomeAssignmentAndCapacity()
     {
+        const string animalKind = "white-cow";
+        const string animalType = "White Cow";
         var exact = new ReviewFixtureAnimalState(
-            ReviewFixtureContract.WhiteCowType,
+            animalKind,
+            animalType,
             HasExactHome: true,
             HasExactAssignment: true);
 
         Assert.Equal(
             ReviewFixtureEnsureDecision.Create,
-            ReviewFixturePolicy.DecideAnimalEnsure([], 0, 12));
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [], animalKind, animalType, 0, 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Confirm,
-            ReviewFixturePolicy.DecideAnimalEnsure([exact], 1, 12));
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact], animalKind, animalType, 1, 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
-            ReviewFixturePolicy.DecideAnimalEnsure([], 12, 12));
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [], animalKind, animalType, 12, 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
             ReviewFixturePolicy.DecideAnimalEnsure(
                 [exact with { HasExactHome = false }],
+                animalKind,
+                animalType,
                 1,
                 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
             ReviewFixturePolicy.DecideAnimalEnsure(
                 [exact with { HasExactAssignment = false }],
+                animalKind,
+                animalType,
                 1,
                 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
             ReviewFixturePolicy.DecideAnimalEnsure(
                 [exact with { Type = "Brown Cow" }],
+                animalKind,
+                animalType,
                 1,
                 12));
         Assert.Equal(
             ReviewFixtureEnsureDecision.Reject,
-            ReviewFixturePolicy.DecideAnimalEnsure([exact, exact], 2, 12));
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact with { Kind = "white-chicken" }],
+                animalKind,
+                animalType,
+                1,
+                12));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact, exact], animalKind, animalType, 2, 12));
+    }
+
+    [Fact]
+    public void AnimalCompatibilityUsesCanonicalHouseAndBuildingOccupantTypes()
+    {
+        Assert.True(ReviewFixturePolicy.IsAnimalHouseCompatible(
+            "Coop",
+            ["Coop"]));
+        Assert.True(ReviewFixturePolicy.IsAnimalHouseCompatible(
+            "Barn",
+            ["Barn"]));
+        Assert.False(ReviewFixturePolicy.IsAnimalHouseCompatible(
+            "Coop",
+            ["Barn"]));
+        Assert.False(ReviewFixturePolicy.IsAnimalHouseCompatible(
+            "Barn",
+            ["Coop"]));
+        Assert.False(ReviewFixturePolicy.IsAnimalHouseCompatible(null, ["Coop"]));
+    }
+
+    [Fact]
+    public void WhiteChickenEnsureUsesTheSameGenericHomeAndTypePolicy()
+    {
+        Assert.True(ReviewFixtureKindResolver.TryResolve(
+            "WHITE-CHICKEN",
+            ["White Cow", "White Chicken"],
+            "animal",
+            out ReviewFixtureKindResolution? resolved,
+            out string error), error);
+        var exact = new ReviewFixtureAnimalState(
+            resolved!.CanonicalToken,
+            resolved.CanonicalId,
+            HasExactHome: true,
+            HasExactAssignment: true);
+
+        Assert.True(ReviewFixturePolicy.IsAnimalHouseCompatible("Coop", ["Coop"]));
+        Assert.False(ReviewFixturePolicy.IsAnimalHouseCompatible("Coop", ["Barn"]));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Confirm,
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact],
+                resolved.CanonicalToken,
+                resolved.CanonicalId,
+                assignedAnimalCount: 1,
+                animalCapacity: 4));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact with { Type = "White Cow" }],
+                resolved.CanonicalToken,
+                resolved.CanonicalId,
+                assignedAnimalCount: 1,
+                animalCapacity: 4));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [exact with { HasExactHome = false }],
+                resolved.CanonicalToken,
+                resolved.CanonicalId,
+                assignedAnimalCount: 1,
+                animalCapacity: 4));
     }
 
     [Fact]
@@ -424,6 +607,28 @@ public sealed class ReviewFixtureCommandTests
             out _));
     }
 
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(2, 0)]
+    [InlineData(-1, 2)]
+    [InlineData(2, -1)]
+    public void BuildingPlacementAreaRejectsNonPlaceableDataSizes(
+        int width,
+        int height)
+    {
+        Assert.False(ReviewFixturePolicy.TryCreateBuildingPlacementArea(
+            x: 10,
+            y: 20,
+            width,
+            height,
+            additionalAreas: null,
+            humanDoor: null,
+            mapWidth: 100,
+            mapHeight: 100,
+            out _,
+            out _));
+    }
+
     [Fact]
     public void BuildingPlacementAreaRejectsOutOfMapAdditionalAndDoorTiles()
     {
@@ -518,9 +723,25 @@ public sealed class ReviewFixtureCommandTests
             "if (!ReferenceEquals(Game1.currentLocation, farm))",
             ensure,
             StringComparison.Ordinal);
+        int confirmDecision = source.IndexOf(
+            "if (decision == ReviewFixtureEnsureDecision.Confirm)",
+            ensure,
+            StringComparison.Ordinal);
         int planCall = source.IndexOf(
             "if (!TryPlanBuildingPlacement(",
             ensure,
+            StringComparison.Ordinal);
+        int buildingResolve = source.IndexOf(
+            "ReviewFixtureKindResolver.TryResolve(",
+            ensure,
+            StringComparison.Ordinal);
+        int buildingInstantiate = source.IndexOf(
+            "Building.CreateInstanceFromId(",
+            buildingResolve,
+            StringComparison.Ordinal);
+        int buildCondition = source.IndexOf(
+            "GameStateQuery.CheckConditions(",
+            buildingResolve,
             StringComparison.Ordinal);
         int applyCall = source.IndexOf(
             "if (!TryApplyBuildingPlacementPreparation(",
@@ -540,8 +761,12 @@ public sealed class ReviewFixtureCommandTests
         string preflight = source[planDefinition..applyDefinition];
 
         Assert.True(ensure >= 0);
-        Assert.True(farmLocationCheck > ensure);
-        Assert.True(planCall > farmLocationCheck);
+        Assert.True(buildingResolve > ensure);
+        Assert.True(confirmDecision > buildingResolve);
+        Assert.True(farmLocationCheck > confirmDecision);
+        Assert.True(buildCondition > farmLocationCheck);
+        Assert.True(buildingInstantiate > buildCondition);
+        Assert.True(planCall > buildingInstantiate);
         Assert.True(applyCall > planCall);
         Assert.True(buildCall > applyCall);
         Assert.True(planDefinition > buildCall);
@@ -549,6 +774,10 @@ public sealed class ReviewFixtureCommandTests
         Assert.Contains("skipSafetyChecks: false", source, StringComparison.Ordinal);
         Assert.DoesNotContain("skipSafetyChecks: true", source, StringComparison.Ordinal);
         Assert.Contains("Run 'sdvkit fixture farm' first; no placement content was changed.", source, StringComparison.Ordinal);
+        Assert.Contains("Game1.buildingData.Keys", source, StringComparison.Ordinal);
+        Assert.Contains("out BuildingData? buildingData", source, StringComparison.Ordinal);
+        Assert.Contains("resolved.CanonicalId,\n                    buildingData,", source, StringComparison.Ordinal);
+        Assert.Contains("TryRollbackFailedBuilding(farm, constructed)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixturePolicy.TryCreateBuildingPlacementArea(", preflight, StringComparison.Ordinal);
         Assert.Contains("buildingData.Size.X", preflight, StringComparison.Ordinal);
         Assert.Contains(".AdditionalPlacementTiles", preflight, StringComparison.Ordinal);
@@ -613,6 +842,11 @@ public sealed class ReviewFixtureCommandTests
         Assert.DoesNotContain("Objects.Clear", source, StringComparison.Ordinal);
         Assert.Contains("isTilePlaceable(tile, itemIsPassable: false)", source, StringComparison.Ordinal);
         Assert.Contains("animalHouse.adoptAnimal(animal)", source, StringComparison.Ordinal);
+        Assert.Contains("DataLoader.FarmAnimals(Game1.content)", source, StringComparison.Ordinal);
+        Assert.Contains("targetData.ValidOccupantTypes", source, StringComparison.Ordinal);
+        Assert.Contains("animalData.House", source, StringComparison.Ordinal);
+        Assert.Contains("animal.CanLiveIn(target)", source, StringComparison.Ordinal);
+        Assert.Contains("TryRollbackFailedAnimal(animalHouse, animal)", source, StringComparison.Ordinal);
         Assert.Contains("existing.home?.id.Value == target.id.Value", source, StringComparison.Ordinal);
         Assert.Contains("animalHouse.animalsThatLiveHere.Contains(existing.myID.Value)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixturePolicy.TrySelectNaturalFarmWarp(", source, StringComparison.Ordinal);
@@ -640,6 +874,33 @@ public sealed class ReviewFixtureCommandTests
         Assert.Contains(ReviewFixtureContract.BuildingAliasMarkerKey, source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.ObjectMarkerKey, source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.AnimalKindMarkerKey, source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Deluxe Barn", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("White Cow", source, StringComparison.Ordinal);
+
+        int animalEnsure = source.IndexOf(
+            "public ReviewFixtureResult EnsureAnimal(",
+            StringComparison.Ordinal);
+        int animalResolve = source.IndexOf(
+            "ReviewFixtureKindResolver.TryResolve(",
+            animalEnsure,
+            StringComparison.Ordinal);
+        int compatibility = source.IndexOf(
+            "ReviewFixturePolicy.IsAnimalHouseCompatible(",
+            animalResolve,
+            StringComparison.Ordinal);
+        int allocateId = source.IndexOf(
+            "getNewMultiplayerId()",
+            compatibility,
+            StringComparison.Ordinal);
+        int adopt = source.IndexOf(
+            "animalHouse.adoptAnimal(animal)",
+            allocateId,
+            StringComparison.Ordinal);
+        Assert.True(animalEnsure >= 0);
+        Assert.True(animalResolve > animalEnsure);
+        Assert.True(compatibility > animalResolve);
+        Assert.True(allocateId > compatibility);
+        Assert.True(adopt > allocateId);
     }
 
     [Fact]
@@ -722,6 +983,7 @@ public sealed class ReviewFixtureCommandTests
         public ReviewFixtureResult EnsureBuilding(
             ReviewFixtureAccess access,
             string alias,
+            string kind,
             int x,
             int y) => Dispatched();
 
@@ -736,7 +998,8 @@ public sealed class ReviewFixtureCommandTests
 
         public ReviewFixtureResult EnsureAnimal(
             ReviewFixtureAccess access,
-            string building) => Dispatched();
+            string building,
+            string kind) => Dispatched();
 
         public ReviewFixtureResult Enter(
             ReviewFixtureAccess access,
