@@ -63,7 +63,7 @@
       Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\Stardew Valley.dll'." />
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\StardewValley.GameData.dll')"
-      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\StardewValley.GameData.dll' for exact building footprint data." />
+      Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\StardewValley.GameData.dll' for canonical building and farm-animal data." />
     <Error
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\MonoGame.Framework.dll')"
       Text="SdvKit.AlwaysOn requires '$(SdvGamePath)\MonoGame.Framework.dll' for GameRunner lifecycle and focus state." />

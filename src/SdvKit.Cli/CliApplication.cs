@@ -855,10 +855,14 @@ public static class CliApplication
         output.WriteLine("  sdvkit input cursor <ui-x> <ui-y>");
         output.WriteLine("  sdvkit input cursor clear");
         output.WriteLine("  sdvkit fixture status");
-        output.WriteLine("  sdvkit fixture building ensure <alias> deluxe-barn <x> <y>");
+        output.WriteLine("  sdvkit fixture building ensure <alias> <building-kind> <x> <y>");
         output.WriteLine("  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>");
         output.WriteLine("  sdvkit fixture object clear-owned <alias-or-id>");
-        output.WriteLine("  sdvkit fixture animal ensure <alias-or-id> white-cow");
+        output.WriteLine("  sdvkit fixture animal ensure <alias-or-id> <animal-kind>");
+        output.WriteLine(
+            "  Kinds resolve from loaded canonical Stardew data IDs; legacy deluxe-barn and white-cow remain valid.");
+        output.WriteLine(
+            "  Unknown, ambiguous, unplaceable, or animal-house-incompatible kinds fail before mutation.");
         output.WriteLine("  sdvkit fixture enter <alias-or-id>");
         output.WriteLine("  sdvkit fixture enter greenhouse");
         output.WriteLine("  sdvkit fixture farm");

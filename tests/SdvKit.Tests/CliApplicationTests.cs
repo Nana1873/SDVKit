@@ -372,7 +372,7 @@ public sealed class CliApplicationTests
             output,
             StringComparison.Ordinal);
         Assert.Contains(
-            "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>",
+            "sdvkit fixture building ensure <alias> <building-kind> <x> <y>",
             output,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
@@ -774,13 +774,17 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "  sdvkit fixture status"
                 + Environment.NewLine
-                + "  sdvkit fixture building ensure <alias> deluxe-barn <x> <y>"
+                + "  sdvkit fixture building ensure <alias> <building-kind> <x> <y>"
                 + Environment.NewLine
                 + "  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>"
                 + Environment.NewLine
                 + "  sdvkit fixture object clear-owned <alias-or-id>"
                 + Environment.NewLine
-                + "  sdvkit fixture animal ensure <alias-or-id> white-cow"
+                + "  sdvkit fixture animal ensure <alias-or-id> <animal-kind>"
+                + Environment.NewLine
+                + "  Kinds resolve from loaded canonical Stardew data IDs; legacy deluxe-barn and white-cow remain valid."
+                + Environment.NewLine
+                + "  Unknown, ambiguous, unplaceable, or animal-house-incompatible kinds fail before mutation."
                 + Environment.NewLine
                 + "  sdvkit fixture enter <alias-or-id>"
                 + Environment.NewLine
@@ -846,10 +850,10 @@ public sealed class CliApplicationTests
             "sdvkit input cursor <ui-x> <ui-y>",
             "sdvkit input cursor clear",
             "sdvkit fixture status",
-            "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>",
+            "sdvkit fixture building ensure <alias> <building-kind> <x> <y>",
             "sdvkit fixture object ensure <alias-or-id> <qualified-item-id>",
             "sdvkit fixture object clear-owned <alias-or-id>",
-            "sdvkit fixture animal ensure <alias-or-id> white-cow",
+            "sdvkit fixture animal ensure <alias-or-id> <animal-kind>",
             "sdvkit fixture enter <alias-or-id>",
             "sdvkit fixture enter greenhouse",
             "sdvkit fixture farm",
