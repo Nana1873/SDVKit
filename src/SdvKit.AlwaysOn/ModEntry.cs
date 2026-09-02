@@ -7,6 +7,8 @@ namespace SdvKit.AlwaysOn;
 
 public sealed class ModEntry : Mod
 {
+    private const int ReviewWindowWidth = 1280;
+    private const int ReviewWindowHeight = 720;
     private BackgroundRunGuard? _backgroundRun;
     private StatusWriter? _statusWriter;
     private TestSaveAutomation? _testSave;
@@ -17,6 +19,9 @@ public sealed class ModEntry : Mod
     private bool _gameLaunched;
     private bool _exitPrepared;
     private bool _restoreConfirmed;
+    private bool _reviewWindowModeRequired;
+    private bool _reviewWindowModeApplied;
+    private bool _reviewWindowModeErrorLogged;
     private bool _statusWriteErrorLogged;
     private bool _stopReadErrorLogged;
 
@@ -45,6 +50,10 @@ public sealed class ModEntry : Mod
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
+        _reviewWindowModeRequired = string.Equals(
+            Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW_WINDOWED")?.Trim(),
+            "1",
+            StringComparison.Ordinal);
         if (!ProjectModObserver.TryCreate(
                 helper,
                 Monitor,
@@ -99,6 +108,7 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
+                EnsureReviewWindowMode();
                 _backgroundRun.EnsureApplied();
                 TryHandleStopRequest();
             }
@@ -152,6 +162,85 @@ public sealed class ModEntry : Mod
         Monitor.Log(
             $"SDVKit AlwaysOn activated for isolated lab launch '{launchId}'.",
             LogLevel.Info);
+    }
+
+    private void EnsureReviewWindowMode()
+    {
+        if (!_gameLaunched || !_reviewWindowModeRequired)
+        {
+            return;
+        }
+
+        try
+        {
+            bool windowModeApplied = Game1.options.isCurrentlyWindowed()
+                && !Game1.options.isCurrentlyWindowedBorderless()
+                && Game1.options.preferredResolutionX == ReviewWindowWidth
+                && Game1.options.preferredResolutionY == ReviewWindowHeight
+                && Game1.game1.Window.ClientBounds.Width == ReviewWindowWidth
+                && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
+            if (windowModeApplied)
+            {
+                if (!_reviewWindowModeApplied)
+                {
+                    Monitor.Log(
+                        "SDVKit review confirmed Stardew's isolated windowed mode.",
+                        LogLevel.Info);
+                }
+
+                _reviewWindowModeApplied = true;
+                _reviewWindowModeErrorLogged = false;
+                return;
+            }
+
+            _reviewWindowModeApplied = false;
+            bool refreshRequired =
+                Game1.game1.Window.ClientBounds.Width != ReviewWindowWidth
+                || Game1.game1.Window.ClientBounds.Height != ReviewWindowHeight;
+            if (!Game1.options.isCurrentlyWindowed()
+                || Game1.options.isCurrentlyWindowedBorderless())
+            {
+                Game1.options.setWindowedOption(StartupPreferences.windowed);
+                refreshRequired = true;
+            }
+
+            if (Game1.options.preferredResolutionX != ReviewWindowWidth
+                || Game1.options.preferredResolutionY != ReviewWindowHeight)
+            {
+                Game1.options.preferredResolutionX = ReviewWindowWidth;
+                Game1.options.preferredResolutionY = ReviewWindowHeight;
+                refreshRequired = true;
+            }
+
+            if (refreshRequired)
+            {
+                Game1.game1.refreshWindowSettings();
+            }
+
+            _reviewWindowModeApplied = Game1.options.isCurrentlyWindowed()
+                && !Game1.options.isCurrentlyWindowedBorderless()
+                && Game1.options.preferredResolutionX == ReviewWindowWidth
+                && Game1.options.preferredResolutionY == ReviewWindowHeight
+                && Game1.game1.Window.ClientBounds.Width == ReviewWindowWidth
+                && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
+            if (_reviewWindowModeApplied)
+            {
+                Monitor.Log(
+                    "SDVKit review confirmed Stardew's isolated windowed mode.",
+                    LogLevel.Info);
+                _reviewWindowModeErrorLogged = false;
+            }
+        }
+        catch (Exception exception)
+        {
+            if (!_reviewWindowModeErrorLogged)
+            {
+                Monitor.Log(
+                    $"SDVKit review couldn't apply isolated windowed mode: {exception.Message}",
+                    LogLevel.Error);
+                _reviewWindowModeErrorLogged = true;
+            }
+        }
     }
 
     private static bool TryReadConfiguration(

@@ -92,6 +92,7 @@ internal sealed class LiveLabService
         "SDVKIT_PROJECT_MOD_VERSION",
         "SDVKIT_PROJECT_MOD_BUILD_IDENTITY",
         "SDVKIT_PROJECT_REVIEW",
+        "SDVKIT_PROJECT_REVIEW_WINDOWED",
     ];
 
     private readonly LiveLabPaths _paths;
@@ -932,6 +933,22 @@ internal sealed class LiveLabService
         }
 
         _paths.EnsureDirectories();
+        if (interactiveConsole)
+        {
+            try
+            {
+                ReviewWindowPreferences.Prepare(_paths.StardewDataPath);
+            }
+            catch (Exception exception) when (IsControlledFailure(exception))
+            {
+                return Failure(
+                    "blocked",
+                    null,
+                    "reviewWindowPreparationFailed",
+                    exception.Message);
+            }
+        }
+
         if (testSave is null)
         {
             _paths.RejectUserProfileReparsePoints();
@@ -1005,6 +1022,7 @@ internal sealed class LiveLabService
             if (interactiveConsole)
             {
                 environment["SDVKIT_PROJECT_REVIEW"] = "1";
+                environment["SDVKIT_PROJECT_REVIEW_WINDOWED"] = "1";
             }
         }
 
@@ -1017,6 +1035,7 @@ internal sealed class LiveLabService
             _paths.StandardErrorPath,
             StartMinimizedWithoutActivation: networkTwo is not null
                 && !interactiveConsole,
+            StartVisibleWithoutActivation: interactiveConsole,
             InteractiveConsole: interactiveConsole);
         LabProcessStartResult started = _processHost.Start(specification);
         if (started.Identity is null)

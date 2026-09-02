@@ -43,12 +43,14 @@ public sealed class WindowsLabProcessHostTests
     }
 
     [Theory]
-    [InlineData(false, false, 0x00000100, 0)]
-    [InlineData(true, false, 0x00000101, 7)]
-    [InlineData(false, true, 0, 0)]
-    [InlineData(true, true, 0, 0)]
+    [InlineData(false, false, false, 0x00000100, 0)]
+    [InlineData(true, false, false, 0x00000101, 7)]
+    [InlineData(false, true, false, 0x00000101, 4)]
+    [InlineData(false, false, true, 0, 0)]
+    [InlineData(false, true, true, 0x00000001, 4)]
     public void NativeLauncherUsesWindowFlagsForTheSelectedLaunchMode(
         bool startMinimized,
+        bool startVisibleWithoutActivation,
         bool interactiveConsole,
         int expectedFlags,
         short expectedShowWindow)
@@ -62,6 +64,7 @@ public sealed class WindowsLabProcessHostTests
             Path.Combine(temporary.Path, "stdout.log"),
             Path.Combine(temporary.Path, "stderr.log"),
             StartMinimizedWithoutActivation: startMinimized,
+            StartVisibleWithoutActivation: startVisibleWithoutActivation,
             InteractiveConsole: interactiveConsole);
 
         (int flags, short showWindow) =
@@ -69,6 +72,24 @@ public sealed class WindowsLabProcessHostTests
 
         Assert.Equal(expectedFlags, flags);
         Assert.Equal(expectedShowWindow, showWindow);
+    }
+
+    [Fact]
+    public void NativeLauncherRejectsConflictingWindowModes()
+    {
+        using TemporaryDirectory temporary = new();
+        LabProcessStartSpec specification = new(
+            Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            temporary.Path,
+            [],
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            Path.Combine(temporary.Path, "stdout.log"),
+            Path.Combine(temporary.Path, "stderr.log"),
+            StartMinimizedWithoutActivation: true,
+            StartVisibleWithoutActivation: true);
+
+        Assert.Throws<ArgumentException>(
+            () => WindowsProcessLauncher.GetStartupWindowSettings(specification));
     }
 
     [Theory]

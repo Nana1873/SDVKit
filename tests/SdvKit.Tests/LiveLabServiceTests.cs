@@ -57,6 +57,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
         Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.False(specification.StartVisibleWithoutActivation);
         Assert.False(specification.InteractiveConsole);
         KeyValuePair<string, string>[] disabledTestSaveEnvironment = specification.Environment
             .Where(pair => pair.Key.StartsWith("SDVKIT_TEST_SAVE_", StringComparison.Ordinal))
@@ -98,12 +99,14 @@ public sealed class LiveLabServiceTests
         LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(process.Specification);
         Assert.True(specification.InteractiveConsole);
         Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.True(specification.StartVisibleWithoutActivation);
         Assert.Equal(projectMod.UniqueId, specification.Environment["SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
         Assert.Equal(projectMod.Version, specification.Environment["SDVKIT_PROJECT_MOD_VERSION"]);
         Assert.Equal(
             projectMod.BuildIdentity,
             specification.Environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
         Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW_WINDOWED"]);
         Assert.Equal(projectMod, stateStore.State?.ProjectMod);
         Assert.Null(stateStore.State?.TestSave);
         Assert.Null(stateStore.State?.NetworkTwo);

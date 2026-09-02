@@ -29,6 +29,8 @@ sdvkit project review start "<absolute-target-path>" --topology single --compani
 sdvkit project review status --topology single --json
 ```
 
+A review start prepares only the role's isolated startup preferences for a visible 1280x720 game window and keeps SMAPI's separate interactive terminal available. Windows is asked not to activate the new process, but a transient terminal activation can still be terminal-host behavior. Treat a minimized game or a borderless/fullscreen game as a failed review start; do not substitute minimization for a renderable viewport.
+
 When the review needs the registered SDVKit-owned disposable world, first run `sdvkit lab test-save --topology single --json` while all roles are stopped, then add the explicit flag:
 
 ```text
