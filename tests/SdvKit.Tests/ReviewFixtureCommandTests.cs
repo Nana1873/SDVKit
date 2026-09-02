@@ -514,6 +514,10 @@ public sealed class ReviewFixtureCommandTests
         int ensure = source.IndexOf(
             "public ReviewFixtureResult EnsureBuilding(",
             StringComparison.Ordinal);
+        int farmLocationCheck = source.IndexOf(
+            "if (!ReferenceEquals(Game1.currentLocation, farm))",
+            ensure,
+            StringComparison.Ordinal);
         int planCall = source.IndexOf(
             "if (!TryPlanBuildingPlacement(",
             ensure,
@@ -536,13 +540,15 @@ public sealed class ReviewFixtureCommandTests
         string preflight = source[planDefinition..applyDefinition];
 
         Assert.True(ensure >= 0);
-        Assert.True(planCall > ensure);
+        Assert.True(farmLocationCheck > ensure);
+        Assert.True(planCall > farmLocationCheck);
         Assert.True(applyCall > planCall);
         Assert.True(buildCall > applyCall);
         Assert.True(planDefinition > buildCall);
         Assert.True(applyDefinition > planDefinition);
         Assert.Contains("skipSafetyChecks: false", source, StringComparison.Ordinal);
         Assert.DoesNotContain("skipSafetyChecks: true", source, StringComparison.Ordinal);
+        Assert.Contains("Run 'sdvkit fixture farm' first; no placement content was changed.", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixturePolicy.TryCreateBuildingPlacementArea(", preflight, StringComparison.Ordinal);
         Assert.Contains("buildingData.Size.X", preflight, StringComparison.Ordinal);
         Assert.Contains(".AdditionalPlacementTiles", preflight, StringComparison.Ordinal);

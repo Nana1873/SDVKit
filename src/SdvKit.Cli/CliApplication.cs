@@ -848,7 +848,12 @@ public static class CliApplication
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)
     {
         output.WriteLine(
-            "AlwaysOn fixture console lines (quote one as <text> for project review command; not top-level CLI):");
+            "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):");
+        output.WriteLine("  sdvkit screenshot <label>");
+        output.WriteLine("  sdvkit screenshot viewport <label>");
+        output.WriteLine("  sdvkit input press <SButton>");
+        output.WriteLine("  sdvkit input cursor <ui-x> <ui-y>");
+        output.WriteLine("  sdvkit input cursor clear");
         output.WriteLine("  sdvkit fixture status");
         output.WriteLine("  sdvkit fixture building ensure <alias> deluxe-barn <x> <y>");
         output.WriteLine("  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>");

@@ -1,4 +1,6 @@
 #if SDVKIT_GAME_AVAILABLE
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
 #endif
@@ -7,31 +9,51 @@ namespace SdvKit.AlwaysOn;
 
 internal static class ReviewScreenshotArguments
 {
-    internal const string Usage = "Usage: sdvkit screenshot <label>";
+    internal const string Usage =
+        "Usage: sdvkit screenshot <label> | sdvkit screenshot viewport <label>";
     internal const string LabelError =
         "A screenshot label must contain 1-64 ASCII letters, digits, '-' or '_' only.";
 
     public static bool TryParse(
         IReadOnlyList<string>? arguments,
-        out string label,
+        out ReviewScreenshotRequest? request,
         out string error)
     {
-        label = string.Empty;
+        request = null;
         if (arguments is null
-            || arguments.Count != 2
+            || arguments.Count < 2
             || !string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))
         {
             error = Usage;
             return false;
         }
 
-        if (!IsValidLabel(arguments[1]))
+        ReviewScreenshotKind kind;
+        string label;
+        if (arguments.Count == 2)
+        {
+            kind = ReviewScreenshotKind.Map;
+            label = arguments[1];
+        }
+        else if (arguments.Count == 3
+            && string.Equals(arguments[1], "viewport", StringComparison.Ordinal))
+        {
+            kind = ReviewScreenshotKind.Viewport;
+            label = arguments[2];
+        }
+        else
+        {
+            error = Usage;
+            return false;
+        }
+
+        if (!IsValidLabel(label))
         {
             error = LabelError;
             return false;
         }
 
-        label = arguments[1];
+        request = new ReviewScreenshotRequest(kind, label);
         error = string.Empty;
         return true;
     }
@@ -51,6 +73,16 @@ internal static class ReviewScreenshotArguments
     }
 }
 
+internal enum ReviewScreenshotKind
+{
+    Map,
+    Viewport,
+}
+
+internal sealed record ReviewScreenshotRequest(
+    ReviewScreenshotKind Kind,
+    string Label);
+
 internal interface IReviewScreenshotRuntime
 {
     bool IsWorldReady { get; }
@@ -64,6 +96,8 @@ internal interface IReviewScreenshotRuntime
     bool FileExists(string path);
 
     string? TakeMapScreenshot(string screenshotName);
+
+    bool TryTakeViewportScreenshot(string path, out string error);
 }
 
 internal sealed record ReviewScreenshotResult(
@@ -73,27 +107,30 @@ internal sealed record ReviewScreenshotResult(
 internal static class ReviewScreenshotOperation
 {
     public static ReviewScreenshotResult Execute(
-        string label,
+        ReviewScreenshotRequest request,
         IReviewScreenshotRuntime runtime)
     {
+        ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(runtime);
 
-        if (!ReviewScreenshotArguments.IsValidLabel(label))
+        if (!Enum.IsDefined(request.Kind)
+            || !ReviewScreenshotArguments.IsValidLabel(request.Label))
         {
             return Failure(ReviewScreenshotArguments.LabelError);
         }
 
         if (!runtime.IsWorldReady)
         {
-            return Failure("A world must be loaded before taking a map screenshot.");
+            return Failure("A world must be loaded before taking a review screenshot.");
         }
 
-        if (!runtime.CanTakeScreenshots || runtime.ScreenshotBusy)
+        if (request.Kind == ReviewScreenshotKind.Map
+            && (!runtime.CanTakeScreenshots || runtime.ScreenshotBusy))
         {
             return Failure("Stardew cannot take a map screenshot right now.");
         }
 
-        string screenshotName = $"SDVKit-{label}";
+        string screenshotName = $"SDVKit-{request.Label}";
         string screenshotFileName = $"{screenshotName}.png";
         string screenshotFolder = runtime.GetScreenshotFolder();
         if (string.IsNullOrWhiteSpace(screenshotFolder)
@@ -110,11 +147,23 @@ internal static class ReviewScreenshotOperation
                 $"Refusing to overwrite existing isolated screenshot '{expectedPath}'.");
         }
 
+        if (request.Kind == ReviewScreenshotKind.Viewport)
+        {
+            if (!runtime.TryTakeViewportScreenshot(expectedPath, out string viewportError)
+                || !runtime.FileExists(expectedPath))
+            {
+                return Failure(
+                    $"Stardew failed to create the requested viewport screenshot '{expectedPath}': "
+                    + viewportError);
+            }
+
+            return new ReviewScreenshotResult(
+                true,
+                $"Created isolated viewport screenshot '{expectedPath}'.");
+        }
+
         string? writtenFileName = runtime.TakeMapScreenshot(screenshotName);
-        if (!string.Equals(
-                writtenFileName,
-                screenshotFileName,
-                StringComparison.Ordinal)
+        if (!string.Equals(writtenFileName, screenshotFileName, StringComparison.Ordinal)
             || !runtime.FileExists(expectedPath))
         {
             return Failure(
@@ -134,9 +183,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot <label> | sdvkit fixture ...";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ...";
     private const string Usage =
-        "Usage: sdvkit screenshot <label> | sdvkit fixture ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ...";
 
     public static void Register(
         IModHelper helper,
@@ -150,6 +199,7 @@ internal static class ReviewCommand
         ArgumentNullException.ThrowIfNull(networkTwo);
 
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
+        var inputRuntime = new StardewReviewInputRuntime(helper);
         var fixtureRuntime = new StardewReviewFixtureRuntime(
             testSave,
             networkTwo,
@@ -163,6 +213,11 @@ internal static class ReviewCommand
                     && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))
                 {
                     ReviewScreenshotCommand.Handle(arguments, screenshotRuntime, monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "input", StringComparison.Ordinal))
+                {
+                    ReviewInputCommand.Handle(arguments, inputRuntime, monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "fixture", StringComparison.Ordinal))
@@ -186,7 +241,7 @@ internal static class ReviewScreenshotCommand
     {
         if (!ReviewScreenshotArguments.TryParse(
                 arguments,
-                out string label,
+                out ReviewScreenshotRequest? request,
                 out string error))
         {
             monitor.Log(error, LogLevel.Error);
@@ -195,7 +250,7 @@ internal static class ReviewScreenshotCommand
 
         try
         {
-            ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(label, runtime);
+            ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(request!, runtime);
             monitor.Log(
                 result.Message,
                 result.Succeeded ? LogLevel.Info : LogLevel.Error);
@@ -225,5 +280,44 @@ internal sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime
 
     public string? TakeMapScreenshot(string screenshotName) =>
         Game1.game1.takeMapScreenshot(1f, screenshotName, null!);
+
+    public bool TryTakeViewportScreenshot(string path, out string error)
+    {
+        try
+        {
+            GraphicsDevice graphicsDevice = Game1.graphics.GraphicsDevice;
+            PresentationParameters presentation = graphicsDevice.PresentationParameters;
+            int width = presentation.BackBufferWidth;
+            int height = presentation.BackBufferHeight;
+            if (width <= 0 || height <= 0)
+            {
+                error = "the graphics backbuffer has invalid dimensions";
+                return false;
+            }
+
+            var pixels = new Color[checked(width * height)];
+            graphicsDevice.GetBackBufferData(pixels);
+            using var texture = new Texture2D(
+                graphicsDevice,
+                width,
+                height,
+                false,
+                SurfaceFormat.Color);
+            texture.SetData(pixels);
+            using var stream = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None);
+            texture.SaveAsPng(stream, width, height);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = exception.GetBaseException().Message;
+            return false;
+        }
+    }
 }
 #endif

@@ -760,7 +760,17 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
-                + "AlwaysOn fixture console lines (quote one as <text> for project review command; not top-level CLI):"
+                + "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):"
+                + Environment.NewLine
+                + "  sdvkit screenshot <label>"
+                + Environment.NewLine
+                + "  sdvkit screenshot viewport <label>"
+                + Environment.NewLine
+                + "  sdvkit input press <SButton>"
+                + Environment.NewLine
+                + "  sdvkit input cursor <ui-x> <ui-y>"
+                + Environment.NewLine
+                + "  sdvkit input cursor clear"
                 + Environment.NewLine
                 + "  sdvkit fixture status"
                 + Environment.NewLine
@@ -828,8 +838,13 @@ public sealed class CliApplicationTests
             "Content-pack targets require --topology single and an explicit provider --companion.",
             output,
             StringComparison.Ordinal);
-        string[] fixtureConsoleLines =
+        string[] reviewConsoleLines =
         [
+            "sdvkit screenshot <label>",
+            "sdvkit screenshot viewport <label>",
+            "sdvkit input press <SButton>",
+            "sdvkit input cursor <ui-x> <ui-y>",
+            "sdvkit input cursor clear",
             "sdvkit fixture status",
             "sdvkit fixture building ensure <alias> deluxe-barn <x> <y>",
             "sdvkit fixture object ensure <alias-or-id> <qualified-item-id>",
@@ -839,9 +854,9 @@ public sealed class CliApplicationTests
             "sdvkit fixture enter greenhouse",
             "sdvkit fixture farm",
         ];
-        foreach (string fixtureConsoleLine in fixtureConsoleLines)
+        foreach (string reviewConsoleLine in reviewConsoleLines)
         {
-            Assert.Contains(fixtureConsoleLine, output, StringComparison.Ordinal);
+            Assert.Contains(reviewConsoleLine, output, StringComparison.Ordinal);
         }
 
         Assert.Contains("not top-level CLI", output, StringComparison.Ordinal);
