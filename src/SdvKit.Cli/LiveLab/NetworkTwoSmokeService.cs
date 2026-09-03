@@ -1033,59 +1033,15 @@ internal sealed class NetworkTwoSmokeService
         AlwaysOnStatusReport? host,
         AlwaysOnStatusReport? farmhand)
     {
-        NetworkTwoStatusReport? hostNetwork = host?.NetworkTwo;
-        NetworkTwoStatusReport? farmhandNetwork = farmhand?.NetworkTwo;
-        if (host?.State != "active"
-            || farmhand?.State != "active"
-            || host.PauseWhenOutOfFocus != false
-            || farmhand.PauseWhenOutOfFocus != false
-            || host.EnableServer != true
-            || host.IpConnectionsEnabled != true
-            || hostNetwork?.State != "ready"
-            || farmhandNetwork?.State != "ready"
-            || hostNetwork.Phase != "passed"
-            || farmhandNetwork.Phase != "passed"
-            || hostNetwork.IdentityVerified != true
-            || farmhandNetwork.IdentityVerified != true
-            || hostNetwork.JoinedTicks < NetworkTwoContract.RequiredJoinedTicks
-            || farmhandNetwork.JoinedTicks < NetworkTwoContract.RequiredJoinedTicks)
+        if (!NetworkTwoPairVerifier.IsReady(host, farmhand))
         {
             return false;
         }
 
-        bool matches = string.Equals(
-                hostNetwork.BuildIdentity,
-                _buildIdentity,
-                StringComparison.Ordinal)
-            && string.Equals(
-                farmhandNetwork.BuildIdentity,
-                _buildIdentity,
-                StringComparison.Ordinal)
-            && string.Equals(
-                hostNetwork.FixtureId,
-                farmhandNetwork.FixtureId,
-                StringComparison.Ordinal)
-            && string.Equals(hostNetwork.SaveId, farmhandNetwork.SaveId, StringComparison.Ordinal)
-            && hostNetwork.LocalPlayerId is not (null or 0)
-            && hostNetwork.RemotePlayerId is not (null or 0)
-            && hostNetwork.LocalPlayerId == farmhandNetwork.RemotePlayerId
-            && hostNetwork.RemotePlayerId == farmhandNetwork.LocalPlayerId
-            && string.Equals(
-                hostNetwork.LocalPlayerName,
-                TestSaveContract.PlayerName,
-                StringComparison.Ordinal)
-            && string.Equals(
-                hostNetwork.RemotePlayerName,
-                NetworkTwoContract.FarmhandName,
-                StringComparison.Ordinal)
-            && string.Equals(
-                farmhandNetwork.LocalPlayerName,
-                NetworkTwoContract.FarmhandName,
-                StringComparison.Ordinal)
-            && string.Equals(
-                farmhandNetwork.RemotePlayerName,
-                TestSaveContract.PlayerName,
-                StringComparison.Ordinal);
+        bool matches = NetworkTwoPairVerifier.HasExactIdentity(
+            host!.NetworkTwo!,
+            farmhand!.NetworkTwo!,
+            _buildIdentity);
         if (_projectMod is not null)
         {
             matches = matches

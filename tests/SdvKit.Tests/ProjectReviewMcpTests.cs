@@ -19,6 +19,12 @@ public sealed class ProjectReviewMcpTests
     private static readonly DateTimeOffset ObservedAt = StartedAt.AddSeconds(10);
 
     private const string LaunchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string HostLaunchId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string FarmhandLaunchId = "cccccccccccccccccccccccccccccccc";
+    private const string NetworkFixtureId = "dddddddddddddddddddddddddddddddd";
+    private const string NetworkSaveId = "SDVKit_123456789";
+    private const string NetworkBuildIdentity =
+        "sha256:9999999999999999999999999999999999999999999999999999999999999999";
 
     [Fact]
     public void RuntimeReadReturnsOnlyBoundedReviewAndGameState()
@@ -33,6 +39,7 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal(1, snapshot.SchemaVersion);
         Assert.Equal(LaunchId, snapshot.LaunchId);
         Assert.Equal("single", snapshot.Topology);
+        Assert.Null(snapshot.Role);
         Assert.Equal(ObservedAt, snapshot.ObservedAtUtc);
         Assert.Equal("Nana.Target", snapshot.Target.UniqueId);
         Assert.Equal("1.0.0", snapshot.Target.Version);
@@ -47,6 +54,91 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal(64, snapshot.Runtime.TileX);
         Assert.Equal(15, snapshot.Runtime.TileY);
         Assert.False(snapshot.Runtime.MenuOpen);
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole, HostLaunchId, "Farm", 930)]
+    [InlineData(NetworkTwoContract.FarmhandRole, FarmhandLaunchId, "FarmHouse", 940)]
+    public void RuntimeReadReturnsOnlyTheSelectedReadyNetworkRole(
+        string role,
+        string expectedLaunchId,
+        string expectedLocation,
+        int expectedTime)
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(
+            temporary,
+            role);
+
+        ProjectReviewMcpRuntimeSnapshot snapshot =
+            Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+
+        Assert.Equal(NetworkTwoContract.Topology, snapshot.Topology);
+        Assert.Equal(role, snapshot.Role);
+        Assert.Equal(expectedLaunchId, snapshot.LaunchId);
+        Assert.Equal(expectedLocation, snapshot.Runtime.LocationId);
+        Assert.Equal(expectedTime, snapshot.Runtime.TimeOfDay);
+        Assert.Equal(NetworkFixtureId, snapshot.TestSave?.FixtureId);
+        Assert.Equal(NetworkSaveId, snapshot.TestSave?.SaveId);
+        Assert.Equal("Nana.Target", snapshot.Target.UniqueId);
+    }
+
+    [Fact]
+    public void NetworkRuntimeReadFailsClosedWhenPeerTargetBindingChanges()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        LiveLabState farmhand = Assert.IsType<LiveLabState>(
+            new JsonLiveLabStateStore(farmhandPaths.StatePath).Read());
+        new JsonLiveLabStateStore(farmhandPaths.StatePath).Write(
+            farmhand with
+            {
+                ProjectMod = farmhand.ProjectMod! with
+                {
+                    BuildIdentity = "sha256:" + new string('1', 64),
+                },
+            });
+
+        ProjectReviewMcpReadResult result = reader.Read();
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("reviewOwnershipMismatch", result.ErrorCode);
+    }
+
+    [Fact]
+    public void NetworkRuntimeReadFailsClosedWhenPairIsNotReciprocal()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.FarmhandRole,
+            reciprocalPair: false);
+
+        ProjectReviewMcpReadResult result = reader.Read();
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("reviewPairNotReady", result.ErrorCode);
+    }
+
+    [Fact]
+    public void NetworkRuntimeReadFailsClosedWhenPairProcessIsNotRunning()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.HostRole,
+            processStatus: LabProcessInspectStatus.Exited);
+
+        ProjectReviewMcpReadResult result = reader.Read();
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("reviewPairProcessExited", result.ErrorCode);
     }
 
     [Theory]
@@ -141,7 +233,19 @@ public sealed class ProjectReviewMcpTests
         Assert.False(tool.Annotations?.OpenWorldHint);
         Assert.Equal("object", tool.InputSchema.GetProperty("type").GetString());
         Assert.False(tool.InputSchema.GetProperty("additionalProperties").GetBoolean());
-        Assert.Equal("object", tool.OutputSchema?.GetProperty("type").GetString());
+        JsonElement outputSchema = Assert.IsType<JsonElement>(tool.OutputSchema);
+        Assert.Equal("object", outputSchema.GetProperty("type").GetString());
+        Assert.Contains("role", outputSchema.GetProperty("required")
+            .EnumerateArray()
+            .Select(value => value.GetString()));
+        Assert.Equal(
+            ["single", "network-2"],
+            outputSchema.GetProperty("properties")
+                .GetProperty("topology")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(value => value.GetString()!)
+                .ToArray());
 
         CallToolResult called = await client.CallToolAsync(
             new CallToolRequestParams { Name = ProjectReviewMcpServer.RuntimeToolName },
@@ -150,6 +254,7 @@ public sealed class ProjectReviewMcpTests
         Assert.NotEqual(true, called.IsError);
         JsonElement structured = Assert.IsType<JsonElement>(called.StructuredContent);
         Assert.Equal(1, structured.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("role").ValueKind);
         Assert.Equal("Nana.Target", structured
             .GetProperty("target").GetProperty("uniqueId").GetString());
         Assert.False(structured.TryGetProperty("testSave", out _));
@@ -164,6 +269,56 @@ public sealed class ProjectReviewMcpTests
             new Dictionary<string, object?> { ["unexpected"] = true },
             cancellationToken: timeout.Token);
         Assert.True(invalidArguments.IsError);
+
+        await client.DisposeAsync();
+        await clientToServer.Writer.CompleteAsync();
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public async Task OfficialClientCallsTheSelectedNetworkRole(string role)
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(
+            temporary,
+            role);
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+        await using var serverTransport = new StreamServerTransport(
+            clientToServer.Reader.AsStream(),
+            serverToClient.Writer.AsStream(),
+            "sdvkit-network-test");
+        await using McpServer server = McpServer.Create(
+            serverTransport,
+            ProjectReviewMcpServer.CreateOptions(reader));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        Task serverTask = server.RunAsync(timeout.Token);
+        var clientTransport = new StreamClientTransport(
+            clientToServer.Writer.AsStream(),
+            serverToClient.Reader.AsStream());
+        await using McpClient client = await McpClient.CreateAsync(
+            clientTransport,
+            cancellationToken: timeout.Token);
+
+        CallToolResult called = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = ProjectReviewMcpServer.RuntimeToolName,
+            },
+            timeout.Token);
+
+        Assert.NotEqual(true, called.IsError);
+        JsonElement structured = Assert.IsType<JsonElement>(called.StructuredContent);
+        Assert.Equal(NetworkTwoContract.Topology, structured
+            .GetProperty("topology").GetString());
+        Assert.Equal(role, structured.GetProperty("role").GetString());
+        Assert.Equal(
+            role == NetworkTwoContract.HostRole ? HostLaunchId : FarmhandLaunchId,
+            structured.GetProperty("launchId").GetString());
+        Assert.Equal(NetworkFixtureId, structured
+            .GetProperty("testSave").GetProperty("fixtureId").GetString());
 
         await client.DisposeAsync();
         await clientToServer.Writer.CompleteAsync();
@@ -186,7 +341,7 @@ public sealed class ProjectReviewMcpTests
                 reviewProcess.Id,
                 reviewProcess.StartTime.ToUniversalTime(),
                 reviewProcess.MainModule?.FileName
-                    ?? throw new InvalidOperationException("The test review executable is unavailable."));
+                    ?? reviewProcess.StartInfo.FileName);
             DateTimeOffset observedAt = DateTimeOffset.UtcNow;
             PrepareReadyReview(temporary, reviewIdentity, observedAt);
             string cliPath = Path.Combine(AppContext.BaseDirectory, "sdvkit.exe");
@@ -243,6 +398,219 @@ public sealed class ProjectReviewMcpTests
                 reviewProcess.WaitForExit();
             }
         }
+    }
+
+    private static ProjectReviewMcpRuntimeReader CreateReadyNetworkReview(
+        TemporaryDirectory temporary,
+        string role,
+        bool reciprocalPair = true,
+        LabProcessInspectStatus processStatus = LabProcessInspectStatus.Running)
+    {
+        LiveLabPaths singlePaths = LiveLabPaths.Resolve(temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            singlePaths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            singlePaths,
+            NetworkTwoContract.FarmhandRole);
+        ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewStagingResult staged = ProjectModStager.StageReview(
+            [target],
+            NetworkTwoContract.Topology,
+            singlePaths);
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(staged.Staging);
+        var identity = new TestSaveIdentity(
+            TestSaveContract.SchemaVersion,
+            new string('e', 32),
+            NetworkFixtureId,
+            123456789,
+            NetworkSaveId,
+            TestSaveContract.PlayerName,
+            TestSaveContract.FarmName,
+            TestSaveContract.FavoriteThing);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            identity,
+            Path.Combine(hostPaths.SavesPath, NetworkSaveId),
+            singlePaths.TestSaveWorkPath,
+            hostPaths.TestSaveScenarioLogPath);
+        var hostProcess = new OwnedProcessIdentity(
+            4242,
+            StartedAt,
+            Path.Combine(temporary.Path, "StardewModdingAPI.exe"));
+        var farmhandProcess = new OwnedProcessIdentity(
+            4243,
+            StartedAt,
+            Path.Combine(temporary.Path, "StardewModdingAPI.exe"));
+        var hostNetwork = new NetworkTwoLaunchState(
+            NetworkTwoContract.HostRole,
+            NetworkBuildIdentity,
+            NetworkFixtureId,
+            NetworkSaveId,
+            Path.Combine(hostPaths.RuntimePath, "network-2.log"));
+        var farmhandNetwork = new NetworkTwoLaunchState(
+            NetworkTwoContract.FarmhandRole,
+            NetworkBuildIdentity,
+            NetworkFixtureId,
+            NetworkSaveId,
+            Path.Combine(farmhandPaths.RuntimePath, "network-2.log"),
+            ExpectedFarmhandId: 202);
+        var hostState = new LiveLabState(
+            LiveLabState.CurrentSchemaVersion,
+            NetworkTwoContract.Topology,
+            HostLaunchId,
+            hostProcess,
+            hostPaths.ModsPath,
+            hostPaths.StatusPath,
+            hostPaths.StopRequestPath,
+            testSave,
+            hostNetwork,
+            staging.TargetLaunchState);
+        var farmhandState = new LiveLabState(
+            LiveLabState.CurrentSchemaVersion,
+            NetworkTwoContract.Topology,
+            FarmhandLaunchId,
+            farmhandProcess,
+            farmhandPaths.ModsPath,
+            farmhandPaths.StatusPath,
+            farmhandPaths.StopRequestPath,
+            TestSave: null,
+            farmhandNetwork,
+            staging.TargetLaunchState);
+        new JsonLiveLabStateStore(hostPaths.StatePath).Write(hostState);
+        new JsonLiveLabStateStore(farmhandPaths.StatePath).Write(farmhandState);
+
+        var projectMod = new ProjectModStatusMarker(
+            ProjectModContract.SchemaVersion,
+            ProjectModContract.LoadedPhase,
+            staging.TargetLaunchState.UniqueId,
+            staging.TargetLaunchState.Version,
+            staging.TargetLaunchState.UniqueId,
+            staging.TargetLaunchState.Version,
+            staging.TargetLaunchState.BuildIdentity,
+            LoadConfirmed: true,
+            "Loaded by SMAPI.");
+        WriteNetworkStatus(
+            hostState,
+            new TestSaveStatusMarker(
+                TestSaveContract.SchemaVersion,
+                TestSaveContract.ReviewMode,
+                "passed",
+                NetworkFixtureId,
+                NetworkSaveId,
+                IdentityVerified: true,
+                WaitedTicks: 0,
+                "Exact review fixture loaded.",
+                hostPaths.TestSaveScenarioLogPath),
+            new NetworkTwoStatusMarker(
+                NetworkTwoContract.SchemaVersion,
+                NetworkTwoContract.HostRole,
+                "passed",
+                NetworkBuildIdentity,
+                NetworkFixtureId,
+                NetworkSaveId,
+                IdentityVerified: true,
+                NetworkTwoContract.RequiredJoinedTicks,
+                LocalPlayerId: 101,
+                TestSaveContract.PlayerName,
+                RemotePlayerId: 202,
+                NetworkTwoContract.FarmhandName,
+                "Exact pair joined.",
+                hostNetwork.NetworkLogPath),
+            projectMod,
+            new RuntimeSnapshotMarker(
+                RuntimeSnapshotContract.SchemaVersion,
+                true,
+                "summer",
+                7,
+                3,
+                930,
+                "Farm",
+                64,
+                15,
+                false,
+                ObservedAt),
+            enableServer: true,
+            ipConnectionsEnabled: true,
+            foregroundProcessId: 9001);
+        WriteNetworkStatus(
+            farmhandState,
+            testSave: null,
+            new NetworkTwoStatusMarker(
+                NetworkTwoContract.SchemaVersion,
+                NetworkTwoContract.FarmhandRole,
+                "passed",
+                NetworkBuildIdentity,
+                NetworkFixtureId,
+                NetworkSaveId,
+                IdentityVerified: true,
+                NetworkTwoContract.RequiredJoinedTicks,
+                LocalPlayerId: 202,
+                NetworkTwoContract.FarmhandName,
+                RemotePlayerId: reciprocalPair ? 101 : 303,
+                TestSaveContract.PlayerName,
+                "Exact pair joined.",
+                farmhandNetwork.NetworkLogPath),
+            projectMod,
+            new RuntimeSnapshotMarker(
+                RuntimeSnapshotContract.SchemaVersion,
+                true,
+                "summer",
+                7,
+                3,
+                940,
+                "FarmHouse",
+                8,
+                9,
+                false,
+                ObservedAt),
+            enableServer: null,
+            ipConnectionsEnabled: null,
+            foregroundProcessId: 9002);
+
+        return new ProjectReviewMcpRuntimeReader(
+            temporary.Path,
+            NetworkTwoContract.Topology,
+            role,
+            new FakeProcessHost(processStatus),
+            () => ObservedAt.AddSeconds(1));
+    }
+
+    private static void WriteNetworkStatus(
+        LiveLabState state,
+        TestSaveStatusMarker? testSave,
+        NetworkTwoStatusMarker network,
+        ProjectModStatusMarker projectMod,
+        RuntimeSnapshotMarker runtime,
+        bool? enableServer,
+        bool? ipConnectionsEnabled,
+        int foregroundProcessId)
+    {
+        var marker = new AlwaysOnStatusMarker(
+            1,
+            state.LaunchId,
+            state.OwnedProcessIdentity.ProcessId,
+            state.OwnedProcessIdentity.StartTimeUtc,
+            "active",
+            600,
+            IsActive: false,
+            PauseWhenOutOfFocus: false,
+            ObservedAt,
+            testSave,
+            enableServer,
+            ipConnectionsEnabled,
+            network,
+            ForegroundWindowHandle: 1,
+            foregroundProcessId,
+            projectMod,
+            runtime);
+        File.WriteAllText(
+            state.StatusPath,
+            JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
     }
 
     private static ProjectReviewMcpRuntimeReader CreateReadyReview(

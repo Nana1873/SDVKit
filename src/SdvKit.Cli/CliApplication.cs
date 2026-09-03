@@ -38,6 +38,7 @@ internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
 
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
+    string? role,
     string labRoot,
     TextWriter error);
 
@@ -68,8 +69,10 @@ public static class CliApplication
         "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewDataGetUsage =
         "       sdvkit project review data get <asset> <key> [--topology single] --json";
-    private const string ReviewMcpUsage =
+    private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single]";
+    private const string ReviewMcpNetworkUsage =
+        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -148,8 +151,12 @@ public static class CliApplication
             ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
         runProjectReviewData ??= (query, labRoot) =>
             ProjectReviewDataService.Execute(query, labRoot);
-        runProjectReviewMcp ??= (topology, labRoot, mcpError) =>
-            ProjectReviewMcpServer.RunStdioAsync(labRoot, mcpError)
+        runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
+            ProjectReviewMcpServer.RunStdioAsync(
+                labRoot,
+                topology,
+                role,
+                mcpError)
                 .GetAwaiter().GetResult();
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
@@ -429,10 +436,14 @@ public static class CliApplication
                 runProjectReviewData);
         }
 
-        if (TryParseProjectReviewMcp(arguments, out string? mcpTopology))
+        if (TryParseProjectReviewMcp(
+                arguments,
+                out string? mcpTopology,
+                out string? mcpRole))
         {
             return runProjectReviewMcp(
                 mcpTopology!,
+                mcpRole,
                 Environment.CurrentDirectory,
                 error);
         }
@@ -626,21 +637,57 @@ public static class CliApplication
 
     private static bool TryParseProjectReviewMcp(
         IReadOnlyList<string> arguments,
-        out string? topology)
+        out string? topology,
+        out string? role)
     {
         topology = LiveLabState.SingleTopology;
-        if (arguments.Count == 4
-            && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
-            && string.Equals(arguments[3], "serve", StringComparison.Ordinal))
+        role = null;
+        if (arguments.Count < 4
+            || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
+            || !string.Equals(arguments[3], "serve", StringComparison.Ordinal))
         {
-            return true;
+            return false;
         }
 
-        return arguments.Count == 6
-            && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
-            && string.Equals(arguments[3], "serve", StringComparison.Ordinal)
-            && string.Equals(arguments[4], "--topology", StringComparison.Ordinal)
-            && string.Equals(arguments[5], LiveLabState.SingleTopology, StringComparison.Ordinal);
+        var topologyCount = 0;
+        var roleCount = 0;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string option = arguments[index];
+            if (index + 1 >= arguments.Count
+                || arguments[index + 1].StartsWith('-'))
+            {
+                return false;
+            }
+
+            string value = arguments[++index];
+            if (string.Equals(option, "--topology", StringComparison.Ordinal))
+            {
+                topologyCount++;
+                topology = value;
+            }
+            else if (string.Equals(option, "--role", StringComparison.Ordinal))
+            {
+                roleCount++;
+                role = value;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        if (topologyCount > 1 || roleCount > 1)
+        {
+            return false;
+        }
+
+        return string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            ? roleCount == 0
+            : string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
+                && topologyCount == 1
+                && roleCount == 1
+                && NetworkTwoContract.IsRole(role!);
     }
 
     private static bool TryParseOptionalPath(
@@ -1014,6 +1061,8 @@ public static class CliApplication
             "  sdvkit project review stop [--topology <single|network-2>] --json");
         output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
         output.WriteLine("  sdvkit project review mcp serve [--topology single]");
+        output.WriteLine(
+            "  sdvkit project review mcp serve --topology network-2 --role <host|farmhand>");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -1051,7 +1100,8 @@ public static class CliApplication
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
-        output.WriteLine(ReviewMcpUsage);
+        output.WriteLine(ReviewMcpSingleUsage);
+        output.WriteLine(ReviewMcpNetworkUsage);
         WriteReviewFixtureConsoleUsage(output);
     }
 
@@ -1065,7 +1115,8 @@ public static class CliApplication
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
-        output.WriteLine(ReviewMcpUsage);
+        output.WriteLine(ReviewMcpSingleUsage);
+        output.WriteLine(ReviewMcpNetworkUsage);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);
