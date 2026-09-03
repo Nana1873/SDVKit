@@ -100,7 +100,7 @@ internal static class ProjectReviewMcpServer
             {
                 Name = "sdvkit-project-review",
                 Version = typeof(ProjectReviewMcpServer).Assembly
-                    .GetName().Version?.ToString(3) ?? "0.6.0",
+                    .GetName().Version?.ToString(3) ?? "0.6.1",
             },
             ServerInstructions =
                 "Tools are bound to one exact active project review. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
