@@ -962,6 +962,8 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>"
                 + Environment.NewLine
+                + "       single MCP tools: stardew_runtime_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; network-2: stardew_runtime_get only"
+                + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
                 + "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):"
@@ -1042,6 +1044,8 @@ public sealed class CliApplicationTests
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
         Assert.Contains("project review mcp serve", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_data_assets_list", output, StringComparison.Ordinal);
+        Assert.Contains("network-2: stardew_runtime_get only", output, StringComparison.Ordinal);
         Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
         Assert.Contains(
             "Content-pack targets require --topology single and an explicit provider --companion.",

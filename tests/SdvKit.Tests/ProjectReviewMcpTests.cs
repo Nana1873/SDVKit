@@ -212,7 +212,10 @@ public sealed class ProjectReviewMcpTests
             "sdvkit-test");
         await using McpServer server = McpServer.Create(
             serverTransport,
-            ProjectReviewMcpServer.CreateOptions(reader));
+            ProjectReviewMcpServer.CreateOptions(
+                reader,
+                _ => throw new InvalidOperationException(
+                    "This runtime-only call must not dispatch review data.")));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Task serverTask = server.RunAsync(timeout.Token);
         var clientTransport = new StreamClientTransport(
@@ -225,7 +228,13 @@ public sealed class ProjectReviewMcpTests
         ListToolsResult listed = await client.ListToolsAsync(
             new ListToolsRequestParams(),
             timeout.Token);
-        Tool tool = Assert.Single(listed.Tools);
+        Assert.Equal(4, listed.Tools.Count);
+        Tool tool = Assert.Single(
+            listed.Tools,
+            candidate => string.Equals(
+                candidate.Name,
+                ProjectReviewMcpServer.RuntimeToolName,
+                StringComparison.Ordinal));
         Assert.Equal(ProjectReviewMcpServer.RuntimeToolName, tool.Name);
         Assert.True(tool.Annotations?.ReadOnlyHint);
         Assert.False(tool.Annotations?.DestructiveHint);
@@ -302,6 +311,13 @@ public sealed class ProjectReviewMcpTests
             clientTransport,
             cancellationToken: timeout.Token);
 
+        ListToolsResult listed = await client.ListToolsAsync(
+            new ListToolsRequestParams(),
+            timeout.Token);
+        Assert.Equal(
+            [ProjectReviewMcpServer.RuntimeToolName],
+            listed.Tools.Select(tool => tool.Name).ToArray());
+
         CallToolResult called = await client.CallToolAsync(
             new CallToolRequestParams
             {
@@ -335,6 +351,7 @@ public sealed class ProjectReviewMcpTests
 
         using TemporaryDirectory temporary = new();
         using Process reviewProcess = StartReviewProcess();
+        Process? serverProcess = null;
         try
         {
             var reviewIdentity = new OwnedProcessIdentity(
@@ -346,7 +363,7 @@ public sealed class ProjectReviewMcpTests
             PrepareReadyReview(temporary, reviewIdentity, observedAt);
             string cliPath = Path.Combine(AppContext.BaseDirectory, "sdvkit.exe");
             Assert.True(File.Exists(cliPath), $"Missing test CLI: {cliPath}");
-            using var serverProcess = new Process
+            serverProcess = new Process
             {
                 StartInfo = new ProcessStartInfo(cliPath)
                 {
@@ -371,6 +388,20 @@ public sealed class ProjectReviewMcpTests
                 transport,
                 cancellationToken: timeout.Token))
             {
+                ListToolsResult listed = await client.ListToolsAsync(
+                    new ListToolsRequestParams(),
+                    timeout.Token);
+                Assert.Equal(
+                    [
+                        ProjectReviewMcpDataTools.AssetsToolName,
+                        ProjectReviewMcpDataTools.KeysToolName,
+                        ProjectReviewMcpDataTools.RecordToolName,
+                        ProjectReviewMcpServer.RuntimeToolName,
+                    ],
+                    listed.Tools.Select(tool => tool.Name)
+                        .Order(StringComparer.Ordinal)
+                        .ToArray());
+
                 CallToolResult called = await client.CallToolAsync(
                     new CallToolRequestParams
                     {
@@ -379,6 +410,12 @@ public sealed class ProjectReviewMcpTests
                     timeout.Token);
                 Assert.NotEqual(true, called.IsError);
                 Assert.Equal(LaunchId, called.StructuredContent?.GetProperty("launchId").GetString());
+
+                CallToolResult invalidDataCall = await client.CallToolAsync(
+                    ProjectReviewMcpDataTools.KeysToolName,
+                    new Dictionary<string, object?>(),
+                    cancellationToken: timeout.Token);
+                Assert.True(invalidDataCall.IsError);
             }
 
             serverProcess.StandardInput.Close();
@@ -392,6 +429,17 @@ public sealed class ProjectReviewMcpTests
         }
         finally
         {
+            if (serverProcess is not null)
+            {
+                if (!serverProcess.HasExited)
+                {
+                    serverProcess.Kill(entireProcessTree: true);
+                    serverProcess.WaitForExit();
+                }
+
+                serverProcess.Dispose();
+            }
+
             if (!reviewProcess.HasExited)
             {
                 reviewProcess.Kill(entireProcessTree: true);
@@ -613,7 +661,7 @@ public sealed class ProjectReviewMcpTests
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
     }
 
-    private static ProjectReviewMcpRuntimeReader CreateReadyReview(
+    internal static ProjectReviewMcpRuntimeReader CreateReadyReview(
         TemporaryDirectory temporary,
         LabProcessInspectStatus processStatus = LabProcessInspectStatus.Running,
         DateTimeOffset? nowUtc = null)

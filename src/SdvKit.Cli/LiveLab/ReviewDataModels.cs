@@ -101,6 +101,35 @@ internal static class ReviewDataContract
     }
 }
 
+internal static class StableIdentityNormalizer
+{
+    public static string Normalize(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var token = new StringBuilder(value.Length);
+        var pendingSeparator = false;
+        foreach (char character in value.Trim())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSeparator && token.Length > 0)
+                {
+                    token.Append('-');
+                }
+
+                token.Append(char.ToLowerInvariant(character));
+                pendingSeparator = false;
+            }
+            else
+            {
+                pendingSeparator = true;
+            }
+        }
+
+        return token.ToString();
+    }
+}
+
 internal sealed record ReviewDataQuery(
     string Operation,
     string? Asset,

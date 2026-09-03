@@ -20,7 +20,7 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
-For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the selected role's runtime; never infer one role from its peer. It exposes only its documented typed tools. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
+For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. That server exposes the documented runtime and canonical Data tools. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected; the Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the selected role's runtime; never infer one role from its peer. It exposes only its documented typed tools. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
 
 ## Start and confirm the load
 
@@ -82,6 +82,16 @@ sdvkit project review data get "Data/Buildings" "Barn" --topology single --json
 This is not a line to pass through `project review command`. `assets` independently inventories the canonical structured `Data/*` definitions installed for the running game version, loads them through SMAPI's live content pipeline, and reports the loaded type, shape, key kind, and complete coverage counts. Require `coverage.complete=true` and zero unknown, unclassified, or unsupported assets before making a completeness claim. Page through both asset and key results using their reported `nextOffset`; never assume the first page is the full inventory.
 
 Use dictionary keys, zero-based list indexes, or the explicit singleton key exactly as returned by `keys`. A `get` result is acceptable only when it identifies the running game version, canonical asset, canonical key, data type, shape, and one record value. Case and a small separator set normalize for convenient lookup, but collisions, missing version-specific assets, unsafe serialization, stale response files, and mismatched process or request state must remain fail-closed. Do not turn this bounded surface into a bulk dump, reflection explorer, mutation path, or network-role command.
+
+The native `single` MCP server exposes the exact same service through three thin mappings:
+
+```text
+stardew_data_assets_list { "offset": 0, "limit": 100 }
+stardew_data_keys_list { "asset": "Data/Buildings", "offset": 0, "limit": 50 }
+stardew_data_record_get { "asset": "Data/Buildings", "key": "Barn" }
+```
+
+The first two default to offset 0 and limit 50; the limit remains 1-100. Treat the returned page and coverage exactly like their CLI equivalents, and require structured JSON and compact text content to be semantically identical. These tools first revalidate the fresh MCP review binding and then reuse the CLI data service's independent exact-review gate. A bounded tool error is not stale data and must not be retried unchanged. Network-role MCP servers do not advertise these tools in this slice.
 
 ### Drive review input without desktop automation
 

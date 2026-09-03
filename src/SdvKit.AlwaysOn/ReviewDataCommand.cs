@@ -119,7 +119,7 @@ internal static class ReviewDataOperation
         IReadOnlyList<string> discovered)
     {
         IReadOnlyDictionary<string, int> collisionCounts = discovered
-            .GroupBy(ReviewFixtureKindResolver.Normalize, StringComparer.Ordinal)
+            .GroupBy(StableIdentityNormalizer.Normalize, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var reports = new List<ReviewDataAssetReport>(discovered.Count);
         var unknown = 0;
@@ -141,7 +141,7 @@ internal static class ReviewDataOperation
                 continue;
             }
 
-            string normalized = ReviewFixtureKindResolver.Normalize(assetName);
+            string normalized = StableIdentityNormalizer.Normalize(assetName);
             if (normalized.Length == 0 || collisionCounts[normalized] != 1)
             {
                 unsupported++;
@@ -412,10 +412,10 @@ internal static class ReviewDataOperation
         out string? assetName,
         out ReviewDataProblem? problem)
     {
-        string normalizedInput = ReviewFixtureKindResolver.Normalize(input);
+        string normalizedInput = StableIdentityNormalizer.Normalize(input);
         string[] normalizedMatches = discovered
             .Where(candidate => string.Equals(
-                ReviewFixtureKindResolver.Normalize(candidate),
+                StableIdentityNormalizer.Normalize(candidate),
                 normalizedInput,
                 StringComparison.Ordinal))
             .Take(3)
@@ -481,10 +481,10 @@ internal static class ReviewDataOperation
         bool normalizable = snapshot.Report.KeyKind is "string" or "singleton";
         if (normalizable)
         {
-            string normalizedInput = ReviewFixtureKindResolver.Normalize(input);
+            string normalizedInput = StableIdentityNormalizer.Normalize(input);
             ReviewDataRecord[] normalized = snapshot.Records
                 .Where(record => string.Equals(
-                    ReviewFixtureKindResolver.Normalize(record.Key),
+                    StableIdentityNormalizer.Normalize(record.Key),
                     normalizedInput,
                     StringComparison.Ordinal))
                 .Take(3)
