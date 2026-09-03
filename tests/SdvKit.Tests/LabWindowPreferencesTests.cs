@@ -3,7 +3,7 @@ using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
-public sealed class ReviewWindowPreferencesTests
+public sealed class LabWindowPreferencesTests
 {
     [Fact]
     public void ExistingIsolatedPreferencesAreForcedToWindowed1280By720()
@@ -27,7 +27,7 @@ public sealed class ReviewWindowPreferencesTests
             </StartupPreferences>
             """);
 
-        ReviewWindowPreferences.Prepare(stardewDataPath);
+        LabWindowPreferences.Prepare(stardewDataPath);
 
         XDocument document = XDocument.Load(path);
         XElement root = Assert.IsType<XElement>(document.Root);
@@ -44,7 +44,7 @@ public sealed class ReviewWindowPreferencesTests
     {
         using TemporaryDirectory temporary = new();
 
-        ReviewWindowPreferences.Prepare(temporary.Path);
+        LabWindowPreferences.Prepare(temporary.Path);
 
         Assert.False(File.Exists(Path.Combine(temporary.Path, "startup_preferences")));
     }
@@ -58,7 +58,7 @@ public sealed class ReviewWindowPreferencesTests
             "<StartupPreferences><windowMode>0</windowMode></StartupPreferences>");
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(
-            () => ReviewWindowPreferences.Prepare(temporary.Path));
+            () => LabWindowPreferences.Prepare(temporary.Path));
 
         Assert.Contains("clientOptions", exception.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(path));
@@ -73,7 +73,7 @@ public sealed class ReviewWindowPreferencesTests
             "<StartupPreferences>");
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(
-            () => ReviewWindowPreferences.Prepare(temporary.Path));
+            () => LabWindowPreferences.Prepare(temporary.Path));
 
         Assert.Contains("invalid XML", exception.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(path));

@@ -3,7 +3,7 @@ using System.Xml.Linq;
 
 namespace SdvKit.Cli.LiveLab;
 
-internal static class ReviewWindowPreferences
+internal static class LabWindowPreferences
 {
     internal const int Width = 1280;
     internal const int Height = 720;

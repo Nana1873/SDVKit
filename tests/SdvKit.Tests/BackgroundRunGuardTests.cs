@@ -504,7 +504,7 @@ public sealed class BackgroundRunGuardTests
     }
 
     [Fact]
-    public void ReviewWindowSizeIsOnlyAppliedOnceAtStartup()
+    public void LabWindowSizeIsOnlyAppliedOnceAtStartup()
     {
         string repositoryRoot = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
@@ -515,14 +515,14 @@ public sealed class BackgroundRunGuardTests
             .ReplaceLineEndings("\n");
 
         int method = source.IndexOf(
-            "private void EnsureReviewWindowMode()",
+            "private void EnsureLabWindowMode()",
             StringComparison.Ordinal);
         int attemptedGuard = source.IndexOf(
-            "|| _reviewWindowModeAttempted)",
+            "|| _labWindowModeAttempted)",
             method,
             StringComparison.Ordinal);
         int attemptLatch = source.IndexOf(
-            "_reviewWindowModeAttempted = true;",
+            "_labWindowModeAttempted = true;",
             method,
             StringComparison.Ordinal);
         int sizeInspection = source.IndexOf(
@@ -555,7 +555,7 @@ public sealed class BackgroundRunGuardTests
             "helper.Events.GameLoop.OneSecondUpdateTicked +=",
             StringComparison.Ordinal);
         int windowBaseline = source.IndexOf(
-            "EnsureReviewWindowMode();",
+            "EnsureLabWindowMode();",
             handler,
             StringComparison.Ordinal);
         int reassert = source.IndexOf(
@@ -576,7 +576,7 @@ public sealed class BackgroundRunGuardTests
             StringComparison.Ordinal);
         Assert.True(immediateHandler >= 0);
         Assert.DoesNotContain(
-            "EnsureReviewWindowMode();",
+            "EnsureLabWindowMode();",
             source[immediateHandler..handler],
             StringComparison.Ordinal);
     }

@@ -31,7 +31,7 @@ sdvkit project review start "<absolute-target-path>" --topology single --compani
 sdvkit project review status --topology single --json
 ```
 
-A review start prepares only the role's isolated startup preferences for a visible initial 1280x720 game window and keeps SMAPI's separate interactive terminal available. AlwaysOn applies and verifies that baseline once after Stardew's title-window initialization; later resize and UI-scale testing must remain possible. Windows is asked not to activate the new process, but a transient terminal activation can still be terminal-host behavior. Treat a minimized game or a borderless/fullscreen game as a failed review start; do not substitute minimization for a renderable viewport.
+Every SDVKit-controlled lab start prepares only the role's isolated startup preferences for an initial bordered 1280x720 game window. AlwaysOn applies and verifies that baseline once after Stardew's title-window initialization; later resize and UI-scale testing must remain possible. An interactive review keeps SMAPI's separate terminal available and asks Windows not to activate the new process, but a transient terminal activation can still be terminal-host behavior. Treat a minimized interactive-review game or a borderless/fullscreen game as a failed review start; do not substitute minimization for a renderable viewport. Automated network roles may start minimized, but their display mode remains windowed.
 
 When the review needs the registered SDVKit-owned disposable world, first run `sdvkit lab test-save --topology single --json` while all roles are stopped, then add the explicit flag:
 

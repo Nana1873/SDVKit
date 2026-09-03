@@ -8,8 +8,8 @@ namespace SdvKit.AlwaysOn;
 
 public sealed class ModEntry : Mod
 {
-    private const int ReviewWindowWidth = 1280;
-    private const int ReviewWindowHeight = 720;
+    private const int LabWindowWidth = 1280;
+    private const int LabWindowHeight = 720;
     private BackgroundRunGuard? _backgroundRun;
     private StatusWriter? _statusWriter;
     private TestSaveAutomation? _testSave;
@@ -19,8 +19,8 @@ public sealed class ModEntry : Mod
     private string? _stopRequestPath;
     private bool _gameLaunched;
     private bool _exitPrepared;
-    private bool _reviewWindowModeRequired;
-    private bool _reviewWindowModeAttempted;
+    private bool _labWindowModeRequired;
+    private bool _labWindowModeAttempted;
     private bool _statusWriteErrorLogged;
     private bool _stopReadErrorLogged;
 
@@ -49,8 +49,8 @@ public sealed class ModEntry : Mod
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
-        _reviewWindowModeRequired = string.Equals(
-            Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW_WINDOWED")?.Trim(),
+        _labWindowModeRequired = string.Equals(
+            Environment.GetEnvironmentVariable("SDVKIT_LAB_WINDOWED")?.Trim(),
             "1",
             StringComparison.Ordinal);
         if (!ProjectModObserver.TryCreate(
@@ -119,8 +119,8 @@ public sealed class ModEntry : Mod
             if (!_exitPrepared)
             {
                 // Wait through Stardew's immediate title-window initialization;
-                // the bounded helper applies the review baseline only once.
-                EnsureReviewWindowMode();
+                // the bounded helper applies the lab baseline only once.
+                EnsureLabWindowMode();
                 // Rebind and reassert after the game's update too. During load,
                 // Stardew can replace options more than once after the load-stage
                 // notification and before a stable world is ready.
@@ -168,37 +168,37 @@ public sealed class ModEntry : Mod
             LogLevel.Info);
     }
 
-    private void EnsureReviewWindowMode()
+    private void EnsureLabWindowMode()
     {
         if (!_gameLaunched
-            || !_reviewWindowModeRequired
-            || _reviewWindowModeAttempted)
+            || !_labWindowModeRequired
+            || _labWindowModeAttempted)
         {
             return;
         }
 
         // Startup preferences establish the deterministic 1280x720 baseline.
         // Apply and verify it once, then leave later resize and UI-scale testing alone.
-        _reviewWindowModeAttempted = true;
+        _labWindowModeAttempted = true;
         try
         {
             bool windowModeApplied = Game1.options.isCurrentlyWindowed()
                 && !Game1.options.isCurrentlyWindowedBorderless()
-                && Game1.options.preferredResolutionX == ReviewWindowWidth
-                && Game1.options.preferredResolutionY == ReviewWindowHeight
-                && Game1.game1.Window.ClientBounds.Width == ReviewWindowWidth
-                && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
+                && Game1.options.preferredResolutionX == LabWindowWidth
+                && Game1.options.preferredResolutionY == LabWindowHeight
+                && Game1.game1.Window.ClientBounds.Width == LabWindowWidth
+                && Game1.game1.Window.ClientBounds.Height == LabWindowHeight;
             if (windowModeApplied)
             {
                 Monitor.Log(
-                    "SDVKit review confirmed Stardew's isolated windowed mode.",
+                    "SDVKit lab confirmed Stardew's isolated windowed mode.",
                     LogLevel.Info);
                 return;
             }
 
             bool refreshRequired =
-                Game1.game1.Window.ClientBounds.Width != ReviewWindowWidth
-                || Game1.game1.Window.ClientBounds.Height != ReviewWindowHeight;
+                Game1.game1.Window.ClientBounds.Width != LabWindowWidth
+                || Game1.game1.Window.ClientBounds.Height != LabWindowHeight;
             if (!Game1.options.isCurrentlyWindowed()
                 || Game1.options.isCurrentlyWindowedBorderless())
             {
@@ -206,11 +206,11 @@ public sealed class ModEntry : Mod
                 refreshRequired = true;
             }
 
-            if (Game1.options.preferredResolutionX != ReviewWindowWidth
-                || Game1.options.preferredResolutionY != ReviewWindowHeight)
+            if (Game1.options.preferredResolutionX != LabWindowWidth
+                || Game1.options.preferredResolutionY != LabWindowHeight)
             {
-                Game1.options.preferredResolutionX = ReviewWindowWidth;
-                Game1.options.preferredResolutionY = ReviewWindowHeight;
+                Game1.options.preferredResolutionX = LabWindowWidth;
+                Game1.options.preferredResolutionY = LabWindowHeight;
                 refreshRequired = true;
             }
 
@@ -221,20 +221,20 @@ public sealed class ModEntry : Mod
 
             windowModeApplied = Game1.options.isCurrentlyWindowed()
                 && !Game1.options.isCurrentlyWindowedBorderless()
-                && Game1.options.preferredResolutionX == ReviewWindowWidth
-                && Game1.options.preferredResolutionY == ReviewWindowHeight
-                && Game1.game1.Window.ClientBounds.Width == ReviewWindowWidth
-                && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
+                && Game1.options.preferredResolutionX == LabWindowWidth
+                && Game1.options.preferredResolutionY == LabWindowHeight
+                && Game1.game1.Window.ClientBounds.Width == LabWindowWidth
+                && Game1.game1.Window.ClientBounds.Height == LabWindowHeight;
             Monitor.Log(
                 windowModeApplied
-                    ? "SDVKit review confirmed Stardew's isolated windowed mode."
-                    : "SDVKit review couldn't confirm the requested initial windowed mode.",
+                    ? "SDVKit lab confirmed Stardew's isolated windowed mode."
+                    : "SDVKit lab couldn't confirm the requested initial windowed mode.",
                 windowModeApplied ? LogLevel.Info : LogLevel.Error);
         }
         catch (Exception exception)
         {
             Monitor.Log(
-                $"SDVKit review couldn't apply isolated windowed mode: {exception.Message}",
+                $"SDVKit lab couldn't apply isolated windowed mode: {exception.Message}",
                 LogLevel.Error);
         }
     }
