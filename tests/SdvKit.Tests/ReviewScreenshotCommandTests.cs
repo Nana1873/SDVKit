@@ -202,6 +202,7 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Contains("ReviewScreenshotCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewInputCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewDataCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
         Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
     }

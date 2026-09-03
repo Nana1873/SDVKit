@@ -98,6 +98,7 @@ $linkedFiles = @(
     "ModBuildIdentity.cs",
     "NetworkTwoModels.cs",
     "ProjectModModels.cs",
+    "ReviewDataModels.cs",
     "TestSaveModels.cs"
 )
 foreach ($fileName in $linkedFiles) {
