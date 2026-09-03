@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.6.0-win-x64.zip` and `SDVKit-0.6.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.6.1-win-x64.zip` and `SDVKit-0.6.1-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.6.0-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.6.0-win-x64.zip
-& .\SDVKit-0.6.0-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.6.1-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.6.1-win-x64.zip
+& .\SDVKit-0.6.1-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.6.0
+## What's new in v0.6.1
 
-Since `v0.5.3`, review fixture building and animal kinds resolve from Stardew's live canonical data. Existing `deluxe-barn` and `white-cow` commands remain compatible, while kinds such as `coop` and `white-chicken` use the same ownership, idempotency, placement, capacity, and compatibility checks.
+Since `v0.6.0`, interactive reviews support exact directional virtual-wheel input and complete read-only discovery and retrieval of Stardew's installed canonical data assets. A native local-STDIO MCP server exposes one closed-world `stardew_runtime_get` tool for the exact owned single-review runtime snapshot.
 
-Interactive reviews now support process-local virtual-cursor and bounded SMAPI button input plus no-overwrite viewport screenshots without focusing Stardew or moving the physical pointer. Each `single`, host, and farmhand role is prepared as a visible, non-minimized 1280x720 review window; all save, fixture, role, staging, and ownership boundaries remain fail-closed.
+Unfocused review-button dispatch now completes SMAPI's normal pressed-to-released lifecycle while preserving Stardew's bounded menu path. It does not suppress the injected button, focus the game, or move the physical pointer; all save, fixture, role, staging, MCP, and ownership boundaries remain fail-closed.
 
 ## Isolated singleplayer live lab
 
