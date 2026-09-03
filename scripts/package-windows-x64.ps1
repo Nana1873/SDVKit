@@ -62,7 +62,16 @@ $runtimeFiles = @(
     "sdvkit.exe",
     "sdvkit.dll",
     "sdvkit.deps.json",
-    "sdvkit.runtimeconfig.json"
+    "sdvkit.runtimeconfig.json",
+    "Microsoft.Extensions.AI.Abstractions.dll",
+    "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+    "Microsoft.Extensions.Logging.Abstractions.dll",
+    "ModelContextProtocol.Core.dll",
+    "System.Diagnostics.DiagnosticSource.dll",
+    "System.IO.Pipelines.dll",
+    "System.Net.ServerSentEvents.dll",
+    "System.Text.Encodings.Web.dll",
+    "System.Text.Json.dll"
 )
 foreach ($fileName in $runtimeFiles) {
     $sourcePath = Join-Path $publishRoot $fileName
@@ -73,7 +82,12 @@ foreach ($fileName in $runtimeFiles) {
     Copy-Item -LiteralPath $sourcePath -Destination $packageRoot
 }
 
-foreach ($fileName in @("Directory.Build.props", "global.json", "NuGet.config")) {
+foreach ($fileName in @(
+    "Directory.Build.props",
+    "global.json",
+    "NuGet.config",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md")) {
     Copy-Item `
         -LiteralPath (Join-Path $repositoryRoot $fileName) `
         -Destination (Join-Path $packageRoot $fileName)
@@ -99,6 +113,7 @@ $linkedFiles = @(
     "NetworkTwoModels.cs",
     "ProjectModModels.cs",
     "ReviewDataModels.cs",
+    "RuntimeSnapshotModels.cs",
     "TestSaveModels.cs"
 )
 foreach ($fileName in $linkedFiles) {

@@ -203,6 +203,8 @@ Pages default to 50 entries and accept 1-100; offsets are non-negative. Asset an
 
 AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` requests a full-map PNG through Stardew's native map-screenshot path; `sdvkit screenshot viewport <label>` captures the current rendered game viewport, including menus and HUD. For example, transport `sdvkit screenshot viewport menu-open` through `project review command` to inspect an in-game menu without desktop automation. Labels are limited to 1-64 ASCII letters, digits, `-`, or `_`; the fixed result name is `SDVKit-<label>.png`, and an existing target is never overwritten. Success is proven only when the AlwaysOn log reports the full path and that exact PNG exists below the role's isolated `StardewValley/Screenshots` directory; `commandWritten=true` still proves console delivery only.
 
+Automated in-game mouse input is restricted to SDVKit's existing process-local virtual cursor after exact review ownership and topology-role verification. It fails closed and never uses global `SendInput`, moves the physical pointer, changes window focus, or delegates review mouse input to generic computer-use automation.
+
 For input-driven reviews, transport `sdvkit input press <SButton>` to press one exact SMAPI button for one input tick, or `sdvkit input cursor <ui-x> <ui-y>` to enable a process-local virtual cursor at a coordinate inside the current UI viewport. `MouseWheelUp` and `MouseWheelDown` are explicit review tokens for one directional wheel notch and require the virtual cursor to be set over an active menu first. A review start prepares only the isolated profile for a visible 1280x720 game window, keeps the separate SMAPI terminal visible, and asks Windows not to activate the new process; a transient terminal activation can still be terminal-host behavior. It never minimizes the game as a substitute for background-safe review. The virtual cursor overrides only the mouse coordinates Stardew reads inside the isolated game process; it does not focus a window or move the user's physical pointer. For a bounded four-tick interval around an injected SMAPI button press, AlwaysOn also lets Stardew's own menu-input path run while its window stays in the background. Use `sdvkit input cursor clear` to remove the coordinate override, and AlwaysOn also clears it on return to title and controlled exit. This supports keyboard, virtual mouse, and controller paths; invalid button names, wheel input without a virtual cursor and active menu, unloaded worlds, and out-of-viewport cursor coordinates fail closed. Each successful result confirms only input injection, so verify the resulting UI or state separately.
 
 Commands supplied by a target or companion stay owned by that mod. For example, explicitly pass a local ready SMAPI Console Commands directory through `--companion` at `start`, then use `sdvkit project review command "debug sleep" --json`; SDVKit transports that existing command but neither reimplements nor locates the companion.
@@ -299,6 +301,48 @@ Screenshot capture remains the separately developed SDVKit AlwaysOn command, not
 sdvkit project review command "sdvkit screenshot host-fixture" --topology network-2 --role host --json
 sdvkit project review command "sdvkit screenshot farmhand-fixture" --topology network-2 --role farmhand --json
 ```
+
+## Native MCP for an active review
+
+Start the native STDIO server from the directory that owns the already-running
+single-player project review:
+
+```powershell
+sdvkit project review mcp serve
+```
+
+`--topology single` is the only optional argument. The command deliberately has
+no `--json`, `--role`, HTTP, TCP, relay, secret, or Python mode. Protocol frames
+are the only stdout output; bounded startup diagnostics use stderr. Closing the
+client's stdin ends the child server process.
+
+The first slice exposes exactly one tool, `stardew_runtime_get`. It takes an
+empty object and returns matching structured JSON and compact JSON text with
+schema version, launch ID, `single` topology, observation time, exact target
+`UniqueID`/version/build identity, optional owned review-fixture identity, and a
+runtime object. Before a world is ready, season/day/year/time/location/tile are
+explicitly `null`; `worldReady` and `menuOpen` remain available.
+
+A project-local Codex configuration can keep the surface explicitly limited:
+
+```toml
+[mcp_servers.sdvkit_review]
+command = "sdvkit"
+args = ["project", "review", "mcp", "serve", "--topology", "single"]
+cwd = "C:\\path\\to\\the\\lab-owning-project"
+enabled_tools = ["stardew_runtime_get"]
+```
+
+The threat boundary is the existing project review, not a general game or
+desktop API. Server startup and every tool call revalidate the exact ownership
+marker, topology, target build identity, PID/start-time/executable identity,
+fresh AlwaysOn marker, loaded target, optional fixture, and runtime snapshot
+under the existing short operation lock. The lock is released before MCP
+serialization. A mismatch returns a controlled tool error and no stale payload.
+Responses omit filesystem paths, free-form SMAPI logs, menu CLR types, arbitrary
+state, normal saves, and the normal or mod-manager-owned `Mods` directory. The
+server opens no listener and cannot start, stop, reset, or otherwise mutate a
+review.
 
 ## Agent workflow
 

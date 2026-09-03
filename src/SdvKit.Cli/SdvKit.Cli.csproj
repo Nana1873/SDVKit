@@ -11,4 +11,8 @@
   <ItemGroup>
     <Compile Include="..\SdvKit.AlwaysOn\BackgroundRunGuard.cs" Link="AlwaysOn\BackgroundRunGuard.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.2.0" />
+  </ItemGroup>
 </Project>

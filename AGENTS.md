@@ -7,5 +7,6 @@
 5. Never commit game binaries, proprietary assets, personal saves, secrets, or absolute machine-local paths.
 6. Distinguish build success, automated tests, and verified in-game behavior. Claim only the level actually proven.
 7. Do not add generic frameworks, duplicate state machines, new runtime projects, protocol layers, or evidence schemas without a demonstrated current need.
+8. Automated in-game UI mouse input must use SDVKit's existing process-local virtual cursor after exact review ownership and role verification, and must fail closed. Never use global `SendInput`, physical cursor movement, window focus changes, or generic computer-use automation for review mouse input.
 
 The public product has two equal pillars: a modding toolkit and an isolated live test lab. Keep both understandable from the root README and CLI help.

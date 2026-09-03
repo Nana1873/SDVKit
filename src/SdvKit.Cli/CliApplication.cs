@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Cli;
 
@@ -35,6 +36,11 @@ internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
     ReviewDataQuery query,
     string labRoot);
 
+internal delegate int ProjectReviewMcpCommandRunner(
+    string topology,
+    string labRoot,
+    TextWriter error);
+
 public static class CliApplication
 {
     private const int Success = 0;
@@ -62,6 +68,8 @@ public static class CliApplication
         "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewDataGetUsage =
         "       sdvkit project review data get <asset> <key> [--topology single] --json";
+    private const string ReviewMcpUsage =
+        "       sdvkit project review mcp serve [--topology single]";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -89,7 +97,8 @@ public static class CliApplication
         ProjectSmokeCommandRunner? runProjectSmoke = null,
         ProjectReviewCommandRunner? runProjectReview = null,
         ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
-        ProjectReviewDataCommandRunner? runProjectReviewData = null)
+        ProjectReviewDataCommandRunner? runProjectReviewData = null,
+        ProjectReviewMcpCommandRunner? runProjectReviewMcp = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -139,6 +148,9 @@ public static class CliApplication
             ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
         runProjectReviewData ??= (query, labRoot) =>
             ProjectReviewDataService.Execute(query, labRoot);
+        runProjectReviewMcp ??= (topology, labRoot, mcpError) =>
+            ProjectReviewMcpServer.RunStdioAsync(labRoot, mcpError)
+                .GetAwaiter().GetResult();
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
@@ -166,7 +178,8 @@ public static class CliApplication
                 runProjectSmoke,
                 runProjectReview,
                 runProjectReviewConsole,
-                runProjectReviewData);
+                runProjectReviewData,
+                runProjectReviewMcp);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -241,7 +254,8 @@ public static class CliApplication
         ProjectSmokeCommandRunner runProjectSmoke,
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
-        ProjectReviewDataCommandRunner runProjectReviewData)
+        ProjectReviewDataCommandRunner runProjectReviewData,
+        ProjectReviewMcpCommandRunner runProjectReviewMcp)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -269,7 +283,8 @@ public static class CliApplication
                 error,
                 runProjectReview,
                 runProjectReviewConsole,
-                runProjectReviewData),
+                runProjectReviewData,
+                runProjectReviewMcp),
             _ => ProjectUsageError(error),
         };
     }
@@ -401,7 +416,8 @@ public static class CliApplication
         TextWriter error,
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
-        ProjectReviewDataCommandRunner runProjectReviewData)
+        ProjectReviewDataCommandRunner runProjectReviewData,
+        ProjectReviewMcpCommandRunner runProjectReviewMcp)
     {
         if (arguments.Count > 2
             && string.Equals(arguments[2], "data", StringComparison.Ordinal))
@@ -411,6 +427,14 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReviewData);
+        }
+
+        if (TryParseProjectReviewMcp(arguments, out string? mcpTopology))
+        {
+            return runProjectReviewMcp(
+                mcpTopology!,
+                Environment.CurrentDirectory,
+                error);
         }
 
         if ((arguments.Count == 3 && IsHelp(arguments[2]))
@@ -598,6 +622,25 @@ public static class CliApplication
             offset,
             limit);
         return true;
+    }
+
+    private static bool TryParseProjectReviewMcp(
+        IReadOnlyList<string> arguments,
+        out string? topology)
+    {
+        topology = LiveLabState.SingleTopology;
+        if (arguments.Count == 4
+            && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
+            && string.Equals(arguments[3], "serve", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return arguments.Count == 6
+            && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
+            && string.Equals(arguments[3], "serve", StringComparison.Ordinal)
+            && string.Equals(arguments[4], "--topology", StringComparison.Ordinal)
+            && string.Equals(arguments[5], LiveLabState.SingleTopology, StringComparison.Ordinal);
     }
 
     private static bool TryParseOptionalPath(
@@ -970,6 +1013,7 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
         output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
+        output.WriteLine("  sdvkit project review mcp serve [--topology single]");
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -1007,6 +1051,7 @@ public static class CliApplication
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
+        output.WriteLine(ReviewMcpUsage);
         WriteReviewFixtureConsoleUsage(output);
     }
 
@@ -1020,6 +1065,7 @@ public static class CliApplication
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
+        output.WriteLine(ReviewMcpUsage);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);

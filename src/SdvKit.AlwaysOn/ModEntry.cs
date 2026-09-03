@@ -1,4 +1,5 @@
 #if SDVKIT_GAME_AVAILABLE
+using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewModdingAPI.Enums;
 using StardewValley;
@@ -466,7 +467,8 @@ public sealed class ModEntry : Mod
                 _networkTwo?.Snapshot,
                 foregroundWindowHandle,
                 foregroundProcessId,
-                _projectMod?.Snapshot);
+                _projectMod?.Snapshot,
+                CaptureRuntimeSnapshot());
             _statusWriteErrorLogged = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -479,6 +481,40 @@ public sealed class ModEntry : Mod
                 _statusWriteErrorLogged = true;
             }
         }
+    }
+
+    private static RuntimeSnapshotMarker CaptureRuntimeSnapshot()
+    {
+        DateTimeOffset observedAtUtc = DateTimeOffset.UtcNow;
+        bool worldReady = Context.IsWorldReady;
+        if (!worldReady)
+        {
+            return new RuntimeSnapshotMarker(
+                RuntimeSnapshotContract.SchemaVersion,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Game1.activeClickableMenu is not null,
+                observedAtUtc);
+        }
+
+        return new RuntimeSnapshotMarker(
+            RuntimeSnapshotContract.SchemaVersion,
+            true,
+            Game1.currentSeason,
+            Game1.dayOfMonth,
+            Game1.year,
+            Game1.timeOfDay,
+            Game1.player.currentLocation.NameOrUniqueName,
+            Game1.player.TilePoint.X,
+            Game1.player.TilePoint.Y,
+            Game1.activeClickableMenu is not null,
+            observedAtUtc);
     }
 
     private void OnProcessExit(object? sender, EventArgs eventArgs)

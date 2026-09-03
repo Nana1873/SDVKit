@@ -15,7 +15,8 @@ internal sealed record AlwaysOnStatusReport(
     NetworkTwoStatusReport? NetworkTwo = null,
     long? ForegroundWindowHandle = null,
     int? ForegroundProcessId = null,
-    ProjectModStatusReport? ProjectMod = null);
+    ProjectModStatusReport? ProjectMod = null,
+    RuntimeSnapshotReport? Runtime = null);
 
 internal sealed record AlwaysOnStatusMarker(
     int SchemaVersion,
@@ -33,7 +34,8 @@ internal sealed record AlwaysOnStatusMarker(
     NetworkTwoStatusMarker? NetworkTwo = null,
     long? ForegroundWindowHandle = null,
     int? ForegroundProcessId = null,
-    ProjectModStatusMarker? ProjectMod = null);
+    ProjectModStatusMarker? ProjectMod = null,
+    RuntimeSnapshotMarker? Runtime = null);
 
 internal static class AlwaysOnStatusReader
 {
@@ -111,6 +113,7 @@ internal static class AlwaysOnStatusReader
         ProjectModStatusReport? projectMod = ReadProjectMod(
             marker.ProjectMod,
             expectedProjectMod);
+        RuntimeSnapshotReport runtime = ReadRuntime(marker.Runtime, marker.ObservedAtUtc);
         return new AlwaysOnStatusReport(
             state,
             marker.Tick,
@@ -123,8 +126,63 @@ internal static class AlwaysOnStatusReader
             networkTwo,
             marker.ForegroundWindowHandle,
             marker.ForegroundProcessId,
-            projectMod);
+            projectMod,
+            runtime);
     }
+
+    private static RuntimeSnapshotReport ReadRuntime(
+        RuntimeSnapshotMarker? marker,
+        DateTimeOffset statusObservedAtUtc)
+    {
+        if (marker is null)
+        {
+            return InvalidRuntime("pending");
+        }
+
+        bool timestampValid = marker.ObservedAtUtc != default
+            && marker.ObservedAtUtc.Offset == TimeSpan.Zero
+            && marker.ObservedAtUtc <= statusObservedAtUtc.AddSeconds(1)
+            && statusObservedAtUtc - marker.ObservedAtUtc <= FreshnessWindow;
+        bool worldValuesValid = marker.WorldReady
+            ? marker.Season is "spring" or "summer" or "fall" or "winter"
+                && marker.DayOfMonth is >= 1 and <= 28
+                && marker.Year is >= 1
+                && marker.TimeOfDay is >= 0 and <= 2999
+                && !string.IsNullOrWhiteSpace(marker.LocationId)
+                && marker.LocationId.Length <= 256
+                && marker.TileX is >= -100000 and <= 100000
+                && marker.TileY is >= -100000 and <= 100000
+            : marker.Season is null
+                && marker.DayOfMonth is null
+                && marker.Year is null
+                && marker.TimeOfDay is null
+                && marker.LocationId is null
+                && marker.TileX is null
+                && marker.TileY is null;
+        if (marker.SchemaVersion != RuntimeSnapshotContract.SchemaVersion
+            || !timestampValid
+            || !worldValuesValid)
+        {
+            return InvalidRuntime("invalid");
+        }
+
+        return new RuntimeSnapshotReport(
+            "ready",
+            marker.SchemaVersion,
+            marker.WorldReady,
+            marker.Season,
+            marker.DayOfMonth,
+            marker.Year,
+            marker.TimeOfDay,
+            marker.LocationId,
+            marker.TileX,
+            marker.TileY,
+            marker.MenuOpen,
+            marker.ObservedAtUtc);
+    }
+
+    private static RuntimeSnapshotReport InvalidRuntime(string state) =>
+        new(state, null, null, null, null, null, null, null, null, null, null, null);
 
     private static TestSaveStatusReport? ReadTestSave(
         TestSaveStatusMarker? marker,
