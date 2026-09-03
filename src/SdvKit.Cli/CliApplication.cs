@@ -73,6 +73,8 @@ public static class CliApplication
         "       sdvkit project review mcp serve [--topology single]";
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>";
+    private const string ReviewMcpToolsDescription =
+        "       single MCP tools: stardew_runtime_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; network-2: stardew_runtime_get only";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -1063,6 +1065,7 @@ public static class CliApplication
         output.WriteLine("  sdvkit project review mcp serve [--topology single]");
         output.WriteLine(
             "  sdvkit project review mcp serve --topology network-2 --role <host|farmhand>");
+        output.WriteLine(ReviewMcpToolsDescription.TrimStart());
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -1117,6 +1120,7 @@ public static class CliApplication
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
         output.WriteLine(ReviewMcpNetworkUsage);
+        output.WriteLine(ReviewMcpToolsDescription);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);

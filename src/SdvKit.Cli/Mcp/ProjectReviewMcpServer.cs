@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Cli.Mcp;
 
@@ -98,17 +99,29 @@ internal static class ProjectReviewMcpServer
             return OperationFailed;
         }
 
-        McpServerOptions options = CreateOptions(reader);
+        ProjectReviewMcpDataQueryRunner? runData = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewDataService.Execute(query, projectRoot)
+                : null;
+        McpServerOptions options = CreateOptions(reader, runData);
         await using var transport = new StdioServerTransport(options);
         await using McpServer server = McpServer.Create(transport, options);
         await server.RunAsync(cancellationToken).ConfigureAwait(false);
         return 0;
     }
 
-    internal static McpServerOptions CreateOptions(ProjectReviewMcpRuntimeReader reader)
+    internal static McpServerOptions CreateOptions(
+        ProjectReviewMcpRuntimeReader reader,
+        ProjectReviewMcpDataQueryRunner? runData = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        McpServerTool tool = new RuntimeMcpTool(reader);
+        var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
+        if (runData is not null)
+        {
+            tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
+        }
 
         return new McpServerOptions
         {
@@ -119,8 +132,8 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.6.1",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
-            ToolCollection = [tool],
+                "Tools are bound to one exact active project review. Canonical Data tools are available only for a single review. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
+            ToolCollection = [.. tools],
         };
     }
 

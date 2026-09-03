@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using SdvKit.Cli.LiveLab;
 
 #if SDVKIT_GAME_AVAILABLE
 using Microsoft.Xna.Framework;
@@ -307,31 +307,8 @@ internal static class ReviewFixtureKindResolver
         return false;
     }
 
-    public static string Normalize(string value)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-        var token = new StringBuilder(value.Length);
-        var pendingSeparator = false;
-        foreach (char character in value.Trim())
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                if (pendingSeparator && token.Length > 0)
-                {
-                    token.Append('-');
-                }
-
-                token.Append(char.ToLowerInvariant(character));
-                pendingSeparator = false;
-            }
-            else
-            {
-                pendingSeparator = true;
-            }
-        }
-
-        return token.ToString();
-    }
+    public static string Normalize(string value) =>
+        StableIdentityNormalizer.Normalize(value);
 
     private static string DescribeCandidate((string CanonicalId, string Token) candidate) =>
         string.Equals(candidate.CanonicalId, candidate.Token, StringComparison.Ordinal)
