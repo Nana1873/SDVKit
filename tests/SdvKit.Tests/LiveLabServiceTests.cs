@@ -53,6 +53,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.RoamingAppDataPath, specification.Environment["APPDATA"]);
         Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
         Assert.Equal(paths.StardewDataPath, specification.Environment["SDVKIT_LAB_DATA_PATH"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
         Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
@@ -69,6 +70,35 @@ public sealed class LiveLabServiceTests
         Assert.Equal(1, stateStore.VerifyWritableCount);
         Assert.Equal(paths.ModsPath, stateStore.State?.ModsPath);
         Assert.StartsWith(paths.SingleRoot, paths.ModsPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OrdinaryStartFailsClosedWhenIsolatedWindowPreferencesAreInvalid()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        Directory.CreateDirectory(paths.StardewDataPath);
+        File.WriteAllText(
+            Path.Combine(paths.StardewDataPath, "startup_preferences"),
+            "<StartupPreferences>");
+        var builder = new FakeBuilder();
+        var process = new FakeProcessHost();
+        LiveLabService service = Service(
+            paths,
+            new FakeStateStore(),
+            builder,
+            process,
+            Ready(gamePath));
+
+        LiveLabCommandResult result = service.Execute("start");
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Contains(
+            Assert.IsType<LiveLabReport>(result.Report).Problems,
+            problem => problem.Code == "labWindowPreparationFailed");
+        Assert.Equal(0, builder.CallCount);
+        Assert.Equal(0, process.StartCount);
     }
 
     [Fact]
@@ -106,7 +136,7 @@ public sealed class LiveLabServiceTests
             projectMod.BuildIdentity,
             specification.Environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
         Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
-        Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
         Assert.Equal(projectMod, stateStore.State?.ProjectMod);
         Assert.Null(stateStore.State?.TestSave);
         Assert.Null(stateStore.State?.NetworkTwo);
@@ -186,6 +216,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(projectMod.UniqueId, specification.Environment[
             "SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
         Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
+        Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
     }
 
     [Fact]

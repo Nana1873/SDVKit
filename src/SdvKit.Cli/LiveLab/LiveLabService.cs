@@ -97,7 +97,6 @@ internal sealed class LiveLabService
         "SDVKIT_PROJECT_MOD_VERSION",
         "SDVKIT_PROJECT_MOD_BUILD_IDENTITY",
         "SDVKIT_PROJECT_REVIEW",
-        "SDVKIT_PROJECT_REVIEW_WINDOWED",
     ];
 
     private readonly LiveLabPaths _paths;
@@ -968,20 +967,17 @@ internal sealed class LiveLabService
         }
 
         _paths.EnsureDirectories();
-        if (interactiveConsole)
+        try
         {
-            try
-            {
-                ReviewWindowPreferences.Prepare(_paths.StardewDataPath);
-            }
-            catch (Exception exception) when (IsControlledFailure(exception))
-            {
-                return Failure(
-                    "blocked",
-                    null,
-                    "reviewWindowPreparationFailed",
-                    exception.Message);
-            }
+            LabWindowPreferences.Prepare(_paths.StardewDataPath);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return Failure(
+                "blocked",
+                null,
+                "labWindowPreparationFailed",
+                exception.Message);
         }
 
         if (testSave is null)
@@ -1025,6 +1021,7 @@ internal sealed class LiveLabService
             ["SDVKIT_LAB_LAUNCH_ID"] = launchId,
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
+            ["SDVKIT_LAB_WINDOWED"] = "1",
         };
         foreach (string name in TestSaveEnvironmentNames)
         {
@@ -1057,7 +1054,6 @@ internal sealed class LiveLabService
             if (interactiveConsole)
             {
                 environment["SDVKIT_PROJECT_REVIEW"] = "1";
-                environment["SDVKIT_PROJECT_REVIEW_WINDOWED"] = "1";
             }
         }
 
