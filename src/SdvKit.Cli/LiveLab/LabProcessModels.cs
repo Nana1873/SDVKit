@@ -13,6 +13,7 @@ internal sealed record LabProcessStartSpec(
     string StandardOutputPath,
     string StandardErrorPath,
     bool StartMinimizedWithoutActivation = false,
+    bool StartVisibleWithoutActivation = false,
     bool InteractiveConsole = false);
 
 internal interface ILabProcessHost

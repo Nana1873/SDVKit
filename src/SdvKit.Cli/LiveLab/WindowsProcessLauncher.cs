@@ -20,6 +20,7 @@ internal static partial class WindowsProcessLauncher
     private const uint ExtendedStartupInfoPresent = 0x00080000;
     private const int StartfUseShowWindow = 0x00000001;
     private const int StartfUseStdHandles = 0x00000100;
+    private const short SwShowNoActivate = 4;
     private const short SwShowMinNoActive = 7;
     private const uint HandleFlagInherit = 0x00000001;
     private static readonly nuint ProcThreadAttributeHandleList = 0x00020002;
@@ -215,9 +216,12 @@ internal static partial class WindowsProcessLauncher
         ProcessInformation processInformation = default;
         try
         {
+            (int startupFlags, short showWindow) = GetStartupWindowSettings(specification);
             StartupInfo startup = new()
             {
                 Size = Marshal.SizeOf<StartupInfo>(),
+                Flags = startupFlags,
+                ShowWindow = showWindow,
             };
             char[] commandLine = (BuildCommandLine(
                 specification.ExecutablePath,
@@ -278,13 +282,28 @@ internal static partial class WindowsProcessLauncher
         LabProcessStartSpec specification)
     {
         ArgumentNullException.ThrowIfNull(specification);
-        if (specification.InteractiveConsole)
+        if (specification.StartMinimizedWithoutActivation
+            && specification.StartVisibleWithoutActivation)
         {
-            return (0, 0);
+            throw new ArgumentException(
+                "A lab process cannot start both minimized and visibly without activation.",
+                nameof(specification));
         }
 
-        return specification.StartMinimizedWithoutActivation
-            ? (StartfUseStdHandles | StartfUseShowWindow, SwShowMinNoActive)
+        if (specification.InteractiveConsole)
+        {
+            return specification.StartVisibleWithoutActivation
+                ? (StartfUseShowWindow, SwShowNoActivate)
+                : (0, (short)0);
+        }
+
+        if (specification.StartMinimizedWithoutActivation)
+        {
+            return (StartfUseStdHandles | StartfUseShowWindow, SwShowMinNoActive);
+        }
+
+        return specification.StartVisibleWithoutActivation
+            ? (StartfUseStdHandles | StartfUseShowWindow, SwShowNoActivate)
             : (StartfUseStdHandles, (short)0);
     }
 

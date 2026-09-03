@@ -272,6 +272,7 @@ public sealed class NetworkTwoLiveLabServiceTests
             process.Specification);
         Assert.True(specification.InteractiveConsole);
         Assert.False(specification.StartMinimizedWithoutActivation);
+        Assert.True(specification.StartVisibleWithoutActivation);
         Assert.Equal(paths.ModsPath, specification.Arguments[1]);
         Assert.Equal(paths.UserProfilePath, specification.Environment["USERPROFILE"]);
         Assert.Equal(paths.StardewDataPath, specification.Environment[
