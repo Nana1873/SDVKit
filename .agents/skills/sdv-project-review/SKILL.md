@@ -31,7 +31,7 @@ sdvkit project review start "<absolute-target-path>" --topology single --compani
 sdvkit project review status --topology single --json
 ```
 
-A review start prepares only the role's isolated startup preferences for a visible 1280x720 game window and keeps SMAPI's separate interactive terminal available. Windows is asked not to activate the new process, but a transient terminal activation can still be terminal-host behavior. Treat a minimized game or a borderless/fullscreen game as a failed review start; do not substitute minimization for a renderable viewport.
+A review start prepares only the role's isolated startup preferences for a visible initial 1280x720 game window and keeps SMAPI's separate interactive terminal available. AlwaysOn applies and verifies that baseline once after Stardew's title-window initialization; later resize and UI-scale testing must remain possible. Windows is asked not to activate the new process, but a transient terminal activation can still be terminal-host behavior. Treat a minimized game or a borderless/fullscreen game as a failed review start; do not substitute minimization for a renderable viewport.
 
 When the review needs the registered SDVKit-owned disposable world, first run `sdvkit lab test-save --topology single --json` while all roles are stopped, then add the explicit flag:
 
@@ -39,7 +39,7 @@ When the review needs the registered SDVKit-owned disposable world, first run `s
 sdvkit project review start "<absolute-target-path>" --topology single --test-save --companion "<absolute-companion-path>" --content-pack "<absolute-additional-pack-path>" --json
 ```
 
-Omit unused repeatable options. Without `--test-save`, the existing plain single-review behavior is unchanged. With it, require `testSave.state=ready`, `testSave.phase=passed`, the exact fixture and Save IDs, and `testSave.identityVerified=true` before sending feature commands.
+Omit unused repeatable options. Without `--test-save`, the existing plain single-review behavior is unchanged. With it, require `testSave.state=ready`, `testSave.phase=passed`, the exact fixture and Save IDs, and `testSave.identityVerified=true` before sending world-dependent, fixture, Data, map-screenshot, target, or companion feature commands. The only pre-fixture exceptions are the exact built-in `sdvkit input ...` grammar and `sdvkit screenshot viewport <label>`; the CLI still requires the exact running process, staging and target-load binding, and those actions prove only process-local input or viewport capture.
 
 For an explicitly requested C# multiplayer review:
 
@@ -66,6 +66,8 @@ sdvkit project review command "<existing-farmhand-command>" --topology network-2
 ```
 
 Do not pass `--role` for `single`. Companion or target commands are examples of that selected mod's capability, not SDVKit product commands.
+
+Before a `network-2` pair has joined, the same two narrow built-in exceptions may target one explicit role for title/loading/error diagnosis. Both retained role bindings and exact running processes must still validate, AlwaysOn must be active for both, and the selected role must report the exact target loaded. Every other command remains pair-readiness-gated; this is not a general bypass for arbitrary console input.
 
 `commandWritten=true` proves only delivery of one console line. The message `Sent debug command ... but there was no output` is neutral: it proves neither success nor failure. Confirm each intended effect through the most direct available evidence, such as a matching isolated log entry, a state change, verified save/reload behavior, or a visual result. Do not infer completion from silence.
 
@@ -103,7 +105,7 @@ sdvkit input cursor <ui-x> <ui-y>
 sdvkit input cursor clear
 ```
 
-Transport one line at a time through `project review command`, with the required role for `network-2`. `press` accepts one exact SMAPI `SButton` name, such as `F8`, `Enter`, `MouseLeft`, `ControllerA`, or `DPadDown`, releases it on the next input tick, and permits both SMAPI's input update and Stardew's own background menu-input path only for the bounded dispatch interval. `MouseWheelUp` and `MouseWheelDown` are additional exact review tokens for one directional wheel notch; set the virtual cursor over an active menu before using either token. `cursor` enables a process-local virtual cursor only at a coordinate inside the current `Game1.uiViewport`; neither action may focus a window or move the user's physical pointer. Clear the override explicitly when the mouse path is complete. A successful AlwaysOn result proves the input was injected or the virtual coordinate was set; prove the intended target-mod effect separately through state, logs, or a viewport screenshot.
+Transport one line at a time through `project review command`, with the required role for `network-2`. `press` accepts one exact SMAPI `SButton` name, such as `F8`, `Enter`, `MouseLeft`, `ControllerA`, or `DPadDown`, releases it on the next input tick, and permits both SMAPI's input update and Stardew's own background menu-input path only for the bounded dispatch interval. Button and cursor commands may run on title, loading, and error screens before `WorldReady`; they do not waive exact process, role, staging, AlwaysOn, or target-load checks. `MouseWheelUp` and `MouseWheelDown` are additional exact review tokens for one directional wheel notch; set the virtual cursor over an active menu before using either token. `cursor` enables a process-local virtual cursor only at a coordinate inside the current `Game1.uiViewport`; neither action may focus a window or move the user's physical pointer. Clear the override explicitly when the mouse path is complete. A successful AlwaysOn result proves the input was injected or the virtual coordinate was set; prove the intended target-mod effect separately through state, logs, or a viewport screenshot.
 
 Every automated review mouse path, including future MCP action tools, must first verify the exact review ownership and topology role, use only this existing process-local SDVKit virtual cursor, and fail closed. Never use global `SendInput`, physical cursor movement, window-focus changes, or generic computer-use automation for review mouse input.
 
@@ -139,7 +141,7 @@ Building and animal kinds resolve only from stable internal IDs in the canonical
 
 Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The fixture surface has no save or sleep command; use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
 
-Request screenshots only through the existing AlwaysOn commands, with a unique label. Use the map form for world layout and the viewport form for menus or HUD:
+Request screenshots only through the existing AlwaysOn commands, with a unique label. Use the map form only after `WorldReady` for world layout. The viewport form captures the current backbuffer and may also be used on title, loading, and error screens before fixture or pair readiness:
 
 ```text
 sdvkit project review command "sdvkit screenshot <unique-label>" --topology single --json
@@ -176,7 +178,7 @@ reset --topology network-2
 
 Between the second `start` and `stop`, reload or resume the retained work state and reconfirm both roles independently. Call `reset` only after both roles are confirmed stopped; require the fixture reset and verified host/farmhand staging removal. A fixture-backed network review is incomplete until this final reset succeeds.
 
-If process identity is uncertain, staged files drift, ownership cannot be proven, or stop/reset/cleanup is unconfirmed, remain fail-closed. Do not kill by process name, delete markers or staging manually, retry destructive cleanup speculatively, or claim teardown success.
+If process identity is uncertain, ownership or canonical staging paths cannot be proven, a reparse point is present, or stop/reset/cleanup is unconfirmed, remain fail-closed. Regular files created, changed, or removed inside an exactly owned direct-child staging directory remain strict drift for status, evidence, and replacement, but do not block cleanup after the exact process is confirmed stopped. Let `stop` or `reset` perform that marker-selected cleanup; do not kill by process name, delete markers or staging manually, retry destructive cleanup speculatively, or claim teardown success. Report an unconfirmed isolated-profile option restore as the emitted warning, even when exact normal process exit and cleanup succeeded.
 
 ## Report the evidence
 

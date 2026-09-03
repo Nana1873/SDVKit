@@ -1289,21 +1289,27 @@ internal sealed class NetworkTwoSmokeService
             RoleReport(
                 NetworkTwoContract.HostRole,
                 _hostReport,
-                _hostUnfocused,
+                _hostUnfocused.Continued,
+                _hostUnfocused.FirstTick,
+                _hostUnfocused.LastTick,
                 hostLogs),
             RoleReport(
                 NetworkTwoContract.FarmhandRole,
                 _farmhandReport,
-                _farmhandUnfocused,
+                _farmhandUnfocused.Continued,
+                _farmhandUnfocused.FirstTick,
+                _farmhandUnfocused.LastTick,
                 farmhandLogs),
             _problems,
             _interactiveReview ? ReviewWarnings : Warnings);
     }
 
-    private static NetworkTwoRoleReport RoleReport(
+    internal static NetworkTwoRoleReport RoleReport(
         string role,
         LiveLabReport? report,
-        UnfocusedObservation unfocused,
+        bool continuedWhileUnfocused,
+        int? firstUnfocusedTick,
+        int? lastUnfocusedTick,
         IReadOnlyList<string> logs) =>
         new(
             role,
@@ -1313,9 +1319,10 @@ internal sealed class NetworkTwoSmokeService
             report?.ProcessStartTimeUtc,
             report?.ExecutablePath,
             report?.AlwaysOn,
-            unfocused.Continued,
-            unfocused.FirstTick,
-            unfocused.LastTick,
+            continuedWhileUnfocused,
+            firstUnfocusedTick,
+            lastUnfocusedTick,
+            report?.Warnings ?? [],
             (report?.TestSaveLogPaths ?? [])
                 .Concat(logs)
                 .Distinct(OperatingSystem.IsWindows()
@@ -1341,7 +1348,7 @@ internal sealed class NetworkTwoSmokeService
             review ? ReviewWarnings : Warnings);
 
     private static NetworkTwoRoleReport EmptyRole(string role) =>
-        new(role, "notStarted", null, null, null, null, null, false, null, null, []);
+        new(role, "notStarted", null, null, null, null, null, false, null, null, [], []);
 
     private static LiveLabReport RequireReport(LiveLabCommandResult result) =>
         result.Report as LiveLabReport

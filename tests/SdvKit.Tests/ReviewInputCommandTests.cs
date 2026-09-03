@@ -75,16 +75,16 @@ public sealed class ReviewInputCommandTests
     }
 
     [Fact]
-    public void OperationRequiresALoadedWorldBeforeDispatch()
+    public void OperationDispatchesButtonInputWithoutALoadedWorldGate()
     {
-        var runtime = new FakeRuntime { IsWorldReady = false };
+        var runtime = new FakeRuntime();
 
         ReviewInputResult result = ReviewInputOperation.Execute(
             new ReviewInputRequest(ReviewInputKind.Press, "F8", 0, 0),
             runtime);
 
-        Assert.False(result.Succeeded);
-        Assert.Equal(0, runtime.PressRequests);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(1, runtime.PressRequests);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public sealed class ReviewInputCommandTests
     }
 
     [Fact]
-    public void OperationMovesTheCursorOnlyInsideTheUiViewport()
+    public void OperationMovesTheCursorInsideTheUiViewportWithoutALoadedWorldGate()
     {
         var runtime = new FakeRuntime();
 
@@ -153,7 +153,7 @@ public sealed class ReviewInputCommandTests
     [Fact]
     public void OperationClearsTheVirtualCursorWithoutALoadedWorld()
     {
-        var runtime = new FakeRuntime { IsWorldReady = false };
+        var runtime = new FakeRuntime();
 
         ReviewInputResult result = ReviewInputOperation.Execute(
             new ReviewInputRequest(ReviewInputKind.ClearCursor, null, 0, 0),
@@ -179,6 +179,7 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("Game1.setMousePosition", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SetForegroundWindow", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AppActivate", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Context.IsWorldReady", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -224,8 +225,6 @@ public sealed class ReviewInputCommandTests
 
     private sealed class FakeRuntime : IReviewInputRuntime
     {
-        public bool IsWorldReady { get; init; } = true;
-
         public int UiWidth { get; init; } = 1280;
 
         public int UiHeight { get; init; } = 720;

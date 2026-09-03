@@ -9,6 +9,39 @@ public sealed class NetworkTwoSmokeServiceTests
     private const string BuildIdentity =
         "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
+    [Fact]
+    public void RoleReportPreservesWarningsFromASuccessfulRoleStop()
+    {
+        const string restoreWarning =
+            "AlwaysOn could not confirm restoration of the isolated profile options.";
+        var liveLab = new LiveLabReport(
+            1,
+            NetworkTwoContract.Topology,
+            "stopped",
+            "launch",
+            42,
+            DateTimeOffset.UtcNow,
+            "StardewModdingAPI.exe",
+            "mods",
+            null,
+            null,
+            [],
+            [restoreWarning]);
+
+        NetworkTwoRoleReport role = NetworkTwoSmokeService.RoleReport(
+            NetworkTwoContract.HostRole,
+            liveLab,
+            continuedWhileUnfocused: true,
+            firstUnfocusedTick: 10,
+            lastUnfocusedTick: 20,
+            logs: []);
+
+        Assert.Equal([restoreWarning], role.Warnings);
+        Assert.True(role.ContinuedWhileUnfocused);
+        Assert.Equal(10, role.FirstUnfocusedTick);
+        Assert.Equal(20, role.LastUnfocusedTick);
+    }
+
     [Theory]
     [InlineData("joining", "alwaysOnStale", true)]
     [InlineData("joining", "alwaysOnNotApplied", true)]

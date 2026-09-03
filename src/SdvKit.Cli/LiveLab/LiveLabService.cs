@@ -63,6 +63,11 @@ internal sealed class LiveLabService
         "Only one exact SDVKit-owned direct-child save junction is exposed inside that project-owned data root.",
     ];
 
+    private static readonly string[] RestoreUnconfirmedWarnings =
+    [
+        "AlwaysOn could not confirm restoration of the isolated profile options before normal exit. The exact lab process still stopped safely; the next start reapplies the required lab values.",
+    ];
+
     private static readonly string[] TestSaveEnvironmentNames =
     [
         "SDVKIT_TEST_SAVE_MODE",
@@ -455,7 +460,7 @@ internal sealed class LiveLabService
                 alwaysOn: ReadAlwaysOn(state));
         }
 
-        return CompleteConfirmedStop(state, ReadAlwaysOn(state));
+        return CompleteControlledStop(state, ReadAlwaysOn(state));
     }
 
     private LiveLabCommandResult ReleaseExitedNetworkStateWithoutRestore(
@@ -503,6 +508,7 @@ internal sealed class LiveLabService
 
     private LiveLabCommandResult TestSave(ProjectModLaunchState? projectMod)
     {
+        var warnings = TestSaveWarnings.ToList();
         LiveLabState? existing = ReadState();
         if (existing is not null)
         {
@@ -510,7 +516,8 @@ internal sealed class LiveLabService
                 existing.TestSave?.Identity,
                 [],
                 "labNotStopped",
-                "The disposable test-save workflow requires the existing single lab to be stopped first.");
+                "The disposable test-save workflow requires the existing single lab to be stopped first.",
+                warnings);
         }
 
         var logs = new List<string>();
@@ -530,7 +537,8 @@ internal sealed class LiveLabService
                     identity,
                     logs,
                     "testSavePreparationFailed",
-                    exception.Message);
+                    exception.Message,
+                    warnings);
             }
 
             TestSaveLaunchState launch = preparation.LaunchState;
@@ -545,8 +553,9 @@ internal sealed class LiveLabService
                         launch,
                         (LiveLabReport)started.Report,
                         logs,
-                        problems);
-                    return TestSaveWorkflowFailure(identity, logs, problems);
+                        problems,
+                        warnings);
+                    return TestSaveWorkflowFailure(identity, logs, problems, warnings);
                 }
 
                 TestSaveWaitResult waited = WaitForTestSave(launch);
@@ -560,6 +569,7 @@ internal sealed class LiveLabService
 
                     LiveLabCommandResult stoppedAfterFailure = Stop();
                     logs.AddRange(_lastTestSaveLogPaths);
+                    AddReportWarnings(stoppedAfterFailure, warnings);
                     if (stoppedAfterFailure.ExitCode != Success)
                     {
                         problems.AddRange(AssertLiveLabProblems(
@@ -567,17 +577,19 @@ internal sealed class LiveLabService
                             "testSaveCleanupFailed"));
                     }
 
-                    return TestSaveWorkflowFailure(identity, logs, problems);
+                    return TestSaveWorkflowFailure(identity, logs, problems, warnings);
                 }
 
                 LiveLabCommandResult stopped = Stop();
                 logs.AddRange(_lastTestSaveLogPaths);
+                AddReportWarnings(stopped, warnings);
                 if (stopped.ExitCode != Success)
                 {
                     return TestSaveWorkflowFailure(
                         identity,
                         logs,
-                        AssertLiveLabProblems(stopped, "testSaveCleanupFailed"));
+                        AssertLiveLabProblems(stopped, "testSaveCleanupFailed"),
+                        warnings);
                 }
 
                 if (string.Equals(
@@ -599,7 +611,7 @@ internal sealed class LiveLabService
                             _paths.TestSaveBaselinePath,
                             logs,
                             [],
-                            TestSaveWarnings));
+                            warnings));
                 }
             }
             catch (Exception exception) when (IsControlledFailure(exception))
@@ -608,8 +620,8 @@ internal sealed class LiveLabService
                 {
                     Problem("testSaveRunFailed", exception.Message),
                 };
-                TryCleanupPreparedRun(launch, null, logs, problems);
-                return TestSaveWorkflowFailure(identity, logs, problems);
+                TryCleanupPreparedRun(launch, null, logs, problems, warnings);
+                return TestSaveWorkflowFailure(identity, logs, problems, warnings);
             }
         }
 
@@ -617,7 +629,8 @@ internal sealed class LiveLabService
             identity,
             logs,
             "testSaveScenarioMissing",
-            "The fixture was created, but its exact baseline scenario did not run.");
+            "The fixture was created, but its exact baseline scenario did not run.",
+            warnings);
     }
 
     private TestSaveWaitResult WaitForTestSave(TestSaveLaunchState expected)
@@ -731,7 +744,8 @@ internal sealed class LiveLabService
         TestSaveLaunchState launch,
         LiveLabReport? started,
         List<string> logs,
-        List<LiveLabProblem> startProblems)
+        List<LiveLabProblem> startProblems,
+        List<string> warnings)
     {
         try
         {
@@ -739,6 +753,7 @@ internal sealed class LiveLabService
             {
                 LiveLabCommandResult stopped = Stop();
                 logs.AddRange(_lastTestSaveLogPaths);
+                AddReportWarnings(stopped, warnings);
                 if (stopped.ExitCode != Success)
                 {
                     startProblems.AddRange(AssertLiveLabProblems(
@@ -843,13 +858,15 @@ internal sealed class LiveLabService
         TestSaveIdentity? identity,
         IReadOnlyList<string> logs,
         string code,
-        string message) =>
-        TestSaveWorkflowFailure(identity, logs, [Problem(code, message)]);
+        string message,
+        IReadOnlyList<string> warnings) =>
+        TestSaveWorkflowFailure(identity, logs, [Problem(code, message)], warnings);
 
     private LiveLabCommandResult TestSaveWorkflowFailure(
         TestSaveIdentity? identity,
         IReadOnlyList<string> logs,
-        IReadOnlyList<LiveLabProblem> problems)
+        IReadOnlyList<LiveLabProblem> problems,
+        IReadOnlyList<string> warnings)
     {
         return Result(
             OperationFailed,
@@ -865,7 +882,7 @@ internal sealed class LiveLabService
                 _paths.TestSaveBaselinePath,
                 logs,
                 problems,
-                TestSaveWarnings));
+                warnings));
     }
 
     private static List<LiveLabProblem> AssertLiveLabProblems(
@@ -878,6 +895,24 @@ internal sealed class LiveLabService
         }
 
         return [Problem(fallbackCode, "The live-lab operation failed without a detailed problem.")];
+    }
+
+    private static void AddReportWarnings(
+        LiveLabCommandResult result,
+        List<string> warnings)
+    {
+        if (result.Report is not LiveLabReport report)
+        {
+            return;
+        }
+
+        foreach (string warning in report.Warnings)
+        {
+            if (!warnings.Contains(warning, StringComparer.Ordinal))
+            {
+                warnings.Add(warning);
+            }
+        }
     }
 
     private LiveLabCommandResult Start(
@@ -1287,7 +1322,7 @@ internal sealed class LiveLabService
         if (observation.Status == LabProcessInspectStatus.Exited)
         {
             AlwaysOnStatusReport exitedStatus = ReadAlwaysOn(state);
-            return CompleteConfirmedStop(state, exitedStatus);
+            return CompleteControlledStop(state, exitedStatus);
         }
 
         if (observation.Status == LabProcessInspectStatus.IdentityMismatch)
@@ -1327,20 +1362,10 @@ internal sealed class LiveLabService
         if (wait.Status == LabProcessWaitStatus.Exited)
         {
             AlwaysOnStatusReport exitingStatus = ReadAlwaysOn(state);
-            return CompleteConfirmedStop(state, exitingStatus);
+            return CompleteControlledStop(state, exitingStatus);
         }
 
         AlwaysOnStatusReport stopStatus = ReadAlwaysOn(state);
-        if (string.Equals(stopStatus.State, "restoreFailed", StringComparison.Ordinal))
-        {
-            return Failure(
-                "running",
-                state,
-                "alwaysOnRestoreFailed",
-                "AlwaysOn received the stop request but could not confirm restoration; the exact process was left alone.",
-                alwaysOn: stopStatus);
-        }
-
         return wait.Status switch
         {
             LabProcessWaitStatus.IdentityMismatch => Failure(
@@ -1371,11 +1396,11 @@ internal sealed class LiveLabService
         if (observation.Status == LabProcessInspectStatus.Exited)
         {
             AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
-            if (string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
+            if (alwaysOn.State is "exiting" or "restoreFailed")
             {
                 if (state.TestSave is not null)
                 {
-                    LiveLabCommandResult finalized = CompleteConfirmedStop(state, alwaysOn);
+                    LiveLabCommandResult finalized = CompleteControlledStop(state, alwaysOn);
                     if (finalized.ExitCode != Success)
                     {
                         return finalized;
@@ -1464,7 +1489,7 @@ internal sealed class LiveLabService
                 "running",
                 state,
                 "alwaysOnRestoreFailed",
-                "AlwaysOn could not confirm restoration for the requested clean stop.",
+                "AlwaysOn could not confirm restoration for the requested clean stop and requested normal exit, but the exact process is still running.",
                 alwaysOn: alwaysOn);
         }
 
@@ -1474,7 +1499,7 @@ internal sealed class LiveLabService
                 "running",
                 state,
                 "cleanStopIncomplete",
-                "AlwaysOn confirmed restoration and requested normal exit, but the exact process is still running.",
+                "AlwaysOn requested normal exit, but the exact process is still running.",
                 alwaysOn: alwaysOn);
         }
 
@@ -1634,12 +1659,17 @@ internal sealed class LiveLabService
         return Result(Success, Report("running", state, [], alwaysOn: alwaysOn));
     }
 
-    private LiveLabCommandResult CompleteConfirmedStop(
+    private LiveLabCommandResult CompleteControlledStop(
         LiveLabState state,
         AlwaysOnStatusReport alwaysOn)
     {
         LastAlwaysOn = alwaysOn;
-        if (!string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
+        bool restoreUnconfirmed = string.Equals(
+            alwaysOn.State,
+            "restoreFailed",
+            StringComparison.Ordinal);
+        if (!restoreUnconfirmed
+            && !string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
         {
             if (state.TestSave is not null)
             {
@@ -1719,16 +1749,6 @@ internal sealed class LiveLabService
                 && networkTwo.JoinedTicks >= NetworkTwoContract.RequiredJoinedTicks
                 && pairIdentitiesMatch;
 
-            bool isHost = string.Equals(
-                state.NetworkTwo.Role,
-                NetworkTwoContract.HostRole,
-                StringComparison.Ordinal);
-            if (isHost
-                && (alwaysOn.EnableServer is null
-                    || alwaysOn.IpConnectionsEnabled is null))
-            {
-                networkTwoSucceeded = false;
-            }
         }
 
         if (state.ProjectMod is not null)
@@ -1797,7 +1817,14 @@ internal sealed class LiveLabService
 
         return Result(
             Success,
-            Report("stopped", state, [], alwaysOn: alwaysOn));
+            Report(
+                "stopped",
+                state,
+                [],
+                alwaysOn: alwaysOn,
+                additionalWarnings: restoreUnconfirmed
+                    ? RestoreUnconfirmedWarnings
+                    : null));
     }
 
     private static bool ProjectModLoadSucceeded(
@@ -1881,7 +1908,13 @@ internal sealed class LiveLabService
                 state,
                 [Problem(code, message)],
                 buildLogPath,
-                alwaysOn));
+                alwaysOn,
+                additionalWarnings: string.Equals(
+                    alwaysOn?.State,
+                    "restoreFailed",
+                    StringComparison.Ordinal)
+                        ? RestoreUnconfirmedWarnings
+                        : null));
     }
 
     private LiveLabReport Report(
@@ -1889,9 +1922,17 @@ internal sealed class LiveLabService
         LiveLabState? state,
         IReadOnlyList<LiveLabProblem> problems,
         string? buildLogPath = null,
-        AlwaysOnStatusReport? alwaysOn = null)
+        AlwaysOnStatusReport? alwaysOn = null,
+        IReadOnlyList<string>? additionalWarnings = null)
     {
         OwnedProcessIdentity? process = state?.OwnedProcessIdentity;
+        IReadOnlyList<string> baseWarnings = state?.TestSave is null
+            ? IsolationWarnings
+            : TestSaveWarnings;
+        IReadOnlyList<string> warnings = additionalWarnings is null
+            or { Count: 0 }
+            ? baseWarnings
+            : [.. baseWarnings, .. additionalWarnings];
         return new LiveLabReport(
             1,
             state?.Topology ?? _reportTopology,
@@ -1904,7 +1945,7 @@ internal sealed class LiveLabService
             buildLogPath,
             alwaysOn,
             problems,
-            state?.TestSave is null ? IsolationWarnings : TestSaveWarnings,
+            warnings,
             state?.TestSave is null ? [] : _lastTestSaveLogPaths);
     }
 

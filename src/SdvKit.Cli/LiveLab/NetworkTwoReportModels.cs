@@ -11,6 +11,7 @@ internal sealed record NetworkTwoRoleReport(
     bool ContinuedWhileUnfocused,
     int? FirstUnfocusedTick,
     int? LastUnfocusedTick,
+    IReadOnlyList<string> Warnings,
     IReadOnlyList<string> LogPaths);
 
 internal sealed record NetworkTwoSmokeReport(

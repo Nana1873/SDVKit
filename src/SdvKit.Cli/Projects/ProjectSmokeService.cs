@@ -376,8 +376,25 @@ internal static class ProjectSmokeService
             cleanup.Removed,
             loadErrors,
             problems,
-            Warnings);
+            MergeLabWarnings(labResult.Report));
         return new LiveLabCommandResult(passed ? Success : OperationFailed, report);
+    }
+
+    internal static IReadOnlyList<string> MergeLabWarnings(object report)
+    {
+        IEnumerable<string> labWarnings = report switch
+        {
+            TestSaveWorkflowReport single => single.Warnings,
+            NetworkTwoSmokeReport network => network.Warnings
+                .Concat(network.Host.Warnings)
+                .Concat(network.Farmhand.Warnings),
+            _ => [],
+        };
+
+        return Warnings
+            .Concat(labWarnings)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static IReadOnlyList<ProjectSmokeRoleReport> CreateRoles(
