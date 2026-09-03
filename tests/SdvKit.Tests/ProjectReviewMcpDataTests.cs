@@ -36,16 +36,17 @@ public sealed class ProjectReviewMcpDataTests
                 ProjectReviewMcpDataTools.AssetsToolName,
                 ProjectReviewMcpDataTools.KeysToolName,
                 ProjectReviewMcpDataTools.RecordToolName,
+                ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
             ],
             listed.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
         foreach (Tool tool in listed.Tools.Where(tool =>
-                     !string.Equals(
-                         tool.Name,
-                         ProjectReviewMcpServer.RuntimeToolName,
-                         StringComparison.Ordinal)))
+                     tool.Name is ProjectReviewMcpDataTools.AssetsToolName
+                         or ProjectReviewMcpDataTools.KeysToolName
+                         or ProjectReviewMcpDataTools.RecordToolName))
         {
             Assert.True(tool.Annotations?.ReadOnlyHint);
             Assert.False(tool.Annotations?.DestructiveHint);

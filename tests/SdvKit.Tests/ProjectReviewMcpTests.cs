@@ -200,7 +200,7 @@ public sealed class ProjectReviewMcpTests
     }
 
     [Fact]
-    public async Task OfficialClientListsAndCallsTheSingleTypedReadOnlyTool()
+    public async Task OfficialClientListsAndCallsTheSingleTypedReadOnlyTools()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = CreateReadyReview(temporary);
@@ -228,7 +228,7 @@ public sealed class ProjectReviewMcpTests
         ListToolsResult listed = await client.ListToolsAsync(
             new ListToolsRequestParams(),
             timeout.Token);
-        Assert.Equal(4, listed.Tools.Count);
+        Assert.Equal(6, listed.Tools.Count);
         Tool tool = Assert.Single(
             listed.Tools,
             candidate => string.Equals(
@@ -315,8 +315,14 @@ public sealed class ProjectReviewMcpTests
             new ListToolsRequestParams(),
             timeout.Token);
         Assert.Equal(
-            [ProjectReviewMcpServer.RuntimeToolName],
-            listed.Tools.Select(tool => tool.Name).ToArray());
+            [
+                ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                ProjectReviewMcpDiagnosticsTools.ReviewToolName,
+                ProjectReviewMcpServer.RuntimeToolName,
+            ],
+            listed.Tools.Select(tool => tool.Name)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
 
         CallToolResult called = await client.CallToolAsync(
             new CallToolRequestParams
@@ -396,6 +402,8 @@ public sealed class ProjectReviewMcpTests
                         ProjectReviewMcpDataTools.AssetsToolName,
                         ProjectReviewMcpDataTools.KeysToolName,
                         ProjectReviewMcpDataTools.RecordToolName,
+                        ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                        ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                         ProjectReviewMcpServer.RuntimeToolName,
                     ],
                     listed.Tools.Select(tool => tool.Name)
@@ -410,6 +418,27 @@ public sealed class ProjectReviewMcpTests
                     timeout.Token);
                 Assert.NotEqual(true, called.IsError);
                 Assert.Equal(LaunchId, called.StructuredContent?.GetProperty("launchId").GetString());
+
+                CallToolResult review = await client.CallToolAsync(
+                    new CallToolRequestParams
+                    {
+                        Name = ProjectReviewMcpDiagnosticsTools.ReviewToolName,
+                    },
+                    timeout.Token);
+                Assert.NotEqual(true, review.IsError);
+                Assert.Equal(
+                    LaunchId,
+                    review.StructuredContent?.GetProperty("launchId").GetString());
+
+                CallToolResult mods = await client.CallToolAsync(
+                    ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                    new Dictionary<string, object?> { ["limit"] = 1 },
+                    cancellationToken: timeout.Token);
+                Assert.NotEqual(true, mods.IsError);
+                Assert.Equal(
+                    2,
+                    mods.StructuredContent?.GetProperty("page")
+                        .GetProperty("total").GetInt32());
 
                 CallToolResult invalidDataCall = await client.CallToolAsync(
                     ProjectReviewMcpDataTools.KeysToolName,
@@ -655,7 +684,8 @@ public sealed class ProjectReviewMcpTests
             ForegroundWindowHandle: 1,
             foregroundProcessId,
             projectMod,
-            runtime);
+            runtime,
+            LoadedMods: ReadyLoadedMods(ObservedAt));
         File.WriteAllText(
             state.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
@@ -731,7 +761,8 @@ public sealed class ProjectReviewMcpTests
                 64,
                 15,
                 false,
-                observedAt));
+                observedAt),
+            LoadedMods: ReadyLoadedMods(observedAt));
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
@@ -759,6 +790,21 @@ public sealed class ProjectReviewMcpTests
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("The test review process did not start.");
     }
+
+    private static LoadedModsStatusMarker ReadyLoadedMods(
+        DateTimeOffset capturedAtUtc) =>
+        LoadedModsContract.CreateReady(
+            [
+                new LoadedModEntry(
+                    LoadedModsContract.AlwaysOnUniqueId,
+                    "0.6.1",
+                    IsContentPack: false),
+                new LoadedModEntry(
+                    "Nana.Target",
+                    "1.0.0",
+                    IsContentPack: false),
+            ],
+            capturedAtUtc);
 
     private sealed class FakeProcessHost(LabProcessInspectStatus inspectStatus)
         : ILabProcessHost

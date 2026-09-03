@@ -20,7 +20,7 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
-For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. That server exposes the documented runtime and canonical Data tools. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected; the Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the selected role's runtime; never infer one role from its peer. It exposes only its documented typed tools. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
+For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The role is fixed at server startup and is never a tool argument. Every topology exposes `stardew_runtime_get`, `stardew_review_get`, and `stardew_mods_list`; the three canonical Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the configured role's data; never infer one role from its peer. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
 
 ## Start and confirm the load
 
@@ -71,6 +71,21 @@ Before a `network-2` pair has joined, the same two narrow built-in exceptions ma
 
 `commandWritten=true` proves only delivery of one console line. The message `Sent debug command ... but there was no output` is neutral: it proves neither success nor failure. Confirm each intended effect through the most direct available evidence, such as a matching isolated log entry, a state change, verified save/reload behavior, or a visual result. Do not infer completion from silence.
 
+### Inspect the owned review and loaded mods through MCP
+
+Use the all-topology diagnostics only through the server already bound to the intended review role:
+
+```text
+stardew_review_get {}
+stardew_mods_list { "offset": 0, "limit": 50 }
+```
+
+`stardew_review_get` must identify the exact launch, topology, immutable role selection, verified running process and fresh status, target/build/load state, optional verified fixture/save, and the complete owned target/companion/content-pack staging set. `stardew_mods_list` compares that exact staging with the selected role's snapshot from SMAPI's public loaded-mod registry. It defaults to offset 0 and limit 50, accepts limits only from 1 through 100, and must be paged through `nextOffset` until it is `null`. Keep staged and loaded kind, staged and loaded version, source category, and load status distinct.
+
+Treat warning and error entries only as fixed, bounded SDVKit diagnostics for missing, version-mismatched, or kind-mismatched selected mods. They are not SMAPI's raw loader diagnostics. Never request, infer, or report raw loader warnings, logs, exception text, paths, PIDs, environment values, or an unexpected loaded identity. A controlled unavailable/mismatch error is a fail-closed result, not stale data to reuse.
+
+These tools read only the exact owned staging marker and the role-local public-SMAPI snapshot already carried by the active review status path. They never enumerate the normal or mod-manager-owned `Mods` directory or read normal saves. For a `single` client, enable exactly all six delivered tools: the three tools above plus `stardew_data_assets_list`, `stardew_data_keys_list`, and `stardew_data_record_get`. For a `network-2` client, enable exactly the three all-topology tools and no Data tools.
+
 ### Inspect canonical Data definitions
 
 Use the top-level read-only data surface only during an exact, target-load-confirmed `single` review:
@@ -93,7 +108,7 @@ stardew_data_keys_list { "asset": "Data/Buildings", "offset": 0, "limit": 50 }
 stardew_data_record_get { "asset": "Data/Buildings", "key": "Barn" }
 ```
 
-The first two default to offset 0 and limit 50; the limit remains 1-100. Treat the returned page and coverage exactly like their CLI equivalents, and require structured JSON and compact text content to be semantically identical. These tools first revalidate the fresh MCP review binding and then reuse the CLI data service's independent exact-review gate. A bounded tool error is not stale data and must not be retried unchanged. Network-role MCP servers do not advertise these tools in this slice.
+The first two default to offset 0 and limit 50; the limit remains 1-100. Treat the returned page and coverage exactly like their CLI equivalents, and require structured JSON and compact text content to be semantically identical. These tools first revalidate the fresh MCP review binding and then reuse the CLI data service's independent exact-review gate. A bounded tool error is not stale data and must not be retried unchanged. Network-role MCP servers do not advertise these tools.
 
 ### Drive review input without desktop automation
 

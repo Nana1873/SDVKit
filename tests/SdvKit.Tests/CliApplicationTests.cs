@@ -962,7 +962,7 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>"
                 + Environment.NewLine
-                + "       single MCP tools: stardew_runtime_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; network-2: stardew_runtime_get only"
+                + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
@@ -1045,7 +1045,9 @@ public sealed class CliApplicationTests
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
         Assert.Contains("project review mcp serve", output, StringComparison.Ordinal);
         Assert.Contains("stardew_data_assets_list", output, StringComparison.Ordinal);
-        Assert.Contains("network-2: stardew_runtime_get only", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_review_get", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_mods_list", output, StringComparison.Ordinal);
+        Assert.Contains("single additionally", output, StringComparison.Ordinal);
         Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
         Assert.Contains(
             "Content-pack targets require --topology single and an explicit provider --companion.",

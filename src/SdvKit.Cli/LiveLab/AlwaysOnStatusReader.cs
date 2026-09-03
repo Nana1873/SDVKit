@@ -16,7 +16,8 @@ internal sealed record AlwaysOnStatusReport(
     long? ForegroundWindowHandle = null,
     int? ForegroundProcessId = null,
     ProjectModStatusReport? ProjectMod = null,
-    RuntimeSnapshotReport? Runtime = null);
+    RuntimeSnapshotReport? Runtime = null,
+    LoadedModsStatusReport? LoadedMods = null);
 
 internal sealed record AlwaysOnStatusMarker(
     int SchemaVersion,
@@ -35,10 +36,12 @@ internal sealed record AlwaysOnStatusMarker(
     long? ForegroundWindowHandle = null,
     int? ForegroundProcessId = null,
     ProjectModStatusMarker? ProjectMod = null,
-    RuntimeSnapshotMarker? Runtime = null);
+    RuntimeSnapshotMarker? Runtime = null,
+    LoadedModsStatusMarker? LoadedMods = null);
 
 internal static class AlwaysOnStatusReader
 {
+    internal const int MaximumStatusBytes = 256 * 1024;
     private static readonly TimeSpan FreshnessWindow = TimeSpan.FromSeconds(5);
 
     public static AlwaysOnStatusReport Read(
@@ -67,6 +70,11 @@ internal static class AlwaysOnStatusReader
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
+            if (stream.Length is <= 0 or > MaximumStatusBytes)
+            {
+                return new AlwaysOnStatusReport("invalid", null, null, null, null);
+            }
+
             marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
                 stream,
                 LiveLabJsonOptions.CamelCase);
@@ -114,6 +122,10 @@ internal static class AlwaysOnStatusReader
             marker.ProjectMod,
             expectedProjectMod);
         RuntimeSnapshotReport runtime = ReadRuntime(marker.Runtime, marker.ObservedAtUtc);
+        LoadedModsStatusReport? loadedMods = ReadLoadedMods(
+            marker.LoadedMods,
+            marker.ProcessStartTimeUtc,
+            marker.ObservedAtUtc);
         return new AlwaysOnStatusReport(
             state,
             marker.Tick,
@@ -127,8 +139,94 @@ internal static class AlwaysOnStatusReader
             marker.ForegroundWindowHandle,
             marker.ForegroundProcessId,
             projectMod,
-            runtime);
+            runtime,
+            loadedMods);
     }
+
+    private static LoadedModsStatusReport? ReadLoadedMods(
+        LoadedModsStatusMarker? marker,
+        DateTimeOffset processStartTimeUtc,
+        DateTimeOffset statusObservedAtUtc)
+    {
+        if (marker is null)
+        {
+            return null;
+        }
+
+        bool timestampValid = marker.CapturedAtUtc != default
+            && marker.CapturedAtUtc.Offset == TimeSpan.Zero
+            && marker.CapturedAtUtc >= processStartTimeUtc
+            && marker.CapturedAtUtc <= statusObservedAtUtc.AddSeconds(1);
+        if (marker.SchemaVersion != LoadedModsContract.SchemaVersion
+            || !timestampValid
+            || marker.Mods is null)
+        {
+            return InvalidLoadedMods();
+        }
+
+        if (marker.ProblemCode is not null)
+        {
+            return string.Equals(
+                    marker.ProblemCode,
+                    LoadedModsContract.CaptureFailedProblemCode,
+                    StringComparison.Ordinal)
+                && marker.Mods.Count == 0
+                    ? new LoadedModsStatusReport(
+                        "failed",
+                        marker.SchemaVersion,
+                        marker.CapturedAtUtc,
+                        [],
+                        marker.ProblemCode)
+                    : InvalidLoadedMods();
+        }
+
+        if (marker.Mods.Count is 0 or > LoadedModsContract.MaximumEntries)
+        {
+            return InvalidLoadedMods();
+        }
+
+        LoadedModEntry? previous = null;
+        var alwaysOnFound = false;
+        foreach (LoadedModEntry? mod in marker.Mods)
+        {
+            if (mod is null
+                || !LoadedModsContract.IsValidEntry(mod)
+                || (previous is not null
+                    && StringComparer.OrdinalIgnoreCase.Compare(
+                        previous.UniqueId,
+                        mod.UniqueId) >= 0))
+            {
+                return InvalidLoadedMods();
+            }
+
+            if (string.Equals(
+                mod.UniqueId,
+                LoadedModsContract.AlwaysOnUniqueId,
+                StringComparison.Ordinal))
+            {
+                if (mod.IsContentPack)
+                {
+                    return InvalidLoadedMods();
+                }
+
+                alwaysOnFound = true;
+            }
+
+            previous = mod;
+        }
+
+        return alwaysOnFound
+            ? new LoadedModsStatusReport(
+                "ready",
+                marker.SchemaVersion,
+                marker.CapturedAtUtc,
+                [.. marker.Mods],
+                ProblemCode: null)
+            : InvalidLoadedMods();
+    }
+
+    private static LoadedModsStatusReport InvalidLoadedMods() =>
+        new("invalid", null, null, [], null);
 
     private static RuntimeSnapshotReport ReadRuntime(
         RuntimeSnapshotMarker? marker,

@@ -456,7 +456,8 @@ public sealed class ModEntry : Mod
                 foregroundWindowHandle,
                 foregroundProcessId,
                 _projectMod?.Snapshot,
-                CaptureRuntimeSnapshot());
+                CaptureRuntimeSnapshot(),
+                _projectMod?.LoadedModsSnapshot);
             _statusWriteErrorLogged = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

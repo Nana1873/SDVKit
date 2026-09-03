@@ -91,7 +91,7 @@ internal static class ProjectReviewMcpServer
             projectRoot,
             topology,
             role);
-        ProjectReviewMcpReadResult preflight = reader.Read();
+        ProjectReviewMcpContextResult preflight = reader.ReadContext();
         if (!preflight.Succeeded)
         {
             error.WriteLine(
@@ -118,6 +118,7 @@ internal static class ProjectReviewMcpServer
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
+        tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         if (runData is not null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
@@ -132,7 +133,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.6.1",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review. Canonical Data tools are available only for a single review. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
+                "Tools are bound to one exact active project review and expose only its selected role. Review and loaded-mod diagnostics are available for every topology; canonical Data tools remain single-only. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
             ToolCollection = [.. tools],
         };
     }

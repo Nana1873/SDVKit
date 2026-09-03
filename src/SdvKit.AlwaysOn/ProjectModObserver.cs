@@ -15,6 +15,8 @@ internal sealed class ProjectModObserver
     private string? _loadedVersion;
     private bool _loadConfirmed;
     private string? _message;
+    private LoadedModsStatusMarker? _loadedMods;
+    private bool _loadedModsCaptured;
 
     private ProjectModObserver(
         ProjectModLaunchState expected,
@@ -36,6 +38,8 @@ internal sealed class ProjectModObserver
         _expected.BuildIdentity,
         _loadConfirmed,
         _message);
+
+    public LoadedModsStatusMarker? LoadedModsSnapshot => _loadedMods;
 
     public static bool TryCreate(
         IModHelper helper,
@@ -76,6 +80,7 @@ internal sealed class ProjectModObserver
 
     public void ObserveLoadedMod()
     {
+        CaptureLoadedModsOnce();
         if (!string.Equals(
                 _phase,
                 ProjectModContract.WaitingForGameLaunchPhase,
@@ -122,6 +127,46 @@ internal sealed class ProjectModObserver
             Fail(
                 $"SMAPI project-mod observation failed: "
                 + exception.GetBaseException().Message);
+        }
+    }
+
+    private void CaptureLoadedModsOnce()
+    {
+        if (_loadedModsCaptured)
+        {
+            return;
+        }
+
+        _loadedModsCaptured = true;
+        DateTimeOffset capturedAtUtc = DateTimeOffset.UtcNow;
+        try
+        {
+            var loaded = new List<LoadedModEntry>();
+            foreach (IModInfo mod in _modRegistry.GetAll())
+            {
+                if (loaded.Count == LoadedModsContract.MaximumEntries)
+                {
+                    throw new InvalidDataException(
+                        $"SMAPI reported more than {LoadedModsContract.MaximumEntries} loaded mods.");
+                }
+
+                IManifest manifest = mod.Manifest
+                    ?? throw new InvalidDataException(
+                        "SMAPI reported a loaded mod without a manifest.");
+                loaded.Add(new LoadedModEntry(
+                    manifest.UniqueID,
+                    manifest.Version.ToString(),
+                    mod.IsContentPack));
+            }
+
+            _loadedMods = LoadedModsContract.CreateReady(loaded, capturedAtUtc);
+        }
+        catch (Exception exception)
+        {
+            _loadedMods = LoadedModsContract.CreateCaptureFailure(capturedAtUtc);
+            _monitor.Log(
+                $"SDVKit loaded-mod capture failed: {exception.GetBaseException().Message}",
+                LogLevel.Error);
         }
     }
 
