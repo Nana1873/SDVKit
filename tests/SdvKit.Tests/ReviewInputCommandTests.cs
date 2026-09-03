@@ -181,6 +181,51 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("AppActivate", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SourceReleasesSyntheticButtonsAfterTheCompletedGameUpdateOnly()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string inputSource = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "ReviewInputCommand.cs"));
+        string entrySource = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "ModEntry.cs"));
+
+        int pressIndex = inputSource.IndexOf(
+            "helper.Input.Press(parsed);",
+            StringComparison.Ordinal);
+        int pendingIndex = inputSource.IndexOf(
+            "pendingButtonReleases.Add(parsed);",
+            StringComparison.Ordinal);
+        int releaseIndex = inputSource.IndexOf(
+            "helper.Input.Suppress(button);",
+            StringComparison.Ordinal);
+        Assert.True(pressIndex >= 0 && pressIndex < pendingIndex);
+        Assert.True(pendingIndex < releaseIndex);
+        Assert.Contains("pendingButtonReleases.Clear();", inputSource, StringComparison.Ordinal);
+
+        string updateTicking = SliceBetween(
+            entrySource,
+            "helper.Events.GameLoop.UpdateTicking +=",
+            "helper.Events.GameLoop.OneSecondUpdateTicked +=");
+        string updateTicked = SliceBetween(
+            entrySource,
+            "helper.Events.GameLoop.UpdateTicked +=",
+            "helper.Events.GameLoop.GameLaunched +=");
+        Assert.DoesNotContain("ReleasePendingPresses", updateTicking, StringComparison.Ordinal);
+        Assert.Contains("_reviewInput?.ReleasePendingPresses();", updateTicked, StringComparison.Ordinal);
+        Assert.Equal(
+            3,
+            entrySource.Split(
+                "_reviewInput?.ReleasePendingPresses();",
+                StringSplitOptions.None).Length - 1);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
@@ -200,6 +245,15 @@ public sealed class ReviewInputCommandTests
 
         throw new DirectoryNotFoundException(
             $"Could not find the SDVKit repository above '{AppContext.BaseDirectory}'.");
+    }
+
+    private static string SliceBetween(string source, string start, string end)
+    {
+        int startIndex = source.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0);
+        int endIndex = source.IndexOf(end, startIndex, StringComparison.Ordinal);
+        Assert.True(endIndex > startIndex);
+        return source[startIndex..endIndex];
     }
 
     private sealed class FakeRuntime : IReviewInputRuntime

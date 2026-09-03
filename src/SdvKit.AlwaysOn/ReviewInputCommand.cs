@@ -220,6 +220,8 @@ internal static class ReviewInputCommand
 
 internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInputRuntime
 {
+    private readonly HashSet<SButton> pendingButtonReleases = [];
+
     public bool IsWorldReady => Context.IsWorldReady;
 
     public int UiWidth => Game1.uiViewport.Width;
@@ -238,10 +240,21 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
         }
 
         helper.Input.Press(parsed);
+        pendingButtonReleases.Add(parsed);
         ReviewVirtualCursor.AllowBackgroundInputForNextTicks();
         canonicalButton = parsed.ToString();
         error = string.Empty;
         return true;
+    }
+
+    public void ReleasePendingPresses()
+    {
+        foreach (SButton button in pendingButtonReleases)
+        {
+            helper.Input.Suppress(button);
+        }
+
+        pendingButtonReleases.Clear();
     }
 
     public bool TryScroll(int direction, out string error)

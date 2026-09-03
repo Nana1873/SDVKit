@@ -14,6 +14,7 @@ public sealed class ModEntry : Mod
     private TestSaveAutomation? _testSave;
     private NetworkTwoAutomation? _networkTwo;
     private ProjectModObserver? _projectMod;
+    private StardewReviewInputRuntime? _reviewInput;
     private string? _launchId;
     private string? _stopRequestPath;
     private bool _gameLaunched;
@@ -92,7 +93,7 @@ public sealed class ModEntry : Mod
             _networkTwo?.LogInitializationFailure();
         }
 
-        ReviewCommand.Register(
+        _reviewInput = ReviewCommand.Register(
             helper,
             Monitor,
             () => _testSave,
@@ -126,6 +127,9 @@ public sealed class ModEntry : Mod
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
+            // SMAPI applies the press before the game update. Release it only
+            // after that update so an unfocused input state can't replay it.
+            _reviewInput?.ReleasePendingPresses();
             _testSave?.OnUpdateTicked();
             _networkTwo?.OnUpdateTicked();
         };
@@ -153,6 +157,7 @@ public sealed class ModEntry : Mod
             _testSave?.OnSaving();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
+            _reviewInput?.ReleasePendingPresses();
             ReviewVirtualCursor.Clear();
             _backgroundRun.ResetAfterReturnToTitle();
             _testSave?.OnReturnedToTitle();
@@ -380,6 +385,7 @@ public sealed class ModEntry : Mod
         }
 
         int tick = Game1.ticks;
+        _reviewInput?.ReleasePendingPresses();
         ReviewVirtualCursor.Clear();
         WindowsForegroundWindowObservation? foregroundWindow =
             _networkTwo?.ForegroundWindow;

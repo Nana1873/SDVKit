@@ -187,7 +187,7 @@ internal static class ReviewCommand
     private const string Usage =
         "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ...";
 
-    public static void Register(
+    public static StardewReviewInputRuntime Register(
         IModHelper helper,
         IMonitor monitor,
         Func<TestSaveAutomation?> testSave,
@@ -229,6 +229,7 @@ internal static class ReviewCommand
                     monitor.Log(Usage, LogLevel.Error);
                 }
             });
+        return inputRuntime;
     }
 }
 
