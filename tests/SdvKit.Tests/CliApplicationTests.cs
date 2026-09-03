@@ -832,6 +832,33 @@ public sealed class CliApplicationTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProjectReviewMcpServeDispatchesOnlySingleWithoutJson(bool explicitTopology)
+    {
+        var called = false;
+        ProjectReviewMcpCommandRunner mcpRunner = (topology, labRoot, _) =>
+        {
+            called = true;
+            Assert.Equal("single", topology);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return 0;
+        };
+        string[] arguments = explicitTopology
+            ? ["project", "review", "mcp", "serve", "--topology", "single"]
+            : ["project", "review", "mcp", "serve"];
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            mcpRunner,
+            arguments);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(called);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
     [InlineData("project", "review")]
     [InlineData("project", "review", "start")]
     [InlineData("project", "review", "start", "--json", "one", "two")]
@@ -864,6 +891,10 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "reset", "--topology", "network-2", "--role", "host", "--json")]
     [InlineData("project", "review", "reset", "--topology", "network-2", "target", "--json")]
     [InlineData("project", "review", "restart", "--json")]
+    [InlineData("project", "review", "mcp")]
+    [InlineData("project", "review", "mcp", "serve", "--json")]
+    [InlineData("project", "review", "mcp", "serve", "--role", "host")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "network-2")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
@@ -891,6 +922,8 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"
+                + Environment.NewLine
+                + "       sdvkit project review mcp serve [--topology single]"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
@@ -971,6 +1004,7 @@ public sealed class CliApplicationTests
         Assert.Contains("project review command", output, StringComparison.Ordinal);
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
+        Assert.Contains("project review mcp serve", output, StringComparison.Ordinal);
         Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
         Assert.Contains(
             "Content-pack targets require --topology single and an explicit provider --companion.",
@@ -1416,6 +1450,25 @@ public sealed class CliApplicationTests
             error,
             GameInstallationDiscovery.Discover,
             runProjectReviewData: runProjectReviewData);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReviewMcp(
+        ProjectReviewMcpCommandRunner runProjectReviewMcp,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectReview: (_, _, _, _, _, _, _) =>
+                throw new InvalidOperationException("Project review should not run."),
+            runProjectReviewConsole: (_, _, _, _) =>
+                throw new InvalidOperationException("Project-review console should not run."),
+            runProjectReviewMcp: runProjectReviewMcp);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

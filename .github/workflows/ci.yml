@@ -61,6 +61,18 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip = [System.IO.Compression.ZipFile]::OpenRead($archive.FullName)
           try {
+            $allowedDlls = @(
+              'sdvkit.dll',
+              'Microsoft.Extensions.AI.Abstractions.dll',
+              'Microsoft.Extensions.DependencyInjection.Abstractions.dll',
+              'Microsoft.Extensions.Logging.Abstractions.dll',
+              'ModelContextProtocol.Core.dll',
+              'System.Diagnostics.DiagnosticSource.dll',
+              'System.IO.Pipelines.dll',
+              'System.Net.ServerSentEvents.dll',
+              'System.Text.Encodings.Web.dll',
+              'System.Text.Json.dll'
+            )
             foreach ($entry in $zip.Entries) {
               $entryPath = $entry.FullName.Replace('\', '/')
               $segments = @($entryPath.Split('/', [System.StringSplitOptions]::RemoveEmptyEntries))
@@ -79,7 +91,7 @@ jobs:
               $extension = [System.IO.Path]::GetExtension($entryPath).ToLowerInvariant()
               $fileName = [System.IO.Path]::GetFileName($entryPath)
               if ($extension -in @('.pdb', '.xnb') `
-                  -or ($extension -eq '.dll' -and $fileName -ne 'sdvkit.dll') `
+                  -or ($extension -eq '.dll' -and $fileName -notin $allowedDlls) `
                   -or ($extension -eq '.exe' -and $fileName -ne 'sdvkit.exe')) {
                 throw "The portable archive contains an unexpected binary: $entryPath"
               }
@@ -122,6 +134,16 @@ jobs:
               -or $doctor.status -ne "notFound" `
               -or @($doctor.installations).Count -ne 0) {
             throw "The extracted CLI returned unexpected doctor diagnostics: $doctorOutput"
+          }
+
+          $mcpErrorPath = Join-Path $extractRoot "mcp.stderr.log"
+          $mcpOutput = (& $cli project review mcp serve 2> $mcpErrorPath | Out-String).Trim()
+          $mcpExitCode = $LASTEXITCODE
+          $mcpError = (Get-Content -LiteralPath $mcpErrorPath -Raw).Trim()
+          if ($mcpExitCode -ne 3 `
+              -or $mcpOutput.Length -ne 0 `
+              -or $mcpError -notmatch '^SDVKit MCP startup failed \[[A-Za-z0-9]+\]: ') {
+            throw "The extracted MCP entry point did not fail cleanly without an active review."
           }
 
           $fixtureRoot = Join-Path $extractRoot "inspect-fixture"

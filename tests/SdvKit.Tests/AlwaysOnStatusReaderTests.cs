@@ -150,6 +150,71 @@ public sealed class AlwaysOnStatusReaderTests
     }
 
     [Fact]
+    public void FreshRuntimeSnapshotRoundTripsWithWorldIdentity()
+    {
+        using TemporaryDirectory temporary = new();
+        var runtime = new RuntimeSnapshotMarker(
+            RuntimeSnapshotContract.SchemaVersion,
+            true,
+            "fall",
+            14,
+            2,
+            1810,
+            "FarmHouse",
+            12,
+            8,
+            true,
+            ObservedAt);
+        string statusPath = WriteMarker(temporary, Process(), runtime: runtime);
+
+        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+            statusPath,
+            "launch-1",
+            Process(),
+            ObservedAt.AddSeconds(2));
+
+        Assert.Equal("ready", report.Runtime?.State);
+        Assert.True(report.Runtime?.WorldReady);
+        Assert.Equal("fall", report.Runtime?.Season);
+        Assert.Equal(14, report.Runtime?.DayOfMonth);
+        Assert.Equal(2, report.Runtime?.Year);
+        Assert.Equal(1810, report.Runtime?.TimeOfDay);
+        Assert.Equal("FarmHouse", report.Runtime?.LocationId);
+        Assert.Equal(12, report.Runtime?.TileX);
+        Assert.Equal(8, report.Runtime?.TileY);
+        Assert.True(report.Runtime?.MenuOpen);
+        Assert.Equal(ObservedAt, report.Runtime?.ObservedAtUtc);
+    }
+
+    [Fact]
+    public void RuntimeSnapshotWithoutWorldRejectsLeakedWorldValues()
+    {
+        using TemporaryDirectory temporary = new();
+        var runtime = new RuntimeSnapshotMarker(
+            RuntimeSnapshotContract.SchemaVersion,
+            false,
+            "spring",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            ObservedAt);
+        string statusPath = WriteMarker(temporary, Process(), runtime: runtime);
+
+        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+            statusPath,
+            "launch-1",
+            Process(),
+            ObservedAt);
+
+        Assert.Equal("invalid", report.Runtime?.State);
+        Assert.Null(report.Runtime?.WorldReady);
+    }
+
+    [Fact]
     public void RestoreFailureIsReportedWithoutClaimingAConfirmedOptionValue()
     {
         using TemporaryDirectory temporary = new();
@@ -342,7 +407,8 @@ public sealed class AlwaysOnStatusReaderTests
     private static string WriteMarker(
         TemporaryDirectory temporary,
         OwnedProcessIdentity process,
-        TestSaveStatusMarker? testSave = null)
+        TestSaveStatusMarker? testSave = null,
+        RuntimeSnapshotMarker? runtime = null)
     {
         string path = System.IO.Path.Combine(temporary.Path, "always-on.json");
         var marker = new AlwaysOnStatusMarker(
@@ -355,7 +421,8 @@ public sealed class AlwaysOnStatusReaderTests
             IsActive: false,
             PauseWhenOutOfFocus: false,
             ObservedAt,
-            testSave);
+            testSave,
+            Runtime: runtime);
         File.WriteAllText(path, JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
         return path;
     }

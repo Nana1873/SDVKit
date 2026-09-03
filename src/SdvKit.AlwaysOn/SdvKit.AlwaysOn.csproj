@@ -17,6 +17,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\NetworkTwoModels.cs" Link="LiveLab\NetworkTwoModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ProjectModModels.cs" Link="LiveLab\ProjectModModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeSnapshotModels.cs" Link="LiveLab\RuntimeSnapshotModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\TestSaveModels.cs" Link="LiveLab\TestSaveModels.cs" />
     <Reference Include="StardewModdingAPI">
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>

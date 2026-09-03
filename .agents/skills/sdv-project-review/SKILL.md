@@ -20,6 +20,8 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
+For read-only agent access to a currently active `single` review, use the native STDIO entry point `sdvkit project review mcp serve [--topology single]`. It is bound to the lab-owning current directory and exposes only its documented typed tools. Do not add `--json`, a role, network transport, or a relay.
+
 ## Start and confirm the load
 
 For `single`, omit `--topology` or name it explicitly:
@@ -92,6 +94,8 @@ sdvkit input cursor clear
 ```
 
 Transport one line at a time through `project review command`, with the required role for `network-2`. `press` accepts one exact SMAPI `SButton` name, such as `F8`, `Enter`, `MouseLeft`, `ControllerA`, or `DPadDown`, releases it on the next input tick, and permits Stardew's own background menu-input path only for the bounded dispatch interval. `MouseWheelUp` and `MouseWheelDown` are additional exact review tokens for one directional wheel notch; set the virtual cursor over an active menu before using either token. `cursor` enables a process-local virtual cursor only at a coordinate inside the current `Game1.uiViewport`; neither action may focus a window or move the user's physical pointer. Clear the override explicitly when the mouse path is complete. A successful AlwaysOn result proves the input was injected or the virtual coordinate was set; prove the intended target-mod effect separately through state, logs, or a viewport screenshot.
+
+Every automated review mouse path, including future MCP action tools, must first verify the exact review ownership and topology role, use only this existing process-local SDVKit virtual cursor, and fail closed. Never use global `SendInput`, physical cursor movement, window-focus changes, or generic computer-use automation for review mouse input.
 
 ### Prepare generic state with the owned fixture surface
 
