@@ -627,7 +627,7 @@ public sealed class ProjectReviewStagerTests
     }
 
     [Fact]
-    public void DriftedOwnedStagingBlocksReadAndCleanup()
+    public void DriftedOwnedStagingBlocksNormalReadButNotExactOwnedCleanup()
     {
         using TemporaryDirectory temporary = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
@@ -645,22 +645,69 @@ public sealed class ProjectReviewStagerTests
             ProjectModStager.StageReview([target], paths).Staging);
         string stagedDll = Path.Combine(staging.Target.StagingPath, "Target.dll");
         File.AppendAllText(stagedDll, "drift");
+        Directory.CreateDirectory(Path.Combine(staging.Target.StagingPath, "logs"));
+        File.WriteAllText(
+            Path.Combine(staging.Target.StagingPath, "logs", "runtime.log"),
+            "runtime log");
 
         ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+        ProjectReviewStagingResult cleanupRead = ProjectModStager.ReadReviewForCleanup(
+            paths,
+            LiveLabState.SingleTopology);
         ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
 
         Assert.Null(read.Staging);
         Assert.Equal(
             "reviewStagingOwnershipDrifted",
             Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
-        Assert.False(cleanup.Removed);
-        Assert.Equal(
-            "reviewStagingOwnershipDrifted",
-            Assert.IsType<ProjectReviewProblem>(cleanup.Problem).Code);
-        Assert.True(Directory.Exists(staging.Target.StagingPath));
-        Assert.EndsWith("drift", File.ReadAllText(stagedDll), StringComparison.Ordinal);
-        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.NotNull(cleanupRead.Staging);
+        Assert.Null(cleanupRead.Problem);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.False(Directory.Exists(staging.Target.StagingPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
         Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
+    }
+
+    [Fact]
+    public void ExactOwnedReviewCleanupStillRejectsNestedReparsePointsWhenSupported()
+    {
+        using TemporaryDirectory temporary = new();
+        using TemporaryDirectory outside = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(
+            ProjectModStager.StageReview([target], paths).Staging);
+        string outsideSentinel = outside.WriteFile("sentinel.txt", "outside");
+        string linkPath = Path.Combine(staging.Target.StagingPath, "runtime-link");
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, outside.Path);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ProjectReviewCleanupResult blocked = ProjectModStager.RemoveReview(paths);
+
+        Assert.False(blocked.Removed);
+        ProjectReviewProblem problem = Assert.IsType<ProjectReviewProblem>(blocked.Problem);
+        Assert.Equal("reviewStagingOwnershipInvalid", problem.Code);
+        Assert.Contains("reparse point", problem.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(staging.Target.StagingPath));
+        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.Equal("outside", File.ReadAllText(outsideSentinel));
+
+        Directory.Delete(linkPath);
+        Assert.True(ProjectModStager.RemoveReview(paths).Removed);
+        Assert.Equal("outside", File.ReadAllText(outsideSentinel));
     }
 
     [Fact]
@@ -704,7 +751,7 @@ public sealed class ProjectReviewStagerTests
     }
 
     [Fact]
-    public void RuntimeRootConfigRemainsDriftForAContentPack()
+    public void RuntimeRootConfigRemainsDiagnosticDriftButDoesNotBlockContentPackCleanup()
     {
         const string secret = "issue-40-content-pack-secret-must-not-be-reported";
         using TemporaryDirectory temporary = new();
@@ -736,13 +783,10 @@ public sealed class ProjectReviewStagerTests
         Assert.Equal(
             "reviewStagingOwnershipDrifted",
             Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
-        Assert.False(cleanup.Removed);
-        ProjectReviewProblem cleanupProblem = Assert.IsType<ProjectReviewProblem>(
-            cleanup.Problem);
-        Assert.Equal("reviewStagingOwnershipDrifted", cleanupProblem.Code);
-        Assert.DoesNotContain(secret, cleanupProblem.Message, StringComparison.Ordinal);
-        Assert.True(Directory.Exists(stagedPack.StagingPath));
-        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
+        Assert.False(Directory.Exists(stagedPack.StagingPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
     }
 
     [Fact]

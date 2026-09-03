@@ -102,8 +102,6 @@ internal static class ReviewInputArguments
 
 internal interface IReviewInputRuntime
 {
-    bool IsWorldReady { get; }
-
     int UiWidth { get; }
 
     int UiHeight { get; }
@@ -133,11 +131,6 @@ internal static class ReviewInputOperation
             return runtime.TryClearCursor(out string clearError)
                 ? new ReviewInputResult(true, "Cleared the virtual review cursor.")
                 : Failure(clearError);
-        }
-
-        if (!runtime.IsWorldReady)
-        {
-            return Failure("A world must be loaded before sending review input.");
         }
 
         if (request.Kind == ReviewInputKind.Press)
@@ -220,8 +213,6 @@ internal static class ReviewInputCommand
 
 internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInputRuntime
 {
-    public bool IsWorldReady => Context.IsWorldReady;
-
     public int UiWidth => Game1.uiViewport.Width;
 
     public int UiHeight => Game1.uiViewport.Height;

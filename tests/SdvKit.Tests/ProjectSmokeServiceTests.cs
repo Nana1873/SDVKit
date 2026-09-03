@@ -380,6 +380,81 @@ public sealed class ProjectSmokeServiceTests
             PropertyNames(role));
     }
 
+    [Fact]
+    public void SingleLabWarningsArePreservedInProjectSmokeReport()
+    {
+        const string restoreWarning = "The isolated options restore could not be confirmed.";
+        var report = new TestSaveWorkflowReport(
+            1,
+            "single",
+            "passed",
+            "fixture",
+            "save",
+            "fresh-character",
+            120,
+            120,
+            ".sdvkit/baseline.json",
+            [],
+            [],
+            [restoreWarning, restoreWarning]);
+
+        IReadOnlyList<string> warnings = ProjectSmokeService.MergeLabWarnings(report);
+
+        Assert.Contains(restoreWarning, warnings);
+        Assert.Equal(1, warnings.Count(warning => warning == restoreWarning));
+    }
+
+    [Fact]
+    public void NetworkRoleWarningsArePreservedInProjectSmokeReport()
+    {
+        const string hostWarning = "The host options restore could not be confirmed.";
+        const string farmhandWarning = "The farmhand options restore could not be confirmed.";
+        var host = new NetworkTwoRoleReport(
+            "host",
+            "stopped",
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            null,
+            [hostWarning],
+            []);
+        var farmhand = new NetworkTwoRoleReport(
+            "farmhand",
+            "stopped",
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            null,
+            [farmhandWarning, hostWarning],
+            []);
+        var report = new NetworkTwoSmokeReport(
+            1,
+            "network-two",
+            "passed",
+            "fixture",
+            "save",
+            "sha256:build",
+            true,
+            host,
+            farmhand,
+            [],
+            []);
+
+        IReadOnlyList<string> warnings = ProjectSmokeService.MergeLabWarnings(report);
+
+        Assert.Contains(hostWarning, warnings);
+        Assert.Contains(farmhandWarning, warnings);
+        Assert.Equal(1, warnings.Count(warning => warning == hostWarning));
+    }
+
     private static (int ExitCode, ProjectSmokeReport Report) Execute(
         string sourcePath,
         string labRoot,

@@ -320,7 +320,10 @@ internal static partial class ProjectModStager
                     "The retained project-smoke ownership marker no longer matches the staged artifact. No mod staging was removed.");
             }
 
-            ProjectSmokeProblem? validation = ValidateOwnedDirectories(ownership, AllowedParents(staging));
+            ProjectSmokeProblem? validation = ValidateOwnedDirectories(
+                ownership,
+                AllowedParents(staging),
+                requireContentIdentity: false);
             if (validation is not null)
             {
                 return new ProjectModCleanupResult(false, validation);
@@ -601,7 +604,8 @@ internal static partial class ProjectModStager
 
             ProjectSmokeProblem? validation = ValidateOwnedDirectories(
                 ownership,
-                rolePaths.Select(paths => paths.ModsPath).ToArray());
+                rolePaths.Select(paths => paths.ModsPath).ToArray(),
+                requireContentIdentity: true);
             if (validation is not null)
             {
                 return validation;
@@ -623,7 +627,8 @@ internal static partial class ProjectModStager
 
     private static ProjectSmokeProblem? ValidateOwnedDirectories(
         StagingOwnership ownership,
-        IReadOnlyList<string> allowedParents)
+        IReadOnlyList<string> allowedParents,
+        bool requireContentIdentity)
     {
         if (ownership.StagingPaths.Count != allowedParents.Count)
         {
@@ -648,25 +653,31 @@ internal static partial class ProjectModStager
             }
 
             LiveLabPaths.RejectReparsePointsBelow(path);
-            ProjectModManifestReadResult manifest = ReadManifest(
-                Path.Combine(path, "manifest.json"),
-                null!,
-                allowVersionToken: false);
-            if (manifest.Manifest is null
-                || !string.Equals(
-                    manifest.Manifest.UniqueId,
-                    ownership.UniqueId,
-                    StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(manifest.Manifest.Version, ownership.Version, StringComparison.Ordinal)
-                || !ModBuildIdentity.MatchesFileSet(
-                    path,
-                    ownership.BuildIdentity,
-                    allowNewRootConfigJson: true))
+            if (requireContentIdentity)
             {
-                return Problem(
-                    "stagingOwnershipDrifted",
-                    null,
-                    "The retained project-smoke staging differs from its ownership marker. It was left untouched.");
+                ProjectModManifestReadResult manifest = ReadManifest(
+                    Path.Combine(path, "manifest.json"),
+                    null!,
+                    allowVersionToken: false);
+                if (manifest.Manifest is null
+                    || !string.Equals(
+                        manifest.Manifest.UniqueId,
+                        ownership.UniqueId,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        manifest.Manifest.Version,
+                        ownership.Version,
+                        StringComparison.Ordinal)
+                    || !ModBuildIdentity.MatchesFileSet(
+                        path,
+                        ownership.BuildIdentity,
+                        allowNewRootConfigJson: true))
+                {
+                    return Problem(
+                        "stagingOwnershipDrifted",
+                        null,
+                        "The retained project-smoke staging differs from its ownership marker. It was left untouched.");
+                }
             }
         }
 

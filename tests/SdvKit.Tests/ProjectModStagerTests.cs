@@ -460,7 +460,7 @@ public sealed class ProjectModStagerTests
     }
 
     [Fact]
-    public void DriftedOwnedContentBlocksReplacementAndRemoval()
+    public void DriftedOwnedContentBlocksReplacementButNotExactOwnedCleanup()
     {
         using TemporaryDirectory project = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
@@ -474,10 +474,13 @@ public sealed class ProjectModStagerTests
         const string secret = "SharedSecret=must-not-be-reported";
         File.WriteAllText(Path.Combine(stagingPath, "config.json"), secret);
         File.AppendAllText(Path.Combine(stagingPath, ModEntryDll), "drift");
+        Directory.CreateDirectory(Path.Combine(stagingPath, "cache"));
+        File.WriteAllText(Path.Combine(stagingPath, "cache", "runtime.db"), "runtime cache");
         PackageFixture replacementPackage = CreatePackage(
             project,
             archiveName: "replacement.zip",
             packageVersion: "2.0.0");
+        string ownershipMarker = File.ReadAllText(owned.OwnershipPath);
 
         ProjectModStagingResult replacement = ProjectModStager.Stage(
             replacementPackage.Package,
@@ -490,28 +493,59 @@ public sealed class ProjectModStagerTests
         Assert.Equal(
             "stagingOwnershipDrifted",
             Assert.IsType<ProjectSmokeProblem>(replacement.Problem).Code);
-        Assert.False(cleanup.Removed);
-        Assert.Equal(
-            "stagingOwnershipDrifted",
-            Assert.IsType<ProjectSmokeProblem>(cleanup.Problem).Code);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
+        Assert.Null(cleanup.Problem);
         Assert.DoesNotContain(
             secret,
             Assert.IsType<ProjectSmokeProblem>(replacement.Problem).Message,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             secret,
-            Assert.IsType<ProjectSmokeProblem>(cleanup.Problem).Message,
+            ownershipMarker,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            secret,
-            File.ReadAllText(owned.OwnershipPath),
-            StringComparison.Ordinal);
+        Assert.False(Directory.Exists(stagingPath));
+        Assert.False(File.Exists(owned.OwnershipPath));
+    }
+
+    [Fact]
+    public void ExactOwnedCleanupStillRejectsNestedReparsePointsWhenSupported()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory outside = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        PackageFixture package = CreatePackage(project, archiveName: "cleanup-reparse.zip");
+        ProjectModStaging staging = AssertSuccessful(ProjectModStager.Stage(
+            package.Package,
+            package.Target,
+            LiveLabState.SingleTopology,
+            paths));
+        string stagingPath = Assert.Single(staging.StagingPaths);
+        string outsideSentinel = outside.WriteFile("sentinel.txt", "outside");
+        string linkPath = Path.Combine(stagingPath, "runtime-link");
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, outside.Path);
+        }
+        catch (Exception exception) when (exception is IOException
+            or PlatformNotSupportedException
+            or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        ProjectModCleanupResult blocked = ProjectModStager.Remove(staging);
+
+        Assert.False(blocked.Removed);
+        ProjectSmokeProblem problem = Assert.IsType<ProjectSmokeProblem>(blocked.Problem);
+        Assert.Equal("projectStagingCleanupFailed", problem.Code);
+        Assert.Contains("reparse point", problem.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True(Directory.Exists(stagingPath));
-        Assert.EndsWith(
-            "drift",
-            File.ReadAllText(Path.Combine(stagingPath, ModEntryDll)),
-            StringComparison.Ordinal);
-        Assert.True(File.Exists(owned.OwnershipPath));
+        Assert.True(File.Exists(staging.OwnershipPath));
+        Assert.Equal("outside", File.ReadAllText(outsideSentinel));
+
+        Directory.Delete(linkPath);
+        Assert.True(ProjectModStager.Remove(staging).Removed);
+        Assert.Equal("outside", File.ReadAllText(outsideSentinel));
     }
 
     [Fact]

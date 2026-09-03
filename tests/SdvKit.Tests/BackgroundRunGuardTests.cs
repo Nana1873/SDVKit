@@ -451,7 +451,7 @@ public sealed class BackgroundRunGuardTests
     }
 
     [Fact]
-    public void ControlledStopIsTheOnlyConfirmedExitAndRestoresBeforeItsMarker()
+    public void ControlledStopAttemptsRestoreBeforeItsMarkerWithoutGatingNormalExit()
     {
         string repositoryRoot = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
@@ -472,6 +472,10 @@ public sealed class BackgroundRunGuardTests
             "_backgroundRun!.RestoreOriginalAndDisable();",
             preparation,
             StringComparison.Ordinal);
+        int exitPrepared = source.IndexOf(
+            "_exitPrepared = true;",
+            restore,
+            StringComparison.Ordinal);
         int exitingMarker = source.IndexOf(
             "restore.Succeeded ? \"exiting\" : \"restoreFailed\"",
             restore,
@@ -480,21 +484,64 @@ public sealed class BackgroundRunGuardTests
             "WriteStatus(",
             restore,
             StringComparison.Ordinal);
+        int unconditionalExit = source.IndexOf(
+            "return true;",
+            markerWrite,
+            StringComparison.Ordinal);
 
         Assert.True(controlledStop >= 0);
         Assert.True(preparation > controlledStop);
         Assert.True(restore > preparation);
+        Assert.True(exitPrepared > restore);
         Assert.True(exitingMarker > restore);
         Assert.True(markerWrite > restore);
+        Assert.True(unconditionalExit > markerWrite);
         Assert.DoesNotContain("GameRunner.instance.Exiting", source, StringComparison.Ordinal);
         Assert.Contains(
-            "the controlled stop request is the sole confirmed normal-exit path.",
+            "the controlled stop request is the sole reported normal-exit path.",
             source,
             StringComparison.Ordinal);
     }
 
     [Fact]
-    public void OneSecondStatusRebindsBackgroundRunAfterTheGameUpdate()
+    public void ReviewWindowSizeIsOnlyAppliedOnceAtStartup()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "ModEntry.cs"))
+            .ReplaceLineEndings("\n");
+
+        int method = source.IndexOf(
+            "private void EnsureReviewWindowMode()",
+            StringComparison.Ordinal);
+        int attemptedGuard = source.IndexOf(
+            "|| _reviewWindowModeAttempted)",
+            method,
+            StringComparison.Ordinal);
+        int attemptLatch = source.IndexOf(
+            "_reviewWindowModeAttempted = true;",
+            method,
+            StringComparison.Ordinal);
+        int sizeInspection = source.IndexOf(
+            "Game1.game1.Window.ClientBounds.Width",
+            method,
+            StringComparison.Ordinal);
+
+        Assert.True(method >= 0);
+        Assert.True(attemptedGuard > method);
+        Assert.True(attemptLatch > attemptedGuard);
+        Assert.True(sizeInspection > attemptLatch);
+        Assert.Contains(
+            "Apply and verify it once, then leave later resize and UI-scale testing alone.",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FirstOneSecondUpdateAppliesWindowThenRebindsBackgroundRun()
     {
         string repositoryRoot = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
@@ -507,6 +554,10 @@ public sealed class BackgroundRunGuardTests
         int handler = source.IndexOf(
             "helper.Events.GameLoop.OneSecondUpdateTicked +=",
             StringComparison.Ordinal);
+        int windowBaseline = source.IndexOf(
+            "EnsureReviewWindowMode();",
+            handler,
+            StringComparison.Ordinal);
         int reassert = source.IndexOf(
             "_backgroundRun.RecaptureAfterOptionsReplacement();",
             handler,
@@ -517,8 +568,17 @@ public sealed class BackgroundRunGuardTests
             StringComparison.Ordinal);
 
         Assert.True(handler >= 0);
-        Assert.True(reassert > handler);
+        Assert.True(windowBaseline > handler);
+        Assert.True(reassert > windowBaseline);
         Assert.True(status > reassert);
+        int immediateHandler = source.IndexOf(
+            "helper.Events.GameLoop.UpdateTicking +=",
+            StringComparison.Ordinal);
+        Assert.True(immediateHandler >= 0);
+        Assert.DoesNotContain(
+            "EnsureReviewWindowMode();",
+            source[immediateHandler..handler],
+            StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

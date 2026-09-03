@@ -12,9 +12,6 @@ namespace SdvKit.AlwaysOn;
 
 internal sealed class TestSaveAutomation
 {
-    private const string SupportedGameVersion = "1.6.15";
-    private const string SupportedGameFileVersion = "1.6.15.24356";
-    private const string SupportedSmapiVersion = "4.5.2";
     private static readonly TimeSpan OperationTimeout = TimeSpan.FromMinutes(2);
 
     private readonly TestSaveIdentity _identity;
@@ -947,13 +944,13 @@ internal sealed class TestSaveAutomation
             FileVersionInfo.GetVersionInfo(typeof(Game1).Assembly.Location).FileVersion
             ?? string.Empty;
         string smapiVersion = Constants.ApiVersion.ToString();
-        if (!string.Equals(gameVersion, SupportedGameVersion, StringComparison.Ordinal)
-            || !string.Equals(gameFileVersion, SupportedGameFileVersion, StringComparison.Ordinal)
-            || !string.Equals(smapiVersion, SupportedSmapiVersion, StringComparison.Ordinal))
+        if (!RuntimeVersionCompatibility.TryValidate(
+                gameVersion,
+                gameFileVersion,
+                smapiVersion,
+                out string error))
         {
-            throw new InvalidOperationException(
-                $"Test-save automation requires Stardew {SupportedGameFileVersion} and SMAPI {SupportedSmapiVersion}; "
-                + $"the runtime reported Stardew {gameFileVersion} and SMAPI {smapiVersion}.");
+            throw new InvalidOperationException(error);
         }
     }
 

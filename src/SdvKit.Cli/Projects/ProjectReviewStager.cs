@@ -285,7 +285,8 @@ internal static partial class ProjectModStager
         return ReadReviewOwnership(
             singlePaths,
             topology,
-            allowMissingStagingPaths: false);
+            allowMissingStagingPaths: false,
+            requireContentIdentity: true);
     }
 
     internal static ProjectReviewStagingResult ReadReviewForCleanup(
@@ -309,7 +310,8 @@ internal static partial class ProjectModStager
             ? ReadReviewOwnership(
                 singlePaths,
                 topology,
-                allowMissingStagingPaths: true)
+                allowMissingStagingPaths: true,
+                requireContentIdentity: false)
             : ReadReview(singlePaths, topology);
     }
 
@@ -346,7 +348,8 @@ internal static partial class ProjectModStager
         ProjectReviewStagingResult current = ReadReviewOwnership(
             singlePaths,
             topology,
-            allowMissingStagingPaths: true);
+            allowMissingStagingPaths: true,
+            requireContentIdentity: false);
         if (current.Problem is not null)
         {
             return new ProjectReviewCleanupResult(false, current.Problem);
@@ -599,7 +602,8 @@ internal static partial class ProjectModStager
     private static ProjectReviewStagingResult ReadReviewOwnership(
         LiveLabPaths singlePaths,
         string topology,
-        bool allowMissingStagingPaths)
+        bool allowMissingStagingPaths,
+        bool requireContentIdentity)
     {
         string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
         try
@@ -623,7 +627,8 @@ internal static partial class ProjectModStager
                 staging,
                 singlePaths,
                 topology,
-                allowMissingStagingPaths);
+                allowMissingStagingPaths,
+                requireContentIdentity);
             return validation is null
                 ? new ProjectReviewStagingResult(staging, null)
                 : new ProjectReviewStagingResult(null, validation);
@@ -641,7 +646,8 @@ internal static partial class ProjectModStager
         ProjectReviewStaging staging,
         LiveLabPaths singlePaths,
         string topology,
-        bool allowMissingStagingPaths)
+        bool allowMissingStagingPaths,
+        bool requireContentIdentity)
     {
         ReviewRolePaths[] expectedRoles = ResolveReviewRolePaths(singlePaths, topology);
         if (staging.SchemaVersion != ReviewOwnershipSchemaVersion
@@ -763,31 +769,34 @@ internal static partial class ProjectModStager
                 }
 
                 LiveLabPaths.RejectReparsePointsBelow(stagingPath);
-                ProjectReviewManifest? manifest = ReadReviewManifest(
-                    Path.Combine(stagingPath, "manifest.json"),
-                    allowVersionToken: false,
-                    out _);
-                if (manifest is null
-                    || !string.Equals(
-                        manifest.UniqueId,
-                        artifact.Manifest.UniqueId,
-                        StringComparison.OrdinalIgnoreCase)
-                    || !string.Equals(
-                        manifest.Version,
-                        artifact.Manifest.Version,
-                        StringComparison.Ordinal)
-                    || !ModBuildIdentity.MatchesFileSet(
-                        stagingPath,
-                        artifact.BuildIdentity,
-                        allowNewRootConfigJson: string.Equals(
-                            artifact.Manifest.Kind,
-                            ProjectInspectionReport.SmapiMod,
-                            StringComparison.Ordinal)))
+                if (requireContentIdentity)
                 {
-                    return ReviewProblem(
-                        "reviewStagingOwnershipDrifted",
-                        null,
-                        $"The retained {expectedRole.Role} project-review staging differs from its ownership marker and was left untouched.");
+                    ProjectReviewManifest? manifest = ReadReviewManifest(
+                        Path.Combine(stagingPath, "manifest.json"),
+                        allowVersionToken: false,
+                        out _);
+                    if (manifest is null
+                        || !string.Equals(
+                            manifest.UniqueId,
+                            artifact.Manifest.UniqueId,
+                            StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(
+                            manifest.Version,
+                            artifact.Manifest.Version,
+                            StringComparison.Ordinal)
+                        || !ModBuildIdentity.MatchesFileSet(
+                            stagingPath,
+                            artifact.BuildIdentity,
+                            allowNewRootConfigJson: string.Equals(
+                                artifact.Manifest.Kind,
+                                ProjectInspectionReport.SmapiMod,
+                                StringComparison.Ordinal)))
+                    {
+                        return ReviewProblem(
+                            "reviewStagingOwnershipDrifted",
+                            null,
+                            $"The retained {expectedRole.Role} project-review staging differs from its ownership marker and was left untouched.");
+                    }
                 }
             }
         }

@@ -119,9 +119,10 @@ internal static class ReviewScreenshotOperation
             return Failure(ReviewScreenshotArguments.LabelError);
         }
 
-        if (!runtime.IsWorldReady)
+        if (request.Kind == ReviewScreenshotKind.Map
+            && !runtime.IsWorldReady)
         {
-            return Failure("A world must be loaded before taking a review screenshot.");
+            return Failure("A world must be loaded before taking a map review screenshot.");
         }
 
         if (request.Kind == ReviewScreenshotKind.Map

@@ -190,6 +190,27 @@ public sealed class ReviewScreenshotCommandTests
     }
 
     [Fact]
+    public void ViewportCaptureWorksWithoutALoadedWorldOrMapCapability()
+    {
+        using TemporaryDirectory temporary = new();
+        var runtime = new FakeRuntime(temporary.Path)
+        {
+            IsWorldReady = false,
+            CanTakeScreenshots = false,
+            ScreenshotBusy = true,
+            CreateViewportTarget = true,
+        };
+
+        ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(
+            new ReviewScreenshotRequest(ReviewScreenshotKind.Viewport, "title"),
+            runtime);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(0, runtime.TakeRequests);
+        Assert.Equal(1, runtime.ViewportRequests);
+    }
+
+    [Fact]
     public void OneSdvkitRootRoutesScreenshotAndFixtureActions()
     {
         string source = ReadSource("ReviewScreenshotCommand.cs");

@@ -12,6 +12,23 @@ internal static class ProjectReviewConsoleLine
 {
     public const int MaximumLength = 4096;
 
+    public static bool CanRunBeforeScenarioReady(string line)
+    {
+        if (ValidationError(line) is not null)
+        {
+            return false;
+        }
+
+        string[] tokens = line.Split(' ');
+        if (tokens.Any(string.IsNullOrEmpty)
+            || !string.Equals(tokens[0], "sdvkit", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return IsInputCommand(tokens) || IsViewportScreenshotCommand(tokens);
+    }
+
     public static string? ValidationError(string? line)
     {
         if (string.IsNullOrWhiteSpace(line))
@@ -48,6 +65,61 @@ internal static class ProjectReviewConsoleLine
 
         return null;
     }
+
+    private static bool IsInputCommand(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Count < 4
+            || !string.Equals(tokens[1], "input", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (tokens.Count == 4
+            && string.Equals(tokens[2], "press", StringComparison.Ordinal))
+        {
+            return IsAsciiAlphaNumeric(tokens[3], maximumLength: 64);
+        }
+
+        if (!string.Equals(tokens[2], "cursor", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return tokens.Count == 4
+                && string.Equals(tokens[3], "clear", StringComparison.Ordinal)
+            || tokens.Count == 5
+                && TryParseUnsignedCoordinate(tokens[3])
+                && TryParseUnsignedCoordinate(tokens[4]);
+    }
+
+    private static bool IsViewportScreenshotCommand(IReadOnlyList<string> tokens) =>
+        tokens.Count == 4
+        && string.Equals(tokens[1], "screenshot", StringComparison.Ordinal)
+        && string.Equals(tokens[2], "viewport", StringComparison.Ordinal)
+        && IsScreenshotLabel(tokens[3]);
+
+    private static bool TryParseUnsignedCoordinate(string value) =>
+        int.TryParse(
+            value,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out _);
+
+    private static bool IsScreenshotLabel(string value) =>
+        value.Length is >= 1 and <= 64
+        && value.All(character =>
+            IsAsciiAlphaNumeric(character)
+            || character is '-' or '_');
+
+    private static bool IsAsciiAlphaNumeric(string value, int maximumLength) =>
+        value.Length >= 1
+        && value.Length <= maximumLength
+        && value.All(IsAsciiAlphaNumeric);
+
+    private static bool IsAsciiAlphaNumeric(char character) =>
+        (character >= 'a' && character <= 'z')
+        || (character >= 'A' && character <= 'Z')
+        || (character >= '0' && character <= '9');
 }
 
 internal enum ProjectReviewConsoleInputStatus

@@ -19,10 +19,8 @@ public sealed class ModEntry : Mod
     private string? _stopRequestPath;
     private bool _gameLaunched;
     private bool _exitPrepared;
-    private bool _restoreConfirmed;
     private bool _reviewWindowModeRequired;
-    private bool _reviewWindowModeApplied;
-    private bool _reviewWindowModeErrorLogged;
+    private bool _reviewWindowModeAttempted;
     private bool _statusWriteErrorLogged;
     private bool _stopReadErrorLogged;
 
@@ -112,7 +110,6 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
-                EnsureReviewWindowMode();
                 _backgroundRun.EnsureApplied();
                 TryHandleStopRequest();
             }
@@ -121,6 +118,9 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
+                // Wait through Stardew's immediate title-window initialization;
+                // the bounded helper applies the review baseline only once.
+                EnsureReviewWindowMode();
                 // Rebind and reassert after the game's update too. During load,
                 // Stardew can replace options more than once after the load-stage
                 // notification and before a stable world is ready.
@@ -170,11 +170,16 @@ public sealed class ModEntry : Mod
 
     private void EnsureReviewWindowMode()
     {
-        if (!_gameLaunched || !_reviewWindowModeRequired)
+        if (!_gameLaunched
+            || !_reviewWindowModeRequired
+            || _reviewWindowModeAttempted)
         {
             return;
         }
 
+        // Startup preferences establish the deterministic 1280x720 baseline.
+        // Apply and verify it once, then leave later resize and UI-scale testing alone.
+        _reviewWindowModeAttempted = true;
         try
         {
             bool windowModeApplied = Game1.options.isCurrentlyWindowed()
@@ -185,19 +190,12 @@ public sealed class ModEntry : Mod
                 && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
             if (windowModeApplied)
             {
-                if (!_reviewWindowModeApplied)
-                {
-                    Monitor.Log(
-                        "SDVKit review confirmed Stardew's isolated windowed mode.",
-                        LogLevel.Info);
-                }
-
-                _reviewWindowModeApplied = true;
-                _reviewWindowModeErrorLogged = false;
+                Monitor.Log(
+                    "SDVKit review confirmed Stardew's isolated windowed mode.",
+                    LogLevel.Info);
                 return;
             }
 
-            _reviewWindowModeApplied = false;
             bool refreshRequired =
                 Game1.game1.Window.ClientBounds.Width != ReviewWindowWidth
                 || Game1.game1.Window.ClientBounds.Height != ReviewWindowHeight;
@@ -221,29 +219,23 @@ public sealed class ModEntry : Mod
                 Game1.game1.refreshWindowSettings();
             }
 
-            _reviewWindowModeApplied = Game1.options.isCurrentlyWindowed()
+            windowModeApplied = Game1.options.isCurrentlyWindowed()
                 && !Game1.options.isCurrentlyWindowedBorderless()
                 && Game1.options.preferredResolutionX == ReviewWindowWidth
                 && Game1.options.preferredResolutionY == ReviewWindowHeight
                 && Game1.game1.Window.ClientBounds.Width == ReviewWindowWidth
                 && Game1.game1.Window.ClientBounds.Height == ReviewWindowHeight;
-            if (_reviewWindowModeApplied)
-            {
-                Monitor.Log(
-                    "SDVKit review confirmed Stardew's isolated windowed mode.",
-                    LogLevel.Info);
-                _reviewWindowModeErrorLogged = false;
-            }
+            Monitor.Log(
+                windowModeApplied
+                    ? "SDVKit review confirmed Stardew's isolated windowed mode."
+                    : "SDVKit review couldn't confirm the requested initial windowed mode.",
+                windowModeApplied ? LogLevel.Info : LogLevel.Error);
         }
         catch (Exception exception)
         {
-            if (!_reviewWindowModeErrorLogged)
-            {
-                Monitor.Log(
-                    $"SDVKit review couldn't apply isolated windowed mode: {exception.Message}",
-                    LogLevel.Error);
-                _reviewWindowModeErrorLogged = true;
-            }
+            Monitor.Log(
+                $"SDVKit review couldn't apply isolated windowed mode: {exception.Message}",
+                LogLevel.Error);
         }
     }
 
@@ -380,7 +372,7 @@ public sealed class ModEntry : Mod
     {
         if (_exitPrepared)
         {
-            return _restoreConfirmed;
+            return true;
         }
 
         int tick = Game1.ticks;
@@ -401,14 +393,10 @@ public sealed class ModEntry : Mod
                 LogLevel.Error);
         }
 
-        _exitPrepared = restore.Succeeded;
-        _restoreConfirmed = restore.Succeeded;
-        if (!restore.Succeeded)
-        {
-            // Options can be replaced during a load transition. Rebind on the next
-            // game tick, then retry the same retained stop request.
-            _backgroundRun!.Enable();
-        }
+        // These options belong to the isolated .sdvkit profile. A failed readback
+        // remains visible in the terminal marker, but it must not hold the exact
+        // lab process open; the next launch applies the lab values again.
+        _exitPrepared = true;
 
         WriteStatus(
             restore.Succeeded ? "exiting" : "restoreFailed",
@@ -419,7 +407,7 @@ public sealed class ModEntry : Mod
             restore.ConfirmedIpConnectionsEnabled,
             foregroundWindow?.WindowHandle,
             foregroundWindow?.ProcessId);
-        return _restoreConfirmed;
+        return true;
     }
 
     private void WriteActiveStatus()
@@ -520,7 +508,7 @@ public sealed class ModEntry : Mod
     private void OnProcessExit(object? sender, EventArgs eventArgs)
     {
         // ProcessExit is only an unconfirmed best-effort restoration fallback;
-        // the controlled stop request is the sole confirmed normal-exit path.
+        // the controlled stop request is the sole reported normal-exit path.
         try
         {
             if (!_exitPrepared)

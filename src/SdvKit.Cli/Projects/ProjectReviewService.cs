@@ -276,6 +276,9 @@ internal static class ProjectReviewService
                 : CommandFailure(SafeFullPath(labRoot), problems);
         }
 
+        bool canRunBeforeScenarioReady =
+            ProjectReviewConsoleLine.CanRunBeforeScenarioReady(command);
+
         LiveLabPaths paths;
         try
         {
@@ -292,7 +295,12 @@ internal static class ProjectReviewService
 
         if (networkTwo)
         {
-            return ExecuteNetworkCommand(command, role!, paths, inputSender);
+            return ExecuteNetworkCommand(
+                command,
+                role!,
+                paths,
+                inputSender,
+                canRunBeforeScenarioReady);
         }
 
         try
@@ -351,8 +359,8 @@ internal static class ProjectReviewService
                     "Project-review console input must not run installation discovery."));
             LiveLabCommandResult status = service.StatusProjectReview();
             LiveLabReport lab = (LiveLabReport)status.Report;
-            if (status.ExitCode != Success
-                || !string.Equals(lab.State, "running", StringComparison.Ordinal))
+            if (!string.Equals(lab.State, "running", StringComparison.Ordinal)
+                || (!canRunBeforeScenarioReady && status.ExitCode != Success))
             {
                 IReadOnlyList<ProjectReviewProblem> problems = LabProblems(lab).ToArray();
                 return CommandResult(
@@ -385,6 +393,7 @@ internal static class ProjectReviewService
             }
 
             if (exactState.TestSave is not null
+                && !canRunBeforeScenarioReady
                 && !TestSaveReadyForConsole(lab.AlwaysOn, exactState.TestSave))
             {
                 return CommandResult(
@@ -699,7 +708,7 @@ internal static class ProjectReviewService
 
     private static LiveLabCommandResult StopNetwork(LiveLabPaths paths)
     {
-        ProjectReviewStagingResult staged = ProjectModStager.ReadReview(
+        ProjectReviewStagingResult staged = ProjectModStager.ReadReviewForCleanup(
             paths,
             NetworkTwoContract.Topology);
         if (staged.Problem is not null)
@@ -909,7 +918,8 @@ internal static class ProjectReviewService
         string command,
         string role,
         LiveLabPaths paths,
-        IProjectReviewConsoleInputSender? inputSender)
+        IProjectReviewConsoleInputSender? inputSender,
+        bool canRunBeforeScenarioReady)
     {
         try
         {
@@ -952,8 +962,11 @@ internal static class ProjectReviewService
                 paths.ProjectRoot,
                 staged.Staging.TargetLaunchState);
             NetworkTwoSmokeReport network = RequireNetworkReport(pairStatus);
-            if (pairStatus.ExitCode != Success
-                || !string.Equals(network.State, "running", StringComparison.Ordinal))
+            bool pairReady = pairStatus.ExitCode == Success
+                && string.Equals(network.State, "running", StringComparison.Ordinal);
+            if (!pairReady
+                && (!canRunBeforeScenarioReady
+                    || !NetworkPairRunningForPreScenarioCommand(network)))
             {
                 IReadOnlyList<ProjectReviewProblem> problems = NetworkProblems(network).ToArray();
                 return NetworkCommandResult(
@@ -1001,8 +1014,8 @@ internal static class ProjectReviewService
                 reportTopology: NetworkTwoContract.Topology);
             LiveLabCommandResult roleStatus = service.StatusNetwork();
             LiveLabReport lab = (LiveLabReport)roleStatus.Report;
-            if (roleStatus.ExitCode != Success
-                || !string.Equals(lab.State, "running", StringComparison.Ordinal)
+            if (!string.Equals(lab.State, "running", StringComparison.Ordinal)
+                || (!canRunBeforeScenarioReady && roleStatus.ExitCode != Success)
                 || !ProjectModReadyForConsole(lab.AlwaysOn, state!.ProjectMod!))
             {
                 IReadOnlyList<ProjectReviewProblem> problems = LabProblems(lab).ToArray();
@@ -1311,7 +1324,9 @@ internal static class ProjectReviewService
         JsonLiveLabStateStore stateStore,
         LiveLabService service)
     {
-        ProjectReviewStagingResult staged = ProjectModStager.ReadReview(paths);
+        ProjectReviewStagingResult staged = ProjectModStager.ReadReviewForCleanup(
+            paths,
+            LiveLabState.SingleTopology);
         if (staged.Problem is not null)
         {
             return Failure(
@@ -1600,6 +1615,16 @@ internal static class ProjectReviewService
     private static IEnumerable<ProjectReviewProblem> NetworkProblems(
         NetworkTwoSmokeReport report) =>
         report.Problems.Select(problem => Problem(problem.Code, null, problem.Message));
+
+    private static bool NetworkPairRunningForPreScenarioCommand(
+        NetworkTwoSmokeReport report) =>
+        RoleRunningWithActiveAlwaysOn(report.Host)
+        && RoleRunningWithActiveAlwaysOn(report.Farmhand);
+
+    private static bool RoleRunningWithActiveAlwaysOn(NetworkTwoRoleReport role) =>
+        string.Equals(role.State, "running", StringComparison.Ordinal)
+        && string.Equals(role.AlwaysOn?.State, "active", StringComparison.Ordinal)
+        && role.AlwaysOn?.PauseWhenOutOfFocus == false;
 
     private static IEnumerable<ProjectReviewProblem> LabProblems(LiveLabReport? report) =>
         report?.Problems.Select(problem => Problem(problem.Code, null, problem.Message))

@@ -759,7 +759,7 @@ public sealed class LiveLabServiceTests
     }
 
     [Fact]
-    public void RestoreFailureLeavesTheExactProcessAndOwnershipAlone()
+    public void RestoreFailureDoesNotBlockAnOtherwiseSafeCleanStop()
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
@@ -771,7 +771,7 @@ public sealed class LiveLabServiceTests
         FakeProcessHost process = new()
         {
             InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
-            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.TimedOut),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
         };
         LiveLabService service = Service(
             paths,
@@ -782,11 +782,18 @@ public sealed class LiveLabServiceTests
 
         LiveLabCommandResult result = service.Execute("stop");
 
-        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(0, result.ExitCode);
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
-        Assert.Equal("alwaysOnRestoreFailed", Assert.Single(report.Problems).Code);
+        Assert.Equal("stopped", report.State);
+        Assert.Empty(report.Problems);
         Assert.Equal("restoreFailed", report.AlwaysOn?.State);
-        Assert.NotNull(stateStore.State);
+        Assert.Contains(
+            report.Warnings,
+            warning => warning.Contains(
+                "could not confirm restoration of the isolated profile options",
+                StringComparison.Ordinal));
+        Assert.Null(stateStore.State);
+        Assert.Equal(1, process.WaitCount);
         Assert.Equal(0, process.CloseCount);
     }
 
@@ -1069,8 +1076,12 @@ public sealed class LiveLabServiceTests
         Assert.Equal("labOperationFailed", Assert.Single(report.Problems).Code);
     }
 
-    [Fact]
-    public void TestSaveActionRetriesOneInvalidStatusSnapshotThenRunsTheSameLifecycle()
+    [Theory]
+    [InlineData("exiting", false)]
+    [InlineData("restoreFailed", true)]
+    public void TestSaveActionRetriesOneInvalidStatusSnapshotAndPreservesStopWarnings(
+        string terminalPhase,
+        bool expectRestoreWarning)
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
@@ -1115,7 +1126,7 @@ public sealed class LiveLabServiceTests
                     launch.ScenarioLogPath));
         }
 
-        process.BeforeWaitReturn = () => PublishTerminal("exiting");
+        process.BeforeWaitReturn = () => PublishTerminal(terminalPhase);
         LiveLabService service = Service(
             paths,
             stateStore,
@@ -1149,6 +1160,11 @@ public sealed class LiveLabServiceTests
         Assert.Equal(
             string.Empty,
             process.Specification?.Environment["SDVKIT_PROJECT_REVIEW"]);
+        Assert.Equal(
+            expectRestoreWarning ? 1 : 0,
+            report.Warnings.Count(warning => warning.Contains(
+                "could not confirm restoration of the isolated profile options",
+                StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -1244,8 +1260,12 @@ public sealed class LiveLabServiceTests
         Assert.Equal(0, fixtureStore.AbortCount);
     }
 
-    [Fact]
-    public void GameSideTestSaveFailureUsesStopAndAbortThenClearsOwnership()
+    [Theory]
+    [InlineData("exiting", false)]
+    [InlineData("restoreFailed", true)]
+    public void GameSideTestSaveFailureUsesStopAndPreservesRestoreWarnings(
+        string terminalPhase,
+        bool expectRestoreWarning)
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
@@ -1283,7 +1303,7 @@ public sealed class LiveLabServiceTests
                     launch.ScenarioLogPath));
         }
 
-        process.BeforeWaitReturn = () => PublishFailure("exiting");
+        process.BeforeWaitReturn = () => PublishFailure(terminalPhase);
         LiveLabService service = Service(
             paths,
             stateStore,
@@ -1302,6 +1322,11 @@ public sealed class LiveLabServiceTests
         Assert.Equal(0, fixtureStore.CompleteCount);
         Assert.Equal(1, process.WaitCount);
         Assert.Null(stateStore.State);
+        Assert.Equal(
+            expectRestoreWarning ? 1 : 0,
+            report.Warnings.Count(warning => warning.Contains(
+                "could not confirm restoration of the isolated profile options",
+                StringComparison.Ordinal)));
     }
 
     [Fact]

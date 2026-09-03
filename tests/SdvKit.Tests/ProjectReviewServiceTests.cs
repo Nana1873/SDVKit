@@ -174,6 +174,147 @@ public sealed class ProjectReviewServiceTests
                 StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void PreScenarioCommandsReachAnExactRunningRoleBeforeNetworkPairJoin()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        string hostProcessRoot = Path.Combine(temporary.Path, "host-process");
+        string farmhandProcessRoot = Path.Combine(temporary.Path, "farmhand-process");
+        Directory.CreateDirectory(hostProcessRoot);
+        Directory.CreateDirectory(farmhandProcessRoot);
+        (OwnedProcessIdentity hostIdentity, Process hostProcess) =
+            StartRunningProcess(hostProcessRoot);
+        (OwnedProcessIdentity farmhandIdentity, Process farmhandProcess) =
+            StartRunningProcess(farmhandProcessRoot);
+        using (hostProcess)
+        using (farmhandProcess)
+        {
+            try
+            {
+                LiveLabState hostState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.HostRole,
+                    hostIdentity);
+                LiveLabState farmhandState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.FarmhandRole,
+                    farmhandIdentity);
+                new JsonLiveLabStateStore(hostPaths.StatePath).Write(hostState);
+                new JsonLiveLabStateStore(farmhandPaths.StatePath).Write(farmhandState);
+                WriteNetworkStatus(
+                    hostPaths,
+                    hostState,
+                    staging.TargetLaunchState,
+                    "startingHost");
+                WriteNetworkStatus(
+                    farmhandPaths,
+                    farmhandState,
+                    staging.TargetLaunchState,
+                    "waitingForTitle");
+                string hostStateBefore = FileSnapshot(hostPaths.StatePath);
+                string farmhandStateBefore = FileSnapshot(farmhandPaths.StatePath);
+                string stagingBefore = string.Join(
+                    "\n-- farmhand --\n",
+                    TreeSnapshot(hostPaths.ModsPath),
+                    TreeSnapshot(farmhandPaths.ModsPath));
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult pending = ProjectReviewService.ExecuteCommand(
+                    "sdvkit input press F8",
+                    NetworkTwoContract.Topology,
+                    NetworkTwoContract.FarmhandRole,
+                    temporary.Path,
+                    sender);
+
+                ProjectNetworkReviewCommandReport pendingReport =
+                    Assert.IsType<ProjectNetworkReviewCommandReport>(pending.Report);
+                Assert.Equal(0, pending.ExitCode);
+                Assert.Equal("running", pendingReport.State);
+                Assert.True(pendingReport.CommandWritten);
+                Assert.Empty(pendingReport.Problems);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(farmhandIdentity, sender.Identity);
+
+                WriteNetworkStatus(
+                    farmhandPaths,
+                    farmhandState,
+                    staging.TargetLaunchState,
+                    "failed");
+                LiveLabCommandResult failed = ProjectReviewService.ExecuteCommand(
+                    "sdvkit screenshot viewport join-failed",
+                    NetworkTwoContract.Topology,
+                    NetworkTwoContract.FarmhandRole,
+                    temporary.Path,
+                    sender);
+
+                ProjectNetworkReviewCommandReport failedReport =
+                    Assert.IsType<ProjectNetworkReviewCommandReport>(failed.Report);
+                Assert.Equal(0, failed.ExitCode);
+                Assert.Equal("running", failedReport.State);
+                Assert.True(failedReport.CommandWritten);
+                Assert.Empty(failedReport.Problems);
+                Assert.Equal(2, sender.CallCount);
+                Assert.Equal(farmhandIdentity, sender.Identity);
+
+                foreach (string command in new[]
+                {
+                    "sdvkit screenshot map-before-join",
+                    "sdvkit fixture status",
+                    "sdvkit data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa assets 0 20",
+                    "sdvkit input press F8 extra",
+                })
+                {
+                    LiveLabCommandResult blocked = ProjectReviewService.ExecuteCommand(
+                        command,
+                        NetworkTwoContract.Topology,
+                        NetworkTwoContract.FarmhandRole,
+                        temporary.Path,
+                        sender);
+
+                    ProjectNetworkReviewCommandReport blockedReport =
+                        Assert.IsType<ProjectNetworkReviewCommandReport>(blocked.Report);
+                    Assert.Equal(3, blocked.ExitCode);
+                    Assert.Equal("blocked", blockedReport.State);
+                    Assert.False(blockedReport.CommandWritten);
+                    Assert.NotEmpty(blockedReport.Problems);
+                }
+
+                Assert.Equal(2, sender.CallCount);
+                Assert.Equal(hostStateBefore, FileSnapshot(hostPaths.StatePath));
+                Assert.Equal(farmhandStateBefore, FileSnapshot(farmhandPaths.StatePath));
+                Assert.Equal(
+                    stagingBefore,
+                    string.Join(
+                        "\n-- farmhand --\n",
+                        TreeSnapshot(hostPaths.ModsPath),
+                        TreeSnapshot(farmhandPaths.ModsPath)));
+            }
+            finally
+            {
+                EnsureExited(farmhandProcess);
+                EnsureExited(hostProcess);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("status")]
     [InlineData("stop")]
@@ -244,6 +385,48 @@ public sealed class ProjectReviewServiceTests
             Assert.True(Directory.Exists(artifact.StagingPathFor(
                 NetworkTwoContract.FarmhandRole)));
         });
+    }
+
+    [Fact]
+    public void NetworkTwoStopAcceptsRuntimeContentDriftInExactOwnedStaging()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        string stagedDll = Path.Combine(
+            staging.Target.StagingPathFor(NetworkTwoContract.HostRole),
+            "Target.dll");
+        File.AppendAllText(stagedDll, "runtime drift");
+        ProjectReviewStagingResult strict = ProjectModStager.ReadReview(
+            paths,
+            NetworkTwoContract.Topology);
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "stop",
+            temporary.Path,
+            [],
+            [],
+            NetworkTwoContract.Topology,
+            temporary.Path,
+            () => throw new InvalidOperationException("Stop must not run doctor."));
+
+        Assert.Null(strict.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipDrifted",
+            Assert.IsType<ProjectReviewProblem>(strict.Problem).Code);
+        ProjectNetworkReviewReport report =
+            Assert.IsType<ProjectNetworkReviewReport>(result.Report);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("stopped", report.State);
+        Assert.False(report.StagingRemoved);
+        Assert.Empty(report.Problems);
+        Assert.EndsWith("runtime drift", File.ReadAllText(stagedDll), StringComparison.Ordinal);
+        Assert.True(File.Exists(staging.OwnershipPath));
+
+        ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(
+            paths,
+            NetworkTwoContract.Topology);
+        Assert.True(cleanup.Removed, cleanup.Problem?.Message);
     }
 
     [Fact]
@@ -864,6 +1047,63 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void RuntimeContentDriftBlocksStatusButNotSingleStopAndCleanup()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        string stagedDll = Path.Combine(staging.Target.StagingPath, "Target.dll");
+        File.AppendAllText(stagedDll, "runtime drift");
+        LiveLabState state = ReviewState(paths, staging.TargetLaunchState);
+        new JsonLiveLabStateStore(paths.StatePath).Write(state);
+        WriteStatus(
+            paths,
+            state,
+            staging.TargetLaunchState,
+            ProjectModContract.LoadedPhase,
+            loadConfirmed: true,
+            topLevelState: "exiting");
+        File.WriteAllText(paths.StopRequestPath, LaunchId);
+
+        LiveLabCommandResult status = ProjectReviewService.Execute(
+            "status",
+            temporary.Path,
+            [],
+            [],
+            temporary.Path,
+            () => throw new InvalidOperationException("Status must not run doctor."));
+        LiveLabCommandResult stop = ProjectReviewService.Execute(
+            "stop",
+            temporary.Path,
+            [],
+            [],
+            temporary.Path,
+            () => throw new InvalidOperationException("Stop must not run doctor."));
+
+        ProjectReviewReport statusReport = Assert.IsType<ProjectReviewReport>(status.Report);
+        Assert.Equal(3, status.ExitCode);
+        Assert.Equal("blocked", statusReport.State);
+        Assert.Equal(
+            "reviewStagingOwnershipDrifted",
+            Assert.Single(statusReport.Problems).Code);
+        ProjectReviewReport stopReport = Assert.IsType<ProjectReviewReport>(stop.Report);
+        Assert.Equal(0, stop.ExitCode);
+        Assert.Equal("stopped", stopReport.State);
+        Assert.True(stopReport.StagingRemoved);
+        Assert.Empty(stopReport.Problems);
+        Assert.False(File.Exists(paths.StatePath));
+        Assert.False(File.Exists(paths.StopRequestPath));
+        Assert.False(File.Exists(staging.OwnershipPath));
+        Assert.False(Directory.Exists(staging.Target.StagingPath));
+    }
+
+    [Fact]
     public void StatusReportsMarkerlessPartialStagingFailClosed()
     {
         using TemporaryDirectory temporary = new();
@@ -1226,6 +1466,185 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void PreScenarioInputAndViewportCommandsCanInspectAFailedOwnedFixture()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    testSave: new TestSaveStatusMarker(
+                        TestSaveContract.SchemaVersion,
+                        TestSaveContract.ReviewMode,
+                        "failed",
+                        fixture.FixtureId,
+                        fixture.SaveId,
+                        IdentityVerified: false,
+                        WaitedTicks: 0,
+                        "Fixture load failed before world ready.",
+                        paths.TestSaveScenarioLogPath));
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+                string[] commands =
+                [
+                    "sdvkit input press F8",
+                    "sdvkit input cursor 100 200",
+                    "sdvkit input cursor clear",
+                    "sdvkit screenshot viewport fixture-load-failed",
+                ];
+
+                for (var index = 0; index < commands.Length; index++)
+                {
+                    LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                        commands[index],
+                        temporary.Path,
+                        sender);
+
+                    ProjectReviewCommandReport report =
+                        Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                    Assert.Equal(0, result.ExitCode);
+                    Assert.Equal("running", report.State);
+                    Assert.True(report.CommandWritten);
+                    Assert.Empty(report.Problems);
+                    Assert.Equal(index + 1, sender.CallCount);
+                    Assert.Equal(identity, sender.Identity);
+                    Assert.Equal(commands[index], sender.Line);
+                }
+
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void MapFixtureDataAndMalformedInputCommandsRemainFixtureGated()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    testSave: new TestSaveStatusMarker(
+                        TestSaveContract.SchemaVersion,
+                        TestSaveContract.ReviewMode,
+                        "loading",
+                        fixture.FixtureId,
+                        fixture.SaveId,
+                        IdentityVerified: false,
+                        WaitedTicks: 0,
+                        "Loading exact review fixture.",
+                        paths.TestSaveScenarioLogPath));
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+                string[] commands =
+                [
+                    "sdvkit screenshot map-before-world",
+                    "sdvkit fixture status",
+                    "sdvkit data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa assets 0 20",
+                    "sdvkit input",
+                    "sdvkit input press F8 extra",
+                    "sdvkit input press F-8",
+                    "sdvkit-input press F8",
+                    "prefix sdvkit input press F8",
+                    "sdvkit screenshot viewport title extra",
+                ];
+
+                foreach (string command in commands)
+                {
+                    LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                        command,
+                        temporary.Path,
+                        sender);
+
+                    ProjectReviewCommandReport report =
+                        Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                    Assert.Equal(3, result.ExitCode);
+                    Assert.Equal("blocked", report.State);
+                    Assert.False(report.CommandWritten);
+                    Assert.Equal(
+                        "reviewConsoleTestSaveNotReady",
+                        Assert.Single(report.Problems).Code);
+                }
+
+                Assert.Equal(0, sender.CallCount);
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
     public void CommandDoesNotSendWhenReviewOwnershipDoesNotBindExactly()
     {
         using TemporaryDirectory temporary = new();
@@ -1323,6 +1742,33 @@ public sealed class ProjectReviewServiceTests
 
         Assert.Equal(0, sender.CallCount);
     }
+
+    [Theory]
+    [InlineData("sdvkit input press F8", true)]
+    [InlineData("sdvkit input press MouseWheelDown", true)]
+    [InlineData("sdvkit input cursor 0 2147483647", true)]
+    [InlineData("sdvkit input cursor clear", true)]
+    [InlineData("sdvkit screenshot viewport title_screen-1", true)]
+    [InlineData("sdvkit screenshot map", false)]
+    [InlineData("sdvkit screenshot viewport", false)]
+    [InlineData("sdvkit screenshot viewport title extra", false)]
+    [InlineData("sdvkit fixture status", false)]
+    [InlineData("sdvkit data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa assets 0 20", false)]
+    [InlineData("sdvkit input", false)]
+    [InlineData("sdvkit input press", false)]
+    [InlineData("sdvkit input press F8 extra", false)]
+    [InlineData("sdvkit input press F-8", false)]
+    [InlineData("sdvkit input cursor -1 0", false)]
+    [InlineData("sdvkit input cursor 2147483648 0", false)]
+    [InlineData("sdvkit inputter press F8", false)]
+    [InlineData("prefix sdvkit input press F8", false)]
+    [InlineData("SDVKIT input press F8", false)]
+    public void PreScenarioCommandClassificationMatchesOnlyExactBuiltInGrammar(
+        string command,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            ProjectReviewConsoleLine.CanRunBeforeScenarioReady(command));
 
     [Theory]
     [InlineData(
@@ -1517,7 +1963,8 @@ public sealed class ProjectReviewServiceTests
     private static LiveLabState NetworkReviewState(
         LiveLabPaths paths,
         ProjectModLaunchState target,
-        string role)
+        string role,
+        OwnedProcessIdentity? processIdentity = null)
     {
         LiveLabPaths rolePaths = LiveLabPaths.ResolveNetworkRole(paths, role);
         string fixtureId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -1535,7 +1982,7 @@ public sealed class ProjectReviewServiceTests
                     TestSaveContract.PlayerName,
                     TestSaveContract.FarmName,
                     TestSaveContract.FavoriteThing),
-                Path.Combine(paths.TestSaveWorkPath, saveId),
+                Path.Combine(rolePaths.SavesPath, saveId),
                 paths.TestSaveWorkPath,
                 rolePaths.TestSaveScenarioLogPath)
             : null;
@@ -1544,13 +1991,13 @@ public sealed class ProjectReviewServiceTests
             target.BuildIdentity,
             fixtureId,
             saveId,
-            Path.Combine(rolePaths.RuntimePath, "network-two.log"),
+            Path.Combine(rolePaths.RuntimePath, "network-2.log"),
             role == NetworkTwoContract.FarmhandRole ? 987654321 : null);
         return new LiveLabState(
             LiveLabState.CurrentSchemaVersion,
             NetworkTwoContract.Topology,
             Guid.NewGuid().ToString("N"),
-            new OwnedProcessIdentity(
+            processIdentity ?? new OwnedProcessIdentity(
                 int.MaxValue,
                 new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero),
                 Path.Combine(paths.ProjectRoot, "StardewModdingAPI.exe")),
@@ -1638,6 +2085,71 @@ public sealed class ProjectReviewServiceTests
                 target.BuildIdentity,
                 LoadConfirmed: loadConfirmed,
                 loadConfirmed ? "Loaded by SMAPI." : "Waiting for game launch."));
+        File.WriteAllText(
+            paths.StatusPath,
+            JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
+    }
+
+    private static void WriteNetworkStatus(
+        LiveLabPaths paths,
+        LiveLabState state,
+        ProjectModLaunchState target,
+        string networkPhase)
+    {
+        NetworkTwoLaunchState network = Assert.IsType<NetworkTwoLaunchState>(
+            state.NetworkTwo);
+        TestSaveStatusMarker? testSave = state.TestSave is null
+            ? null
+            : new TestSaveStatusMarker(
+                TestSaveContract.SchemaVersion,
+                TestSaveContract.ReviewMode,
+                "loading",
+                state.TestSave.Identity.FixtureId,
+                state.TestSave.Identity.SaveId,
+                IdentityVerified: false,
+                WaitedTicks: 0,
+                "Loading exact network review fixture.",
+                state.TestSave.ScenarioLogPath);
+        var marker = new AlwaysOnStatusMarker(
+            1,
+            state.LaunchId,
+            state.OwnedProcessIdentity.ProcessId,
+            state.OwnedProcessIdentity.StartTimeUtc,
+            "active",
+            600,
+            IsActive: false,
+            PauseWhenOutOfFocus: false,
+            DateTimeOffset.UtcNow,
+            testSave,
+            EnableServer: network.Role == NetworkTwoContract.HostRole ? true : null,
+            IpConnectionsEnabled: network.Role == NetworkTwoContract.HostRole ? true : null,
+            NetworkTwo: new NetworkTwoStatusMarker(
+                NetworkTwoContract.SchemaVersion,
+                network.Role,
+                networkPhase,
+                network.BuildIdentity,
+                network.FixtureId,
+                network.SaveId,
+                IdentityVerified: false,
+                JoinedTicks: 0,
+                LocalPlayerId: null,
+                LocalPlayerName: null,
+                RemotePlayerId: null,
+                RemotePlayerName: null,
+                networkPhase == "failed"
+                    ? "Network review failed before join."
+                    : "Network review has not joined yet.",
+                network.NetworkLogPath),
+            ProjectMod: new ProjectModStatusMarker(
+                ProjectModContract.SchemaVersion,
+                ProjectModContract.LoadedPhase,
+                target.UniqueId,
+                target.Version,
+                target.UniqueId,
+                target.Version,
+                target.BuildIdentity,
+                LoadConfirmed: true,
+                "Loaded by SMAPI."));
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));

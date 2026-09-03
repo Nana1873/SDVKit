@@ -285,7 +285,7 @@ public sealed class NetworkTwoLiveLabServiceTests
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, true)]
-    public void HostCleanStopRequiresAndReportsConfirmedRestoredNetworkOptions(
+    public void HostCleanStopReportsConfirmedRestoredNetworkOptions(
         bool restoredEnableServer,
         bool restoredIpConnectionsEnabled)
     {
@@ -337,7 +337,7 @@ public sealed class NetworkTwoLiveLabServiceTests
     [Theory]
     [InlineData(null, false)]
     [InlineData(false, null)]
-    public void HostStopCannotGoGreenWithoutBothNetworkOptionRestoreReadbacks(
+    public void HostStopTreatsMissingNetworkOptionRestoreReadbackAsBestEffort(
         bool? restoredEnableServer,
         bool? restoredIpConnectionsEnabled)
     {
@@ -359,7 +359,8 @@ public sealed class NetworkTwoLiveLabServiceTests
             paths,
             state,
             restoredEnableServer,
-            restoredIpConnectionsEnabled);
+            restoredIpConnectionsEnabled,
+            "restoreFailed");
         var stateStore = new FakeStateStore { State = state };
         var process = new FakeProcessHost
         {
@@ -376,9 +377,16 @@ public sealed class NetworkTwoLiveLabServiceTests
 
         LiveLabCommandResult result = service.StopNetwork();
 
-        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(0, result.ExitCode);
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
-        Assert.Equal("networkTwoIncomplete", Assert.Single(report.Problems).Code);
+        Assert.Equal("stopped", report.State);
+        Assert.Empty(report.Problems);
+        Assert.Equal("restoreFailed", report.AlwaysOn?.State);
+        Assert.Contains(
+            report.Warnings,
+            warning => warning.Contains(
+                "could not confirm restoration of the isolated profile options",
+                StringComparison.Ordinal));
         Assert.Equal(1, fixtureStore.CompleteCount);
         Assert.Null(stateStore.State);
     }
@@ -499,7 +507,8 @@ public sealed class NetworkTwoLiveLabServiceTests
         LiveLabPaths paths,
         LiveLabState state,
         bool? enableServer,
-        bool? ipConnectionsEnabled)
+        bool? ipConnectionsEnabled,
+        string phase = "exiting")
     {
         TestSaveLaunchState testSave = Assert.IsType<TestSaveLaunchState>(state.TestSave);
         NetworkTwoLaunchState network = Assert.IsType<NetworkTwoLaunchState>(
@@ -507,7 +516,7 @@ public sealed class NetworkTwoLiveLabServiceTests
         WriteMarker(
             paths,
             state,
-            "exiting",
+            phase,
             new TestSaveStatusMarker(
                 TestSaveContract.SchemaVersion,
                 testSave.Mode,
