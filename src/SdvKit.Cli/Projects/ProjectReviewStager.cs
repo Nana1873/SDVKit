@@ -654,6 +654,7 @@ internal static partial class ProjectModStager
             || !string.Equals(staging.Topology, topology, StringComparison.Ordinal)
             || staging.Artifacts is null
             || staging.Artifacts.Count == 0
+            || staging.Artifacts.Any(artifact => artifact is null)
             || staging.Artifacts.Count(artifact => string.Equals(
                 artifact.Role,
                 ProjectReviewArtifactRole.Target,
@@ -661,8 +662,10 @@ internal static partial class ProjectModStager
             || staging.Artifacts.Any(artifact => artifact.Manifest is null
                 || artifact.RoleStagingPaths is null
                 || artifact.RoleStagingPaths.Count != expectedRoles.Length
+                || artifact.RoleStagingPaths.Any(path => path is null)
                 || !IsSafeSegment(artifact.TopLevelDirectory)
-                || !ModBuildIdentity.IsValid(artifact.BuildIdentity)))
+                || !ModBuildIdentity.IsValid(artifact.BuildIdentity)
+                || !IsValidOwnedReviewArtifact(artifact)))
         {
             return ReviewProblem(
                 "reviewStagingOwnershipInvalid",
@@ -776,14 +779,7 @@ internal static partial class ProjectModStager
                         allowVersionToken: false,
                         out _);
                     if (manifest is null
-                        || !string.Equals(
-                            manifest.UniqueId,
-                            artifact.Manifest.UniqueId,
-                            StringComparison.OrdinalIgnoreCase)
-                        || !string.Equals(
-                            manifest.Version,
-                            artifact.Manifest.Version,
-                            StringComparison.Ordinal)
+                        || !OwnedManifestMatchesFresh(artifact.Manifest, manifest)
                         || !ModBuildIdentity.MatchesFileSet(
                             stagingPath,
                             artifact.BuildIdentity,
@@ -826,6 +822,63 @@ internal static partial class ProjectModStager
 
         return null;
     }
+
+    private static bool IsValidOwnedReviewArtifact(
+        ProjectReviewOwnedArtifact artifact)
+    {
+        ProjectReviewManifest manifest = artifact.Manifest;
+        if (!IsModId(manifest.UniqueId)
+            || !IsSemanticVersion(manifest.Version, allowToken: false))
+        {
+            return false;
+        }
+
+        return artifact.Role switch
+        {
+            ProjectReviewArtifactRole.Target =>
+                IsCodeModManifest(manifest) || IsContentPackManifest(manifest),
+            ProjectReviewArtifactRole.Companion => IsCodeModManifest(manifest),
+            ProjectReviewArtifactRole.ContentPack => IsContentPackManifest(manifest),
+            _ => false,
+        };
+    }
+
+    private static bool IsCodeModManifest(ProjectReviewManifest manifest) =>
+        string.Equals(
+            manifest.Kind,
+            ProjectInspectionReport.SmapiMod,
+            StringComparison.Ordinal)
+        && manifest.ContentPackFor is null
+        && manifest.ContentPackForMinimumVersion is null;
+
+    private static bool IsContentPackManifest(ProjectReviewManifest manifest) =>
+        string.Equals(
+            manifest.Kind,
+            ProjectInspectionReport.ContentPack,
+            StringComparison.Ordinal)
+        && IsModId(manifest.ContentPackFor)
+        && (manifest.ContentPackForMinimumVersion is null
+            || IsSemanticVersion(
+                manifest.ContentPackForMinimumVersion,
+                allowToken: false));
+
+    private static bool OwnedManifestMatchesFresh(
+        ProjectReviewManifest owned,
+        ProjectReviewManifest fresh) =>
+        string.Equals(owned.Kind, fresh.Kind, StringComparison.Ordinal)
+        && string.Equals(
+            owned.UniqueId,
+            fresh.UniqueId,
+            StringComparison.OrdinalIgnoreCase)
+        && string.Equals(owned.Version, fresh.Version, StringComparison.Ordinal)
+        && string.Equals(
+            owned.ContentPackFor,
+            fresh.ContentPackFor,
+            StringComparison.OrdinalIgnoreCase)
+        && string.Equals(
+            owned.ContentPackForMinimumVersion,
+            fresh.ContentPackForMinimumVersion,
+            StringComparison.Ordinal);
 
     private static void WriteReviewOwnership(
         string path,

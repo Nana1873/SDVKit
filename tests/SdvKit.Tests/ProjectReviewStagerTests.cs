@@ -6,6 +6,11 @@ namespace SdvKit.Tests;
 
 public sealed class ProjectReviewStagerTests
 {
+    private static readonly JsonSerializerOptions OwnershipJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     [Theory]
     [InlineData("duplicate", "reviewModIdentityCollision")]
     [InlineData("reserved", "reservedModIdentity")]
@@ -266,6 +271,263 @@ public sealed class ProjectReviewStagerTests
         Assert.Equal("Nana.Target", packManifest.ContentPackFor);
         Assert.Equal("1.2.0", packManifest.ContentPackForMinimumVersion);
         Assert.Null(problem);
+    }
+
+    [Theory]
+    [InlineData(LiveLabState.SingleTopology)]
+    [InlineData(NetworkTwoContract.Topology)]
+    public void ReadReviewAcceptsValidOwnedRoleKindAndProviderBindings(
+        string topology)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staged = StageCompleteReview(
+            temporary.Path,
+            paths,
+            topology);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(
+            paths,
+            topology);
+
+        ProjectReviewStaging retained = Assert.IsType<ProjectReviewStaging>(
+            read.Staging);
+        Assert.Null(read.Problem);
+        Assert.Equal(3, retained.Artifacts.Count);
+        Assert.Contains(retained.Artifacts, artifact =>
+            artifact.Role == ProjectReviewArtifactRole.Target
+            && artifact.Manifest.Kind == ProjectInspectionReport.SmapiMod
+            && artifact.Manifest.ContentPackFor is null);
+        Assert.Contains(retained.Artifacts, artifact =>
+            artifact.Role == ProjectReviewArtifactRole.Companion
+            && artifact.Manifest.Kind == ProjectInspectionReport.SmapiMod
+            && artifact.Manifest.ContentPackFor is null);
+        Assert.Contains(retained.Artifacts, artifact =>
+            artifact.Role == ProjectReviewArtifactRole.ContentPack
+            && artifact.Manifest.Kind == ProjectInspectionReport.ContentPack
+            && artifact.Manifest.ContentPackFor == "Nana.Target");
+        Assert.Equal(staged.OwnershipPath, retained.OwnershipPath);
+    }
+
+    [Fact]
+    public void ReadReviewAcceptsAContentPackTargetWithItsExactProvider()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewPreparedArtifact target = Artifact(
+            temporary.Path,
+            "TargetPack",
+            ProjectReviewArtifactRole.Target,
+            "Nana.TargetPack",
+            contentPackFor: "Nana.Provider",
+            kind: ProjectInspectionReport.ContentPack);
+        ProjectReviewPreparedArtifact provider = Artifact(
+            temporary.Path,
+            "Provider",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Provider");
+        ProjectReviewStagingResult staged = ProjectModStager.StageReview(
+            [target, provider],
+            paths);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.NotNull(staged.Staging);
+        ProjectReviewOwnedArtifact retainedTarget = Assert.IsType<ProjectReviewStaging>(
+            read.Staging).Target;
+        Assert.Null(read.Problem);
+        Assert.Equal(ProjectInspectionReport.ContentPack, retainedTarget.Manifest.Kind);
+        Assert.Equal("Nana.Provider", retainedTarget.Manifest.ContentPackFor);
+    }
+
+    [Theory]
+    [InlineData("unknownRole")]
+    [InlineData("unknownKind")]
+    [InlineData("codeProvider")]
+    [InlineData("contentPackWithoutProvider")]
+    public void ReadReviewRejectsInvalidStoredRoleKindOrProviderShape(
+        string mutation)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staged = StageCompleteReview(
+            temporary.Path,
+            paths,
+            LiveLabState.SingleTopology);
+        ProjectReviewStaging mutated = mutation switch
+        {
+            "unknownRole" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with { Role = "unknown" }),
+            "unknownKind" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with { Kind = "unknown" },
+                }),
+            "codeProvider" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with
+                    {
+                        ContentPackFor = "Nana.Target",
+                    },
+                }),
+            "contentPackWithoutProvider" => ReplaceArtifact(
+                staged,
+                "Nana.Target.Pack",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with
+                    {
+                        ContentPackFor = null,
+                        ContentPackForMinimumVersion = null,
+                    },
+                }),
+            _ => throw new InvalidOperationException("Unknown ownership mutation."),
+        };
+        WriteOwnership(mutated);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.Null(read.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipInvalid",
+            Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
+    }
+
+    [Theory]
+    [InlineData("roleAndKind")]
+    [InlineData("provider")]
+    [InlineData("providerMinimumVersion")]
+    [InlineData("uniqueId")]
+    [InlineData("version")]
+    public void ReadReviewRejectsStoredManifestValuesThatDifferFromStaging(
+        string mutation)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staged = StageCompleteReview(
+            temporary.Path,
+            paths,
+            LiveLabState.SingleTopology);
+        ProjectReviewStaging mutated = mutation switch
+        {
+            "roleAndKind" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with
+                {
+                    Role = ProjectReviewArtifactRole.ContentPack,
+                    Manifest = artifact.Manifest with
+                    {
+                        Kind = ProjectInspectionReport.ContentPack,
+                        EntryDll = null,
+                        ContentPackFor = "Nana.Target",
+                    },
+                }),
+            "provider" => ReplaceArtifact(
+                staged,
+                "Nana.Target.Pack",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with
+                    {
+                        ContentPackFor = "Nana.Other",
+                    },
+                }),
+            "providerMinimumVersion" => ReplaceArtifact(
+                staged,
+                "Nana.Target.Pack",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with
+                    {
+                        ContentPackForMinimumVersion = "9.0.0",
+                    },
+                }),
+            "uniqueId" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with
+                    {
+                        UniqueId = "Nana.OtherCompanion",
+                    },
+                }),
+            "version" => ReplaceArtifact(
+                staged,
+                "Nana.Companion",
+                artifact => artifact with
+                {
+                    Manifest = artifact.Manifest with { Version = "2.0.0" },
+                }),
+            _ => throw new InvalidOperationException("Unknown ownership mutation."),
+        };
+        WriteOwnership(mutated);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.Null(read.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipDrifted",
+            Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
+    }
+
+    [Fact]
+    public void ReadReviewRejectsDuplicateStoredManifestIdentity()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staged = StageCompleteReview(
+            temporary.Path,
+            paths,
+            LiveLabState.SingleTopology);
+        ProjectReviewStaging mutated = ReplaceArtifact(
+            staged,
+            "Nana.Companion",
+            artifact => artifact with
+            {
+                Manifest = artifact.Manifest with { UniqueId = "nana.target" },
+            });
+        WriteOwnership(mutated);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.Null(read.Staging);
+        Assert.Equal(
+            "reviewStagingOwnershipInvalid",
+            Assert.IsType<ProjectReviewProblem>(read.Problem).Code);
+    }
+
+    [Fact]
+    public void ReadReviewRejectsNullStoredRoleStagingPath()
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewStaging staged = StageCompleteReview(
+            temporary.Path,
+            paths,
+            LiveLabState.SingleTopology);
+        ProjectReviewStaging mutated = ReplaceArtifact(
+            staged,
+            "Nana.Companion",
+            artifact => artifact with { RoleStagingPaths = [null!] });
+        WriteOwnership(mutated);
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.Null(read.Staging);
+        ProjectReviewProblem problem = Assert.IsType<ProjectReviewProblem>(read.Problem);
+        Assert.Equal("reviewStagingOwnershipInvalid", problem.Code);
+        Assert.Equal(
+            "The retained project-review ownership marker is structurally invalid.",
+            problem.Message);
     }
 
     [Fact]
@@ -886,6 +1148,55 @@ public sealed class ProjectReviewStagerTests
             null,
             null);
     }
+
+    private static ProjectReviewStaging StageCompleteReview(
+        string root,
+        LiveLabPaths paths,
+        string topology)
+    {
+        ProjectReviewPreparedArtifact target = Artifact(
+            root,
+            "Target",
+            ProjectReviewArtifactRole.Target,
+            "Nana.Target");
+        ProjectReviewPreparedArtifact companion = Artifact(
+            root,
+            "Companion",
+            ProjectReviewArtifactRole.Companion,
+            "Nana.Companion");
+        ProjectReviewPreparedArtifact contentPack = Artifact(
+            root,
+            "Pack",
+            ProjectReviewArtifactRole.ContentPack,
+            "Nana.Target.Pack",
+            contentPackFor: "Nana.Target",
+            contentPackForMinimumVersion: "1.0.0");
+        ProjectReviewStagingResult staged = ProjectModStager.StageReview(
+            [target, companion, contentPack],
+            topology,
+            paths);
+        Assert.Null(staged.Problem);
+        return Assert.IsType<ProjectReviewStaging>(staged.Staging);
+    }
+
+    private static ProjectReviewStaging ReplaceArtifact(
+        ProjectReviewStaging staging,
+        string uniqueId,
+        Func<ProjectReviewOwnedArtifact, ProjectReviewOwnedArtifact> replace) =>
+        staging with
+        {
+            Artifacts = staging.Artifacts.Select(artifact => string.Equals(
+                    artifact.Manifest.UniqueId,
+                    uniqueId,
+                    StringComparison.OrdinalIgnoreCase)
+                ? replace(artifact)
+                : artifact).ToArray(),
+        };
+
+    private static void WriteOwnership(ProjectReviewStaging staging) =>
+        File.WriteAllText(
+            staging.OwnershipPath,
+            JsonSerializer.Serialize(staging, OwnershipJsonOptions));
 
     private static string ManifestJson(ProjectReviewManifest manifest)
     {

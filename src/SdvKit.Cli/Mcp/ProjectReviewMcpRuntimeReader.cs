@@ -43,6 +43,22 @@ internal sealed record ProjectReviewMcpReadResult(
     public bool Succeeded => Snapshot is not null;
 }
 
+internal sealed record ProjectReviewMcpVerifiedContext(
+    ProjectReviewStaging Staging,
+    LiveLabState State,
+    AlwaysOnStatusReport AlwaysOn,
+    string? Role,
+    ProjectReviewMcpTestSave? TestSave,
+    bool AllTargetsReady);
+
+internal sealed record ProjectReviewMcpContextResult(
+    ProjectReviewMcpVerifiedContext? Context,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public bool Succeeded => Context is not null;
+}
+
 internal sealed class ProjectReviewMcpRuntimeReader
 {
     private readonly string _projectRoot;
@@ -87,13 +103,21 @@ internal sealed class ProjectReviewMcpRuntimeReader
 
     public ProjectReviewMcpReadResult Read()
     {
+        ProjectReviewMcpContextResult result = ReadContext();
+        return result.Succeeded
+            ? CreateSnapshot(result.Context!)
+            : Failure(result.ErrorCode!, result.ErrorMessage!);
+    }
+
+    internal ProjectReviewMcpContextResult ReadContext()
+    {
         try
         {
             using LiveLabOperationLock? operationLock =
                 LiveLabOperationLock.TryAcquire(_projectRoot);
             if (operationLock is null)
             {
-                return Failure(
+                return ContextFailure(
                     "reviewBusy",
                     "Another live-lab operation currently owns the review lock.");
             }
@@ -104,7 +128,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 _topology);
             if (staged.Problem is not null || staged.Staging is null)
             {
-                return Failure(
+                return ContextFailure(
                     staged.Problem?.Code ?? "reviewOwnershipMissing",
                     "An exact SDVKit-owned project review is not available.");
             }
@@ -123,20 +147,20 @@ internal sealed class ProjectReviewMcpRuntimeReader
             or ArgumentException
             or System.Security.SecurityException)
         {
-            return Failure(
+            return ContextFailure(
                 "reviewStateInvalid",
                 "The exact review state could not be validated.");
         }
     }
 
-    private ProjectReviewMcpReadResult ReadSingle(
+    private ProjectReviewMcpContextResult ReadSingle(
         LiveLabPaths paths,
         ProjectReviewStaging staging)
     {
         LiveLabState? state = new JsonLiveLabStateStore(paths.StatePath).Read();
         if (!HasExactSingleBinding(state, staging, paths))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewOwnershipMismatch",
                 "The retained review state does not match its exact owned target.");
         }
@@ -145,39 +169,44 @@ internal sealed class ProjectReviewMcpRuntimeReader
             state!.OwnedProcessIdentity);
         if (process.Status != LabProcessInspectStatus.Running)
         {
-            return ProcessFailure(process.Status, pair: false);
+            return ContextProcessFailure(process.Status, pair: false);
         }
 
         AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(
             state,
             _utcNow().ToUniversalTime());
-        if (!ProjectModReady(alwaysOn, state.ProjectMod!))
+        if (!StatusEnvelopeReady(alwaysOn))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewRuntimeNotReady",
-                "AlwaysOn has not confirmed the exact active target build.");
+                "AlwaysOn has not confirmed a fresh active review status.");
         }
 
         if (state.TestSave is not null
             && !TestSaveReady(alwaysOn, state.TestSave))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewTestSaveNotReady",
                 "The exact owned review fixture is not ready.");
         }
 
-        return CreateSnapshot(
-            state,
-            alwaysOn,
-            role: null,
-            state.TestSave is null
-                ? null
-                : new ProjectReviewMcpTestSave(
-                    state.TestSave.Identity.FixtureId,
-                    state.TestSave.Identity.SaveId));
+        return new ProjectReviewMcpContextResult(
+            new ProjectReviewMcpVerifiedContext(
+                staging,
+                state,
+                alwaysOn,
+                Role: null,
+                state.TestSave is null
+                    ? null
+                    : new ProjectReviewMcpTestSave(
+                        state.TestSave.Identity.FixtureId,
+                        state.TestSave.Identity.SaveId),
+                ProjectModReady(alwaysOn, state.ProjectMod!)),
+            null,
+            null);
     }
 
-    private ProjectReviewMcpReadResult ReadNetworkTwo(
+    private ProjectReviewMcpContextResult ReadNetworkTwo(
         LiveLabPaths paths,
         ProjectReviewStaging staging)
     {
@@ -205,35 +234,38 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 NetworkTwoContract.FarmhandRole)
             || !NetworkStatesMatch(hostState!, farmhandState!))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewOwnershipMismatch",
                 "The retained network-2 states do not match the exact owned review pair.");
         }
 
-        foreach (LiveLabState state in new[] { hostState!, farmhandState! })
+        LiveLabState verifiedHostState = hostState!;
+        LiveLabState verifiedFarmhandState = farmhandState!;
+
+        foreach (LiveLabState state in new[] { verifiedHostState, verifiedFarmhandState })
         {
             LabProcessInspectResult process = _processHost.Inspect(
                 state.OwnedProcessIdentity);
             if (process.Status != LabProcessInspectStatus.Running)
             {
-                return ProcessFailure(process.Status, pair: true);
+                return ContextProcessFailure(process.Status, pair: true);
             }
         }
 
         DateTimeOffset nowUtc = _utcNow().ToUniversalTime();
-        AlwaysOnStatusReport hostAlwaysOn = ReadAlwaysOn(hostState!, nowUtc);
-        AlwaysOnStatusReport farmhandAlwaysOn = ReadAlwaysOn(farmhandState!, nowUtc);
-        if (!ProjectModReady(hostAlwaysOn, hostState!.ProjectMod!)
-            || !ProjectModReady(farmhandAlwaysOn, farmhandState!.ProjectMod!))
+        AlwaysOnStatusReport hostAlwaysOn = ReadAlwaysOn(verifiedHostState, nowUtc);
+        AlwaysOnStatusReport farmhandAlwaysOn = ReadAlwaysOn(verifiedFarmhandState, nowUtc);
+        if (!StatusEnvelopeReady(hostAlwaysOn)
+            || !StatusEnvelopeReady(farmhandAlwaysOn))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewRuntimeNotReady",
-                "AlwaysOn has not confirmed the exact active target build for both roles.");
+                "AlwaysOn has not confirmed fresh active review status for both roles.");
         }
 
-        if (!TestSaveReady(hostAlwaysOn, hostState.TestSave!))
+        if (!TestSaveReady(hostAlwaysOn, verifiedHostState.TestSave!))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewTestSaveNotReady",
                 "The exact owned network-2 review fixture is not ready.");
         }
@@ -241,9 +273,9 @@ internal sealed class ProjectReviewMcpRuntimeReader
         if (!NetworkTwoPairVerifier.IsPassed(
                 hostAlwaysOn,
                 farmhandAlwaysOn,
-                hostState.NetworkTwo!.BuildIdentity))
+                verifiedHostState.NetworkTwo!.BuildIdentity))
         {
-            return Failure(
+            return ContextFailure(
                 "reviewPairNotReady",
                 "AlwaysOn has not confirmed the exact joined network-2 review pair.");
         }
@@ -252,25 +284,41 @@ internal sealed class ProjectReviewMcpRuntimeReader
             _role,
             NetworkTwoContract.HostRole,
             StringComparison.Ordinal);
-        LiveLabState selectedState = selectHost ? hostState : farmhandState;
+        LiveLabState selectedState = selectHost
+            ? verifiedHostState
+            : verifiedFarmhandState;
         AlwaysOnStatusReport selectedAlwaysOn =
             selectHost ? hostAlwaysOn : farmhandAlwaysOn;
         NetworkTwoLaunchState selectedNetwork = selectedState.NetworkTwo!;
-        return CreateSnapshot(
-            selectedState,
-            selectedAlwaysOn,
-            _role,
-            new ProjectReviewMcpTestSave(
-                selectedNetwork.FixtureId,
-                selectedNetwork.SaveId));
+        return new ProjectReviewMcpContextResult(
+            new ProjectReviewMcpVerifiedContext(
+                staging,
+                selectedState,
+                selectedAlwaysOn,
+                _role,
+                new ProjectReviewMcpTestSave(
+                    selectedNetwork.FixtureId,
+                    selectedNetwork.SaveId),
+                ProjectModReady(hostAlwaysOn, verifiedHostState.ProjectMod!)
+                    && ProjectModReady(
+                        farmhandAlwaysOn,
+                        verifiedFarmhandState.ProjectMod!)),
+            null,
+            null);
     }
 
     private static ProjectReviewMcpReadResult CreateSnapshot(
-        LiveLabState state,
-        AlwaysOnStatusReport alwaysOn,
-        string? role,
-        ProjectReviewMcpTestSave? testSave)
+        ProjectReviewMcpVerifiedContext context)
     {
+        LiveLabState state = context.State;
+        AlwaysOnStatusReport alwaysOn = context.AlwaysOn;
+        if (!context.AllTargetsReady)
+        {
+            return Failure(
+                "reviewRuntimeNotReady",
+                "AlwaysOn has not confirmed the exact active target build.");
+        }
+
         RuntimeSnapshotReport? runtime = alwaysOn.Runtime;
         if (runtime is null
             || !string.Equals(runtime.State, "ready", StringComparison.Ordinal)
@@ -290,13 +338,13 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 1,
                 state.LaunchId,
                 state.Topology,
-                role,
+                context.Role,
                 runtime.ObservedAtUtc.Value,
                 new ProjectReviewMcpTarget(
                     target.UniqueId,
                     target.Version,
                     target.BuildIdentity),
-                testSave,
+                context.TestSave,
                 new ProjectReviewMcpRuntime(
                     runtime.SchemaVersion.Value,
                     runtime.WorldReady.Value,
@@ -466,6 +514,12 @@ internal sealed class ProjectReviewMcpRuntimeReader
             && string.Equals(projectMod.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal);
     }
 
+    private static bool StatusEnvelopeReady(AlwaysOnStatusReport alwaysOn)
+    =>
+        string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
+            && alwaysOn.PauseWhenOutOfFocus == false
+            && alwaysOn.ObservedAtUtc is not null;
+
     private static bool TestSaveReady(
         AlwaysOnStatusReport alwaysOn,
         TestSaveLaunchState expected)
@@ -507,10 +561,10 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 && role is not null
                 && NetworkTwoContract.IsRole(role);
 
-    private static ProjectReviewMcpReadResult ProcessFailure(
+    private static ProjectReviewMcpContextResult ContextProcessFailure(
         LabProcessInspectStatus status,
         bool pair) =>
-        Failure(
+        ContextFailure(
             status switch
             {
                 LabProcessInspectStatus.Exited =>
@@ -522,6 +576,11 @@ internal sealed class ProjectReviewMcpRuntimeReader
             pair
                 ? "Both exact owned review processes are not verifiably running."
                 : "The exact owned review process is not verifiably running.");
+
+    private static ProjectReviewMcpContextResult ContextFailure(
+        string code,
+        string message) =>
+        new(null, code, message);
 
     private static ProjectReviewMcpReadResult Failure(string code, string message) =>
         new(null, code, message);

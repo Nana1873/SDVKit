@@ -109,10 +109,12 @@ $linkedSource = Join-Path $repositoryRoot "src\SdvKit.Cli\LiveLab"
 $linkedDestination = Join-Path $packageRoot "src\SdvKit.Cli\LiveLab"
 New-Item -ItemType Directory -Path $linkedDestination -Force | Out-Null
 $linkedFiles = @(
+    "LoadedModsModels.cs",
     "ModBuildIdentity.cs",
     "NetworkTwoModels.cs",
     "ProjectModModels.cs",
     "ReviewDataModels.cs",
+    "RuntimeVersionCompatibility.cs",
     "RuntimeSnapshotModels.cs",
     "TestSaveModels.cs"
 )

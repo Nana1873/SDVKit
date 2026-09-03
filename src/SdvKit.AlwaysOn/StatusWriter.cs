@@ -41,7 +41,8 @@ internal sealed class StatusWriter
         long? foregroundWindowHandle = null,
         int? foregroundProcessId = null,
         ProjectModStatusMarker? projectMod = null,
-        RuntimeSnapshotMarker? runtime = null)
+        RuntimeSnapshotMarker? runtime = null,
+        LoadedModsStatusMarker? loadedMods = null)
     {
         var marker = new
         {
@@ -61,6 +62,7 @@ internal sealed class StatusWriter
             networkTwo,
             projectMod,
             runtime,
+            loadedMods,
             observedAtUtc = DateTimeOffset.UtcNow,
         };
         string json = JsonSerializer.Serialize(marker, JsonOptions) + Environment.NewLine;

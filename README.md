@@ -327,16 +327,37 @@ no `--json`, HTTP, TCP, relay, secret, or Python mode. Protocol frames are the
 only stdout output; bounded startup diagnostics use stderr. Closing the client's
 stdin ends the child server process.
 
-Every server exposes `stardew_runtime_get`. It takes an empty object and returns
-matching structured JSON and compact JSON text with schema version, launch ID,
-topology, selected role, observation time, exact target
-`UniqueID`/version/build identity, optional owned review-fixture identity, and a
-runtime object. `role` is `null` for `single` and exactly `host` or `farmhand`
-for `network-2`; the runtime values and launch ID come only from that selected
-role. Before a world is ready, season/day/year/time/location/tile are explicitly
-`null`; `worldReady` and `menuOpen` remain available.
+The role is fixed when the server starts and cannot be selected or changed in a
+tool call. `role` is `null` for `single` and exactly the configured `host` or
+`farmhand` for `network-2`. Every server exposes these three read-only tools:
 
-A server bound to `single` additionally exposes these three read-only tools:
+- `stardew_runtime_get {}` returns matching structured JSON and compact JSON
+  text with schema version, launch ID, topology, selected role, observation
+  time, exact target `UniqueID`/version/build identity, optional verified
+  review-fixture identity, and the selected role's runtime object. Before a
+  world is ready, season/day/year/time/location/tile are explicitly `null`;
+  `worldReady` and `menuOpen` remain available.
+- `stardew_review_get {}` returns the exact active ownership projection: the
+  launch and topology, fixed role, verified running process and fresh status,
+  target identity and load state, optional verified fixture/save identity, and
+  every exactly staged target, companion, and content-pack role with its kind,
+  canonical version, provider where applicable, and build identity.
+- `stardew_mods_list { "offset": 0, "limit": 50 }` reconciles that exact staged
+  set with the selected role's public SMAPI loaded-mod snapshot. It returns the
+  SDVKit support mod and each selected artifact with source category,
+  expected/loaded kind, expected/loaded version, load status, and bounded
+  warning/error arrays.
+  Offset defaults to 0, limit defaults to 50, and limit remains within 1-100;
+  follow `page.nextOffset` until it is `null`.
+
+The mod diagnostics are fixed SDVKit messages for a selected mod that is not
+loaded or whose loaded version or kind differs. They are not raw SMAPI loader
+warnings, exception text, or log excerpts. An unexpected loaded identity or an
+invalid, duplicate, oversized, stale, or mismatched snapshot fails closed
+instead of being returned as untrusted inventory data.
+
+A server bound to `single` additionally exposes these three canonical Data
+tools:
 
 - `stardew_data_assets_list` takes optional `offset` and `limit` values and maps
   directly to `project review data assets`. It returns the canonical inventory,
@@ -353,7 +374,7 @@ Offsets are non-negative 32-bit integers, limits default to 50 and stay within
 value retains its canonical JSON shape but remains subject to the existing 4 MiB
 record and 5 MiB response limits. All three tools return operation-specific closed
 envelopes and identical compact JSON text. They are deliberately absent from a
-`network-2` server in this slice; use the existing single-review CLI or MCP
+`network-2` server; use the existing single-review CLI or MCP
 surface rather than inferring one role's game-content pipeline from the other.
 
 A project-local Codex configuration can keep the surface explicitly limited:
@@ -365,6 +386,8 @@ args = ["project", "review", "mcp", "serve", "--topology", "single"]
 cwd = "C:\\path\\to\\the\\lab-owning-project"
 enabled_tools = [
   "stardew_runtime_get",
+  "stardew_review_get",
+  "stardew_mods_list",
   "stardew_data_assets_list",
   "stardew_data_keys_list",
   "stardew_data_record_get",
@@ -379,26 +402,38 @@ name and arguments:
 command = "sdvkit"
 args = ["project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host"]
 cwd = "C:\\path\\to\\the\\lab-owning-project"
-enabled_tools = ["stardew_runtime_get"]
+enabled_tools = [
+  "stardew_runtime_get",
+  "stardew_review_get",
+  "stardew_mods_list",
+]
 ```
 
 The threat boundary is the existing project review, not a general game or
-desktop API. Server startup and every tool call revalidate the exact ownership
-marker, topology, target build identity, PID/start-time/executable identity,
-fresh AlwaysOn marker, loaded target, optional fixture, and runtime snapshot
-under the existing short operation lock. Each Data call then delegates to the
-same #71 service used by the CLI, which revalidates the exact single review
-again before sending its bounded request to the existing game-side reader.
-There is no second inventory, serializer, mailbox, or lifecycle. Network-2
-additionally requires both exact role states and processes, identical staged
-target/build/fixture/save bindings, and a fresh reciprocal joined-pair proof
-before it returns only the selected role's runtime. The lock is released before
-MCP serialization. A mismatch returns a controlled tool error and no stale
-payload; Data failures expose a bounded internal code rather than raw paths or
-transport details. Responses omit peer runtime data, filesystem paths,
-free-form SMAPI logs, menu CLR types, arbitrary state, normal saves, and the
-normal or mod-manager-owned `Mods` directory. The server opens no listener and
-cannot start, stop, reset, or otherwise mutate a review.
+desktop API. The shared context revalidates the exact ownership marker,
+topology, target build identity, PID/start-time/executable identity, fresh outer
+AlwaysOn marker, optional fixture, and, for `network-2`, reciprocal joined-pair
+proof under the existing short operation lock. `stardew_runtime_get` and every
+Data call additionally require the target to be loaded and a valid fresh runtime
+snapshot. The diagnostic tools deliberately allow a selected target to be
+reported as not loaded or mismatched; instead, they require a valid role-local
+loaded-mod snapshot captured through SMAPI's public mod registry. They never
+infer loaded state by scanning a mod directory and only validate the exact
+SDVKit-owned isolated staging tree. Each Data call then delegates to the same
+#71 service used by the CLI, which revalidates the exact single review before
+sending its bounded request to the existing game-side reader. There is no second
+inventory, serializer, mailbox, or lifecycle. Network-2 additionally requires both exact
+role states and processes, identical staged target/build/fixture/save bindings,
+and returns only the role fixed at server startup. The lock is released before
+MCP serialization.
+
+A mismatch returns a controlled tool error and no stale payload; Data failures
+expose a bounded internal code rather than raw paths or transport details. MCP
+responses never expose peer runtime data, filesystem paths, PIDs, environment
+values, raw SMAPI loader warnings or logs, menu CLR types, or arbitrary state.
+The MCP server never reads the normal or mod-manager-owned `Mods` directory or
+normal saves. It opens no listener and cannot start, stop, reset, or otherwise
+mutate a review.
 
 ## Agent workflow
 
