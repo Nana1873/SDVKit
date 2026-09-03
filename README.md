@@ -34,21 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.5.3-win-x64.zip` and `SDVKit-0.5.3-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.6.0-win-x64.zip` and `SDVKit-0.6.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.5.3-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.5.3-win-x64.zip
-& .\SDVKit-0.5.3-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.6.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.6.0-win-x64.zip
+& .\SDVKit-0.6.0-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## What's new in v0.5.3
+## What's new in v0.6.0
 
-Since `v0.5.2`, `fixture building ensure` derives its exact placement area from Stardew's `BuildingData` and prepares tile-bound dynamic content there by category, without a vanilla object-ID allowlist. Content outside that derived area remains untouched.
+Since `v0.5.3`, review fixture building and animal kinds resolve from Stardew's live canonical data. Existing `deluxe-barn` and `white-cow` commands remain compatible, while kinds such as `coop` and `white-chicken` use the same ownership, idempotency, placement, capacity, and compatibility checks.
 
-Structural blockers and all save, fixture, role, and ownership boundaries remain fail-closed. `object clear-owned` remains separate and marker-strict.
+Interactive reviews now support process-local virtual-cursor and bounded SMAPI button input plus no-overwrite viewport screenshots without focusing Stardew or moving the physical pointer. Each `single`, host, and farmhand role is prepared as a visible, non-minimized 1280x720 review window; all save, fixture, role, staging, and ownership boundaries remain fail-closed.
 
 ## Isolated singleplayer live lab
 
