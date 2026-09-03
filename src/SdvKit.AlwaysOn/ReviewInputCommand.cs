@@ -13,6 +13,7 @@ namespace SdvKit.AlwaysOn;
 internal enum ReviewInputKind
 {
     Press,
+    Scroll,
     Cursor,
     ClearCursor,
 }
@@ -26,7 +27,7 @@ internal sealed record ReviewInputRequest(
 internal static class ReviewInputArguments
 {
     internal const string Usage =
-        "Usage: sdvkit input press <SButton> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear";
+        "Usage: sdvkit input press <SButton|MouseWheelUp|MouseWheelDown> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear";
 
     public static bool TryParse(
         IReadOnlyList<string>? arguments,
@@ -47,7 +48,9 @@ internal static class ReviewInputArguments
             && IsValidButtonToken(arguments[2]))
         {
             request = new ReviewInputRequest(
-                ReviewInputKind.Press,
+                IsMouseWheelToken(arguments[2])
+                    ? ReviewInputKind.Scroll
+                    : ReviewInputKind.Press,
                 arguments[2],
                 0,
                 0);
@@ -85,6 +88,10 @@ internal static class ReviewInputArguments
             || (character >= 'A' && character <= 'Z')
             || (character >= '0' && character <= '9'));
 
+    public static bool IsMouseWheelToken(string? value) =>
+        string.Equals(value, "MouseWheelUp", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "MouseWheelDown", StringComparison.OrdinalIgnoreCase);
+
     private static bool TryParseCoordinate(string value, out int coordinate) =>
         int.TryParse(
             value,
@@ -102,6 +109,8 @@ internal interface IReviewInputRuntime
     int UiHeight { get; }
 
     bool TryPress(string button, out string canonicalButton, out string error);
+
+    bool TryScroll(int direction, out string error);
 
     bool TrySetCursor(int x, int y, out string error);
 
@@ -140,6 +149,20 @@ internal static class ReviewInputOperation
 
             return runtime.TryPress(request.Button!, out string canonicalButton, out string error)
                 ? new ReviewInputResult(true, $"Pressed review input '{canonicalButton}' for one input tick.")
+                : Failure(error);
+        }
+
+        if (request.Kind == ReviewInputKind.Scroll)
+        {
+            int direction = string.Equals(
+                request.Button,
+                "MouseWheelUp",
+                StringComparison.OrdinalIgnoreCase)
+                ? 120
+                : -120;
+            string canonicalButton = direction > 0 ? "MouseWheelUp" : "MouseWheelDown";
+            return runtime.TryScroll(direction, out string error)
+                ? new ReviewInputResult(true, $"Pressed review input '{canonicalButton}' for one mouse-wheel notch.")
                 : Failure(error);
         }
 
@@ -221,6 +244,25 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
         return true;
     }
 
+    public bool TryScroll(int direction, out string error)
+    {
+        if (!ReviewVirtualCursor.IsSet)
+        {
+            error = "Set the virtual review cursor before sending mouse-wheel input.";
+            return false;
+        }
+
+        if (Game1.activeClickableMenu is null)
+        {
+            error = "Mouse-wheel review input requires an active game menu.";
+            return false;
+        }
+
+        Game1.activeClickableMenu.receiveScrollWheelAction(direction);
+        error = string.Empty;
+        return true;
+    }
+
     public bool TrySetCursor(int x, int y, out string error)
     {
         return ReviewVirtualCursor.TrySet(x, y, out error);
@@ -243,6 +285,17 @@ internal static class ReviewVirtualCursor
     private static int? _uiX;
     private static int? _uiY;
     private static int _backgroundInputThroughTick = -1;
+
+    public static bool IsSet
+    {
+        get
+        {
+            lock (Sync)
+            {
+                return _uiX is not null && _uiY is not null;
+            }
+        }
+    }
 
     public static bool TryInstall(out string error)
     {

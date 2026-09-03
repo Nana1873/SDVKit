@@ -21,6 +21,22 @@ public sealed class ReviewInputCommandTests
         Assert.Equal(button, request.Button);
     }
 
+    [Theory]
+    [InlineData("MouseWheelUp")]
+    [InlineData("MouseWheelDown")]
+    [InlineData("mousewheeldown")]
+    public void ParserAcceptsVirtualMouseWheelInput(string button)
+    {
+        Assert.True(
+            ReviewInputArguments.TryParse(
+                ["input", "press", button],
+                out ReviewInputRequest? request,
+                out string error),
+            error);
+        Assert.Equal(ReviewInputKind.Scroll, request!.Kind);
+        Assert.Equal(button, request.Button);
+    }
+
     [Fact]
     public void ParserAcceptsNonNegativeUiCursorCoordinates()
     {
@@ -83,6 +99,24 @@ public sealed class ReviewInputCommandTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(1, runtime.PressRequests);
         Assert.Contains("ControllerA", result.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("MouseWheelUp", 120)]
+    [InlineData("MouseWheelDown", -120)]
+    public void OperationDispatchesOneMouseWheelNotch(string button, int expectedDirection)
+    {
+        var runtime = new FakeRuntime();
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Scroll, button, 0, 0),
+            runtime);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(1, runtime.ScrollRequests);
+        Assert.Equal(expectedDirection, runtime.ScrollDirection);
+        Assert.Equal(0, runtime.PressRequests);
+        Assert.Contains(button, result.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -182,6 +216,10 @@ public sealed class ReviewInputCommandTests
 
         public int CursorRequests { get; private set; }
 
+        public int ScrollRequests { get; private set; }
+
+        public int ScrollDirection { get; private set; }
+
         public int ClearRequests { get; private set; }
 
         public (int X, int Y)? Cursor { get; private set; }
@@ -198,6 +236,14 @@ public sealed class ReviewInputCommandTests
         {
             CursorRequests++;
             Cursor = (x, y);
+            error = string.Empty;
+            return true;
+        }
+
+        public bool TryScroll(int direction, out string error)
+        {
+            ScrollRequests++;
+            ScrollDirection = direction;
             error = string.Empty;
             return true;
         }
