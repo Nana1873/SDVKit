@@ -190,16 +190,24 @@ internal static class ReviewCommand
     public static void Register(
         IModHelper helper,
         IMonitor monitor,
+        string runtimePath,
         Func<TestSaveAutomation?> testSave,
         Func<NetworkTwoAutomation?> networkTwo)
     {
         ArgumentNullException.ThrowIfNull(helper);
         ArgumentNullException.ThrowIfNull(monitor);
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review runtime path is required.",
+                nameof(runtimePath));
+        }
         ArgumentNullException.ThrowIfNull(testSave);
         ArgumentNullException.ThrowIfNull(networkTwo);
 
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
         var inputRuntime = new StardewReviewInputRuntime(helper);
+        var dataSource = new StardewReviewDataSource(helper);
         var fixtureRuntime = new StardewReviewFixtureRuntime(
             testSave,
             networkTwo,
@@ -223,6 +231,11 @@ internal static class ReviewCommand
                     && string.Equals(arguments[0], "fixture", StringComparison.Ordinal))
                 {
                     ReviewFixtureCommand.Handle(arguments, fixtureRuntime, monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "data", StringComparison.Ordinal))
+                {
+                    ReviewDataCommand.Handle(arguments, dataSource, runtimePath, monitor);
                 }
                 else
                 {

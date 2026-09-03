@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 
@@ -30,6 +31,10 @@ internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
     string? role,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
+    ReviewDataQuery query,
+    string labRoot);
+
 public static class CliApplication
 {
     private const int Success = 0;
@@ -51,6 +56,12 @@ public static class CliApplication
         "       sdvkit project review stop [--topology <single|network-2>] --json";
     private const string ReviewResetUsage =
         "       sdvkit project review reset --topology <single|network-2> --json";
+    private const string ReviewDataAssetsUsage =
+        "       sdvkit project review data assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewDataKeysUsage =
+        "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewDataGetUsage =
+        "       sdvkit project review data get <asset> <key> [--topology single] --json";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -77,7 +88,8 @@ public static class CliApplication
         LiveLabCommandRunner? runLiveLab = null,
         ProjectSmokeCommandRunner? runProjectSmoke = null,
         ProjectReviewCommandRunner? runProjectReview = null,
-        ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null)
+        ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
+        ProjectReviewDataCommandRunner? runProjectReviewData = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -125,6 +137,8 @@ public static class CliApplication
 
         runProjectReviewConsole ??= (command, topology, role, labRoot) =>
             ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
+        runProjectReviewData ??= (query, labRoot) =>
+            ProjectReviewDataService.Execute(query, labRoot);
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
@@ -151,7 +165,8 @@ public static class CliApplication
                 discoverInstallations,
                 runProjectSmoke,
                 runProjectReview,
-                runProjectReviewConsole);
+                runProjectReviewConsole,
+                runProjectReviewData);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -225,7 +240,8 @@ public static class CliApplication
         Func<DoctorReport> discoverInstallations,
         ProjectSmokeCommandRunner runProjectSmoke,
         ProjectReviewCommandRunner runProjectReview,
-        ProjectReviewConsoleCommandRunner runProjectReviewConsole)
+        ProjectReviewConsoleCommandRunner runProjectReviewConsole,
+        ProjectReviewDataCommandRunner runProjectReviewData)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -252,7 +268,8 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReview,
-                runProjectReviewConsole),
+                runProjectReviewConsole,
+                runProjectReviewData),
             _ => ProjectUsageError(error),
         };
     }
@@ -383,8 +400,19 @@ public static class CliApplication
         TextWriter output,
         TextWriter error,
         ProjectReviewCommandRunner runProjectReview,
-        ProjectReviewConsoleCommandRunner runProjectReviewConsole)
+        ProjectReviewConsoleCommandRunner runProjectReviewConsole,
+        ProjectReviewDataCommandRunner runProjectReviewData)
     {
+        if (arguments.Count > 2
+            && string.Equals(arguments[2], "data", StringComparison.Ordinal))
+        {
+            return RunProjectReviewData(
+                arguments,
+                output,
+                error,
+                runProjectReviewData);
+        }
+
         if ((arguments.Count == 3 && IsHelp(arguments[2]))
             || (arguments.Count == 4 && IsHelp(arguments[3])))
         {
@@ -426,6 +454,150 @@ public static class CliApplication
                     Environment.CurrentDirectory);
         WriteJson(output, result.Report);
         return result.ExitCode;
+    }
+
+    private static int RunProjectReviewData(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewDataCommandRunner runProjectReviewData)
+    {
+        if ((arguments.Count == 4 && IsHelp(arguments[3]))
+            || (arguments.Count == 5 && IsHelp(arguments[4])))
+        {
+            WriteProjectReviewDataUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReviewData(arguments, out ReviewDataQuery? query))
+        {
+            WriteProjectReviewDataUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReviewData(
+            query!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
+    private static bool TryParseProjectReviewData(
+        IReadOnlyList<string> arguments,
+        out ReviewDataQuery? query)
+    {
+        query = null;
+        if (arguments.Count < 5
+            || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
+            || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "data", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string operation = arguments[3];
+        if (operation is not (
+                ReviewDataContract.AssetsOperation
+                or ReviewDataContract.KeysOperation
+                or ReviewDataContract.GetOperation))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var offsetOptionCount = 0;
+        var limitOptionCount = 0;
+        string topology = LiveLabState.SingleTopology;
+        var offset = 0;
+        int limit = operation == ReviewDataContract.GetOperation
+            ? 1
+            : ReviewDataContract.DefaultPageLimit;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (argument is "--topology" or "--offset" or "--limit")
+            {
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
+                {
+                    topologyOptionCount++;
+                    topology = value;
+                }
+                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
+                {
+                    offsetOptionCount++;
+                    if (!int.TryParse(
+                            value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out offset))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    limitOptionCount++;
+                    if (!int.TryParse(
+                            value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out limit))
+                    {
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            operands.Add(argument);
+        }
+
+        int expectedOperands = operation switch
+        {
+            ReviewDataContract.AssetsOperation => 0,
+            ReviewDataContract.KeysOperation => 1,
+            ReviewDataContract.GetOperation => 2,
+            _ => throw new InvalidOperationException(),
+        };
+        if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || offsetOptionCount > 1
+            || limitOptionCount > 1
+            || offset < 0
+            || limit < 1
+            || limit > ReviewDataContract.MaximumPageLimit
+            || operands.Count != expectedOperands
+            || operands.Any(string.IsNullOrWhiteSpace)
+            || (operation == ReviewDataContract.GetOperation
+                && (offsetOptionCount > 0 || limitOptionCount > 0)))
+        {
+            return false;
+        }
+
+        query = new ReviewDataQuery(
+            operation,
+            operands.Count > 0 ? operands[0] : null,
+            operands.Count > 1 ? operands[1] : null,
+            offset,
+            limit);
+        return true;
     }
 
     private static bool TryParseOptionalPath(
@@ -792,6 +964,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json");
         output.WriteLine(
+            "  sdvkit project review data <assets|keys|get> ... [--topology single] --json");
+        output.WriteLine(
             "    Owned review-fixture console lines are transported as <text>; see project review --help.");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
@@ -828,6 +1002,9 @@ public static class CliApplication
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
+        output.WriteLine(ReviewDataAssetsUsage);
+        output.WriteLine(ReviewDataKeysUsage);
+        output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         WriteReviewFixtureConsoleUsage(output);
@@ -838,11 +1015,23 @@ public static class CliApplication
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
+        output.WriteLine(ReviewDataAssetsUsage);
+        output.WriteLine(ReviewDataKeysUsage);
+        output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);
+    }
+
+    private static void WriteProjectReviewDataUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewDataAssetsUsage.TrimStart());
+        output.WriteLine(ReviewDataKeysUsage.TrimStart());
+        output.WriteLine(ReviewDataGetUsage.TrimStart());
+        output.WriteLine(
+            "Queries require an active owned single review and return only canonical installed Data assets after the active SMAPI content pipeline.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)

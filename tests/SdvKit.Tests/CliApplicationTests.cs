@@ -703,6 +703,134 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewDataDispatchesBoundedSingleQueriesAndWritesStableJson()
+    {
+        ReviewDataQuery? received = null;
+        string? receivedLabRoot = null;
+        ProjectReviewDataCommandRunner runner = (query, labRoot) =>
+        {
+            received = query;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(
+                0,
+                new ReviewDataReport(
+                    ReviewDataContract.SchemaVersion,
+                    "ready",
+                    query.Operation,
+                    "1.6.15",
+                    "1.6.15.24356",
+                    "Data/Buildings",
+                    "Dictionary",
+                    "dictionary",
+                    "string",
+                    null,
+                    null,
+                    ["Barn", "Coop"],
+                    new ReviewDataPage(5, 2, 2, 12, 7),
+                    null,
+                    null,
+                    []));
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewData(
+            runner,
+            "project",
+            "review",
+            "data",
+            "keys",
+            "Data/Buildings",
+            "--offset",
+            "5",
+            "--limit",
+            "2",
+            "--topology",
+            "single",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal(
+            new ReviewDataQuery(
+                ReviewDataContract.KeysOperation,
+                "Data/Buildings",
+                null,
+                5,
+                2),
+            received);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal("1.6.15.24356", root.GetProperty("gameFileVersion").GetString());
+        Assert.Equal("Data/Buildings", root.GetProperty("assetName").GetString());
+        Assert.Equal("string", root.GetProperty("keyKind").GetString());
+        Assert.Equal(["Barn", "Coop"], root
+            .GetProperty("keys")
+            .EnumerateArray()
+            .Select(value => value.GetString()!)
+            .ToArray());
+    }
+
+    [Theory]
+    [InlineData("project", "review", "data")]
+    [InlineData("project", "review", "data", "unknown", "--json")]
+    [InlineData("project", "review", "data", "assets")]
+    [InlineData("project", "review", "data", "assets", "extra", "--json")]
+    [InlineData("project", "review", "data", "assets", "--limit", "0", "--json")]
+    [InlineData("project", "review", "data", "assets", "--limit", "101", "--json")]
+    [InlineData("project", "review", "data", "assets", "--offset", "-1", "--json")]
+    [InlineData("project", "review", "data", "assets", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "data", "keys", "--json")]
+    [InlineData("project", "review", "data", "get", "Data/Buildings", "--json")]
+    [InlineData("project", "review", "data", "get", "Data/Buildings", "Barn", "--limit", "1", "--json")]
+    [InlineData("project", "review", "data", "get", "Data/Buildings", "Barn", "--json", "--json")]
+    public void ProjectReviewDataSyntaxErrorsUseTheExactDataUsage(params string[] arguments)
+    {
+        ProjectReviewDataCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-data should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewData(
+            runner,
+            arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains(
+            "sdvkit project review data assets",
+            error,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review data keys <asset>",
+            error,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review data get <asset> <key>",
+            error,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("data", "--help")]
+    [InlineData("data", "assets", "--help")]
+    public void ProjectReviewDataHelpListsOnlyTheBoundedSingleSurface(
+        params string[] suffix)
+    {
+        ProjectReviewDataCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-data should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewData(
+            runner,
+            ["project", "review", .. suffix]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Contains("data assets", output, StringComparison.Ordinal);
+        Assert.Contains("data keys <asset>", output, StringComparison.Ordinal);
+        Assert.Contains("data get <asset> <key>", output, StringComparison.Ordinal);
+        Assert.Contains("active owned single review", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("project", "review")]
     [InlineData("project", "review", "start")]
@@ -753,6 +881,12 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review status [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json"
+                + Environment.NewLine
+                + "       sdvkit project review data assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review data get <asset> <key> [--topology single] --json"
                 + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
@@ -1267,6 +1401,21 @@ public sealed class CliApplicationTests
             GameInstallationDiscovery.Discover,
             runProjectReview: runProjectReview,
             runProjectReviewConsole: runProjectReviewConsole);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReviewData(
+        ProjectReviewDataCommandRunner runProjectReviewData,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectReviewData: runProjectReviewData);
         return (exitCode, output.ToString(), error.ToString());
     }
 }

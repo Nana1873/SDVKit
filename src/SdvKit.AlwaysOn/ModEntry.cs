@@ -95,6 +95,9 @@ public sealed class ModEntry : Mod
         ReviewCommand.Register(
             helper,
             Monitor,
+            Path.GetDirectoryName(statusPath)
+                ?? throw new InvalidOperationException(
+                    "The AlwaysOn status path has no runtime directory."),
             () => _testSave,
             () => _networkTwo);
         if (!ReviewVirtualCursor.TryInstall(out string virtualCursorError))

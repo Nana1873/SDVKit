@@ -67,6 +67,20 @@ Do not pass `--role` for `single`. Companion or target commands are examples of 
 
 `commandWritten=true` proves only delivery of one console line. The message `Sent debug command ... but there was no output` is neutral: it proves neither success nor failure. Confirm each intended effect through the most direct available evidence, such as a matching isolated log entry, a state change, verified save/reload behavior, or a visual result. Do not infer completion from silence.
 
+### Inspect canonical Data definitions
+
+Use the top-level read-only data surface only during an exact, target-load-confirmed `single` review:
+
+```text
+sdvkit project review data assets --offset 0 --limit 100 --topology single --json
+sdvkit project review data keys "Data/Buildings" --offset 0 --limit 50 --topology single --json
+sdvkit project review data get "Data/Buildings" "Barn" --topology single --json
+```
+
+This is not a line to pass through `project review command`. `assets` independently inventories the canonical structured `Data/*` definitions installed for the running game version, loads them through SMAPI's live content pipeline, and reports the loaded type, shape, key kind, and complete coverage counts. Require `coverage.complete=true` and zero unknown, unclassified, or unsupported assets before making a completeness claim. Page through both asset and key results using their reported `nextOffset`; never assume the first page is the full inventory.
+
+Use dictionary keys, zero-based list indexes, or the explicit singleton key exactly as returned by `keys`. A `get` result is acceptable only when it identifies the running game version, canonical asset, canonical key, data type, shape, and one record value. Case and a small separator set normalize for convenient lookup, but collisions, missing version-specific assets, unsafe serialization, stale response files, and mismatched process or request state must remain fail-closed. Do not turn this bounded surface into a bulk dump, reflection explorer, mutation path, or network-role command.
+
 ### Drive review input without desktop automation
 
 Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:

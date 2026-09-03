@@ -957,6 +957,110 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DataQueryReusesTheExactReadyReviewBindingAndRejectsMismatchedResponses(
+        bool mismatchRequestId)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                string? responsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        responsePath = ReviewDataContract.ResponsePath(
+                            paths.RuntimePath,
+                            requestId);
+                        var report = new ReviewDataReport(
+                            ReviewDataContract.SchemaVersion,
+                            "ready",
+                            ReviewDataContract.KeysOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            "Data/Buildings",
+                            "System.Collections.Generic.Dictionary",
+                            "dictionary",
+                            "string",
+                            null,
+                            null,
+                            ["Barn", "Coop"],
+                            new ReviewDataPage(0, 2, 2, 20, 2),
+                            null,
+                            null,
+                            []);
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(
+                                new ReviewDataResponseEnvelope(
+                                    ReviewDataContract.SchemaVersion,
+                                    mismatchRequestId
+                                        ? Guid.NewGuid().ToString("N")
+                                        : requestId,
+                                    report),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewDataService.Execute(
+                    new ReviewDataQuery(
+                        ReviewDataContract.KeysOperation,
+                        "Data/Buildings",
+                        null,
+                        0,
+                        2),
+                    temporary.Path,
+                    sender);
+
+                ReviewDataReport report = Assert.IsType<ReviewDataReport>(result.Report);
+                Assert.Equal(mismatchRequestId ? 3 : 0, result.ExitCode);
+                Assert.Equal(mismatchRequestId ? "blocked" : "ready", report.State);
+                if (mismatchRequestId)
+                {
+                    Assert.Equal(
+                        "dataResponseInvalid",
+                        Assert.Single(report.Problems).Code);
+                }
+                else
+                {
+                    Assert.Equal(["Barn", "Coop"], report.Keys);
+                }
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit data ", sender.Line, StringComparison.Ordinal);
+                Assert.DoesNotContain("Data/Buildings", sender.Line, StringComparison.Ordinal);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(
         ProjectModContract.WaitingForGameLaunchPhase,
         false,
@@ -1598,7 +1702,8 @@ public sealed class ProjectReviewServiceTests
     }
 
     private sealed class RecordingConsoleInputSender(
-        ProjectReviewConsoleInputResult result) : IProjectReviewConsoleInputSender
+        ProjectReviewConsoleInputResult result,
+        Action<string>? onSend = null) : IProjectReviewConsoleInputSender
     {
         public int CallCount { get; private set; }
 
@@ -1613,6 +1718,7 @@ public sealed class ProjectReviewServiceTests
             CallCount++;
             Identity = expected;
             Line = line;
+            onSend?.Invoke(line);
             return result;
         }
     }
