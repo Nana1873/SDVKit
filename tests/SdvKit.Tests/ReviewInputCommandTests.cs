@@ -181,6 +181,26 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("AppActivate", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SourceLetsSmapiCompleteTheBoundedBackgroundInputLifecycle()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "SdvKit.AlwaysOn",
+            "ReviewInputCommand.cs"));
+
+        Assert.Contains("helper.Input.Press(parsed);", source, StringComparison.Ordinal);
+        Assert.Contains("typeof(Microsoft.Xna.Framework.Game)", source, StringComparison.Ordinal);
+        Assert.Contains("nameof(Microsoft.Xna.Framework.Game.IsActive)", source, StringComparison.Ordinal);
+        Assert.Contains("typeof(Game1)", source, StringComparison.Ordinal);
+        Assert.Contains("nameof(Game1.IsActiveNoOverlay)", source, StringComparison.Ordinal);
+        Assert.Contains("new Harmony(HarmonyId).UnpatchAll(HarmonyId);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("helper.Input.Suppress", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("pendingButtonReleases", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleasePendingPresses", source, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

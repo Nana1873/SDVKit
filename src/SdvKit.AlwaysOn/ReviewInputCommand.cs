@@ -315,12 +315,16 @@ internal static class ReviewVirtualCursor
             MethodInfo? isActiveNoOverlay = AccessTools.PropertyGetter(
                 typeof(Game1),
                 nameof(Game1.IsActiveNoOverlay));
+            MethodInfo? isActive = AccessTools.PropertyGetter(
+                typeof(Microsoft.Xna.Framework.Game),
+                nameof(Microsoft.Xna.Framework.Game.IsActive));
             MethodInfo? activePostfix = AccessTools.Method(
                 typeof(ReviewVirtualCursor),
-                nameof(AfterGetIsActiveNoOverlay));
+                nameof(AfterGetReviewActivity));
             if (getMouseState is null
                 || postfix is null
                 || isActiveNoOverlay is null
+                || isActive is null
                 || activePostfix is null)
             {
                 error = "A required Stardew or SMAPI input-state method is unavailable; background review input was not enabled.";
@@ -335,6 +339,9 @@ internal static class ReviewVirtualCursor
                     postfix: new HarmonyMethod(postfix));
                 harmony.Patch(
                     isActiveNoOverlay,
+                    postfix: new HarmonyMethod(activePostfix));
+                harmony.Patch(
+                    isActive,
                     postfix: new HarmonyMethod(activePostfix));
                 _installed = true;
                 error = string.Empty;
@@ -413,7 +420,7 @@ internal static class ReviewVirtualCursor
             __result.XButton2);
     }
 
-    private static void AfterGetIsActiveNoOverlay(ref bool __result)
+    private static void AfterGetReviewActivity(ref bool __result)
     {
         lock (Sync)
         {
