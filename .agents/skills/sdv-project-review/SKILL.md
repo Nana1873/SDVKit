@@ -20,7 +20,7 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
-For read-only agent access to a currently active `single` review, use the native STDIO entry point `sdvkit project review mcp serve [--topology single]`. It is bound to the lab-owning current directory and exposes only its documented typed tools. Do not add `--json`, a role, network transport, or a relay.
+For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the selected role's runtime; never infer one role from its peer. It exposes only its documented typed tools. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
 
 ## Start and confirm the load
 

@@ -22,11 +22,22 @@ internal static class ProjectReviewMcpServer
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaVersion", "launchId", "topology", "observedAtUtc", "target", "runtime"],
+          "required": ["schemaVersion", "launchId", "topology", "role", "observedAtUtc", "target", "runtime"],
+          "allOf": [
+            {
+              "if": { "properties": { "topology": { "const": "single" } } },
+              "then": { "properties": { "role": { "type": "null" } } }
+            },
+            {
+              "if": { "properties": { "topology": { "const": "network-2" } } },
+              "then": { "properties": { "role": { "enum": ["host", "farmhand"] } } }
+            }
+          ],
           "properties": {
             "schemaVersion": { "type": "integer", "const": 1 },
             "launchId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-            "topology": { "type": "string", "const": "single" },
+            "topology": { "type": "string", "enum": ["single", "network-2"] },
+            "role": { "type": ["string", "null"], "enum": [null, "host", "farmhand"] },
             "observedAtUtc": { "type": "string", "format": "date-time" },
             "target": {
               "type": "object",
@@ -70,10 +81,15 @@ internal static class ProjectReviewMcpServer
 
     public static async Task<int> RunStdioAsync(
         string projectRoot,
+        string topology,
+        string? role,
         TextWriter error,
         CancellationToken cancellationToken = default)
     {
-        var reader = new ProjectReviewMcpRuntimeReader(projectRoot);
+        var reader = new ProjectReviewMcpRuntimeReader(
+            projectRoot,
+            topology,
+            role);
         ProjectReviewMcpReadResult preflight = reader.Read();
         if (!preflight.Succeeded)
         {
@@ -114,7 +130,7 @@ internal static class ProjectReviewMcpServer
         public override Tool ProtocolTool { get; } = new()
         {
             Name = RuntimeToolName,
-            Description = "Read the fresh runtime state of the exact active SDVKit single-player project review.",
+            Description = "Read the selected role's fresh runtime state from the exact active SDVKit project review.",
             InputSchema = EmptyInputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

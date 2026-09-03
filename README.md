@@ -305,22 +305,31 @@ sdvkit project review command "sdvkit screenshot farmhand-fixture" --topology ne
 ## Native MCP for an active review
 
 Start the native STDIO server from the directory that owns the already-running
-single-player project review:
+project review. A single-player review needs no role. A network-2 server must
+select exactly one role, and separate client processes are required to inspect
+both roles:
 
 ```powershell
 sdvkit project review mcp serve
+sdvkit project review mcp serve --topology single
+sdvkit project review mcp serve --topology network-2 --role host
+sdvkit project review mcp serve --topology network-2 --role farmhand
 ```
 
-`--topology single` is the only optional argument. The command deliberately has
-no `--json`, `--role`, HTTP, TCP, relay, secret, or Python mode. Protocol frames
-are the only stdout output; bounded startup diagnostics use stderr. Closing the
-client's stdin ends the child server process.
+Omitting `--topology` selects `single`. A role is rejected for `single`, while
+`network-2` requires exactly one `--role host` or `--role farmhand`. Duplicate,
+missing, or unknown option values are usage errors. The command deliberately has
+no `--json`, HTTP, TCP, relay, secret, or Python mode. Protocol frames are the
+only stdout output; bounded startup diagnostics use stderr. Closing the client's
+stdin ends the child server process.
 
-The first slice exposes exactly one tool, `stardew_runtime_get`. It takes an
+The server still exposes exactly one tool, `stardew_runtime_get`. It takes an
 empty object and returns matching structured JSON and compact JSON text with
-schema version, launch ID, `single` topology, observation time, exact target
-`UniqueID`/version/build identity, optional owned review-fixture identity, and a
-runtime object. Before a world is ready, season/day/year/time/location/tile are
+schema version, launch ID, topology, selected role, observation time, exact
+target `UniqueID`/version/build identity, optional owned review-fixture identity,
+and a runtime object. `role` is `null` for `single` and exactly `host` or
+`farmhand` for `network-2`; the runtime values and launch ID come only from that
+selected role. Before a world is ready, season/day/year/time/location/tile are
 explicitly `null`; `worldReady` and `menuOpen` remain available.
 
 A project-local Codex configuration can keep the surface explicitly limited:
@@ -333,16 +342,30 @@ cwd = "C:\\path\\to\\the\\lab-owning-project"
 enabled_tools = ["stardew_runtime_get"]
 ```
 
+For example, bind a separate network-2 host client by changing only the server
+name and arguments:
+
+```toml
+[mcp_servers.sdvkit_review_host]
+command = "sdvkit"
+args = ["project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host"]
+cwd = "C:\\path\\to\\the\\lab-owning-project"
+enabled_tools = ["stardew_runtime_get"]
+```
+
 The threat boundary is the existing project review, not a general game or
 desktop API. Server startup and every tool call revalidate the exact ownership
 marker, topology, target build identity, PID/start-time/executable identity,
 fresh AlwaysOn marker, loaded target, optional fixture, and runtime snapshot
-under the existing short operation lock. The lock is released before MCP
-serialization. A mismatch returns a controlled tool error and no stale payload.
-Responses omit filesystem paths, free-form SMAPI logs, menu CLR types, arbitrary
-state, normal saves, and the normal or mod-manager-owned `Mods` directory. The
-server opens no listener and cannot start, stop, reset, or otherwise mutate a
-review.
+under the existing short operation lock. Network-2 additionally requires both
+exact role states and processes, identical staged target/build/fixture/save
+bindings, and a fresh reciprocal joined-pair proof before it returns only the
+selected role's runtime. The lock is released before MCP serialization. A
+mismatch returns a controlled tool error and no stale payload. Responses omit
+peer runtime data, filesystem paths, free-form SMAPI logs, menu CLR types,
+arbitrary state, normal saves, and the normal or mod-manager-owned `Mods`
+directory. The server opens no listener and cannot start, stop, reset, or
+otherwise mutate a review.
 
 ## Agent workflow
 

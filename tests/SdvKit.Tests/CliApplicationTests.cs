@@ -837,10 +837,11 @@ public sealed class CliApplicationTests
     public void ProjectReviewMcpServeDispatchesOnlySingleWithoutJson(bool explicitTopology)
     {
         var called = false;
-        ProjectReviewMcpCommandRunner mcpRunner = (topology, labRoot, _) =>
+        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, _) =>
         {
             called = true;
             Assert.Equal("single", topology);
+            Assert.Null(role);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return 0;
         };
@@ -854,6 +855,35 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.True(called);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void ProjectReviewMcpServeDispatchesExactNetworkRole(string expectedRole)
+    {
+        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, _) =>
+        {
+            Assert.Equal(NetworkTwoContract.Topology, topology);
+            Assert.Equal(expectedRole, role);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return 0;
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            mcpRunner,
+            "project",
+            "review",
+            "mcp",
+            "serve",
+            "--topology",
+            "network-2",
+            "--role",
+            expectedRole);
+
+        Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(string.Empty, error);
     }
@@ -894,7 +924,12 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "mcp")]
     [InlineData("project", "review", "mcp", "serve", "--json")]
     [InlineData("project", "review", "mcp", "serve", "--role", "host")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "single", "--role", "host")]
     [InlineData("project", "review", "mcp", "serve", "--topology", "network-2")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role", "invalid")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host", "--role", "host")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--topology", "network-2", "--role", "host")]
+    [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
@@ -924,6 +959,8 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review reset --topology <single|network-2> --json"
                 + Environment.NewLine
                 + "       sdvkit project review mcp serve [--topology single]"
+                + Environment.NewLine
+                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
