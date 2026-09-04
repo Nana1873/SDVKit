@@ -653,14 +653,14 @@ internal static class ReviewAudioOperation
     }
 
     private static bool IsSafeCategory(string? value) =>
-        string.IsNullOrEmpty(value)
+        value is null
         || (!string.IsNullOrWhiteSpace(value)
             && value.Length <= ReviewAudioContract.MaximumCategoryLength
             && !value.Any(char.IsControl)
             && ReviewTransportText.IsWellFormedUtf16(value));
 
     private static string EffectiveCategory(string? value) =>
-        string.IsNullOrEmpty(value) ? "Default" : value;
+        value is null ? "Default" : value;
 
     private static ReviewAudioCoverageReport Coverage(
         AudioInventory inventory,

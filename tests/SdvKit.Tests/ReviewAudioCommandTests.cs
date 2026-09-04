@@ -147,15 +147,13 @@ public sealed class ReviewAudioCommandTests
         Assert.DoesNotContain("Audio", propertyNames);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public void MissingOrEmptyCategoryUsesTheGameDefault(string? category)
+    [Fact]
+    public void MissingCategoryUsesTheGameDefault()
     {
         var source = new FakeReviewAudioSource(
             changes:
             [
-                Change("Mod.DefaultCategory", category: category),
+                Change("Mod.DefaultCategory", category: null),
             ],
             probes: new Dictionary<string, ReviewAudioCueProbe>
             {
@@ -173,6 +171,33 @@ public sealed class ReviewAudioCommandTests
                 limit: 1).Cues!);
 
         Assert.Equal("Default", cue.Category);
+    }
+
+    [Fact]
+    public void ExplicitlyEmptyCategoryFailsClosedWithoutProbing()
+    {
+        var source = new FakeReviewAudioSource(
+            changes:
+            [
+                Change("Mod.EmptyCategory", category: ""),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>
+            {
+                ["Mod.EmptyCategory"] = Probe(
+                    "Mod.EmptyCategory",
+                    exists: true,
+                    variants: 1),
+            });
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CueOperation,
+            cueId: "Mod.EmptyCategory",
+            limit: 1);
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal("audioChangeInvalid", Assert.Single(report.Problems).Code);
+        Assert.Empty(source.ProbedCueIds);
     }
 
     [Theory]
