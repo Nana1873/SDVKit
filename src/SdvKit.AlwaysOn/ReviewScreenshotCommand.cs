@@ -184,9 +184,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ...";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ...";
 
     public static void Register(
         IModHelper helper,
@@ -210,6 +210,7 @@ internal static class ReviewCommand
         var inputRuntime = new StardewReviewInputRuntime(helper);
         var dataSource = new StardewReviewDataSource(helper);
         var mapSource = new StardewReviewMapSource(helper);
+        var textureSource = new StardewReviewTextureSource(helper);
         var fixtureRuntime = new StardewReviewFixtureRuntime(
             testSave,
             networkTwo,
@@ -243,6 +244,15 @@ internal static class ReviewCommand
                     && string.Equals(arguments[0], "map", StringComparison.Ordinal))
                 {
                     ReviewMapCommand.Handle(arguments, mapSource, runtimePath, monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "texture", StringComparison.Ordinal))
+                {
+                    ReviewTextureCommand.Handle(
+                        arguments,
+                        textureSource,
+                        runtimePath,
+                        monitor);
                 }
                 else
                 {

@@ -44,6 +44,10 @@ Expand-Archive .\SDVKit-0.6.1-win-x64.zip
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
+## Current main (unreleased)
+
+Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, and create one bounded diagnostic PNG without exposing bulk asset extraction. Map and texture introspection are currently CLI-only.
+
 ## What's new in v0.6.1
 
 Since `v0.6.0`, interactive reviews support exact directional virtual-wheel input and complete read-only discovery and retrieval of Stardew's installed canonical data assets. The native local-STDIO MCP server exposes closed-world runtime state for exact owned single and network-role reviews, plus the same canonical Data inventory, keys, and exact-record reads for `single`.
@@ -223,6 +227,22 @@ Run `sdvkit project review map --help` for the exact layer, direct-tile, and til
 `assets` independently scans the installed `Content/Maps` XNB candidates without following reparse points, excludes locale siblings, and classifies each pipeline result as a supported xTile map, a known non-map candidate, or an explicit gap. Unsafe physical candidate names are represented only by deterministic `invalid-map-asset-NNNN` labels and are never echoed into the report. This inventory describes physical game candidates only; an exact canonical `Maps/*` name introduced by a loaded mod can still be inspected through SMAPI's active content pipeline. Require `coverage.complete=true` before claiming complete physical-inventory support. A canonical name unavailable through that pipeline is reported separately from a name outside the namespace; load failures, normalized identity collisions, malformed warps, unsafe shapes, and oversized structures fail closed.
 
 List operations are paged from stable collection order, while `get`, `layer`, `tile`, and `property` return one bounded selection. Warp entries distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`). Tile output identifies an empty, static, or animated tile and returns stable frame references and property counts, never the layer's tile matrix. Exact property reads preserve their JSON type and require an explicit map, layer, direct-tile, or tile-index scope. An animated tile-index property additionally requires its stable zero-based `--frame`; direct and tile-index properties are never merged. Map access is intentionally CLI-only here and is not added to MCP.
+
+### Inspect canonical textures safely
+
+During that same exact, target-load-confirmed `single` review, the `texture` subcommands measure the non-localized `Content/**/*.xnb` population and classify candidates through SMAPI's supported typed game-content API. `assets` pages only the identities classified as textures while its coverage object records all candidates, textures, non-textures, and classification gaps.
+
+```powershell
+sdvkit project review texture assets --offset 0 --limit 100 --topology single --json
+sdvkit project review texture get "LooseSprites/Cursors" --topology single --json
+sdvkit project review texture preview "LooseSprites/Cursors" --topology single --json
+```
+
+`get` loads only the selected exact canonical texture through the active content pipeline and returns its dimensions, runtime format, mip level count, running game versions, and availability. The supported public SMAPI API does not expose a reliable per-mod loader/editor chain for an arbitrary final texture, so the typed provenance object reports `final-post-pipeline` and explicitly marks detailed provider provenance unavailable. A changed final dimension or format can still prove a deliberately replaced live fixture without inventing which mod performed the edit.
+
+`preview` reads back only that one selected texture after rejecting source dimensions above 8192, source populations above 16,777,216 pixels, or invalid metadata. It preserves aspect ratio, never upscales, uses nearest-neighbor sampling, and writes at most one 512x512 diagnostic PNG with a 2 MiB encoded limit. The response contains only its GUID-derived path relative to `.sdvkit/lab/single/runtime`, output dimensions, byte count, and SHA-256; the PNG itself remains below ignored `.sdvkit` as review evidence. The cached game texture is not mutated or disposed.
+
+Every response and preview target is create-new, regular-file and reparse checked, request-bound, size bounded, and never reused. Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched, or unsafe requests fail closed. There is no bulk preview, raw-pixel/base64 response, crop API, source-XNB export, texture mutation, network-role variant, or texture MCP tool.
 
 AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` requests a full-map PNG through Stardew's native map-screenshot path and remains gated on a loaded world plus Stardew's map-screenshot capability. `sdvkit screenshot viewport <label>` captures the current rendered game viewport, including title and loading screens before `Context.IsWorldReady`, menus, and HUD. For example, transport `sdvkit screenshot viewport menu-open` through `project review command` to inspect a menu without desktop automation. Labels are limited to 1-64 ASCII letters, digits, `-`, or `_`; the fixed result name is `SDVKit-<label>.png`, and an existing target is never overwritten. Success is proven only when the AlwaysOn log reports the full path and that exact PNG exists below the role's isolated `StardewValley/Screenshots` directory; `commandWritten=true` still proves console delivery only.
 

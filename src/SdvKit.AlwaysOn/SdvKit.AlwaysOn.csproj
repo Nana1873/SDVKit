@@ -19,6 +19,8 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ProjectModModels.cs" Link="LiveLab\ProjectModModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTextureModels.cs" Link="LiveLab\ReviewTextureModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTexturePngValidator.cs" Link="LiveLab\ReviewTexturePngValidator.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTransportModels.cs" Link="LiveLab\ReviewTransportModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeVersionCompatibility.cs" Link="LiveLab\RuntimeVersionCompatibility.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeSnapshotModels.cs" Link="LiveLab\RuntimeSnapshotModels.cs" />
