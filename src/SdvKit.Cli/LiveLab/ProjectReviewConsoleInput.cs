@@ -94,9 +94,18 @@ internal static class ProjectReviewConsoleLine
 
     private static bool IsViewportScreenshotCommand(IReadOnlyList<string> tokens) =>
         tokens.Count == 4
-        && string.Equals(tokens[1], "screenshot", StringComparison.Ordinal)
-        && string.Equals(tokens[2], "viewport", StringComparison.Ordinal)
-        && IsScreenshotLabel(tokens[3]);
+            && string.Equals(tokens[1], "screenshot", StringComparison.Ordinal)
+            && string.Equals(tokens[2], "viewport", StringComparison.Ordinal)
+            && IsScreenshotLabel(tokens[3])
+        || tokens.Count == 6
+            && string.Equals(tokens[1], "screenshot", StringComparison.Ordinal)
+            && string.Equals(tokens[2], "capture", StringComparison.Ordinal)
+            && ReviewTransportToken.IsRequestId(tokens[3])
+            && string.Equals(
+                tokens[4],
+                ReviewScreenshotContract.ViewportMode,
+                StringComparison.Ordinal)
+            && IsScreenshotLabel(tokens[5]);
 
     private static bool TryParseUnsignedCoordinate(string value) =>
         int.TryParse(

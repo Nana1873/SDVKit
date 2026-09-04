@@ -1366,7 +1366,7 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>"
                 + Environment.NewLine
-                + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
+                + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine

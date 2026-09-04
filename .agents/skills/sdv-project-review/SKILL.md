@@ -20,7 +20,7 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
-For read-only agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The role is fixed at server startup and is never a tool argument. Every topology exposes `stardew_runtime_get`, `stardew_review_get`, and `stardew_mods_list`; the three canonical Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the configured role's data; never infer one role from its peer. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
+For agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The role is fixed at server startup and is never a tool argument. Every topology exposes the read-only `stardew_runtime_get`, `stardew_review_get`, and `stardew_mods_list` tools plus controlled `stardew_screenshot_capture`; the three canonical Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the configured role's data; never infer one role from its peer. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
 
 ## Start and confirm the load
 
@@ -84,7 +84,20 @@ stardew_mods_list { "offset": 0, "limit": 50 }
 
 Treat warning and error entries only as fixed, bounded SDVKit diagnostics for missing, version-mismatched, or kind-mismatched selected mods. They are not SMAPI's raw loader diagnostics. Never request, infer, or report raw loader warnings, logs, exception text, paths, PIDs, environment values, or an unexpected loaded identity. A controlled unavailable/mismatch error is a fail-closed result, not stale data to reuse.
 
-These tools read only the exact owned staging marker and the role-local public-SMAPI snapshot already carried by the active review status path. They never enumerate the normal or mod-manager-owned `Mods` directory or read normal saves. For a `single` client, enable exactly all six delivered tools: the three tools above plus `stardew_data_assets_list`, `stardew_data_keys_list`, and `stardew_data_record_get`. For a `network-2` client, enable exactly the three all-topology tools and no Data tools.
+These tools read only the exact owned staging marker and the role-local public-SMAPI snapshot already carried by the active review status path. They never enumerate the normal or mod-manager-owned `Mods` directory or read normal saves.
+
+### Capture visual evidence through MCP
+
+Use the server already fixed to the intended role and request exactly one established capture mode:
+
+```text
+stardew_screenshot_capture { "mode": "map", "label": "farm-layout" }
+stardew_screenshot_capture { "mode": "viewport", "label": "menu-open" }
+```
+
+The label must contain 1-64 ASCII letters, digits, `-`, or `_`. Use a new label for every request: the tool never overwrites `SDVKit-<label>.png`. Map capture requires a loaded world; viewport capture returns the current game backbuffer. Accept evidence only when the result contains the exact launch, topology, fixed role, label, file name, UTC capture time, dimensions, encoded byte count, SHA-256, `image/png` MIME type, and an image content block. The tool revalidates the launch and role after capture and accepts only a fresh complete 8-bit RGB or RGBA PNG below that role's ignored isolated `StardewValley/Screenshots` directory. Never request desktop capture, pass a path, read a normal screenshot directory, follow a reparse point, retry an unchanged timeout, or treat a blocked result as visual proof.
+
+For a `single` client, enable exactly all seven delivered tools: the four all-topology tools above plus `stardew_data_assets_list`, `stardew_data_keys_list`, and `stardew_data_record_get`. For a `network-2` client, enable exactly the four all-topology tools and no Data tools.
 
 ### Inspect canonical Data definitions
 

@@ -56,6 +56,7 @@ public sealed class ProjectReviewMcpDiagnosticsTests
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
+                ProjectReviewMcpScreenshotTools.CaptureToolName,
             ],
             singleTools.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)
@@ -89,6 +90,7 @@ public sealed class ProjectReviewMcpDiagnosticsTests
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
+                ProjectReviewMcpScreenshotTools.CaptureToolName,
             ],
             networkTools.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)

@@ -30,7 +30,10 @@ internal static class ProjectReviewResponseTransport
         Func<TResponse, bool> matchesRequest,
         IProjectReviewConsoleInputSender? inputSender = null,
         Action<TimeSpan>? delay = null,
-        TimeSpan? responseTimeout = null)
+        TimeSpan? responseTimeout = null,
+        string topology = LiveLabState.SingleTopology,
+        string? role = null,
+        CancellationToken cancellationToken = default)
         where TResponse : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
@@ -47,21 +50,29 @@ internal static class ProjectReviewResponseTransport
             throw new ArgumentOutOfRangeException(nameof(responseTimeout));
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         LiveLabCommandResult sent = ProjectReviewService.ExecuteCommand(
             command,
-            LiveLabState.SingleTopology,
-            role: null,
+            topology,
+            role,
             labRoot,
             inputSender);
-        ProjectReviewCommandReport commandReport =
-            sent.Report as ProjectReviewCommandReport
-            ?? throw new InvalidDataException(
-                $"The {displayName} transport returned an unexpected report type.");
-        if (sent.ExitCode != Success || commandReport.CommandWritten != true)
+        cancellationToken.ThrowIfCancellationRequested();
+        (bool? commandWritten, IReadOnlyList<ProjectReviewProblem> commandProblems) =
+            sent.Report switch
+            {
+                ProjectReviewCommandReport single =>
+                    (single.CommandWritten, single.Problems),
+                ProjectNetworkReviewCommandReport network =>
+                    (network.CommandWritten, network.Problems),
+                _ => throw new InvalidDataException(
+                    $"The {displayName} transport returned an unexpected report type."),
+            };
+        if (sent.ExitCode != Success || commandWritten != true)
         {
             return Failure<TResponse>(
-                commandReport.Problems.Count > 0
-                    ? commandReport.Problems
+                commandProblems.Count > 0
+                    ? commandProblems
                         .Select(problem => new ProjectReviewResponseTransportProblem(
                             problem.Code,
                             problem.Message))
@@ -75,9 +86,12 @@ internal static class ProjectReviewResponseTransport
         Action<TimeSpan> wait = delay ?? Thread.Sleep;
         while (!File.Exists(responsePath) && stopwatch.Elapsed < timeout)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             wait(TimeSpan.FromMilliseconds(50));
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!File.Exists(responsePath))
         {
             return Failure<TResponse>(
@@ -89,6 +103,7 @@ internal static class ProjectReviewResponseTransport
         bool regularResponse = false;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             FileAttributes attributes = File.GetAttributes(responsePath);
             if ((attributes & FileAttributes.ReparsePoint) != 0
                 || (attributes & FileAttributes.Directory) != 0)
@@ -101,6 +116,7 @@ internal static class ProjectReviewResponseTransport
             regularResponse = true;
 
             byte[] bytes = ReadBoundedResponse(responsePath, maximumResponseBytes, displayName);
+            cancellationToken.ThrowIfCancellationRequested();
             TResponse? response = deserialize(bytes);
             if (response is null || !matchesRequest(response))
             {
@@ -110,6 +126,7 @@ internal static class ProjectReviewResponseTransport
 
             File.Delete(responsePath);
             regularResponse = false;
+            cancellationToken.ThrowIfCancellationRequested();
             return new ProjectReviewResponseTransportResult<TResponse>(response, []);
         }
         catch (Exception exception) when (IsControlledFailure(exception))

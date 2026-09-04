@@ -1,4 +1,6 @@
+using System.Text.Json;
 using SdvKit.AlwaysOn;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
@@ -64,6 +66,33 @@ public sealed class ReviewScreenshotCommandTests
         Assert.False(ReviewScreenshotArguments.IsValidLabel(new string('a', 65)));
     }
 
+    [Theory]
+    [InlineData("map")]
+    [InlineData("viewport")]
+    public void TransportParserAcceptsOnlyTheClosedCaptureGrammar(string mode)
+    {
+        string requestId = Guid.NewGuid().ToString("N");
+
+        Assert.True(ReviewScreenshotTransportArguments.TryParse(
+            ["screenshot", "capture", requestId, mode, "proof_1"],
+            out string parsedRequestId,
+            out ReviewScreenshotCaptureQuery? query,
+            out string error), error);
+        Assert.Equal(requestId, parsedRequestId);
+        Assert.Equal(mode, query!.Mode);
+        Assert.Equal("proof_1", query.Label);
+
+        Assert.False(ReviewScreenshotTransportArguments.TryParse(
+            ["screenshot", "capture", requestId, mode, "../escape"],
+            out _, out _, out _));
+        Assert.False(ReviewScreenshotTransportArguments.TryParse(
+            ["screenshot", "capture", requestId, "desktop", "proof"],
+            out _, out _, out _));
+        Assert.False(ReviewScreenshotTransportArguments.TryParse(
+            ["screenshot", "capture", requestId, mode, "proof", "extra"],
+            out _, out _, out _));
+    }
+
     [Fact]
     public void OperationRevalidatesTheLabelBeforeUsingTheRuntime()
     {
@@ -113,8 +142,68 @@ public sealed class ReviewScreenshotCommandTests
         ReviewScreenshotResult result = ReviewScreenshotOperation.Execute(Map("existing"), runtime);
 
         Assert.False(result.Succeeded);
+        Assert.Equal("screenshotAlreadyExists", result.ProblemCode);
         Assert.Contains(expectedPath, result.Message, StringComparison.Ordinal);
         Assert.Equal(0, runtime.TakeRequests);
+    }
+
+    [Fact]
+    public void TransportResponseIsAtomicBoundedAndContainsNoLocalPath()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        var query = new ReviewScreenshotCaptureQuery("viewport", "proof_1");
+        ReviewScreenshotResponseEnvelope envelope = ReviewScreenshotResponse.Create(
+            requestId,
+            query,
+            new ReviewScreenshotResult(
+                true,
+                $"Created '{temporary.Path}'.",
+                FileName: ReviewScreenshotContract.FileName(query.Label)),
+            new DateTimeOffset(2026, 9, 4, 8, 0, 0, TimeSpan.Zero));
+
+        ReviewScreenshotResponseFile.Write(temporary.Path, envelope);
+
+        string responsePath = ReviewScreenshotContract.ResponsePath(
+            temporary.Path,
+            requestId);
+        byte[] bytes = File.ReadAllBytes(responsePath);
+        Assert.InRange(bytes.Length, 1, ReviewScreenshotContract.MaximumResponseBytes);
+        string json = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.DoesNotContain(temporary.Path, json, StringComparison.OrdinalIgnoreCase);
+        using JsonDocument document = JsonDocument.Parse(bytes);
+        Assert.Equal("ready", document.RootElement
+            .GetProperty("report").GetProperty("state").GetString());
+        Assert.Equal("SDVKit-proof_1.png", document.RootElement
+            .GetProperty("report").GetProperty("fileName").GetString());
+        Assert.False(File.Exists(responsePath + ".tmp"));
+
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewScreenshotResponseFile.Write(temporary.Path, envelope));
+    }
+
+    [Fact]
+    public void BlockedTransportResponseUsesOnlyTheFixedProblem()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        var query = new ReviewScreenshotCaptureQuery("map", "existing");
+        ReviewScreenshotResponseEnvelope envelope = ReviewScreenshotResponse.Create(
+            requestId,
+            query,
+            new ReviewScreenshotResult(
+                false,
+                $"Refusing path '{temporary.Path}'.",
+                "screenshotAlreadyExists"),
+            new DateTimeOffset(2026, 9, 4, 8, 0, 0, TimeSpan.Zero));
+
+        ReviewScreenshotResponseFile.Write(temporary.Path, envelope);
+
+        string json = File.ReadAllText(
+            ReviewScreenshotContract.ResponsePath(temporary.Path, requestId));
+        Assert.DoesNotContain(temporary.Path, json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("screenshotAlreadyExists", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("Refusing path", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -220,7 +309,7 @@ public sealed class ReviewScreenshotCommandTests
             1,
             source.Split("ConsoleCommands.Add(", StringSplitOptions.None).Length - 1);
         Assert.Contains("private const string RootCommand = \"sdvkit\";", source, StringComparison.Ordinal);
-        Assert.Contains("ReviewScreenshotCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewScreenshotCommand.Handle(", source, StringComparison.Ordinal);
         Assert.Contains("ReviewInputCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewDataCommand.Handle(arguments", source, StringComparison.Ordinal);

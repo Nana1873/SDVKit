@@ -39,6 +39,7 @@ public sealed class ProjectReviewMcpDataTests
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
+                ProjectReviewMcpScreenshotTools.CaptureToolName,
             ],
             listed.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)

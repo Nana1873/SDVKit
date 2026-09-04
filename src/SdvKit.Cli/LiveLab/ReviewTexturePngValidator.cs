@@ -11,7 +11,8 @@ internal sealed record ReviewTexturePngInfo(
 
 internal static class ReviewTexturePngValidator
 {
-    private const int BytesPerPixel = 4;
+    private const int RgbaBytesPerPixel = 4;
+    private const int RgbBytesPerPixel = 3;
     private const int MaximumChunkCount = 1024;
     private const uint CrcPolynomial = 0xedb88320u;
     private static readonly byte[] Signature = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -25,6 +26,35 @@ internal static class ReviewTexturePngValidator
         int maximumEncodedBytes,
         int maximumDimension,
         int maximumPixels,
+        out ReviewTexturePngInfo? info) =>
+        TryValidateRgb8(
+            stream,
+            maximumEncodedBytes,
+            maximumDimension,
+            maximumPixels,
+            allowRgb: false,
+            out info);
+
+    public static bool TryValidateRgbOrRgba8(
+        Stream stream,
+        int maximumEncodedBytes,
+        int maximumDimension,
+        int maximumPixels,
+        out ReviewTexturePngInfo? info) =>
+        TryValidateRgb8(
+            stream,
+            maximumEncodedBytes,
+            maximumDimension,
+            maximumPixels,
+            allowRgb: true,
+            out info);
+
+    private static bool TryValidateRgb8(
+        Stream stream,
+        int maximumEncodedBytes,
+        int maximumDimension,
+        int maximumPixels,
+        bool allowRgb,
         out ReviewTexturePngInfo? info)
     {
         info = null;
@@ -56,6 +86,7 @@ internal static class ReviewTexturePngValidator
 
             var width = 0;
             var height = 0;
+            var bytesPerPixel = 0;
             var sawHeader = false;
             var sawPalette = false;
             var sawImageData = false;
@@ -119,13 +150,14 @@ internal static class ReviewTexturePngValidator
 
                     width = BinaryPrimitives.ReadInt32BigEndian(chunkData.AsSpan(0, 4));
                     height = BinaryPrimitives.ReadInt32BigEndian(chunkData.AsSpan(4, 4));
+                    byte colorType = chunkData[9];
                     if (width <= 0
                         || height <= 0
                         || width > maximumDimension
                         || height > maximumDimension
                         || (long)width * height > maximumPixels
                         || chunkData[8] != 8
-                        || chunkData[9] != 6
+                        || (colorType != 6 && (!allowRgb || colorType != 2))
                         || chunkData[10] != 0
                         || chunkData[11] != 0
                         || chunkData[12] != 0)
@@ -133,6 +165,9 @@ internal static class ReviewTexturePngValidator
                         return false;
                     }
 
+                    bytesPerPixel = colorType == 6
+                        ? RgbaBytesPerPixel
+                        : RgbBytesPerPixel;
                     sawHeader = true;
                     continue;
                 }
@@ -199,7 +234,12 @@ internal static class ReviewTexturePngValidator
             }
 
             compressed.Position = 0;
-            if (!TryDecodePixels(compressed, width, height, out byte[]? pixels)
+            if (!TryDecodePixels(
+                    compressed,
+                    width,
+                    height,
+                    bytesPerPixel,
+                    out byte[]? pixels)
                 || pixels is null)
             {
                 return false;
@@ -227,10 +267,11 @@ internal static class ReviewTexturePngValidator
         Stream compressed,
         int width,
         int height,
+        int bytesPerPixel,
         out byte[]? pixels)
     {
         pixels = null;
-        int stride = checked(width * BytesPerPixel);
+        int stride = checked(width * bytesPerPixel);
         int filteredLength = checked((stride + 1) * height);
         var filtered = new byte[filteredLength];
         using (var exactInput = new NoReadAheadStream(compressed))
@@ -264,14 +305,14 @@ internal static class ReviewTexturePngValidator
             for (var x = 0; x < stride; x++)
             {
                 byte encoded = filtered[inputOffset++];
-                byte left = x >= BytesPerPixel
-                    ? decoded[rowOffset + x - BytesPerPixel]
+                byte left = x >= bytesPerPixel
+                    ? decoded[rowOffset + x - bytesPerPixel]
                     : (byte)0;
                 byte above = y > 0
                     ? decoded[previousRowOffset + x]
                     : (byte)0;
-                byte upperLeft = y > 0 && x >= BytesPerPixel
-                    ? decoded[previousRowOffset + x - BytesPerPixel]
+                byte upperLeft = y > 0 && x >= bytesPerPixel
+                    ? decoded[previousRowOffset + x - bytesPerPixel]
                     : (byte)0;
                 int predictor = filter switch
                 {

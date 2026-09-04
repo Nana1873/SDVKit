@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
 #endif
+using System.Text.Json;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.AlwaysOn;
 
@@ -59,17 +61,41 @@ internal static class ReviewScreenshotArguments
     }
 
     public static bool IsValidLabel(string? label)
+        => ReviewScreenshotContract.IsLabel(label);
+}
+
+internal static class ReviewScreenshotTransportArguments
+{
+    internal const string Usage =
+        "Usage: sdvkit screenshot capture <request-id> <map|viewport> <label>";
+
+    public static bool IsTransport(IReadOnlyList<string>? arguments) =>
+        arguments is { Count: >= 2 }
+        && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal)
+        && string.Equals(arguments[1], "capture", StringComparison.Ordinal);
+
+    public static bool TryParse(
+        IReadOnlyList<string>? arguments,
+        out string requestId,
+        out ReviewScreenshotCaptureQuery? query,
+        out string error)
     {
-        if (label is null || label.Length is < 1 or > 64)
+        requestId = string.Empty;
+        query = null;
+        if (!IsTransport(arguments)
+            || arguments!.Count != 5
+            || !ReviewTransportToken.IsRequestId(arguments[2])
+            || !ReviewScreenshotContract.IsMode(arguments[3])
+            || !ReviewScreenshotContract.IsLabel(arguments[4]))
         {
+            error = Usage;
             return false;
         }
 
-        return label.All(character =>
-            (character >= 'a' && character <= 'z')
-            || (character >= 'A' && character <= 'Z')
-            || (character >= '0' && character <= '9')
-            || character is '-' or '_');
+        requestId = arguments[2];
+        query = new ReviewScreenshotCaptureQuery(arguments[3], arguments[4]);
+        error = string.Empty;
+        return true;
     }
 }
 
@@ -102,7 +128,9 @@ internal interface IReviewScreenshotRuntime
 
 internal sealed record ReviewScreenshotResult(
     bool Succeeded,
-    string Message);
+    string Message,
+    string? ProblemCode = null,
+    string? FileName = null);
 
 internal static class ReviewScreenshotOperation
 {
@@ -116,28 +144,36 @@ internal static class ReviewScreenshotOperation
         if (!Enum.IsDefined(request.Kind)
             || !ReviewScreenshotArguments.IsValidLabel(request.Label))
         {
-            return Failure(ReviewScreenshotArguments.LabelError);
+            return Failure(
+                "screenshotRequestInvalid",
+                ReviewScreenshotArguments.LabelError);
         }
 
         if (request.Kind == ReviewScreenshotKind.Map
             && !runtime.IsWorldReady)
         {
-            return Failure("A world must be loaded before taking a map review screenshot.");
+            return Failure(
+                "screenshotWorldNotReady",
+                "A world must be loaded before taking a map review screenshot.");
         }
 
         if (request.Kind == ReviewScreenshotKind.Map
             && (!runtime.CanTakeScreenshots || runtime.ScreenshotBusy))
         {
-            return Failure("Stardew cannot take a map screenshot right now.");
+            return Failure(
+                "screenshotUnavailable",
+                "Stardew cannot take a map screenshot right now.");
         }
 
         string screenshotName = $"SDVKit-{request.Label}";
-        string screenshotFileName = $"{screenshotName}.png";
+        string screenshotFileName = ReviewScreenshotContract.FileName(request.Label);
         string screenshotFolder = runtime.GetScreenshotFolder();
         if (string.IsNullOrWhiteSpace(screenshotFolder)
             || !Path.IsPathFullyQualified(screenshotFolder))
         {
-            return Failure("Stardew returned an invalid screenshot folder.");
+            return Failure(
+                "screenshotPathInvalid",
+                "Stardew returned an invalid screenshot folder.");
         }
 
         screenshotFolder = Path.GetFullPath(screenshotFolder);
@@ -145,6 +181,7 @@ internal static class ReviewScreenshotOperation
         if (runtime.FileExists(expectedPath))
         {
             return Failure(
+                "screenshotAlreadyExists",
                 $"Refusing to overwrite existing isolated screenshot '{expectedPath}'.");
         }
 
@@ -154,13 +191,15 @@ internal static class ReviewScreenshotOperation
                 || !runtime.FileExists(expectedPath))
             {
                 return Failure(
+                    "screenshotCaptureFailed",
                     $"Stardew failed to create the requested viewport screenshot '{expectedPath}': "
                     + viewportError);
             }
 
             return new ReviewScreenshotResult(
                 true,
-                $"Created isolated viewport screenshot '{expectedPath}'.");
+                $"Created isolated viewport screenshot '{expectedPath}'.",
+                FileName: screenshotFileName);
         }
 
         string? writtenFileName = runtime.TakeMapScreenshot(screenshotName);
@@ -168,15 +207,205 @@ internal static class ReviewScreenshotOperation
             || !runtime.FileExists(expectedPath))
         {
             return Failure(
+                "screenshotCaptureFailed",
                 $"Stardew failed to create the requested map screenshot '{expectedPath}'.");
         }
 
         return new ReviewScreenshotResult(
             true,
-            $"Created isolated map screenshot '{expectedPath}'.");
+            $"Created isolated map screenshot '{expectedPath}'.",
+            FileName: screenshotFileName);
     }
 
-    private static ReviewScreenshotResult Failure(string message) => new(false, message);
+    private static ReviewScreenshotResult Failure(string code, string message) =>
+        new(false, message, code);
+}
+
+internal static class ReviewScreenshotResponse
+{
+    public static ReviewScreenshotResponseEnvelope Create(
+        string requestId,
+        ReviewScreenshotCaptureQuery query,
+        ReviewScreenshotResult result,
+        DateTimeOffset capturedAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(result);
+        if (!ReviewTransportToken.IsRequestId(requestId)
+            || !ReviewScreenshotContract.IsMode(query.Mode)
+            || !ReviewScreenshotContract.IsLabel(query.Label))
+        {
+            throw new ArgumentException("The review-screenshot response identity is invalid.");
+        }
+
+        IReadOnlyList<ReviewScreenshotProblem> problems = result.Succeeded
+            ? []
+            : [Problem(result.ProblemCode)];
+        return new ReviewScreenshotResponseEnvelope(
+            ReviewScreenshotContract.SchemaVersion,
+            requestId,
+            new ReviewScreenshotReport(
+                ReviewScreenshotContract.SchemaVersion,
+                result.Succeeded ? "ready" : "blocked",
+                query.Mode,
+                query.Label,
+                result.Succeeded ? ReviewScreenshotContract.FileName(query.Label) : null,
+                capturedAtUtc,
+                problems));
+    }
+
+    private static ReviewScreenshotProblem Problem(string? code) => code switch
+    {
+        "screenshotWorldNotReady" => new(
+            code,
+            "A world must be loaded before taking a map screenshot."),
+        "screenshotUnavailable" => new(
+            code,
+            "Stardew cannot take a map screenshot right now."),
+        "screenshotPathInvalid" => new(
+            code,
+            "The isolated screenshot destination is invalid."),
+        "screenshotAlreadyExists" => new(
+            code,
+            "The exact isolated screenshot target already exists; it was not overwritten."),
+        "screenshotRequestInvalid" => new(
+            code,
+            "The screenshot request is invalid."),
+        _ => new(
+            "screenshotCaptureFailed",
+            "Stardew did not create a confirmed screenshot for the request."),
+    };
+}
+
+internal static class ReviewScreenshotResponseFile
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public static void Write(
+        string runtimePath,
+        ReviewScreenshotResponseEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review runtime path is required.",
+                nameof(runtimePath));
+        }
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
+        EnsureRegularDirectory(absoluteRuntimePath);
+        string responsePath = ReviewScreenshotContract.ResponsePath(
+            absoluteRuntimePath,
+            envelope.RequestId);
+        string temporaryPath = responsePath + ".tmp";
+        if (EntryExists(responsePath) || EntryExists(temporaryPath))
+        {
+            throw new InvalidDataException(
+                "The review-screenshot response target already exists.");
+        }
+
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+        if (bytes.Length is < 1 or > ReviewScreenshotContract.MaximumResponseBytes)
+        {
+            throw new InvalidDataException(
+                "The review-screenshot response exceeds its bounded maximum.");
+        }
+
+        var ownsTemporary = false;
+        var ownsResponse = false;
+        try
+        {
+            using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough))
+            {
+                ownsTemporary = true;
+                EnsureRegularFile(temporaryPath);
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            EnsureRegularFile(temporaryPath);
+            File.Move(temporaryPath, responsePath);
+            ownsTemporary = false;
+            ownsResponse = true;
+            EnsureRegularFile(responsePath);
+            ownsResponse = false;
+        }
+        finally
+        {
+            if (ownsTemporary)
+            {
+                TryDeleteOwnedRegularFile(temporaryPath);
+            }
+            if (ownsResponse)
+            {
+                TryDeleteOwnedRegularFile(responsePath);
+            }
+        }
+    }
+
+    private static bool EntryExists(string path)
+    {
+        try
+        {
+            _ = File.GetAttributes(path);
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    private static void EnsureRegularDirectory(string path)
+    {
+        FileAttributes attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.ReparsePoint) != 0
+            || (attributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                "The review runtime response root is not a regular directory.");
+        }
+    }
+
+    private static void EnsureRegularFile(string path)
+    {
+        FileAttributes attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.ReparsePoint) != 0
+            || (attributes & FileAttributes.Directory) != 0)
+        {
+            throw new InvalidDataException(
+                "The review-screenshot response is not a regular file.");
+        }
+    }
+
+    private static void TryDeleteOwnedRegularFile(string path)
+    {
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0
+                && (attributes & FileAttributes.Directory) == 0)
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is
+            FileNotFoundException or DirectoryNotFoundException)
+        {
+            // The unique owned path is already absent.
+        }
+    }
 }
 
 #if SDVKIT_GAME_AVAILABLE
@@ -228,7 +457,11 @@ internal static class ReviewCommand
                 if (arguments.Length > 0
                     && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))
                 {
-                    ReviewScreenshotCommand.Handle(arguments, screenshotRuntime, monitor);
+                    ReviewScreenshotCommand.Handle(
+                        arguments,
+                        screenshotRuntime,
+                        runtimePath,
+                        monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "input", StringComparison.Ordinal))
@@ -286,8 +519,15 @@ internal static class ReviewScreenshotCommand
     public static void Handle(
         string[] arguments,
         IReviewScreenshotRuntime runtime,
+        string runtimePath,
         IMonitor monitor)
     {
+        if (ReviewScreenshotTransportArguments.IsTransport(arguments))
+        {
+            HandleTransport(arguments, runtime, runtimePath, monitor);
+            return;
+        }
+
         if (!ReviewScreenshotArguments.TryParse(
                 arguments,
                 out ReviewScreenshotRequest? request,
@@ -312,6 +552,63 @@ internal static class ReviewScreenshotCommand
         }
     }
 
+    private static void HandleTransport(
+        string[] arguments,
+        IReviewScreenshotRuntime runtime,
+        string runtimePath,
+        IMonitor monitor)
+    {
+        if (!ReviewScreenshotTransportArguments.TryParse(
+                arguments,
+                out string requestId,
+                out ReviewScreenshotCaptureQuery? query,
+                out string error))
+        {
+            monitor.Log(error, LogLevel.Error);
+            return;
+        }
+
+        ReviewScreenshotKind kind = string.Equals(
+            query!.Mode,
+            ReviewScreenshotContract.MapMode,
+            StringComparison.Ordinal)
+                ? ReviewScreenshotKind.Map
+                : ReviewScreenshotKind.Viewport;
+        ReviewScreenshotResult result;
+        try
+        {
+            result = ReviewScreenshotOperation.Execute(
+                new ReviewScreenshotRequest(kind, query.Label),
+                runtime);
+        }
+        catch (Exception exception)
+        {
+            result = new ReviewScreenshotResult(
+                false,
+                $"SDVKit screenshot command failed without creating a confirmed PNG: {exception.Message}",
+                "screenshotCaptureFailed");
+        }
+
+        try
+        {
+            ReviewScreenshotResponseFile.Write(
+                runtimePath,
+                ReviewScreenshotResponse.Create(
+                    requestId,
+                    query,
+                    result,
+                    DateTimeOffset.UtcNow));
+            monitor.Log(
+                result.Message,
+                result.Succeeded ? LogLevel.Info : LogLevel.Error);
+        }
+        catch (Exception exception)
+        {
+            monitor.Log(
+                $"SDVKit screenshot response failed closed: {exception.Message}",
+                LogLevel.Error);
+        }
+    }
 }
 
 internal sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime

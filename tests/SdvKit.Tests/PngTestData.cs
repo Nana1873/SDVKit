@@ -12,23 +12,54 @@ internal static class PngTestData
         int width,
         int height,
         byte[]? pixels = null,
-        byte[]? trailingCompressedBytes = null)
+        byte[]? trailingCompressedBytes = null) =>
+        CreateRgb8(
+            width,
+            height,
+            bytesPerPixel: 4,
+            colorType: 6,
+            format: "RGBA8",
+            pixels,
+            trailingCompressedBytes);
+
+    public static byte[] CreateRgb8(
+        int width,
+        int height,
+        byte[]? pixels = null,
+        byte[]? trailingCompressedBytes = null) =>
+        CreateRgb8(
+            width,
+            height,
+            bytesPerPixel: 3,
+            colorType: 2,
+            format: "RGB8",
+            pixels,
+            trailingCompressedBytes);
+
+    private static byte[] CreateRgb8(
+        int width,
+        int height,
+        int bytesPerPixel,
+        byte colorType,
+        string format,
+        byte[]? pixels,
+        byte[]? trailingCompressedBytes)
     {
         if (width <= 0 || height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width));
         }
 
-        pixels ??= new byte[checked(width * height * 4)];
-        if (pixels.Length != checked(width * height * 4))
+        pixels ??= new byte[checked(width * height * bytesPerPixel)];
+        if (pixels.Length != checked(width * height * bytesPerPixel))
         {
             throw new ArgumentException(
-                "The test pixel buffer must contain exact RGBA8 pixels.",
+                $"The test pixel buffer must contain exact {format} pixels.",
                 nameof(pixels));
         }
 
         using var filtered = new MemoryStream();
-        int stride = checked(width * 4);
+        int stride = checked(width * bytesPerPixel);
         for (var y = 0; y < height; y++)
         {
             filtered.WriteByte(0);
@@ -51,7 +82,7 @@ internal static class PngTestData
         BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0, 4), width);
         BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4, 4), height);
         header[8] = 8;
-        header[9] = 6;
+        header[9] = colorType;
         WriteChunk(png, "IHDR"u8, header);
         byte[] imageData = trailingCompressedBytes is null
             ? compressed.ToArray()

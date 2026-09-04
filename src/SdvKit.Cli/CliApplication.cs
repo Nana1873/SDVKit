@@ -130,7 +130,7 @@ public static class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =

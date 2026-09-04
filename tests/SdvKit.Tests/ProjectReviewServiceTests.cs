@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 
@@ -2525,6 +2526,10 @@ public sealed class ProjectReviewServiceTests
     [InlineData("sdvkit input cursor 0 2147483647", true)]
     [InlineData("sdvkit input cursor clear", true)]
     [InlineData("sdvkit screenshot viewport title_screen-1", true)]
+    [InlineData("sdvkit screenshot capture aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa viewport title_screen-1", true)]
+    [InlineData("sdvkit screenshot capture aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa map farm", false)]
+    [InlineData("sdvkit screenshot capture invalid viewport title", false)]
+    [InlineData("sdvkit screenshot capture aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa desktop title", false)]
     [InlineData("sdvkit screenshot map", false)]
     [InlineData("sdvkit screenshot viewport", false)]
     [InlineData("sdvkit screenshot viewport title extra", false)]
@@ -2622,7 +2627,159 @@ public sealed class ProjectReviewServiceTests
         }
     }
 
-    private static ProjectReviewStaging StageTarget(
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void ScreenshotTransportUsesOnlyTheSelectedNetworkRole(string role)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        string hostProcessRoot = Path.Combine(temporary.Path, "host-screenshot-process");
+        string farmhandProcessRoot = Path.Combine(temporary.Path, "farmhand-screenshot-process");
+        Directory.CreateDirectory(hostProcessRoot);
+        Directory.CreateDirectory(farmhandProcessRoot);
+        (OwnedProcessIdentity hostIdentity, Process hostProcess) =
+            StartRunningProcess(hostProcessRoot);
+        (OwnedProcessIdentity farmhandIdentity, Process farmhandProcess) =
+            StartRunningProcess(farmhandProcessRoot);
+        using (hostProcess)
+        using (farmhandProcess)
+        {
+            try
+            {
+                LiveLabState hostState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.HostRole,
+                    hostIdentity);
+                LiveLabState farmhandState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.FarmhandRole,
+                    farmhandIdentity);
+                new JsonLiveLabStateStore(hostPaths.StatePath).Write(hostState);
+                new JsonLiveLabStateStore(farmhandPaths.StatePath).Write(farmhandState);
+                WriteNetworkStatus(
+                    hostPaths,
+                    hostState,
+                    staging.TargetLaunchState,
+                    "startingHost");
+                WriteNetworkStatus(
+                    farmhandPaths,
+                    farmhandState,
+                    staging.TargetLaunchState,
+                    "waitingForTitle");
+
+                LiveLabPaths selectedPaths = string.Equals(
+                    role,
+                    NetworkTwoContract.HostRole,
+                    StringComparison.Ordinal)
+                        ? hostPaths
+                        : farmhandPaths;
+                LiveLabPaths peerPaths = ReferenceEquals(selectedPaths, hostPaths)
+                    ? farmhandPaths
+                    : hostPaths;
+                OwnedProcessIdentity selectedIdentity = string.Equals(
+                    role,
+                    NetworkTwoContract.HostRole,
+                    StringComparison.Ordinal)
+                        ? hostIdentity
+                        : farmhandIdentity;
+                string label = $"{role}_transport";
+                string fileName = ReviewScreenshotContract.FileName(label);
+                string selectedPngPath = ProjectReviewScreenshotService.ExpectedPngPath(
+                    selectedPaths,
+                    fileName);
+                string peerPngPath = ProjectReviewScreenshotService.ExpectedPngPath(
+                    peerPaths,
+                    fileName);
+                byte[] expectedBytes = PngTestData.CreateRgba8(
+                    2,
+                    1,
+                    [255, 0, 0, 255, 0, 255, 0, 255]);
+                byte[] peerSentinel = PngTestData.CreateRgba8(
+                    1,
+                    1,
+                    [0, 0, 255, 255]);
+                Directory.CreateDirectory(Path.GetDirectoryName(peerPngPath)!);
+                File.WriteAllBytes(peerPngPath, peerSentinel);
+                DateTime peerWriteTime = File.GetLastWriteTimeUtc(peerPngPath);
+                string? selectedResponsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string[] tokens = line.Split(' ');
+                        Assert.Equal("sdvkit", tokens[0]);
+                        Assert.Equal("screenshot", tokens[1]);
+                        Assert.Equal("capture", tokens[2]);
+                        string requestId = tokens[3];
+                        var query = new ReviewScreenshotCaptureQuery(tokens[4], tokens[5]);
+                        DateTimeOffset capturedAtUtc = DateTimeOffset.UtcNow;
+                        Directory.CreateDirectory(Path.GetDirectoryName(selectedPngPath)!);
+                        File.WriteAllBytes(selectedPngPath, expectedBytes);
+                        File.SetLastWriteTimeUtc(selectedPngPath, capturedAtUtc.UtcDateTime);
+                        ReviewScreenshotResponseFile.Write(
+                            selectedPaths.RuntimePath,
+                            ReviewScreenshotResponse.Create(
+                                requestId,
+                                query,
+                                new ReviewScreenshotResult(
+                                    true,
+                                    "Created.",
+                                    FileName: fileName),
+                                capturedAtUtc));
+                        selectedResponsePath = ReviewScreenshotContract.ResponsePath(
+                            selectedPaths.RuntimePath,
+                            requestId);
+                    });
+
+                ProjectReviewScreenshotResult result =
+                    ProjectReviewScreenshotService.Execute(
+                        new ReviewScreenshotCaptureQuery("viewport", label),
+                        NetworkTwoContract.Topology,
+                        role,
+                        temporary.Path,
+                        sender);
+
+                ProjectReviewScreenshotCapture capture =
+                    Assert.IsType<ProjectReviewScreenshotCapture>(result.Capture);
+                Assert.Empty(result.Problems);
+                Assert.Equal(expectedBytes, capture.PngBytes);
+                Assert.Equal(selectedIdentity, sender.Identity);
+                Assert.Equal(expectedBytes, File.ReadAllBytes(selectedPngPath));
+                Assert.Equal(peerSentinel, File.ReadAllBytes(peerPngPath));
+                Assert.Equal(peerWriteTime, File.GetLastWriteTimeUtc(peerPngPath));
+                Assert.NotNull(selectedResponsePath);
+                Assert.False(File.Exists(selectedResponsePath));
+                Assert.Empty(Directory.EnumerateFiles(
+                    peerPaths.RuntimePath,
+                    "review-screenshot-*.json",
+                    SearchOption.TopDirectoryOnly));
+            }
+            finally
+            {
+                EnsureExited(hostProcess);
+                EnsureExited(farmhandProcess);
+            }
+        }
+    }
+
+    internal static ProjectReviewStaging StageTarget(
         LiveLabPaths paths,
         string fixtureRoot)
     {
@@ -2785,7 +2942,7 @@ public sealed class ProjectReviewServiceTests
             target);
     }
 
-    private static LiveLabState ReviewState(
+    internal static LiveLabState ReviewState(
         LiveLabPaths paths,
         ProjectModLaunchState target,
         OwnedProcessIdentity? processIdentity = null) =>
@@ -2813,7 +2970,7 @@ public sealed class ProjectReviewServiceTests
         return path;
     }
 
-    private static void WriteLoadedStatus(
+    internal static void WriteLoadedStatus(
         LiveLabPaths paths,
         LiveLabState state,
         ProjectModLaunchState target,
@@ -2931,7 +3088,7 @@ public sealed class ProjectReviewServiceTests
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
     }
 
-    private static (OwnedProcessIdentity Identity, Process Process) StartRunningProcess(
+    internal static (OwnedProcessIdentity Identity, Process Process) StartRunningProcess(
         string projectRoot)
     {
         var host = new WindowsLabProcessHost();
@@ -2973,7 +3130,7 @@ public sealed class ProjectReviewServiceTests
                     $"{Path.GetRelativePath(root, path)}:{FileSnapshot(path)}"));
     }
 
-    private static void EnsureExited(Process process)
+    internal static void EnsureExited(Process process)
     {
         try
         {
@@ -2989,7 +3146,7 @@ public sealed class ProjectReviewServiceTests
         }
     }
 
-    private sealed class RecordingConsoleInputSender(
+    internal sealed class RecordingConsoleInputSender(
         ProjectReviewConsoleInputResult result,
         Action<string>? onSend = null) : IProjectReviewConsoleInputSender
     {

@@ -67,6 +67,12 @@ internal sealed class ProjectReviewMcpRuntimeReader
     private readonly ILabProcessHost _processHost;
     private readonly Func<DateTimeOffset> _utcNow;
 
+    internal string ProjectRoot => _projectRoot;
+
+    internal string Topology => _topology;
+
+    internal string? Role => _role;
+
     public ProjectReviewMcpRuntimeReader(
         string projectRoot,
         ILabProcessHost? processHost = null,
