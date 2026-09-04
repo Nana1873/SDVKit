@@ -561,6 +561,11 @@ public static partial class CliApplication
         ProjectReviewMapCommandRunner runProjectReviewMap,
         ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
+        if (arguments.Count > 2 && arguments[2] == "cp-diagnose")
+        {
+            return RunProjectReviewCpDiagnosis(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "diagnostics")
         {
             return RunProjectReviewDiagnostics(arguments, output, error);
@@ -2062,6 +2067,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
         output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
         output.WriteLine("  sdvkit project review diagnostics --help Selected-mod warnings and exceptions.");
+        output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");

@@ -187,7 +187,19 @@ internal static class ProjectReviewLogDiagnostics
         return (returned.ToArray(), total, matching);
     }
 
-    private static bool Mentions(string text, string value) => value.Length > 0
+    internal static string? DiscloseLine(string line, out bool withheld, bool cpTokenMetadata = false)
+    {
+        string checkedLine = cpTokenMetadata ? Regex.Replace(line,
+            @"\b(?:invalid tokens?|unready tokens|unavailable mod tokens|tokens used|has tokens|Local tokens):", "CP symbols:",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)) : line;
+        withheld = Secret.IsMatch(checkedLine);
+        if (withheld) return null;
+        string safe = AbsolutePath.Replace(line, "[private path withheld]");
+        withheld = safe != line;
+        return new string(safe.Where(c => !char.IsControl(c) || c == '\t').ToArray());
+    }
+
+    internal static bool Mentions(string text, string value) => value.Length > 0
         && Regex.IsMatch(text, @"(?<![A-Za-z0-9_.-])" + Regex.Escape(value) + @"(?![A-Za-z0-9_.-])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
