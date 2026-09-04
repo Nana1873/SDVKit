@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
@@ -10,6 +12,10 @@ public sealed class ReviewAudioCommandTests
     private static readonly JsonSerializerOptions CaseInsensitiveJson = new()
     {
         PropertyNameCaseInsensitive = true,
+    };
+    private static readonly JsonSerializerOptions CamelCaseJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
     [Fact]
@@ -334,7 +340,7 @@ public sealed class ReviewAudioCommandTests
     }
 
     [Fact]
-    public void CaseCollisionsBlockInventoryAndAmbiguousLookupButExactLookupWorks()
+    public void PlayableCaseCollisionsRemainExactAndOnlyNonExactLookupIsAmbiguous()
     {
         var source = new FakeReviewAudioSource(
             tracks:
@@ -352,10 +358,22 @@ public sealed class ReviewAudioCommandTests
             source,
             ReviewAudioContract.CuesOperation,
             limit: 100);
-        Assert.Equal(
-            "audioCueIdentityCollision",
-            Assert.Single(inventory.Problems).Code);
+        Assert.Equal("ready", inventory.State);
+        Assert.Equal(["CUE", "Cue"], inventory.Cues!.Select(cue => cue.CueId));
         Assert.Equal(1, inventory.Coverage!.IdentityCollisionGroups);
+        Assert.True(inventory.Coverage.DataDrivenPopulationComplete);
+        string requestId = Guid.NewGuid().ToString("N");
+        Assert.True(ProjectReviewAudioService.MatchesResponse(
+            new ReviewAudioResponseEnvelope(
+                ReviewAudioContract.SchemaVersion,
+                requestId,
+                inventory),
+            requestId,
+            new ReviewAudioQuery(
+                ReviewAudioContract.CuesOperation,
+                null,
+                0,
+                100)));
 
         ReviewAudioReport ambiguous = Execute(
             source,
@@ -373,6 +391,83 @@ public sealed class ReviewAudioCommandTests
             limit: 1);
         Assert.Equal("ready", exact.State);
         Assert.Equal("Cue", Assert.Single(exact.Cues!).CueId);
+    }
+
+    [Fact]
+    public void VanillaCaseVariantAlternativeFoldsOntoItsCanonicalPlayableCue()
+    {
+        var source = new FakeReviewAudioSource(
+            tracks:
+            [
+                new ReviewAudioJukeboxDefinition(
+                    "_disabled_",
+                    ["jojaOfficeSoundscape"]),
+                new ReviewAudioJukeboxDefinition("jojaofficesoundscape", []),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>(StringComparer.Ordinal)
+            {
+                ["_disabled_"] = Probe("_disabled_", exists: false),
+                ["jojaofficesoundscape"] = Probe(
+                    "jojaofficesoundscape",
+                    exists: true,
+                    variants: 1),
+            });
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CuesOperation,
+            limit: 100);
+
+        Assert.Equal("ready", report.State);
+        Assert.DoesNotContain(
+            report.Cues!,
+            cue => cue.CueId == "jojaOfficeSoundscape");
+        ReviewAudioCueReport canonical = Assert.Single(
+            report.Cues!,
+            cue => cue.CueId == "jojaofficesoundscape");
+        Assert.Equal(
+            [
+                ReviewAudioContract.JukeboxTrackSource,
+                ReviewAudioContract.JukeboxAlternativeSource,
+            ],
+            canonical.Sources);
+        Assert.Contains(
+            canonical.JukeboxReferences,
+            reference => reference.TrackCueId == "jojaofficesoundscape"
+                && reference.Relation == ReviewAudioContract.PrimaryJukeboxRelation);
+        Assert.Contains(
+            canonical.JukeboxReferences,
+            reference => reference.TrackCueId == "_disabled_"
+                && reference.Relation == ReviewAudioContract.AlternativeJukeboxRelation);
+        Assert.Equal(1, report.Coverage!.JukeboxAlternativeReferences);
+        Assert.Equal(2, report.Coverage.DiscoverableCueIds);
+        Assert.Equal(0, report.Coverage.IdentityCollisionGroups);
+        Assert.Equal(
+            ["_disabled_", "jojaofficesoundscape"],
+            source.ProbedCueIds);
+    }
+
+    [Fact]
+    public void AlternativeMatchingMultiplePlayableCaseVariantsFailsClosed()
+    {
+        var source = new FakeReviewAudioSource(
+            tracks:
+            [
+                new ReviewAudioJukeboxDefinition("Cue", []),
+                new ReviewAudioJukeboxDefinition("CUE", []),
+                new ReviewAudioJukeboxDefinition("History", ["cUe"]),
+            ]);
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CuesOperation,
+            limit: 100);
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(
+            "audioJukeboxAlternativeAmbiguous",
+            Assert.Single(report.Problems).Code);
+        Assert.Empty(source.ProbedCueIds);
     }
 
     [Theory]
@@ -402,38 +497,149 @@ public sealed class ReviewAudioCommandTests
         Assert.Empty(source.ProbedCueIds);
     }
 
+    [Fact]
+    public void AudioChangesUsesTheDeclaredCueIdInsteadOfTheModificationKey()
+    {
+        string modificationKey = new('m', ReviewAudioContract.MaximumCueIdLength + 1);
+        var source = new FakeReviewAudioSource(
+            changes:
+            [
+                Change("Playable.Cue", modificationKey: modificationKey),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>(StringComparer.Ordinal)
+            {
+                ["Playable.Cue"] = Probe("Playable.Cue", exists: true, variants: 1),
+            });
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CuesOperation,
+            limit: 100);
+
+        Assert.Equal("ready", report.State);
+        ReviewAudioCueReport cue = Assert.Single(report.Cues!);
+        Assert.Equal("Playable.Cue", cue.CueId);
+        Assert.DoesNotContain(modificationKey, report.Cues!.Select(value => value.CueId));
+        Assert.Equal(["Playable.Cue"], source.ProbedCueIds);
+    }
+
+    [Fact]
+    public void LaterAudioChangeModificationWinsForTheSameDeclaredCueId()
+    {
+        var source = new FakeReviewAudioSource(
+            changes:
+            [
+                Change(
+                    "Same.Cue",
+                    variants: 1,
+                    category: "Sound",
+                    modificationKey: "Patch.Entry.One"),
+                Change(
+                    "Same.Cue",
+                    variants: 3,
+                    category: "Music",
+                    streamed: true,
+                    looped: true,
+                    modificationKey: "Patch.Entry.Two"),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>(StringComparer.Ordinal)
+            {
+                ["Same.Cue"] = Probe("Same.Cue", exists: true, variants: 3),
+            });
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CuesOperation,
+            limit: 100);
+
+        Assert.Equal("ready", report.State);
+        ReviewAudioCueReport cue = Assert.Single(report.Cues!);
+        Assert.Equal(3, cue.DataVariantCount);
+        Assert.Equal("Music", cue.Category);
+        Assert.True(cue.StreamedVorbis);
+        Assert.True(cue.Looped);
+        Assert.Equal(2, report.Coverage!.AudioChangeEntries);
+        Assert.Equal(1, report.Coverage.DiscoverableCueIds);
+        string requestId = Guid.NewGuid().ToString("N");
+        Assert.True(ProjectReviewAudioService.MatchesResponse(
+            new ReviewAudioResponseEnvelope(
+                ReviewAudioContract.SchemaVersion,
+                requestId,
+                report),
+            requestId,
+            new ReviewAudioQuery(
+                ReviewAudioContract.CuesOperation,
+                null,
+                0,
+                100)));
+    }
+
+    [Fact]
+    public void LaterJukeboxTrackWinsGlobalCaseInsensitiveAlternativeCollisions()
+    {
+        var source = new FakeReviewAudioSource(
+            tracks:
+            [
+                new ReviewAudioJukeboxDefinition("First.Track", ["Old"]),
+                new ReviewAudioJukeboxDefinition("Later.Track", ["old"]),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>(StringComparer.Ordinal)
+            {
+                ["First.Track"] = Probe("First.Track", exists: true, variants: 1),
+                ["Later.Track"] = Probe("Later.Track", exists: true, variants: 1),
+                ["old"] = Probe("old", exists: false),
+            });
+
+        ReviewAudioReport report = Execute(
+            source,
+            ReviewAudioContract.CuesOperation,
+            limit: 100);
+
+        Assert.Equal("ready", report.State);
+        Assert.DoesNotContain(report.Cues!, cue => cue.CueId == "Old");
+        ReviewAudioCueReport effective = Assert.Single(
+            report.Cues!,
+            cue => cue.CueId == "old");
+        ReviewAudioJukeboxReference reference = Assert.Single(
+            effective.JukeboxReferences);
+        Assert.Equal("Later.Track", reference.TrackCueId);
+        Assert.Equal(ReviewAudioContract.AlternativeJukeboxRelation, reference.Relation);
+        Assert.Equal(2, report.Coverage!.JukeboxAlternativeReferences);
+        Assert.Equal(3, report.Coverage.DiscoverableCueIds);
+        string requestId = Guid.NewGuid().ToString("N");
+        Assert.True(ProjectReviewAudioService.MatchesResponse(
+            new ReviewAudioResponseEnvelope(
+                ReviewAudioContract.SchemaVersion,
+                requestId,
+                report),
+            requestId,
+            new ReviewAudioQuery(
+                ReviewAudioContract.CuesOperation,
+                null,
+                0,
+                100)));
+    }
+
     [Theory]
-    [InlineData("mismatchedId")]
     [InlineData("unsafeCategory")]
-    [InlineData("duplicateAlternative")]
+    [InlineData("unsafeCueId")]
     [InlineData("nullJukebox")]
     public void MalformedDataDrivenEntriesFailClosed(string kind)
     {
         IReadOnlyList<ReviewAudioChangeDefinition> changes = kind switch
         {
-            "mismatchedId" =>
-            [
-                new ReviewAudioChangeDefinition(
-                    "Cue",
-                    "Other",
-                    1,
-                    "Sound",
-                    false,
-                    false,
-                    false),
-            ],
             "unsafeCategory" =>
             [
                 Change("Cue", category: "Sound\nunsafe"),
+            ],
+            "unsafeCueId" =>
+            [
+                Change("\ud800"),
             ],
             _ => [],
         };
         IReadOnlyList<ReviewAudioJukeboxDefinition> tracks = kind switch
         {
-            "duplicateAlternative" =>
-            [
-                new ReviewAudioJukeboxDefinition("Cue", ["Old", "old"]),
-            ],
             "nullJukebox" => [null!],
             _ => [],
         };
@@ -665,6 +871,269 @@ public sealed class ReviewAudioCommandTests
     }
 
     [Fact]
+    public void CueTokensAreCanonicalInjectiveAndRejectMalformedUtf16()
+    {
+        string[] cueIds = ["A/B", "A?B", "é", "e\u0301", "🎵"];
+        string[] tokens = cueIds.Select(ReviewTransportToken.Encode).ToArray();
+
+        Assert.Equal(tokens.Length, tokens.Distinct(StringComparer.Ordinal).Count());
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            Assert.True(ReviewTransportToken.TryDecode(
+                tokens[index],
+                ReviewAudioContract.MaximumCueIdLength,
+                out string decoded));
+            Assert.Equal(cueIds[index], decoded);
+        }
+
+        Assert.False(ReviewAudioValidation.IsSafeCueId("\ud800"));
+        Assert.False(ReviewAudioValidation.IsSafeCueId("\udc00"));
+        Assert.True(ReviewAudioValidation.IsSafeCueId("🎵"));
+        var malformed = new ReviewAudioQuery(
+            ReviewAudioContract.CueOperation,
+            "\ud800",
+            0,
+            1);
+        Assert.NotNull(ProjectReviewAudioService.Validate(malformed));
+        Assert.Throws<ArgumentException>(() => ProjectReviewAudioService.BuildCommand(
+            Guid.NewGuid().ToString("N"),
+            malformed));
+    }
+
+    [Fact]
+    public void ResponseDeserializerRequiresTheExactRecursiveWireShape()
+    {
+        string requestId = Guid.NewGuid().ToString("N");
+        JsonObject baseline = JsonNode.Parse(
+            JsonSerializer.Serialize(InventoryEnvelope(requestId), CamelCaseJson))!
+            .AsObject();
+        JsonObject report = baseline["report"]!.AsObject();
+        JsonObject cue = report["cues"]!.AsArray()[0]!.AsObject();
+        cue["jukeboxReferences"]!.AsArray().Add(
+            new JsonObject
+            {
+                ["trackCueId"] = "Track",
+                ["relation"] = ReviewAudioContract.AlternativeJukeboxRelation,
+            });
+        report["problems"]!.AsArray().Add(
+            new JsonObject
+            {
+                ["code"] = "synthetic",
+                ["message"] = "Synthetic bounded problem.",
+            });
+        Assert.NotNull(ProjectReviewAudioService.DeserializeResponse(
+            System.Text.Encoding.UTF8.GetBytes(baseline.ToJsonString())));
+
+        Func<JsonObject, JsonObject>[] nestedObjects =
+        [
+            root => root,
+            root => root["report"]!.AsObject(),
+            root => root["report"]!["cues"]![0]!.AsObject(),
+            root => root["report"]!["cues"]![0]!["jukeboxReferences"]![0]!.AsObject(),
+            root => root["report"]!["page"]!.AsObject(),
+            root => root["report"]!["coverage"]!.AsObject(),
+            root => root["report"]!["problems"]![0]!.AsObject(),
+        ];
+        foreach (Func<JsonObject, JsonObject> select in nestedObjects)
+        {
+            JsonObject changed = baseline.DeepClone().AsObject();
+            select(changed)["unexpected"] = true;
+            Assert.Throws<InvalidDataException>(() =>
+                ProjectReviewAudioService.DeserializeResponse(
+                    System.Text.Encoding.UTF8.GetBytes(changed.ToJsonString())));
+        }
+
+        JsonObject wrongCase = baseline.DeepClone().AsObject();
+        JsonObject wrongCaseReport = wrongCase["report"]!.AsObject();
+        wrongCaseReport.Remove("cueId");
+        wrongCaseReport["CueId"] = null;
+        Assert.Throws<InvalidDataException>(() =>
+            ProjectReviewAudioService.DeserializeResponse(
+                System.Text.Encoding.UTF8.GetBytes(wrongCase.ToJsonString())));
+
+        string validJson = baseline.ToJsonString();
+        int requestIdProperty = validJson.IndexOf("\"requestId\"", StringComparison.Ordinal);
+        Assert.True(requestIdProperty > 0);
+        string duplicate = validJson.Insert(requestIdProperty, "\"schemaVersion\":1,");
+        Assert.Throws<InvalidDataException>(() =>
+            ProjectReviewAudioService.DeserializeResponse(
+                System.Text.Encoding.UTF8.GetBytes(duplicate)));
+
+        JsonObject wrongType = baseline.DeepClone().AsObject();
+        wrongType["report"]!["cues"]![0]!["sessionResident"] = "true";
+        Assert.Throws<InvalidDataException>(() =>
+            ProjectReviewAudioService.DeserializeResponse(
+                System.Text.Encoding.UTF8.GetBytes(wrongType.ToJsonString())));
+    }
+
+    [Fact]
+    public void ResponseDeserializerRejectsAnUnpairedEscapedSurrogate()
+    {
+        string requestId = Guid.NewGuid().ToString("N");
+        string json = JsonSerializer.Serialize(
+            ExactEnvelope(requestId, "MainTheme"),
+            CamelCaseJson);
+        string malformed = json.Replace(
+            "MainTheme",
+            "\\uD800",
+            StringComparison.Ordinal);
+
+        Exception? exception = Record.Exception(() =>
+            ProjectReviewAudioService.DeserializeResponse(
+                System.Text.Encoding.UTF8.GetBytes(malformed)));
+
+        Assert.NotNull(exception);
+        Assert.True(exception is JsonException or InvalidDataException, exception.ToString());
+    }
+
+    [Fact]
+    public void ResponseFilePublishesOnlyItsOwnRegularCreateNewTarget()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        ReviewAudioResponseEnvelope envelope = ExactEnvelope(requestId, "MainTheme");
+
+        ReviewAudioReport report = ReviewAudioResponseFile.Write(temporary.Path, envelope);
+
+        string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
+        Assert.Equal("ready", report.State);
+        Assert.True(File.Exists(responsePath));
+        FileAttributes attributes = File.GetAttributes(responsePath);
+        Assert.False(
+            (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0);
+        Assert.False(File.Exists(responsePath + ".tmp"));
+        Assert.NotNull(ProjectReviewAudioService.DeserializeResponse(File.ReadAllBytes(responsePath)));
+    }
+
+    [Fact]
+    public void ResponseFileNeverDeletesAPreexistingForeignTemporaryEntry()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
+        string temporaryPath = responsePath + ".tmp";
+        File.WriteAllText(temporaryPath, "foreign");
+
+        Assert.Throws<InvalidDataException>(() => ReviewAudioResponseFile.Write(
+            temporary.Path,
+            ExactEnvelope(requestId, "MainTheme")));
+
+        Assert.Equal("foreign", File.ReadAllText(temporaryPath));
+        Assert.False(File.Exists(responsePath));
+    }
+
+    [Fact]
+    public void ResponseFileNeverDeletesAPreexistingForeignTemporaryDirectory()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
+        string temporaryPath = responsePath + ".tmp";
+        Directory.CreateDirectory(temporaryPath);
+
+        Assert.Throws<InvalidDataException>(() => ReviewAudioResponseFile.Write(
+            temporary.Path,
+            ExactEnvelope(requestId, "MainTheme")));
+
+        Assert.True(Directory.Exists(temporaryPath));
+        Assert.False(File.Exists(responsePath));
+    }
+
+    [Fact]
+    public void FatalAudioFailuresAreNeverConvertedIntoBlockedReports()
+    {
+        var fatal = new TargetInvocationException(
+            Assert.IsType<OutOfMemoryException>(Activator.CreateInstance(
+                typeof(OutOfMemoryException),
+                "Synthetic fatal.")));
+
+        Assert.True(ReviewAudioException.IsFatal(fatal));
+        Assert.False(ReviewAudioException.IsFatal(
+            new TargetInvocationException(new InvalidDataException("Synthetic controlled."))));
+    }
+
+    [Fact]
+    public void GameAdapterDefersGameAccessAndUsesOnlyTheExactMetadataProbe()
+    {
+        string source = ReadAlwaysOnSource();
+        int constructorStart = source.IndexOf(
+            "public StardewReviewAudioSource(",
+            StringComparison.Ordinal);
+        int gameVersionStart = source.IndexOf(
+            "public string GameVersion",
+            constructorStart,
+            StringComparison.Ordinal);
+
+        Assert.True(constructorStart >= 0);
+        Assert.True(gameVersionStart > constructorStart);
+        string constructor = source[constructorStart..gameVersionStart];
+        Assert.DoesNotContain("Game1", constructor, StringComparison.Ordinal);
+        Assert.DoesNotContain("GameContent", constructor, StringComparison.Ordinal);
+        Assert.Contains("pair.Value?.Id!", source, StringComparison.Ordinal);
+        Assert.Contains("soundBank.Exists(cueId)", source, StringComparison.Ordinal);
+        Assert.Contains("soundBank.GetCueDefinition(cueId)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("soundBank.GetCue(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("soundBank.Play", source, StringComparison.Ordinal);
+        int audioLoadStart = source.IndexOf(
+            "public IReadOnlyList<ReviewAudioChangeDefinition> LoadAudioChanges()",
+            StringComparison.Ordinal);
+        int jukeboxLoadStart = source.IndexOf(
+            "public IReadOnlyList<ReviewAudioJukeboxDefinition> LoadJukeboxTracks()",
+            audioLoadStart,
+            StringComparison.Ordinal);
+        int soundBankStatusStart = source.IndexOf(
+            "public ReviewAudioSoundBankStatus GetSoundBankStatus()",
+            jukeboxLoadStart,
+            StringComparison.Ordinal);
+        Assert.True(audioLoadStart >= 0);
+        Assert.True(jukeboxLoadStart > audioLoadStart);
+        Assert.True(soundBankStatusStart > jukeboxLoadStart);
+        string audioLoad = source[audioLoadStart..jukeboxLoadStart];
+        string jukeboxLoad = source[jukeboxLoadStart..soundBankStatusStart];
+        Assert.True(
+            audioLoad.IndexOf(
+                "values.Count > ReviewAudioContract.MaximumAudioChangeEntries",
+                StringComparison.Ordinal)
+            < audioLoad.IndexOf(
+                "new List<ReviewAudioChangeDefinition>(values.Count)",
+                StringComparison.Ordinal));
+        Assert.True(
+            jukeboxLoad.IndexOf(
+                "values.Count > ReviewAudioContract.MaximumJukeboxTrackEntries",
+                StringComparison.Ordinal)
+            < jukeboxLoad.IndexOf(
+                "new List<ReviewAudioJukeboxDefinition>(values.Count)",
+                StringComparison.Ordinal));
+        Assert.True(
+            jukeboxLoad.IndexOf(
+                "alternatives.Count > ReviewAudioContract.MaximumAlternativesPerTrack",
+                StringComparison.Ordinal)
+            < jukeboxLoad.IndexOf(
+                "alternatives?.Select(value => (string?)value).ToArray()",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            2,
+            source.Split(
+                "when (!ReviewAudioException.IsFatal(exception))",
+                StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void PublicDocumentationUsesTheCanonicalKnownCueExample()
+    {
+        string readme = ReadRepositoryFile("README.md");
+
+        Assert.Contains(
+            "project review audio cue \"maintheme\"",
+            readme,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "project review audio cue \"MainTheme\"",
+            readme,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ExactResponseBindingRejectsMismatchedAndNullGraphs()
     {
         string requestId = Guid.NewGuid().ToString("N");
@@ -676,6 +1145,12 @@ public sealed class ReviewAudioCommandTests
         ReviewAudioResponseEnvelope valid = ExactEnvelope(requestId, "MainTheme");
 
         Assert.True(ProjectReviewAudioService.MatchesResponse(valid, requestId, query));
+        Assert.False(ProjectReviewAudioService.MatchesResponse(null, requestId, query));
+        Assert.False(ProjectReviewAudioService.MatchesResponse(valid, requestId, null));
+        Assert.False(ProjectReviewAudioService.MatchesResponse(
+            valid,
+            requestId,
+            query with { CueId = "\ud800" }));
         Assert.False(ProjectReviewAudioService.MatchesResponse(
             valid with { Report = null! },
             requestId,
@@ -694,6 +1169,44 @@ public sealed class ReviewAudioCommandTests
             },
             requestId,
             query));
+
+        ReviewAudioCueReport dataCue = DataCue("MainTheme");
+        Assert.False(ProjectReviewAudioService.MatchesResponse(
+            valid with
+            {
+                Report = valid.Report with
+                {
+                    Cues = [dataCue],
+                },
+            },
+            requestId,
+            query));
+
+        ReviewAudioCueReport alternativeCue = valid.Report.Cues![0] with
+        {
+            Sources = [ReviewAudioContract.JukeboxAlternativeSource],
+            JukeboxReferences =
+            [
+                new ReviewAudioJukeboxReference(
+                    "Track",
+                    ReviewAudioContract.AlternativeJukeboxRelation),
+            ],
+        };
+        Assert.False(ProjectReviewAudioService.MatchesResponse(
+            valid with
+            {
+                Report = valid.Report with
+                {
+                    Cues = [alternativeCue],
+                    Coverage = valid.Report.Coverage! with
+                    {
+                        AudioChangeEntries = 1,
+                        DiscoverableCueIds = 1,
+                    },
+                },
+            },
+            requestId,
+            query));
         Assert.False(ProjectReviewAudioService.MatchesResponse(
             valid with { Report = valid.Report with { CueId = "Other" } },
             requestId,
@@ -708,6 +1221,7 @@ public sealed class ReviewAudioCommandTests
             },
             requestId,
             query));
+
         Assert.False(ProjectReviewAudioService.MatchesResponse(
             valid with { Report = valid.Report with { Cues = null } },
             requestId,
@@ -800,6 +1314,37 @@ public sealed class ReviewAudioCommandTests
                 Report = valid.Report with
                 {
                     Cues = valid.Report.Cues!.Reverse().ToArray(),
+                },
+            },
+            requestId,
+            query));
+        Assert.False(ProjectReviewAudioService.MatchesResponse(
+            valid with
+            {
+                Report = valid.Report with
+                {
+                    Coverage = valid.Report.Coverage! with
+                    {
+                        AudioChangeEntries = 1,
+                        JukeboxTrackEntries = 2,
+                    },
+                },
+            },
+            requestId,
+            query));
+        Assert.False(ProjectReviewAudioService.MatchesResponse(
+            valid with
+            {
+                Report = valid.Report with
+                {
+                    State = "blocked",
+                    CueId = "unexpected",
+                    Cues = null,
+                    Page = null,
+                    Problems =
+                    [
+                        new ReviewAudioProblem("synthetic", "Synthetic failure."),
+                    ],
                 },
             },
             requestId,
@@ -974,9 +1519,10 @@ public sealed class ReviewAudioCommandTests
         string? category = "Sound",
         bool streamed = false,
         bool looped = false,
-        bool reverb = false) =>
+        bool reverb = false,
+        string? modificationKey = null) =>
         new(
-            cueId,
+            modificationKey ?? cueId,
             cueId,
             variants,
             category,
@@ -1004,6 +1550,31 @@ public sealed class ReviewAudioCommandTests
         ReviewAudioOperation.Execute(
             new ReviewAudioQuery(operation, cueId, offset, limit),
             source);
+
+    private static string ReadAlwaysOnSource() =>
+        ReadRepositoryFile(
+            "src",
+            "SdvKit.AlwaysOn",
+            "ReviewAudioCommand.cs");
+
+    private static string ReadRepositoryFile(params string[] relativeSegments)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string path = Path.Combine(
+                [directory.FullName, .. relativeSegments]);
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path).ReplaceLineEndings("\n");
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not find the SDVKit repository above '{AppContext.BaseDirectory}'.");
+    }
 
     private sealed class FakeReviewAudioSource(
         IReadOnlyList<ReviewAudioChangeDefinition>? changes = null,

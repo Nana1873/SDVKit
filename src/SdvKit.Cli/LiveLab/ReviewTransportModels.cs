@@ -71,6 +71,7 @@ internal static class ReviewTransportToken
         return true;
     }
 }
+
 internal static class ReviewTransportText
 {
     public static bool IsWellFormedUtf16(string? value)

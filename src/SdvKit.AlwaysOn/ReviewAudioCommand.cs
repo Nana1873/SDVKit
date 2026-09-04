@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 #if SDVKIT_GAME_AVAILABLE
@@ -11,6 +12,30 @@ using StardewValley.GameData;
 
 namespace SdvKit.AlwaysOn;
 
+internal static class ReviewAudioException
+{
+    public static bool IsFatal(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        while (true)
+        {
+            if (exception is OutOfMemoryException
+                or StackOverflowException
+                or AccessViolationException)
+            {
+                return true;
+            }
+
+            if (exception is not TargetInvocationException { InnerException: not null } invocation)
+            {
+                return false;
+            }
+
+            exception = invocation.InnerException!;
+        }
+    }
+}
+
 internal enum ReviewAudioSoundBankStatus
 {
     Ready,
@@ -20,8 +45,8 @@ internal enum ReviewAudioSoundBankStatus
 }
 
 internal sealed record ReviewAudioChangeDefinition(
+    string ModificationKey,
     string CueId,
-    string? DeclaredCueId,
     int? VariantCount,
     string? Category,
     bool StreamedVorbis,
@@ -94,21 +119,6 @@ internal static class ReviewAudioOperation
             probed: 0,
             resident: 0,
             unavailable: 0);
-        if (query.Operation == ReviewAudioContract.CuesOperation
-            && inventory.IdentityCollisionGroups > 0)
-        {
-            return Blocked(
-                query.Operation,
-                source,
-                cueId: null,
-                cues: null,
-                page: null,
-                baseCoverage,
-                Problem(
-                    "audioCueIdentityCollision",
-                    "The data-driven cue inventory contains identities which collide case-insensitively; exact bounded discovery is blocked."));
-        }
-
         ReviewAudioProblem? soundBankProblem = SoundBankProblem(source);
         if (soundBankProblem is not null)
         {
@@ -428,30 +438,29 @@ internal static class ReviewAudioOperation
             StringComparer.Ordinal);
         var sources = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var cueIds = new SortedSet<string>(StringComparer.Ordinal);
+        var playableCueIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (ReviewAudioChangeDefinition? change in audioChanges)
         {
             if (change is null
                 || !ReviewAudioValidation.IsSafeCueId(change.CueId)
-                || !ReviewAudioValidation.IsSafeCueId(change.DeclaredCueId)
-                || !string.Equals(
-                    change.CueId,
-                    change.DeclaredCueId,
-                    StringComparison.Ordinal)
                 || change.VariantCount is < 0 or > ReviewAudioContract.MaximumVariants
-                || !IsSafeCategory(change.Category)
-                || !changes.TryAdd(change.CueId, change))
+                || !IsSafeCategory(change.Category))
             {
                 return AudioInventory.Failed(
                     Problem(
                         "audioChangeInvalid",
-                        "Data/AudioChanges contains an unsafe, duplicate, oversized, or key/ID-mismatched entry."));
+                        "Data/AudioChanges contains an unsafe or oversized entry."));
             }
 
+            changes[change.CueId] = change;
             cueIds.Add(change.CueId);
+            playableCueIds.Add(change.CueId);
             AddSource(sources, change.CueId, ReviewAudioContract.AudioChangesSource);
         }
 
         var trackCueIds = new HashSet<string>(StringComparer.Ordinal);
+        var effectiveAlternatives = new Dictionary<string, EffectiveJukeboxAlternative>(
+            StringComparer.OrdinalIgnoreCase);
         var alternativeReferences = 0;
         foreach (ReviewAudioJukeboxDefinition? track in jukeboxTracks)
         {
@@ -468,6 +477,7 @@ internal static class ReviewAudioOperation
             }
 
             cueIds.Add(track.CueId);
+            playableCueIds.Add(track.CueId);
             AddSource(sources, track.CueId, ReviewAudioContract.JukeboxTrackSource);
             AddReference(
                 references,
@@ -476,32 +486,55 @@ internal static class ReviewAudioOperation
                     track.CueId,
                     ReviewAudioContract.PrimaryJukeboxRelation));
 
-            var alternativesForTrack = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string? alternativeCueId in alternatives)
             {
                 alternativeReferences++;
                 if (alternativeReferences > ReviewAudioContract.MaximumAlternativeReferences
-                    || !ReviewAudioValidation.IsSafeCueId(alternativeCueId)
-                    || !alternativesForTrack.Add(alternativeCueId!))
+                    || !ReviewAudioValidation.IsSafeCueId(alternativeCueId))
                 {
                     return AudioInventory.Failed(
                         Problem(
                             "audioJukeboxAlternativeInvalid",
-                            "Data/JukeboxTracks contains an unsafe, duplicate, or oversized alternative-unlock reference."));
+                            "Data/JukeboxTracks contains an unsafe or oversized alternative-unlock reference."));
                 }
 
-                cueIds.Add(alternativeCueId!);
-                AddSource(
-                    sources,
+                effectiveAlternatives[alternativeCueId!] = new(
                     alternativeCueId!,
-                    ReviewAudioContract.JukeboxAlternativeSource);
-                AddReference(
-                    references,
-                    alternativeCueId!,
-                    new ReviewAudioJukeboxReference(
-                        track.CueId,
-                        ReviewAudioContract.AlternativeJukeboxRelation));
+                    track.CueId);
             }
+        }
+
+        foreach (EffectiveJukeboxAlternative alternative in effectiveAlternatives.Values)
+        {
+            string[] playableMatches = playableCueIds
+                .Where(cueId => string.Equals(
+                    cueId,
+                    alternative.CueId,
+                    StringComparison.OrdinalIgnoreCase))
+                .Take(2)
+                .ToArray();
+            if (playableMatches.Length > 1)
+            {
+                return AudioInventory.Failed(
+                    Problem(
+                        "audioJukeboxAlternativeAmbiguous",
+                        "A jukebox alternative matches multiple playable cue identities case-insensitively."));
+            }
+
+            string effectiveCueId = playableMatches.Length == 1
+                ? playableMatches[0]
+                : alternative.CueId;
+            cueIds.Add(effectiveCueId);
+            AddSource(
+                sources,
+                effectiveCueId,
+                ReviewAudioContract.JukeboxAlternativeSource);
+            AddReference(
+                references,
+                effectiveCueId,
+                new ReviewAudioJukeboxReference(
+                    alternative.TrackCueId,
+                    ReviewAudioContract.AlternativeJukeboxRelation));
         }
 
         if (cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds)
@@ -608,7 +641,8 @@ internal static class ReviewAudioOperation
         string.IsNullOrEmpty(value)
         || (!string.IsNullOrWhiteSpace(value)
             && value.Length <= ReviewAudioContract.MaximumCategoryLength
-            && !value.Any(char.IsControl));
+            && !value.Any(char.IsControl)
+            && ReviewTransportText.IsWellFormedUtf16(value));
 
     private static string EffectiveCategory(string? value) =>
         string.IsNullOrEmpty(value) ? "Default" : value;
@@ -627,7 +661,7 @@ internal static class ReviewAudioOperation
             resident,
             unavailable,
             inventory.IdentityCollisionGroups,
-            inventory.Problem is null && inventory.IdentityCollisionGroups == 0,
+            inventory.Problem is null,
             null,
             ReviewAudioContract.BuiltInInventoryStatus);
 
@@ -705,6 +739,10 @@ internal static class ReviewAudioOperation
                 0,
                 problem);
     }
+
+    private sealed record EffectiveJukeboxAlternative(
+        string CueId,
+        string TrackCueId);
 }
 
 internal static class ReviewAudioArguments
@@ -912,6 +950,120 @@ internal static class ReviewAudioResponseSerializer
     }
 }
 
+internal static class ReviewAudioResponseFile
+{
+    public static ReviewAudioReport Write(
+        string runtimePath,
+        ReviewAudioResponseEnvelope envelope)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimePath);
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
+        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
+        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
+            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                "The review runtime response root is not a regular directory.");
+        }
+
+        string responsePath = ReviewAudioContract.ResponsePath(
+            absoluteRuntimePath,
+            envelope.RequestId);
+        string temporaryPath = responsePath + ".tmp";
+        if (EntryExists(responsePath) || EntryExists(temporaryPath))
+        {
+            throw new InvalidDataException(
+                "The review-audio response target already exists.");
+        }
+
+        byte[] bytes = ReviewAudioResponseSerializer.SerializeBounded(
+            envelope,
+            out ReviewAudioReport serializedReport);
+
+        var ownsTemporary = false;
+        var ownsResponse = false;
+        try
+        {
+            using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough))
+            {
+                ownsTemporary = true;
+                EnsureRegularFile(temporaryPath);
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            EnsureRegularFile(temporaryPath);
+            File.Move(temporaryPath, responsePath);
+            ownsTemporary = false;
+            ownsResponse = true;
+            EnsureRegularFile(responsePath);
+            ownsResponse = false;
+            return serializedReport;
+        }
+        finally
+        {
+            if (ownsTemporary)
+            {
+                TryDeleteOwnedRegularFile(temporaryPath);
+            }
+            if (ownsResponse)
+            {
+                TryDeleteOwnedRegularFile(responsePath);
+            }
+        }
+    }
+
+    private static bool EntryExists(string path)
+    {
+        try
+        {
+            _ = File.GetAttributes(path);
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    private static void EnsureRegularFile(string path)
+    {
+        FileAttributes attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.ReparsePoint) != 0
+            || (attributes & FileAttributes.Directory) != 0)
+        {
+            throw new InvalidDataException(
+                "The review-audio response is not a regular file.");
+        }
+    }
+
+    private static void TryDeleteOwnedRegularFile(string path)
+    {
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0
+                && (attributes & FileAttributes.Directory) == 0)
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is
+            FileNotFoundException or DirectoryNotFoundException)
+        {
+            // The unique owned path is already absent.
+        }
+    }
+}
+
 #if SDVKIT_GAME_AVAILABLE
 internal sealed class StardewReviewAudioSource : IReviewAudioSource
 {
@@ -948,7 +1100,7 @@ internal sealed class StardewReviewAudioSource : IReviewAudioSource
         {
             definitions.Add(new ReviewAudioChangeDefinition(
                 pair.Key,
-                pair.Value?.Id,
+                pair.Value?.Id!,
                 pair.Value?.FilePaths?.Count,
                 pair.Value?.Category,
                 pair.Value?.StreamedVorbis ?? false,
@@ -1114,7 +1266,7 @@ internal static class ReviewAudioCommand
             {
                 report = ReviewAudioOperation.Execute(query!, source);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (!ReviewAudioException.IsFatal(exception))
             {
                 report = ReviewAudioOperation.Failure(
                     query!.Operation,
@@ -1131,12 +1283,12 @@ internal static class ReviewAudioCommand
             report);
         try
         {
-            report = WriteResponse(runtimePath, envelope);
+            report = ReviewAudioResponseFile.Write(runtimePath, envelope);
             monitor.Log(
                 $"SDVKit review-audio completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!ReviewAudioException.IsFatal(exception))
         {
             monitor.Log(
                 $"SDVKit review-audio could not publish its bounded response ({exception.GetType().Name}).",
@@ -1144,54 +1296,5 @@ internal static class ReviewAudioCommand
         }
     }
 
-    private static ReviewAudioReport WriteResponse(
-        string runtimePath,
-        ReviewAudioResponseEnvelope envelope)
-    {
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-
-        string responsePath = ReviewAudioContract.ResponsePath(
-            absoluteRuntimePath,
-            envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath) || File.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-audio response target already exists.");
-        }
-
-        byte[] bytes = ReviewAudioResponseSerializer.SerializeBounded(
-            envelope,
-            out ReviewAudioReport serializedReport);
-
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-            return serializedReport;
-        }
-        finally
-        {
-            File.Delete(temporaryPath);
-        }
-    }
 }
 #endif

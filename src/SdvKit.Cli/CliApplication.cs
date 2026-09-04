@@ -42,6 +42,7 @@ internal delegate LiveLabCommandResult ProjectReviewMapCommandRunner(
 
 internal delegate LiveLabCommandResult ProjectReviewTextureCommandRunner(
     ReviewTextureQuery query,
+    string labRoot);
 
 internal delegate LiveLabCommandResult ProjectReviewAudioCommandRunner(
     ReviewAudioQuery query,

@@ -1174,6 +1174,26 @@ public sealed class CliApplicationTests
         Assert.Equal("--option-like", received!.CueId);
     }
 
+    [Fact]
+    public void ProjectReviewAudioRejectsMalformedUtf16BeforeDispatch()
+    {
+        ProjectReviewAudioCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-audio should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewAudio(
+            runner,
+            "project",
+            "review",
+            "audio",
+            "cue",
+            "\ud800",
+            "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("project review audio cue", error, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("audio", "--help")]
     [InlineData("audio", "cues", "--help")]

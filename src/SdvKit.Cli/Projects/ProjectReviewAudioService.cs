@@ -9,10 +9,69 @@ internal static class ProjectReviewAudioService
 {
     private const int Success = 0;
     private const int OperationFailed = 3;
+    private const int MaximumJsonDepth = 16;
+    private const int MaximumProblemCount = 8;
     private static readonly JsonSerializerOptions ResponseJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        MaxDepth = MaximumJsonDepth,
     };
+    private static readonly JsonDocumentOptions ResponseDocumentOptions = new()
+    {
+        MaxDepth = MaximumJsonDepth,
+    };
+    private static readonly HashSet<string> EnvelopeProperties = PropertySet(
+        "schemaVersion",
+        "requestId",
+        "report");
+    private static readonly HashSet<string> ReportProperties = PropertySet(
+        "schemaVersion",
+        "state",
+        "operation",
+        "gameVersion",
+        "gameFileVersion",
+        "cueId",
+        "cues",
+        "page",
+        "coverage",
+        "problems");
+    private static readonly HashSet<string> ProblemProperties = PropertySet(
+        "code",
+        "message");
+    private static readonly HashSet<string> CueProperties = PropertySet(
+        "cueId",
+        "sources",
+        "dataDefined",
+        "sessionResident",
+        "definitionAvailable",
+        "definitionVariantCount",
+        "dataVariantCount",
+        "category",
+        "streamedVorbis",
+        "looped",
+        "useReverb",
+        "jukeboxReferences");
+    private static readonly HashSet<string> JukeboxReferenceProperties = PropertySet(
+        "trackCueId",
+        "relation");
+    private static readonly HashSet<string> PageProperties = PropertySet(
+        "offset",
+        "limit",
+        "returned",
+        "total",
+        "nextOffset");
+    private static readonly HashSet<string> CoverageProperties = PropertySet(
+        "audioChangeEntries",
+        "jukeboxTrackEntries",
+        "jukeboxAlternativeReferences",
+        "discoverableCueIds",
+        "probedCueIds",
+        "sessionResidentCueIds",
+        "unavailableCueIds",
+        "identityCollisionGroups",
+        "dataDrivenPopulationComplete",
+        "builtInCueCount",
+        "builtInCueInventoryStatus");
 
     public static LiveLabCommandResult Execute(
         ReviewAudioQuery query,
@@ -54,9 +113,7 @@ internal static class ProjectReviewAudioService
                 "audio",
                 "review-audio",
                 labRoot,
-                bytes => JsonSerializer.Deserialize<ReviewAudioResponseEnvelope>(
-                    bytes,
-                    ResponseJsonOptions),
+                DeserializeResponse,
                 envelope => MatchesResponse(envelope, requestId, query),
                 inputSender,
                 delay);
@@ -90,6 +147,10 @@ internal static class ProjectReviewAudioService
                 "The review-audio request ID is invalid.",
                 nameof(requestId));
         }
+        if (Validate(query) is ReviewAudioProblem queryProblem)
+        {
+            throw new ArgumentException(queryProblem.Message, nameof(query));
+        }
 
         var tokens = new List<string>
         {
@@ -115,11 +176,282 @@ internal static class ProjectReviewAudioService
         return command;
     }
 
-    internal static bool MatchesResponse(
-        ReviewAudioResponseEnvelope envelope,
-        string requestId,
-        ReviewAudioQuery query)
+    internal static ReviewAudioResponseEnvelope? DeserializeResponse(byte[] bytes)
     {
+        ArgumentNullException.ThrowIfNull(bytes);
+        using (JsonDocument document = JsonDocument.Parse(bytes, ResponseDocumentOptions))
+        {
+            ValidateEnvelopeShape(document.RootElement);
+        }
+
+        return JsonSerializer.Deserialize<ReviewAudioResponseEnvelope>(
+            bytes,
+            ResponseJsonOptions);
+    }
+
+    private static void ValidateEnvelopeShape(JsonElement root)
+    {
+        RequireExactObject(root, EnvelopeProperties);
+        RequiredInt32(root, "schemaVersion");
+        RequiredString(root, "requestId");
+
+        JsonElement report = root.GetProperty("report");
+        RequireExactObject(report, ReportProperties);
+        RequiredInt32(report, "schemaVersion");
+        RequiredString(report, "state");
+        RequiredString(report, "operation");
+        ValidateOptionalString(report.GetProperty("gameVersion"));
+        ValidateOptionalString(report.GetProperty("gameFileVersion"));
+        ValidateOptionalString(report.GetProperty("cueId"));
+        ValidateOptionalArray(
+            report.GetProperty("cues"),
+            ReviewAudioContract.MaximumPageLimit,
+            ValidateCueShape);
+        ValidateOptionalPageShape(report.GetProperty("page"));
+        ValidateOptionalCoverageShape(report.GetProperty("coverage"));
+        ValidateRequiredArray(
+            report.GetProperty("problems"),
+            MaximumProblemCount,
+            problem =>
+            {
+                RequireExactObject(problem, ProblemProperties);
+                RequiredString(problem, "code");
+                RequiredString(problem, "message");
+            });
+    }
+
+    private static void ValidateCueShape(JsonElement cue)
+    {
+        RequireExactObject(cue, CueProperties);
+        RequiredString(cue, "cueId");
+        ValidateRequiredArray(
+            cue.GetProperty("sources"),
+            3,
+            source => _ = RequiredString(source));
+        RequiredBoolean(cue, "dataDefined");
+        RequiredBoolean(cue, "sessionResident");
+        RequiredBoolean(cue, "definitionAvailable");
+        ValidateOptionalInt32(cue.GetProperty("definitionVariantCount"));
+        ValidateOptionalInt32(cue.GetProperty("dataVariantCount"));
+        ValidateOptionalString(cue.GetProperty("category"));
+        ValidateOptionalBoolean(cue.GetProperty("streamedVorbis"));
+        ValidateOptionalBoolean(cue.GetProperty("looped"));
+        ValidateOptionalBoolean(cue.GetProperty("useReverb"));
+        ValidateRequiredArray(
+            cue.GetProperty("jukeboxReferences"),
+            2,
+            reference =>
+            {
+                RequireExactObject(reference, JukeboxReferenceProperties);
+                RequiredString(reference, "trackCueId");
+                RequiredString(reference, "relation");
+            });
+    }
+
+    private static void ValidateOptionalPageShape(JsonElement page)
+    {
+        if (page.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(page, PageProperties);
+        RequiredInt32(page, "offset");
+        RequiredInt32(page, "limit");
+        RequiredInt32(page, "returned");
+        RequiredInt32(page, "total");
+        ValidateOptionalInt32(page.GetProperty("nextOffset"));
+    }
+
+    private static void ValidateOptionalCoverageShape(JsonElement coverage)
+    {
+        if (coverage.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(coverage, CoverageProperties);
+        RequiredInt32(coverage, "audioChangeEntries");
+        RequiredInt32(coverage, "jukeboxTrackEntries");
+        RequiredInt32(coverage, "jukeboxAlternativeReferences");
+        RequiredInt32(coverage, "discoverableCueIds");
+        RequiredInt32(coverage, "probedCueIds");
+        RequiredInt32(coverage, "sessionResidentCueIds");
+        RequiredInt32(coverage, "unavailableCueIds");
+        RequiredInt32(coverage, "identityCollisionGroups");
+        RequiredBoolean(coverage, "dataDrivenPopulationComplete");
+        ValidateOptionalInt32(coverage.GetProperty("builtInCueCount"));
+        RequiredString(coverage, "builtInCueInventoryStatus");
+    }
+
+    private static void ValidateOptionalArray(
+        JsonElement value,
+        int maximumCount,
+        Action<JsonElement> validateItem)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        ValidateRequiredArray(value, maximumCount, validateItem);
+    }
+
+    private static void ValidateRequiredArray(
+        JsonElement value,
+        int maximumCount,
+        Action<JsonElement> validateItem)
+    {
+        if (value.ValueKind != JsonValueKind.Array
+            || value.GetArrayLength() > maximumCount)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid bounded array shape.");
+        }
+
+        foreach (JsonElement item in value.EnumerateArray())
+        {
+            validateItem(item);
+        }
+    }
+
+    private static int RequiredInt32(JsonElement value, string propertyName)
+    {
+        JsonElement property = value.GetProperty(propertyName);
+        if (property.ValueKind != JsonValueKind.Number
+            || !property.TryGetInt32(out int result))
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid integer member.");
+        }
+
+        return result;
+    }
+
+    private static void ValidateOptionalInt32(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Null
+            && (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out _)))
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid optional integer member.");
+        }
+    }
+
+    private static bool RequiredBoolean(JsonElement value, string propertyName)
+    {
+        JsonElement property = value.GetProperty(propertyName);
+        if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid Boolean member.");
+        }
+
+        return property.GetBoolean();
+    }
+
+    private static void ValidateOptionalBoolean(JsonElement value)
+    {
+        if (value.ValueKind is not (
+                JsonValueKind.Null
+                or JsonValueKind.True
+                or JsonValueKind.False))
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid optional Boolean member.");
+        }
+    }
+
+    private static string RequiredString(JsonElement value, string propertyName) =>
+        RequiredString(value.GetProperty(propertyName));
+
+    private static string RequiredString(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid string member.");
+        }
+
+        string result;
+        try
+        {
+            result = value.GetString()
+                ?? throw new InvalidDataException(
+                    "The review-audio response has a null string member.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has a malformed Unicode string member.",
+                exception);
+        }
+        if (!ReviewTransportText.IsWellFormedUtf16(result))
+        {
+            throw new InvalidDataException(
+                "The review-audio response has a malformed Unicode string member.");
+        }
+
+        return result;
+    }
+
+    private static void ValidateOptionalString(JsonElement value)
+    {
+        if (value.ValueKind is not JsonValueKind.Null and not JsonValueKind.String)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid optional string member.");
+        }
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            _ = RequiredString(value);
+        }
+    }
+
+    private static void RequireExactObject(
+        JsonElement value,
+        HashSet<string> requiredProperties)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException(
+                "The review-audio response has an invalid JSON object shape.");
+        }
+
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonProperty property in value.EnumerateObject())
+        {
+            if (!requiredProperties.Contains(property.Name)
+                || !observed.Add(property.Name))
+            {
+                throw new InvalidDataException(
+                    "The review-audio response has an unknown or duplicate JSON member.");
+            }
+        }
+
+        if (observed.Count != requiredProperties.Count)
+        {
+            throw new InvalidDataException(
+                "The review-audio response is missing a required JSON member.");
+        }
+    }
+
+    private static HashSet<string> PropertySet(params string[] names) =>
+        new(names, StringComparer.Ordinal);
+
+    internal static bool MatchesResponse(
+        ReviewAudioResponseEnvelope? envelope,
+        string requestId,
+        ReviewAudioQuery? query)
+    {
+        if (envelope is null
+            || query is null
+            || Validate(query) is not null
+            || !ReviewTransportToken.IsRequestId(requestId))
+        {
+            return false;
+        }
+
         ReviewAudioReport? report = envelope.Report;
         if (report is null
             || report.Problems is null
@@ -182,8 +514,7 @@ internal static class ProjectReviewAudioService
 
         return query.Operation switch
         {
-            ReviewAudioContract.CuesOperation => report.CueId is null
-                || ReviewAudioValidation.IsSafeCueId(report.CueId),
+            ReviewAudioContract.CuesOperation => report.CueId is null,
             ReviewAudioContract.CueOperation => report.CueId is null
                 || string.Equals(report.CueId, query.CueId, StringComparison.Ordinal),
             _ => false,
@@ -203,8 +534,8 @@ internal static class ProjectReviewAudioService
             || coverage.ProbedCueIds != cues.Count
             || coverage.SessionResidentCueIds != cues.Count(cue => cue.SessionResident)
             || coverage.UnavailableCueIds != cues.Count(cue => !cue.SessionResident)
-            || coverage.IdentityCollisionGroups != 0
-            || !coverage.DataDrivenPopulationComplete)
+            || !coverage.DataDrivenPopulationComplete
+            || !CoverageIncludesReturnedSources(cues, coverage))
         {
             return false;
         }
@@ -235,7 +566,28 @@ internal static class ProjectReviewAudioService
         && string.Equals(cues[0].CueId, query.CueId, StringComparison.Ordinal)
         && coverage.ProbedCueIds == 1
         && coverage.SessionResidentCueIds == (cues[0].SessionResident ? 1 : 0)
-        && coverage.UnavailableCueIds == (cues[0].SessionResident ? 0 : 1);
+        && coverage.UnavailableCueIds == (cues[0].SessionResident ? 0 : 1)
+        && CoverageIncludesReturnedSources(cues, coverage)
+        && (cues[0].Sources.Count == 0 || coverage.DiscoverableCueIds >= 1);
+
+    private static bool CoverageIncludesReturnedSources(
+        IReadOnlyList<ReviewAudioCueReport> cues,
+        ReviewAudioCoverageReport coverage)
+    {
+        int audioChangeCues = cues.Count(cue => cue.Sources.Contains(
+            ReviewAudioContract.AudioChangesSource,
+            StringComparer.Ordinal));
+        int primaryJukeboxCues = cues.Count(cue => cue.Sources.Contains(
+            ReviewAudioContract.JukeboxTrackSource,
+            StringComparer.Ordinal));
+        int alternativeJukeboxCues = cues.Count(cue => cue.Sources.Contains(
+            ReviewAudioContract.JukeboxAlternativeSource,
+            StringComparer.Ordinal));
+
+        return audioChangeCues <= coverage.AudioChangeEntries
+            && primaryJukeboxCues <= coverage.JukeboxTrackEntries
+            && alternativeJukeboxCues <= coverage.JukeboxAlternativeReferences;
+    }
 
     private static bool PageMatches(
         ReviewAudioPage page,
@@ -271,8 +623,7 @@ internal static class ProjectReviewAudioService
                 != coverage.ProbedCueIds
             || coverage.IdentityCollisionGroups < 0
             || coverage.IdentityCollisionGroups > coverage.DiscoverableCueIds
-            || coverage.DataDrivenPopulationComplete
-                != (coverage.IdentityCollisionGroups == 0)
+            || !coverage.DataDrivenPopulationComplete
             || coverage.BuiltInCueCount is not null
             || !string.Equals(
                 coverage.BuiltInCueInventoryStatus,
@@ -359,7 +710,7 @@ internal static class ProjectReviewAudioService
             return false;
         }
 
-        if (cue.JukeboxReferences.Count > ReviewAudioContract.MaximumJukeboxTrackEntries + 1)
+        if (cue.JukeboxReferences.Count > 2)
         {
             return false;
         }
@@ -410,6 +761,11 @@ internal static class ProjectReviewAudioService
             }
             else
             {
+                if (hasAlternativeReference)
+                {
+                    return false;
+                }
+
                 hasAlternativeReference = true;
             }
 
@@ -440,7 +796,8 @@ internal static class ProjectReviewAudioService
     private static bool IsSafeText(string? value, int maximumLength) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
-        && !value.Any(char.IsControl);
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     internal static ReviewAudioProblem? Validate(ReviewAudioQuery query)
     {
@@ -484,7 +841,7 @@ internal static class ProjectReviewAudioService
         {
             return Problem(
                 "audioCueIdInvalid",
-                $"A cue ID must contain 1-{ReviewAudioContract.MaximumCueIdLength} non-control characters.");
+                $"A cue ID must contain 1-{ReviewAudioContract.MaximumCueIdLength} well-formed non-control characters.");
         }
 
         return null;

@@ -47,7 +47,8 @@ internal static class ReviewAudioValidation
     public static bool IsSafeCueId(string? value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= ReviewAudioContract.MaximumCueIdLength
-        && !value.Any(char.IsControl);
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
 }
 
 internal sealed record ReviewAudioQuery(
