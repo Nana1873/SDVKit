@@ -28,7 +28,7 @@ Interactive reviews should be renderable/windowed, with SMAPI's terminal availab
 ## Use only the relevant reference
 
 - [Inspection](../../../docs/inspection.md): bounded canonical Data, maps, textures, audio, and observed mod assets. Check canonical identities, coverage, pagination, and errors; do not infer unobserved assets or provenance.
-- [MCP](../../../docs/mcp.md): bind a client to the already-running review and one immutable role. Default observation/evidence exposes seven tools for single, four per network role; opt-ins add their documented tools. Counts describe default profiles, not a universal allowlist. Enable only the authorized families needed for the task.
+- [MCP](../../../docs/mcp.md): bind a client to the already-running review and one immutable role. Default observation/evidence exposes eight tools for single, five per network role; opt-ins add their documented tools. Counts describe default profiles, not a universal allowlist. Enable only the authorized families needed for the task.
 - [Input and screenshots](../../../docs/live-review.md#exercise-behavior-and-collect-evidence): use only the process-local cursor/button/wheel paths, never desktop automation, physical pointer movement, or window focus changes.
 - [Fixtures](../../../docs/lab-reference.md#fixture-command-reference): use only the exact owned disposable world and permitted role. MCP input and fixture actions are separate opt-ins; neither authorizes arbitrary console commands or normal-save access.
 

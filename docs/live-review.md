@@ -82,6 +82,54 @@ Choose the detailed surface for the task:
 - [Fixture reference](lab-reference.md#fixture-command-reference): owned buildings, objects, animals, and natural navigation.
 - [MCP](mcp.md): typed observation, screenshots, and separately enabled input/fixture actions.
 
+## Diagnose selected-mod warnings and exceptions
+
+Use the staged `UniqueID` from review status. This read-only query works even when
+that target is reported as not loaded; it does not replace load/version diagnostics.
+
+```powershell
+& $sdvkit project review diagnostics --mod Example.Mod --limit 20 --json
+& $sdvkit project review diagnostics --mod Example.Mod --topology network-2 --role host --json
+```
+
+The matching native tool is `stardew_mod_diagnostics { "modId": "Example.Mod", "limit": 20 }`.
+Both surfaces return the same projection from the selected role's isolated
+`StardewValley/ErrorLogs/SMAPI-latest.txt`. Only an active owned review with a fresh
+status, exact process/staging identity, and matching AlwaysOn activation launch ID
+in that log is accepted. Missing, stale, linked, replaced/unbound or rotated-away
+logs return `state=unavailable` with a bounded `errorCode`; old logs are never searched.
+
+`diagnostics` contains the latest matching WARN/ERROR/ALERT entries in file order,
+including recognized exception/stack continuation lines. `attribution=logger`
+means the SMAPI logger name matches one staged manifest name; `ambiguousLogger`
+means that name is shared/reserved, and `sharedMention` means SMAPI or the pack's
+selected provider mentioned the mod. None proves that the selected mod caused
+the failure. `phase` is `loading`, `runtime`, or `unknown` based only on observed
+SMAPI phase markers; time is the log's local clock without an inferred date.
+
+The reader scans at most the last 4 MiB and validates activation in the first
+256 KiB. `counts.total` counts recognized entries in that scan, `matching` counts
+selected warning/error entries, and `returned` counts the result entries. If
+`totalIsExact=false`, counts describe only the complete scanned portion, not the
+whole file. The default result limit is 20 (1–100); each entry is limited to
+32 lines of 1,024 characters. `truncated`, `source.scanTruncated`, and
+`source.incompleteLineWithheld` identify result, scan, or partial-write limits.
+A ready result with zero matches means none in the inspected portion.
+
+Recognized absolute paths and secret-bearing lines are withheld; relative source
+locations survive. Unrelated continuation text and lines naming other staged mods
+are omitted. `withheldLines` counts lines wholly or partly withheld, with a
+placeholder when no useful text remains. This is a bounded diagnostic projection,
+not complete sanitization of arbitrary mod-authored text. No raw-log/path input,
+automatic upload, or Content Patcher command execution is provided.
+
+To investigate omitted context locally, resolve review status's selected-role
+path against `labRoot`. For single, `persistentSavesPath` ends in `Saves`: take
+its parent directory, then append `ErrorLogs/SMAPI-latest.txt`. For network-2,
+append `ErrorLogs/SMAPI-latest.txt` directly to the resolved
+`roles[].stardewDataPath` for the selected role. Keep that exact source and the
+returned launch/role identity together; do not substitute a normal-player log.
+
 ## Finish or test persistence
 
 A real restart is required when accepting save/reload, persistence, join/resume, or lifecycle behavior. It is not automatically required for every content query or visual check.

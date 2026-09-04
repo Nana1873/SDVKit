@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 7 tools | 4 tools | 4 tools |
+| Default observation/evidence | 8 tools | 5 tools | 5 tools |
 | Add `--allow-input` | +4 | +4 | +4 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
@@ -46,7 +46,7 @@ selects a save and never grants access to the normal Stardew `Saves` directory.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
-`farmhand` for `network-2`. Every server exposes three read-only observation tools:
+`farmhand` for `network-2`. Every server exposes four read-only observation tools:
 
 - `stardew_runtime_get {}` returns matching structured JSON and compact JSON
   text with schema version, launch ID, topology, selected role, observation
@@ -66,6 +66,13 @@ tool call. `role` is `null` for `single` and exactly the configured `host` or
   warning/error arrays.
   Offset defaults to 0, limit defaults to 50, and limit remains within 1-100;
   follow `page.nextOffset` until it is `null`.
+- `stardew_mod_diagnostics { "modId": "Example.Mod", "limit": 20 }` reads
+  bounded warning/error entries and recognized exception continuations for one
+  staged identity from that role's exact isolated SMAPI log. It shares the CLI
+  [diagnostics projection and limits](live-review.md#diagnose-selected-mod-warnings-and-exceptions),
+  including attribution uncertainty, withheld context, scan/result counts and
+  truncation. The selected role cannot be overridden, paths are not operands,
+  and unavailable/stale/unbound logs return a controlled error without excerpts.
 
 Every server also exposes one controlled evidence-capture tool:
 
@@ -80,7 +87,7 @@ Every server also exposes one controlled evidence-capture tool:
   requests fail closed without retry. Map mode still requires a loaded world;
   viewport mode uses the current game backbuffer.
 
-The mod diagnostics are fixed SDVKit messages for a selected mod that is not
+The `stardew_mods_list` diagnostics are fixed SDVKit messages for a selected mod that is not
 loaded or whose loaded version or kind differs. They are not raw SMAPI loader
 warnings, exception text, or log excerpts. An unexpected loaded identity or an
 invalid, duplicate, oversized, stale, or mismatched snapshot fails closed
@@ -199,6 +206,7 @@ enabled_tools = [
   "stardew_runtime_get",
   "stardew_review_get",
   "stardew_mods_list",
+  "stardew_mod_diagnostics",
   "stardew_screenshot_capture",
   "stardew_data_assets_list",
   "stardew_data_keys_list",
@@ -225,6 +233,7 @@ enabled_tools = [
   "stardew_runtime_get",
   "stardew_review_get",
   "stardew_mods_list",
+  "stardew_mod_diagnostics",
   "stardew_screenshot_capture",
 ]
 ```
@@ -252,8 +261,10 @@ MCP serialization.
 A mismatch returns a controlled tool error and no stale payload; Data and
 screenshot failures expose a bounded internal code rather than raw paths or
 transport details. MCP
-responses never expose peer runtime data, filesystem paths, PIDs, environment
-values, raw SMAPI loader warnings or logs, menu CLR types, or arbitrary state.
+responses never expose peer runtime data, private absolute paths, PIDs, environment
+values, complete raw logs, menu CLR types, or arbitrary state. Selected log
+diagnostics preserve useful relative locations and filter recognized private
+context; this is not complete sanitization of arbitrary mod-authored text.
 The MCP server never reads the normal or mod-manager-owned `Mods` directory or
 normal saves. It opens no listener and cannot start, stop, reset, transport
 arbitrary console text, or mutate a review except through an explicitly enabled

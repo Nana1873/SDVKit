@@ -10,7 +10,7 @@ using SdvKit.Cli.Mcp;
 namespace SdvKit.Tests;
 
 [Collection(NativeWindowsProcessGroup.Name)]
-public sealed class ProjectReviewMcpDiagnosticsTests
+public sealed partial class ProjectReviewMcpDiagnosticsTests
 {
     private static readonly DateTimeOffset StartedAt =
         new(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
@@ -53,6 +53,7 @@ public sealed class ProjectReviewMcpDiagnosticsTests
                 ProjectReviewMcpDataTools.AssetsToolName,
                 ProjectReviewMcpDataTools.KeysToolName,
                 ProjectReviewMcpDataTools.RecordToolName,
+                ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
@@ -87,6 +88,7 @@ public sealed class ProjectReviewMcpDiagnosticsTests
 
         Assert.Equal(
             [
+                ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
@@ -530,9 +532,9 @@ public sealed class ProjectReviewMcpDiagnosticsTests
     {
         Tool[] diagnostics = tools.Where(tool => tool.Name is
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName
-                or ProjectReviewMcpDiagnosticsTools.ModsToolName)
+                or ProjectReviewMcpDiagnosticsTools.ModsToolName or ProjectReviewMcpLogTools.ToolName)
             .ToArray();
-        Assert.Equal(2, diagnostics.Length);
+        Assert.Equal(3, diagnostics.Length);
         foreach (Tool tool in diagnostics)
         {
             Assert.True(tool.Annotations?.ReadOnlyHint);
