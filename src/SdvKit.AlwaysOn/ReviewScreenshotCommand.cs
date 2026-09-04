@@ -184,9 +184,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio transports";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
@@ -212,6 +212,10 @@ internal static class ReviewCommand
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);
         var audioSource = new StardewReviewAudioSource(helper);
+        var modAssetSource = new StardewReviewModAssetSource(helper);
+        helper.Events.Content.AssetRequested += modAssetSource.OnAssetRequested;
+        helper.Events.Content.AssetReady += modAssetSource.OnAssetReady;
+        helper.Events.Content.AssetsInvalidated += modAssetSource.OnAssetsInvalidated;
         var fixtureRuntime = new StardewReviewFixtureRuntime(
             testSave,
             networkTwo,
@@ -259,6 +263,15 @@ internal static class ReviewCommand
                     && string.Equals(arguments[0], "audio", StringComparison.Ordinal))
                 {
                     ReviewAudioCommand.Handle(arguments, audioSource, runtimePath, monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "mod-assets", StringComparison.Ordinal))
+                {
+                    ReviewModAssetCommand.Handle(
+                        arguments,
+                        modAssetSource,
+                        runtimePath,
+                        monitor);
                 }
                 else
                 {

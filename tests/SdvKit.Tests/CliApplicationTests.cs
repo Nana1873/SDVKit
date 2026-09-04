@@ -1352,6 +1352,12 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review audio cue <id> [--topology single] --json"
                 + Environment.NewLine
+                + "       sdvkit project review mod-assets assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review mod-assets keys <Mods/owner/asset> [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json"
+                + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"

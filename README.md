@@ -46,7 +46,7 @@ Before replacing the program files, cleanly stop any active SDVKit lab or projec
 
 ## Current main (unreleased)
 
-Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, and create one bounded diagnostic PNG without exposing bulk asset extraction. Map and texture introspection are currently CLI-only.
+Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, create one bounded diagnostic PNG, inventory final audio metadata without playback, and inspect observed conventional `Mods/<owner>/...` requests through six primitive adapters. Map, texture, audio, and mod-asset introspection are CLI-only and do not expose bulk asset extraction.
 
 ## What's new in v0.6.1
 
@@ -260,6 +260,22 @@ sdvkit project review audio cue "maintheme" --topology single --json
 The public soundbank API can check an exact cue but cannot enumerate the built-in XACT cue bank. Coverage therefore reports `builtInCueCount: null` and `builtInCueInventoryStatus: "unavailableByPublicApi"`; an exact built-in probe does not expand or imply a complete built-in inventory. `dataDefined` describes the current post-pipeline `AudioChanges` entry, while `sessionResident` describes the current soundbank. Those values intentionally remain independent because Stardew keeps an applied audio override resident for the game session after its Data entry is removed.
 
 Cue IDs are case-sensitive. If a cue operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker. Unknown, case-mismatched, non-exact ambiguous, malformed, oversized, unsafe-ID, dummy-bank, disposed-bank, stale-response, and unsafe-response cases fail closed. Results never expose modification keys, audio file paths, `CustomFields`, raw banks, PCM or wave data; they never play, record, mutate, or bulk-export audio. Pages default to 50 identities, accept limits of 1-100, and reuse the exact owned-review transport and cleanup boundary. Native MCP exposure is intentionally not part of this capability.
+
+### Inspect observed mod-owned asset namespaces
+
+The `mod-assets` subcommands expose a bounded read-only catalogue of conventional `Mods/<owner>/...` asset requests observed after AlwaysOn subscribed in the same exact, target-load-confirmed `single` review. This is lifecycle evidence, not a filesystem scan or a complete inventory of assets which no loaded mod requested during that interval.
+
+```powershell
+sdvkit project review mod-assets assets --offset 0 --limit 100 --topology single --json
+sdvkit project review mod-assets keys "Mods/Example.Mod/Words" --offset 0 --limit 50 --topology single --json
+sdvkit project review mod-assets get "Mods/Example.Mod/Words" "Greeting" --topology single --json
+```
+
+`assets` reports the observed runtime type, resolved namespace-owner identity when it matches one loaded mod ID, supported adapter shape, request and ready counts, lifecycle generation, and whether the current generation is requested, ready, invalidated, or unavailable. SMAPI identity casing and slash direction are treated as equivalent and consolidated, while stable hyphen/underscore name collisions and multiple requested runtime types stay visible and fail closed for exact reads. Coverage is complete only when no conventional observed request was dropped by a malformed identity or the 2048-entry catalogue bound. Detailed loader/editor provider attribution remains explicitly unavailable because the supported public SMAPI API does not reliably expose it for an arbitrary final asset.
+
+`keys` and `get` load only one already-observed exact asset through SMAPI's active content pipeline and only through six reviewed adapters: string-to-string, string-to-integer, integer-to-string, and integer-to-integer dictionaries, ordered string lists, and one string singleton. Dictionary keys are ordinal-sorted, list keys are zero-based indexes, and the singleton key is `singleton`. Pages default to 50 with limits from 1 through 100; `get` accepts no pagination and returns only one primitive string or 32-bit integer. Asset operands stay canonical `Mods/<owner>/...` paths, keys are capped at 480 UTF-16 code units, and both require well-formed text. If an asset or key resembles an option, put every CLI option before `--`; all following tokens are operands.
+
+Every response uses a request-bound create-new regular file below the ignored review runtime, with a bounded exact JSON shape and no reused or foreign temporary-file cleanup. Unknown, removed, unsafe, colliding, type-changing, unsupported, stale, or mismatched requests fail closed. There is no arbitrary reflection, unknown-type serialization, bulk export, mutation, normal-`Mods` scan, network-role variant, or mod-asset MCP tool.
 
 AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` requests a full-map PNG through Stardew's native map-screenshot path and remains gated on a loaded world plus Stardew's map-screenshot capability. `sdvkit screenshot viewport <label>` captures the current rendered game viewport, including title and loading screens before `Context.IsWorldReady`, menus, and HUD. For example, transport `sdvkit screenshot viewport menu-open` through `project review command` to inspect a menu without desktop automation. Labels are limited to 1-64 ASCII letters, digits, `-`, or `_`; the fixed result name is `SDVKit-<label>.png`, and an existing target is never overwritten. Success is proven only when the AlwaysOn log reports the full path and that exact PNG exists below the role's isolated `StardewValley/Screenshots` directory; `commandWritten=true` still proves console delivery only.
 

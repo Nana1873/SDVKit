@@ -48,6 +48,10 @@ internal delegate LiveLabCommandResult ProjectReviewAudioCommandRunner(
     ReviewAudioQuery query,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewModAssetCommandRunner(
+    ReviewModAssetQuery query,
+    string labRoot);
+
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
@@ -115,6 +119,12 @@ public static class CliApplication
         "       sdvkit project review audio cues [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewAudioCueUsage =
         "       sdvkit project review audio cue <id> [--topology single] --json";
+    private const string ReviewModAssetAssetsUsage =
+        "       sdvkit project review mod-assets assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewModAssetKeysUsage =
+        "       sdvkit project review mod-assets keys <Mods/owner/asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewModAssetGetUsage =
+        "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single]";
     private const string ReviewMcpNetworkUsage =
@@ -152,7 +162,8 @@ public static class CliApplication
         ProjectReviewTextureCommandRunner? runProjectReviewTexture = null,
         ProjectReviewAudioCommandRunner? runProjectReviewAudio = null,
         ProjectReviewMcpCommandRunner? runProjectReviewMcp = null,
-        ProjectReviewMapCommandRunner? runProjectReviewMap = null)
+        ProjectReviewMapCommandRunner? runProjectReviewMap = null,
+        ProjectReviewModAssetCommandRunner? runProjectReviewModAsset = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -208,6 +219,8 @@ public static class CliApplication
             ProjectReviewTextureService.Execute(query, labRoot);
         runProjectReviewAudio ??= (query, labRoot) =>
             ProjectReviewAudioService.Execute(query, labRoot);
+        runProjectReviewModAsset ??= (query, labRoot) =>
+            ProjectReviewModAssetService.Execute(query, labRoot);
         runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
@@ -246,7 +259,8 @@ public static class CliApplication
                 runProjectReviewTexture,
                 runProjectReviewAudio,
                 runProjectReviewMcp,
-                runProjectReviewMap);
+                runProjectReviewMap,
+                runProjectReviewModAsset);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -325,7 +339,8 @@ public static class CliApplication
         ProjectReviewTextureCommandRunner runProjectReviewTexture,
         ProjectReviewAudioCommandRunner runProjectReviewAudio,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
-        ProjectReviewMapCommandRunner runProjectReviewMap)
+        ProjectReviewMapCommandRunner runProjectReviewMap,
+        ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -357,7 +372,8 @@ public static class CliApplication
                 runProjectReviewTexture,
                 runProjectReviewAudio,
                 runProjectReviewMcp,
-                runProjectReviewMap),
+                runProjectReviewMap,
+                runProjectReviewModAsset),
             _ => ProjectUsageError(error),
         };
     }
@@ -493,7 +509,8 @@ public static class CliApplication
         ProjectReviewTextureCommandRunner runProjectReviewTexture,
         ProjectReviewAudioCommandRunner runProjectReviewAudio,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
-        ProjectReviewMapCommandRunner runProjectReviewMap)
+        ProjectReviewMapCommandRunner runProjectReviewMap,
+        ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
         if (arguments.Count > 2
             && string.Equals(arguments[2], "data", StringComparison.Ordinal))
@@ -533,6 +550,16 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReviewAudio);
+        }
+
+        if (arguments.Count > 2
+            && string.Equals(arguments[2], "mod-assets", StringComparison.Ordinal))
+        {
+            return RunProjectReviewModAssets(
+                arguments,
+                output,
+                error,
+                runProjectReviewModAsset);
         }
 
         if (TryParseProjectReviewMcp(
@@ -1321,6 +1348,165 @@ public static class CliApplication
         return true;
     }
 
+    private static int RunProjectReviewModAssets(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
+    {
+        if ((arguments.Count == 4 && IsHelp(arguments[3]))
+            || (arguments.Count == 5 && IsHelp(arguments[4])))
+        {
+            WriteProjectReviewModAssetUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReviewModAssets(
+                arguments,
+                out ReviewModAssetQuery? query))
+        {
+            WriteProjectReviewModAssetUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReviewModAsset(
+            query!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
+    private static bool TryParseProjectReviewModAssets(
+        IReadOnlyList<string> arguments,
+        out ReviewModAssetQuery? query)
+    {
+        query = null;
+        if (arguments.Count < 5
+            || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
+            || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "mod-assets", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string operation = arguments[3];
+        if (operation is not (
+                ReviewModAssetContract.AssetsOperation
+                or ReviewModAssetContract.KeysOperation
+                or ReviewModAssetContract.GetOperation))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var offsetOptionCount = 0;
+        var limitOptionCount = 0;
+        string topology = LiveLabState.SingleTopology;
+        var offset = 0;
+        int limit = operation == ReviewModAssetContract.GetOperation
+            ? 1
+            : ReviewModAssetContract.DefaultPageLimit;
+        var optionsEnded = false;
+        var operandsBeforeEndMarker = -1;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
+            {
+                optionsEnded = true;
+                operandsBeforeEndMarker = operands.Count;
+                continue;
+            }
+
+            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
+            {
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                if (argument == "--topology")
+                {
+                    topologyOptionCount++;
+                    topology = value;
+                }
+                else if (argument == "--offset")
+                {
+                    offsetOptionCount++;
+                    if (!TryParseNonNegative(value, out offset))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    limitOptionCount++;
+                    if (!TryParseNonNegative(value, out limit))
+                    {
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            if (!optionsEnded && argument.StartsWith('-'))
+            {
+                return false;
+            }
+
+            operands.Add(argument);
+        }
+
+        int expectedOperands = operation switch
+        {
+            ReviewModAssetContract.AssetsOperation => 0,
+            ReviewModAssetContract.KeysOperation => 1,
+            ReviewModAssetContract.GetOperation => 2,
+            _ => throw new InvalidOperationException(),
+        };
+        bool exactOperation = operation == ReviewModAssetContract.GetOperation;
+        if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || offsetOptionCount > 1
+            || limitOptionCount > 1
+            || offset < 0
+            || limit < 1
+            || limit > ReviewModAssetContract.MaximumPageLimit
+            || (exactOperation && (offsetOptionCount > 0 || limitOptionCount > 0))
+            || operands.Count != expectedOperands
+            || (operands.Count > 0
+                && !ReviewModAssetContract.IsCanonicalAssetName(operands[0]))
+            || (operands.Count > 1
+                && (!ReviewModAssetContract.IsBoundedText(
+                        operands[1],
+                        ReviewModAssetContract.MaximumKeyLength)
+                    || string.IsNullOrWhiteSpace(operands[1])))
+            || (optionsEnded && operands.Count == operandsBeforeEndMarker))
+        {
+            return false;
+        }
+
+        query = new ReviewModAssetQuery(
+            operation,
+            operands.Count > 0 ? operands[0] : null,
+            operands.Count > 1 ? operands[1] : null,
+            offset,
+            limit);
+        return ProjectReviewModAssetService.Validate(query) is null;
+    }
+
     private static bool TryParseProjectReviewMcp(
         IReadOnlyList<string> arguments,
         out string? topology,
@@ -1748,6 +1934,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review audio <cues|cue> ... [--topology single] --json");
         output.WriteLine(
+            "  sdvkit project review mod-assets <assets|keys|get> ... [--topology single] --json");
+        output.WriteLine(
             "    Owned review-fixture console lines are transported as <text>; see project review --help.");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
@@ -1797,6 +1985,9 @@ public static class CliApplication
         output.WriteLine(ReviewTexturePreviewUsage);
         output.WriteLine(ReviewAudioCuesUsage);
         output.WriteLine(ReviewAudioCueUsage);
+        output.WriteLine(ReviewModAssetAssetsUsage);
+        output.WriteLine(ReviewModAssetKeysUsage);
+        output.WriteLine(ReviewModAssetGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1818,6 +2009,9 @@ public static class CliApplication
         output.WriteLine(ReviewTexturePreviewUsage);
         output.WriteLine(ReviewAudioCuesUsage);
         output.WriteLine(ReviewAudioCueUsage);
+        output.WriteLine(ReviewModAssetAssetsUsage);
+        output.WriteLine(ReviewModAssetKeysUsage);
+        output.WriteLine(ReviewModAssetGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1875,6 +2069,17 @@ public static class CliApplication
             "Queries require an active owned single review. Discovery covers the final Data/AudioChanges and Data/JukeboxTracks populations; the public API cannot enumerate the built-in XACT cue bank.");
         output.WriteLine(
             "For a cue operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
+    }
+
+    private static void WriteProjectReviewModAssetUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewModAssetAssetsUsage.TrimStart());
+        output.WriteLine(ReviewModAssetKeysUsage.TrimStart());
+        output.WriteLine(ReviewModAssetGetUsage.TrimStart());
+        output.WriteLine(
+            "Queries require an active owned single review and cover only observed requests in canonical Mods/<owner>/... namespaces. Six explicit primitive adapters are supported; detailed provider attribution is unavailable through the public SMAPI API.");
+        output.WriteLine(
+            "For an asset or key operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)
