@@ -1,6 +1,7 @@
 SDVKit portable Windows x64
 
-Requires Windows x64 and the .NET 8 SDK (not just the runtime).
+Requires Windows x64 and the .NET 8 SDK, version 8.0.419 or a later 8.0 SDK
+selected by global.json (not just the runtime).
 Building and live tests also need a local Stardew Valley + SMAPI installation.
 
 Open PowerShell in this extracted directory:

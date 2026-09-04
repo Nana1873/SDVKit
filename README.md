@@ -11,7 +11,7 @@ This documentation follows `main`. For a published package, use the [documentati
 
 ## Requirements
 
-- Windows x64 and the **.NET 8 SDK**. The SDK is needed to build mods and the game-side support mod, even when using the portable ZIP.
+- Windows x64 and the **.NET 8 SDK, version 8.0.419 or a later 8.0 SDK**, as selected by `global.json`. The SDK is needed to build mods and the game-side support mod, even when using the portable ZIP.
 - A local Stardew Valley installation with SMAPI for building and live testing. `doctor` must find exactly one ready installation.
 - Disposable-world automation accepts Stardew `>=1.6.15, <1.7` (file version `>=1.6.15.24356, <1.7`) and SMAPI `>=4.5.0, <5.0`. Runtime API checks also apply; these ranges are not a claim that every version has been tested.
 
