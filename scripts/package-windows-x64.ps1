@@ -63,6 +63,10 @@ $runtimeFiles = @(
     "sdvkit.dll",
     "sdvkit.deps.json",
     "sdvkit.runtimeconfig.json",
+    "Humanizer.dll",
+    "Json.More.dll",
+    "JsonPointer.Net.dll",
+    "JsonSchema.Net.dll",
     "Microsoft.Extensions.AI.Abstractions.dll",
     "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
     "Microsoft.Extensions.Logging.Abstractions.dll",
@@ -81,6 +85,8 @@ foreach ($fileName in $runtimeFiles) {
 
     Copy-Item -LiteralPath $sourcePath -Destination $packageRoot
 }
+
+Copy-Item -LiteralPath (Join-Path $publishRoot "schemas") -Destination $packageRoot -Recurse
 
 foreach ($fileName in @(
     "Directory.Build.props",

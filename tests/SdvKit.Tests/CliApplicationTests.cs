@@ -1692,7 +1692,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project <inspect|create|build|package|smoke|review> ..."
+            "Usage: sdvkit project <inspect|check|create|build|package|smoke|review> ..."
                 + Environment.NewLine,
             error);
     }
