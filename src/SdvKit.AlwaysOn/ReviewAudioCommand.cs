@@ -956,7 +956,12 @@ internal static class ReviewAudioResponseFile
         string runtimePath,
         ReviewAudioResponseEnvelope envelope)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(runtimePath);
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review runtime path is required.",
+                nameof(runtimePath));
+        }
         ArgumentNullException.ThrowIfNull(envelope);
 
         string absoluteRuntimePath = Path.GetFullPath(runtimePath);
