@@ -40,6 +40,10 @@ internal delegate LiveLabCommandResult ProjectReviewMapCommandRunner(
     ReviewMapQuery query,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewTextureCommandRunner(
+    ReviewTextureQuery query,
+    string labRoot);
+
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
@@ -97,6 +101,12 @@ public static class CliApplication
         "       sdvkit project review map property <map> tile <layer> <x> <y> direct <property> [--topology single] --json";
     private const string ReviewMapPropertyIndexUsage =
         "       sdvkit project review map property <map> tile <layer> <x> <y> tile-index <property> [--frame <n>] [--topology single] --json";
+    private const string ReviewTextureAssetsUsage =
+        "       sdvkit project review texture assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewTextureGetUsage =
+        "       sdvkit project review texture get <asset> [--topology single] --json";
+    private const string ReviewTexturePreviewUsage =
+        "       sdvkit project review texture preview <asset> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single]";
     private const string ReviewMcpNetworkUsage =
@@ -131,6 +141,7 @@ public static class CliApplication
         ProjectReviewCommandRunner? runProjectReview = null,
         ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
         ProjectReviewDataCommandRunner? runProjectReviewData = null,
+        ProjectReviewTextureCommandRunner? runProjectReviewTexture = null,
         ProjectReviewMcpCommandRunner? runProjectReviewMcp = null,
         ProjectReviewMapCommandRunner? runProjectReviewMap = null)
     {
@@ -184,6 +195,8 @@ public static class CliApplication
             ProjectReviewDataService.Execute(query, labRoot);
         runProjectReviewMap ??= (query, labRoot) =>
             ProjectReviewMapService.Execute(query, labRoot);
+        runProjectReviewTexture ??= (query, labRoot) =>
+            ProjectReviewTextureService.Execute(query, labRoot);
         runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
@@ -219,6 +232,7 @@ public static class CliApplication
                 runProjectReview,
                 runProjectReviewConsole,
                 runProjectReviewData,
+                runProjectReviewTexture,
                 runProjectReviewMcp,
                 runProjectReviewMap);
         }
@@ -296,6 +310,7 @@ public static class CliApplication
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
+        ProjectReviewTextureCommandRunner runProjectReviewTexture,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
         ProjectReviewMapCommandRunner runProjectReviewMap)
     {
@@ -326,6 +341,7 @@ public static class CliApplication
                 runProjectReview,
                 runProjectReviewConsole,
                 runProjectReviewData,
+                runProjectReviewTexture,
                 runProjectReviewMcp,
                 runProjectReviewMap),
             _ => ProjectUsageError(error),
@@ -460,6 +476,7 @@ public static class CliApplication
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
+        ProjectReviewTextureCommandRunner runProjectReviewTexture,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
         ProjectReviewMapCommandRunner runProjectReviewMap)
     {
@@ -481,6 +498,16 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReviewMap);
+        }
+
+        if (arguments.Count > 2
+            && string.Equals(arguments[2], "texture", StringComparison.Ordinal))
+        {
+            return RunProjectReviewTexture(
+                arguments,
+                output,
+                error,
+                runProjectReviewTexture);
         }
 
         if (TryParseProjectReviewMcp(
@@ -974,6 +1001,159 @@ public static class CliApplication
             CultureInfo.InvariantCulture,
             out parsed);
 
+    private static int RunProjectReviewTexture(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewTextureCommandRunner runProjectReviewTexture)
+    {
+        if ((arguments.Count == 4 && IsHelp(arguments[3]))
+            || (arguments.Count == 5 && IsHelp(arguments[4])))
+        {
+            WriteProjectReviewTextureUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReviewTexture(arguments, out ReviewTextureQuery? query))
+        {
+            WriteProjectReviewTextureUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReviewTexture(
+            query!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
+    private static bool TryParseProjectReviewTexture(
+        IReadOnlyList<string> arguments,
+        out ReviewTextureQuery? query)
+    {
+        query = null;
+        if (arguments.Count < 5
+            || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
+            || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "texture", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string operation = arguments[3];
+        if (operation is not (
+                ReviewTextureContract.AssetsOperation
+                or ReviewTextureContract.GetOperation
+                or ReviewTextureContract.PreviewOperation))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var offsetOptionCount = 0;
+        var limitOptionCount = 0;
+        string topology = LiveLabState.SingleTopology;
+        var offset = 0;
+        int limit = operation == ReviewTextureContract.AssetsOperation
+            ? ReviewTextureContract.DefaultPageLimit
+            : 1;
+        var optionsEnded = false;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
+            {
+                optionsEnded = true;
+                continue;
+            }
+
+            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
+            {
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
+                {
+                    topologyOptionCount++;
+                    topology = value;
+                }
+                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
+                {
+                    offsetOptionCount++;
+                    if (!int.TryParse(
+                            value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out offset))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    limitOptionCount++;
+                    if (!int.TryParse(
+                            value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out limit))
+                    {
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            if (!optionsEnded && argument.StartsWith('-'))
+            {
+                return false;
+            }
+
+            operands.Add(argument);
+        }
+
+        int expectedOperands = operation == ReviewTextureContract.AssetsOperation
+            ? 0
+            : 1;
+        if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || offsetOptionCount > 1
+            || limitOptionCount > 1
+            || offset < 0
+            || limit < 1
+            || limit > ReviewTextureContract.MaximumPageLimit
+            || operands.Count != expectedOperands
+            || operands.Any(string.IsNullOrWhiteSpace)
+            || (operands.Count == 1
+                && !ReviewTextureContract.IsCanonicalAssetName(operands[0]))
+            || (operation != ReviewTextureContract.AssetsOperation
+                && (offsetOptionCount > 0 || limitOptionCount > 0)))
+        {
+            return false;
+        }
+
+        query = new ReviewTextureQuery(
+            operation,
+            operands.Count > 0 ? operands[0] : null,
+            offset,
+            limit);
+        return true;
+    }
+
     private static bool TryParseProjectReviewMcp(
         IReadOnlyList<string> arguments,
         out string? topology,
@@ -1397,6 +1577,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... [--topology single] --json");
         output.WriteLine(
+            "  sdvkit project review texture <assets|get|preview> ... [--topology single] --json");
+        output.WriteLine(
             "    Owned review-fixture console lines are transported as <text>; see project review --help.");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
@@ -1441,6 +1623,9 @@ public static class CliApplication
         output.WriteLine(ReviewDataKeysUsage);
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewMapSummaryUsage);
+        output.WriteLine(ReviewTextureAssetsUsage);
+        output.WriteLine(ReviewTextureGetUsage);
+        output.WriteLine(ReviewTexturePreviewUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1457,6 +1642,9 @@ public static class CliApplication
         output.WriteLine(ReviewDataKeysUsage);
         output.WriteLine(ReviewDataGetUsage);
         output.WriteLine(ReviewMapSummaryUsage);
+        output.WriteLine(ReviewTextureAssetsUsage);
+        output.WriteLine(ReviewTextureGetUsage);
+        output.WriteLine(ReviewTexturePreviewUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1493,6 +1681,17 @@ public static class CliApplication
             "Property scopes: map <name>; layer <layer> <name>; tile <layer> <x> <y> <direct|tile-index> <name> (animated tile-index requires --frame <n>). Queries require an active owned single review.");
         output.WriteLine(
             "For a map, layer, or property operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
+    }
+
+    private static void WriteProjectReviewTextureUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewTextureAssetsUsage.TrimStart());
+        output.WriteLine(ReviewTextureGetUsage.TrimStart());
+        output.WriteLine(ReviewTexturePreviewUsage.TrimStart());
+        output.WriteLine(
+            "Queries require an active owned single review. Inventory is canonical and measured; exact metadata and one bounded diagnostic PNG reflect the final SMAPI content pipeline without claiming per-mod provenance.");
+        output.WriteLine(
+            "For an asset operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)

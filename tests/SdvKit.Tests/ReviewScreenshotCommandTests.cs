@@ -225,8 +225,35 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewDataCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewMapCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewTextureCommand.Handle(", source, StringComparison.Ordinal);
+        Assert.Contains("_texture.Format != SurfaceFormat.Color", ReadSource("ReviewTextureCommand.cs"), StringComparison.Ordinal);
         Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
         Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TextureClassifierInitializationIsDeferredUntilClassification()
+    {
+        string source = ReadSource("ReviewTextureCommand.cs");
+        int sourceConstructor = source.IndexOf(
+            "public StardewReviewTextureSource(",
+            StringComparison.Ordinal);
+        int classifyMethod = source.IndexOf(
+            "public bool TryClassifyTexture(",
+            sourceConstructor,
+            StringComparison.Ordinal);
+        int classifierConstruction = source.IndexOf(
+            "new ReviewTextureXnbClassifier(",
+            sourceConstructor,
+            StringComparison.Ordinal);
+
+        Assert.True(sourceConstructor >= 0);
+        Assert.True(classifyMethod > sourceConstructor);
+        Assert.True(classifierConstruction > classifyMethod);
+        Assert.True(
+            source.Split(
+                "when (!ReviewTextureException.IsFatal(exception))",
+                StringSplitOptions.None).Length - 1 >= 4);
     }
 
     private static ReviewScreenshotRequest Map(string label) =>

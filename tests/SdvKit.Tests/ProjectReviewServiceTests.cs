@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
@@ -1533,6 +1534,323 @@ public sealed class ProjectReviewServiceTests
                 Assert.Equal(1, sender.CallCount);
                 Assert.NotNull(responsePath);
                 Assert.False(File.Exists(responsePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void MapAndTextureQueriesShareTheExactReadyReviewTransport()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                var lines = new List<string>();
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        lines.Add(line);
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        if (tokens[1] == "map")
+                        {
+                            var mapReport = new ReviewMapReport(
+                                ReviewMapContract.SchemaVersion,
+                                "ready",
+                                ReviewMapContract.AssetsOperation,
+                                "1.6.15",
+                                "1.6.15.24356",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                [
+                                    new ReviewMapAssetReport(
+                                        "Maps/Town",
+                                        "xTile.Map",
+                                        "map",
+                                        new ReviewMapSummary(64, 64, 3, 2, 1, 4),
+                                        true,
+                                        null),
+                                ],
+                                null,
+                                null,
+                                null,
+                                new ReviewMapPage(0, 50, 1, 1, null),
+                                new ReviewMapCoverageReport(1, 1, 1, 0, 1, 0, 0, 0),
+                                []);
+                            File.WriteAllText(
+                                ReviewMapContract.ResponsePath(paths.RuntimePath, requestId),
+                                JsonSerializer.Serialize(
+                                    new ReviewMapResponseEnvelope(
+                                        ReviewMapContract.SchemaVersion,
+                                        requestId,
+                                        mapReport),
+                                    LiveLabJsonOptions.CamelCase));
+                            return;
+                        }
+
+                        Assert.Equal("texture", tokens[1]);
+                        var textureReport = new ReviewTextureReport(
+                            ReviewTextureContract.SchemaVersion,
+                            "ready",
+                            ReviewTextureContract.GetOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            "LooseSprites/Cursors",
+                            ReviewTextureContract.CanonicalGameContentSource,
+                            true,
+                            new ReviewTextureMetadataReport(64, 32, "Color", 1, false),
+                            new ReviewTextureProvenanceReport(
+                                ReviewTextureContract.FinalPipelineStage,
+                                false,
+                                ReviewTextureContract.ProvenanceUnavailableDetail),
+                            null,
+                            null,
+                            null,
+                            null,
+                            []);
+                        File.WriteAllText(
+                            ReviewTextureContract.ResponsePath(paths.RuntimePath, requestId),
+                            JsonSerializer.Serialize(
+                                new ReviewTextureResponseEnvelope(
+                                    ReviewTextureContract.SchemaVersion,
+                                    requestId,
+                                    textureReport),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult mapResult = ProjectReviewMapService.Execute(
+                    new ReviewMapQuery(
+                        ReviewMapContract.AssetsOperation,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        ReviewMapContract.DefaultPageLimit),
+                    temporary.Path,
+                    sender);
+                LiveLabCommandResult textureResult = ProjectReviewTextureService.Execute(
+                    new ReviewTextureQuery(
+                        ReviewTextureContract.GetOperation,
+                        "LooseSprites/Cursors",
+                        0,
+                        1),
+                    temporary.Path,
+                    sender);
+
+                Assert.Equal(0, mapResult.ExitCode);
+                Assert.Equal(0, textureResult.ExitCode);
+                Assert.Equal(2, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.Collection(
+                    lines,
+                    line => Assert.StartsWith("sdvkit map ", line, StringComparison.Ordinal),
+                    line => Assert.StartsWith("sdvkit texture ", line, StringComparison.Ordinal));
+                Assert.Empty(Directory.GetFiles(paths.RuntimePath, "review-*.json"));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void TexturePreviewQueryUsesTheExactReviewAndRetainsValidatedEvidence()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                string? responsePath = null;
+                string? previewPath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        responsePath = ReviewTextureContract.ResponsePath(
+                            paths.RuntimePath,
+                            requestId);
+                        previewPath = ReviewTextureContract.PreviewPath(
+                            paths.RuntimePath,
+                            requestId);
+                        byte[] png = PngTestData.CreateRgba8(64, 32);
+                        File.WriteAllBytes(previewPath, png);
+                        var report = new ReviewTextureReport(
+                            ReviewTextureContract.SchemaVersion,
+                            "ready",
+                            ReviewTextureContract.PreviewOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            "LooseSprites/Cursors",
+                            ReviewTextureContract.CanonicalGameContentSource,
+                            true,
+                            new ReviewTextureMetadataReport(
+                                64,
+                                32,
+                                "Color",
+                                1,
+                                false),
+                            new ReviewTextureProvenanceReport(
+                                ReviewTextureContract.FinalPipelineStage,
+                                false,
+                                ReviewTextureContract.ProvenanceUnavailableDetail),
+                            new ReviewTexturePreviewReport(
+                                ReviewTextureContract.PreviewFileName(requestId),
+                                64,
+                                32,
+                                png.Length,
+                                Convert.ToHexString(SHA256.HashData(png))
+                                    .ToLowerInvariant()),
+                            null,
+                            null,
+                            null,
+                            []);
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(
+                                new ReviewTextureResponseEnvelope(
+                                    ReviewTextureContract.SchemaVersion,
+                                    requestId,
+                                    report),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewTextureService.Execute(
+                    new ReviewTextureQuery(
+                        ReviewTextureContract.PreviewOperation,
+                        "LooseSprites/Cursors",
+                        0,
+                        1),
+                    temporary.Path,
+                    sender);
+
+                ReviewTextureReport report =
+                    Assert.IsType<ReviewTextureReport>(result.Report);
+                Assert.Equal(0, result.ExitCode);
+                Assert.Equal("ready", report.State);
+                Assert.NotNull(report.Preview);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit texture ", sender.Line, StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "LooseSprites/Cursors",
+                    sender.Line,
+                    StringComparison.Ordinal);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+                Assert.NotNull(previewPath);
+                Assert.True(File.Exists(previewPath));
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void InvalidTextureResponseNeverDeletesAPreviewCreatedAfterDispatch()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string? responsePath = null;
+                string? previewPath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string requestId = line.Split(' ')[2];
+                        responsePath = ReviewTextureContract.ResponsePath(
+                            paths.RuntimePath,
+                            requestId);
+                        previewPath = ReviewTextureContract.PreviewPath(
+                            paths.RuntimePath,
+                            requestId);
+                        File.WriteAllText(previewPath, "preserve foreign collision");
+                        File.WriteAllText(responsePath, "{}");
+                    });
+
+                LiveLabCommandResult result = ProjectReviewTextureService.Execute(
+                    new ReviewTextureQuery(
+                        ReviewTextureContract.PreviewOperation,
+                        "LooseSprites/Cursors",
+                        0,
+                        1),
+                    temporary.Path,
+                    sender);
+
+                ReviewTextureReport report =
+                    Assert.IsType<ReviewTextureReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("textureResponseInvalid", Assert.Single(report.Problems).Code);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+                Assert.NotNull(previewPath);
+                Assert.Equal("preserve foreign collision", File.ReadAllText(previewPath));
             }
             finally
             {

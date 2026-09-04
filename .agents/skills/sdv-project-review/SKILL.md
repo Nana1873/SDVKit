@@ -135,6 +135,26 @@ Page `assets`, `layers`, `tilesheets`, and `warps` through `nextOffset`; their l
 
 Use `get` for counts and checked display dimensions, `layer` for one exact stable layer, and `tile` for one in-bounds empty/static/animated tile. Tile output deliberately contains property counts and ordered frame identities rather than property values or a tile matrix. Read one property with an explicit scope: map and layer properties are direct; tile properties must name `direct` or `tile-index`; animated tile-index properties require the stable zero-based frame. Preserve returned JSON value types and never merge direct with tile-index properties. Treat any bounded problem as fail-closed and do not retry an unchanged request or substitute raw XNB access, reflection, export, mutation, network-2, or MCP.
 
+### Inspect canonical textures
+
+Use the CLI-only texture surface during the same exact, target-load-confirmed `single` review:
+
+```text
+sdvkit project review texture assets --offset 0 --limit 100 --topology single --json
+sdvkit project review texture get "LooseSprites/Cursors" --topology single --json
+sdvkit project review texture preview "LooseSprites/Cursors" --topology single --json
+```
+
+If an asset operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker; every following token is then an operand.
+
+`assets` independently measures non-localized `Content/**/*.xnb` candidates by parsing their bounded root TypeReader manifests without instantiating or caching the assets. It recognizes only the exact built-in texture reader and a narrow known non-texture reader set; malformed, custom, or unknown readers remain gaps. Its physical traversal is entry- and candidate-bounded, rejects reparse points, uses SMAPI's parsed locale identity rather than a filename pattern to exclude locale siblings, reads at most one 32 KiB output frame per XNB, and caps aggregate classification input at 64 MiB. Page through the returned texture identities and require `coverage.complete=true`, `gaps=0`, and `candidates=classified` before claiming complete inventory coverage. Non-textures are counted but not returned as texture entries.
+
+Use `get` for one final post-pipeline texture's dimensions, runtime format, mip levels, and availability. Exact reads accept an unambiguous case/separator-normalized token, return the canonical physical identity, and fail closed on normalized collisions. Detailed per-mod loader/editor provenance is deliberately reported unavailable because the supported public SMAPI surface cannot provide it reliably. Do not infer provider attribution from changed dimensions or format.
+
+Use `preview` only when one bounded visual diagnostic is needed. It requires the RGBA8 `Color` runtime format, rejects source dimensions above 8192 or 16,777,216 source pixels, never upscales, fits within 512x512, and caps the encoded PNG at 2 MiB. Other runtime formats remain available through `get` metadata but fail closed for preview. Accept the result only when the GUID-derived relative path stays under the owned runtime, the reported dimensions and byte count match the regular non-reparse PNG, and its SHA-256 matches. The file remains owned evidence below `.sdvkit`; do not copy it into the repository or expose its pixels through another response.
+
+Unknown, ambiguous, non-texture, unclassified, oversized, stale, or mismatched requests must remain fail-closed. Never loop `preview` into bulk extraction, request raw pixels or source XNBs, mutate or dispose the game-cached texture, use this surface for a network role, or advertise a texture MCP tool.
+
 ### Drive review input without desktop automation
 
 Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:

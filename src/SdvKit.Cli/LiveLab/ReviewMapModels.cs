@@ -187,34 +187,8 @@ internal static class ReviewMapQueryValidation
 
 internal static class ReviewMapText
 {
-    public static bool IsWellFormedUtf16(string? value)
-    {
-        if (value is null)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < value.Length; index++)
-        {
-            char character = value[index];
-            if (char.IsHighSurrogate(character))
-            {
-                if (index + 1 >= value.Length
-                    || !char.IsLowSurrogate(value[index + 1]))
-                {
-                    return false;
-                }
-
-                index++;
-            }
-            else if (char.IsLowSurrogate(character))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    public static bool IsWellFormedUtf16(string? value) =>
+        ReviewTransportText.IsWellFormedUtf16(value);
 }
 
 internal sealed record ReviewMapPropertyValue(

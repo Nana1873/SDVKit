@@ -1147,6 +1147,12 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... --json"
                 + Environment.NewLine
+                + "       sdvkit project review texture assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review texture get <asset> [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review texture preview <asset> [--topology single] --json"
+                + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"

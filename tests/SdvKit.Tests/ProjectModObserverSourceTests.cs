@@ -88,6 +88,10 @@ public sealed class ProjectModObserverSourceTests
 
     [Theory]
     [InlineData("LoadedModsModels.cs")]
+    [InlineData("ReviewMapModels.cs")]
+    [InlineData("ReviewTextureModels.cs")]
+    [InlineData("ReviewTexturePngValidator.cs")]
+    [InlineData("ReviewTransportModels.cs")]
     [InlineData("RuntimeVersionCompatibility.cs")]
     public void PortablePackageIncludesAlwaysOnLinkedCliSource(string fileName)
     {
