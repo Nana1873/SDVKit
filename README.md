@@ -44,6 +44,14 @@ Expand-Archive .\SDVKit-0.7.0-win-x64.zip
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
+From a repository checkout, use the same archive verification as CI instead of rebuilding a downloaded candidate:
+
+```powershell
+.\scripts\verify-windows-x64.ps1 -ArchivePath <path-to-zip> -ExpectedVersion <version> -ExpectedDoctorStatus ready
+```
+
+Use `notFound` on a machine without Stardew + SMAPI. The check verifies the sidecar, archive entries, extracted CLI version, doctor, inactive-review MCP startup, and project creation/inspection without starting the game. It retains a fresh temporary extraction for inspection; `-ExtractRoot` can select another fresh directory outside the checkout.
+
 ## What's new in v0.7.0
 
 Since `v0.6.1`, exact owned reviews add bounded CLI-only introspection for canonical maps, final post-pipeline textures and diagnostic previews, audio metadata without playback, and observed conventional `Mods/<owner>/...` asset requests. These adapters do not expose bulk asset extraction and are not native MCP tools.
