@@ -36,6 +36,10 @@ internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
     ReviewDataQuery query,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewMapCommandRunner(
+    ReviewMapQuery query,
+    string labRoot);
+
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
@@ -69,6 +73,30 @@ public static class CliApplication
         "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewDataGetUsage =
         "       sdvkit project review data get <asset> <key> [--topology single] --json";
+    private const string ReviewMapAssetsUsage =
+        "       sdvkit project review map assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewMapSummaryUsage =
+        "       sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... --json";
+    private const string ReviewMapGetUsage =
+        "       sdvkit project review map get <map> [--topology single] --json";
+    private const string ReviewMapLayersUsage =
+        "       sdvkit project review map layers <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewMapLayerUsage =
+        "       sdvkit project review map layer <map> <layer> [--topology single] --json";
+    private const string ReviewMapTileSheetsUsage =
+        "       sdvkit project review map tilesheets <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewMapWarpsUsage =
+        "       sdvkit project review map warps <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewMapTileUsage =
+        "       sdvkit project review map tile <map> <layer> <x> <y> [--topology single] --json";
+    private const string ReviewMapPropertyMapUsage =
+        "       sdvkit project review map property <map> map <property> [--topology single] --json";
+    private const string ReviewMapPropertyLayerUsage =
+        "       sdvkit project review map property <map> layer <layer> <property> [--topology single] --json";
+    private const string ReviewMapPropertyTileUsage =
+        "       sdvkit project review map property <map> tile <layer> <x> <y> direct <property> [--topology single] --json";
+    private const string ReviewMapPropertyIndexUsage =
+        "       sdvkit project review map property <map> tile <layer> <x> <y> tile-index <property> [--frame <n>] [--topology single] --json";
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single]";
     private const string ReviewMcpNetworkUsage =
@@ -103,7 +131,8 @@ public static class CliApplication
         ProjectReviewCommandRunner? runProjectReview = null,
         ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
         ProjectReviewDataCommandRunner? runProjectReviewData = null,
-        ProjectReviewMcpCommandRunner? runProjectReviewMcp = null)
+        ProjectReviewMcpCommandRunner? runProjectReviewMcp = null,
+        ProjectReviewMapCommandRunner? runProjectReviewMap = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -153,6 +182,8 @@ public static class CliApplication
             ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
         runProjectReviewData ??= (query, labRoot) =>
             ProjectReviewDataService.Execute(query, labRoot);
+        runProjectReviewMap ??= (query, labRoot) =>
+            ProjectReviewMapService.Execute(query, labRoot);
         runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
@@ -188,7 +219,8 @@ public static class CliApplication
                 runProjectReview,
                 runProjectReviewConsole,
                 runProjectReviewData,
-                runProjectReviewMcp);
+                runProjectReviewMcp,
+                runProjectReviewMap);
         }
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
@@ -264,7 +296,8 @@ public static class CliApplication
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
-        ProjectReviewMcpCommandRunner runProjectReviewMcp)
+        ProjectReviewMcpCommandRunner runProjectReviewMcp,
+        ProjectReviewMapCommandRunner runProjectReviewMap)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -293,7 +326,8 @@ public static class CliApplication
                 runProjectReview,
                 runProjectReviewConsole,
                 runProjectReviewData,
-                runProjectReviewMcp),
+                runProjectReviewMcp,
+                runProjectReviewMap),
             _ => ProjectUsageError(error),
         };
     }
@@ -426,7 +460,8 @@ public static class CliApplication
         ProjectReviewCommandRunner runProjectReview,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
-        ProjectReviewMcpCommandRunner runProjectReviewMcp)
+        ProjectReviewMcpCommandRunner runProjectReviewMcp,
+        ProjectReviewMapCommandRunner runProjectReviewMap)
     {
         if (arguments.Count > 2
             && string.Equals(arguments[2], "data", StringComparison.Ordinal))
@@ -436,6 +471,16 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReviewData);
+        }
+
+        if (arguments.Count > 2
+            && string.Equals(arguments[2], "map", StringComparison.Ordinal))
+        {
+            return RunProjectReviewMap(
+                arguments,
+                output,
+                error,
+                runProjectReviewMap);
         }
 
         if (TryParseProjectReviewMcp(
@@ -636,6 +681,298 @@ public static class CliApplication
             limit);
         return true;
     }
+
+    private static int RunProjectReviewMap(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewMapCommandRunner runProjectReviewMap)
+    {
+        if ((arguments.Count == 4 && IsHelp(arguments[3]))
+            || (arguments.Count == 5 && IsHelp(arguments[4])))
+        {
+            WriteProjectReviewMapUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReviewMap(arguments, out ReviewMapQuery? query))
+        {
+            WriteProjectReviewMapUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReviewMap(
+            query!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
+    private static bool TryParseProjectReviewMap(
+        IReadOnlyList<string> arguments,
+        out ReviewMapQuery? query)
+    {
+        query = null;
+        if (arguments.Count < 5
+            || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
+            || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "map", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string operation = arguments[3];
+        if (operation is not (
+                ReviewMapContract.AssetsOperation
+                or ReviewMapContract.GetOperation
+                or ReviewMapContract.LayersOperation
+                or ReviewMapContract.LayerOperation
+                or ReviewMapContract.TileSheetsOperation
+                or ReviewMapContract.WarpsOperation
+                or ReviewMapContract.TileOperation
+                or ReviewMapContract.PropertyOperation))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var offsetOptionCount = 0;
+        var limitOptionCount = 0;
+        var frameOptionCount = 0;
+        string topology = LiveLabState.SingleTopology;
+        var offset = 0;
+        int limit = operation is ReviewMapContract.AssetsOperation
+            or ReviewMapContract.LayersOperation
+            or ReviewMapContract.TileSheetsOperation
+            or ReviewMapContract.WarpsOperation
+                ? ReviewMapContract.DefaultPageLimit
+                : 1;
+        int? frameIndex = null;
+        var optionsEnded = false;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
+            {
+                optionsEnded = true;
+                continue;
+            }
+
+            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit" or "--frame")
+            {
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                if (argument == "--topology")
+                {
+                    topologyOptionCount++;
+                    topology = value;
+                }
+                else if (argument == "--offset")
+                {
+                    offsetOptionCount++;
+                    if (!TryParseNonNegative(value, out offset))
+                    {
+                        return false;
+                    }
+                }
+                else if (argument == "--limit")
+                {
+                    limitOptionCount++;
+                    if (!TryParseNonNegative(value, out limit))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    frameOptionCount++;
+                    if (!TryParseNonNegative(value, out int parsedFrame))
+                    {
+                        return false;
+                    }
+
+                    frameIndex = parsedFrame;
+                }
+
+                continue;
+            }
+
+            if (!optionsEnded && argument.StartsWith('-'))
+            {
+                return false;
+            }
+
+            operands.Add(argument);
+        }
+
+        bool listOperation = operation is ReviewMapContract.AssetsOperation
+            or ReviewMapContract.LayersOperation
+            or ReviewMapContract.TileSheetsOperation
+            or ReviewMapContract.WarpsOperation;
+        if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || offsetOptionCount > 1
+            || limitOptionCount > 1
+            || frameOptionCount > 1
+            || offset < 0
+            || limit < 1
+            || limit > ReviewMapContract.MaximumPageLimit
+            || (!listOperation && (offsetOptionCount > 0 || limitOptionCount > 0))
+            || (operation != ReviewMapContract.PropertyOperation && frameOptionCount > 0)
+            || operands.Any(string.IsNullOrWhiteSpace))
+        {
+            return false;
+        }
+
+        string? asset = null;
+        string? layer = null;
+        int? x = null;
+        int? y = null;
+        string? propertyScope = null;
+        string? propertySource = null;
+        string? property = null;
+        switch (operation)
+        {
+            case ReviewMapContract.AssetsOperation when operands.Count == 0:
+                break;
+            case ReviewMapContract.GetOperation:
+            case ReviewMapContract.LayersOperation:
+            case ReviewMapContract.TileSheetsOperation:
+            case ReviewMapContract.WarpsOperation:
+                if (operands.Count != 1)
+                {
+                    return false;
+                }
+                asset = operands[0];
+                break;
+            case ReviewMapContract.LayerOperation:
+                if (operands.Count != 2)
+                {
+                    return false;
+                }
+                asset = operands[0];
+                layer = operands[1];
+                break;
+            case ReviewMapContract.TileOperation:
+                if (operands.Count != 4
+                    || !TryParseNonNegative(operands[2], out int tileX)
+                    || !TryParseNonNegative(operands[3], out int tileY))
+                {
+                    return false;
+                }
+                asset = operands[0];
+                layer = operands[1];
+                x = tileX;
+                y = tileY;
+                break;
+            case ReviewMapContract.PropertyOperation:
+                if (!TryParseMapPropertyOperands(
+                        operands,
+                        frameIndex,
+                        out asset,
+                        out layer,
+                        out x,
+                        out y,
+                        out propertyScope,
+                        out propertySource,
+                        out property))
+                {
+                    return false;
+                }
+                break;
+            default:
+                return false;
+        }
+
+        query = new ReviewMapQuery(
+            operation,
+            asset,
+            layer,
+            x,
+            y,
+            propertyScope,
+            propertySource,
+            frameIndex,
+            property,
+            offset,
+            limit);
+        return ProjectReviewMapService.Validate(query) is null;
+    }
+
+    private static bool TryParseMapPropertyOperands(
+        IReadOnlyList<string> operands,
+        int? frameIndex,
+        out string? asset,
+        out string? layer,
+        out int? x,
+        out int? y,
+        out string? scope,
+        out string? source,
+        out string? property)
+    {
+        asset = null;
+        layer = null;
+        x = null;
+        y = null;
+        scope = null;
+        source = null;
+        property = null;
+        if (operands.Count == 3 && operands[1] == ReviewMapContract.MapScope)
+        {
+            asset = operands[0];
+            scope = ReviewMapContract.MapScope;
+            source = ReviewMapContract.DirectSource;
+            property = operands[2];
+            return frameIndex is null;
+        }
+        if (operands.Count == 4 && operands[1] == ReviewMapContract.LayerScope)
+        {
+            asset = operands[0];
+            scope = ReviewMapContract.LayerScope;
+            layer = operands[2];
+            source = ReviewMapContract.DirectSource;
+            property = operands[3];
+            return frameIndex is null;
+        }
+        if (operands.Count == 7
+            && operands[1] == ReviewMapContract.TileScope
+            && operands[5] is ReviewMapContract.DirectSource or ReviewMapContract.TileIndexSource
+            && TryParseNonNegative(operands[3], out int tileX)
+            && TryParseNonNegative(operands[4], out int tileY))
+        {
+            asset = operands[0];
+            scope = ReviewMapContract.TileScope;
+            layer = operands[2];
+            x = tileX;
+            y = tileY;
+            source = operands[5];
+            property = operands[6];
+            return source == ReviewMapContract.TileIndexSource || frameIndex is null;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseNonNegative(string value, out int parsed) =>
+        int.TryParse(
+            value,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out parsed);
 
     private static bool TryParseProjectReviewMcp(
         IReadOnlyList<string> arguments,
@@ -1058,6 +1395,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review data <assets|keys|get> ... [--topology single] --json");
         output.WriteLine(
+            "  sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... [--topology single] --json");
+        output.WriteLine(
             "    Owned review-fixture console lines are transported as <text>; see project review --help.");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
@@ -1101,6 +1440,7 @@ public static class CliApplication
         output.WriteLine(ReviewDataAssetsUsage);
         output.WriteLine(ReviewDataKeysUsage);
         output.WriteLine(ReviewDataGetUsage);
+        output.WriteLine(ReviewMapSummaryUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1116,6 +1456,7 @@ public static class CliApplication
         output.WriteLine(ReviewDataAssetsUsage);
         output.WriteLine(ReviewDataKeysUsage);
         output.WriteLine(ReviewDataGetUsage);
+        output.WriteLine(ReviewMapSummaryUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1133,6 +1474,25 @@ public static class CliApplication
         output.WriteLine(ReviewDataGetUsage.TrimStart());
         output.WriteLine(
             "Queries require an active owned single review and return only canonical installed Data assets after the active SMAPI content pipeline.");
+    }
+
+    private static void WriteProjectReviewMapUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewMapAssetsUsage.TrimStart());
+        output.WriteLine(ReviewMapGetUsage.TrimStart());
+        output.WriteLine(ReviewMapLayersUsage.TrimStart());
+        output.WriteLine(ReviewMapLayerUsage.TrimStart());
+        output.WriteLine(ReviewMapTileSheetsUsage.TrimStart());
+        output.WriteLine(ReviewMapWarpsUsage.TrimStart());
+        output.WriteLine(ReviewMapTileUsage.TrimStart());
+        output.WriteLine(ReviewMapPropertyMapUsage.TrimStart());
+        output.WriteLine(ReviewMapPropertyLayerUsage.TrimStart());
+        output.WriteLine(ReviewMapPropertyTileUsage.TrimStart());
+        output.WriteLine(ReviewMapPropertyIndexUsage.TrimStart());
+        output.WriteLine(
+            "Property scopes: map <name>; layer <layer> <name>; tile <layer> <x> <y> <direct|tile-index> <name> (animated tile-index requires --frame <n>). Queries require an active owned single review.");
+        output.WriteLine(
+            "For a map, layer, or property operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)

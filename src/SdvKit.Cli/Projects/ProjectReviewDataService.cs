@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Security;
 using System.Text.Json;
@@ -8,9 +7,7 @@ namespace SdvKit.Cli;
 
 internal static class ProjectReviewDataService
 {
-    private const int Success = 0;
     private const int OperationFailed = 3;
-    private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
     private static readonly JsonSerializerOptions ResponseJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -20,7 +17,8 @@ internal static class ProjectReviewDataService
         ReviewDataQuery query,
         string labRoot,
         IProjectReviewConsoleInputSender? inputSender = null,
-        Action<TimeSpan>? delay = null)
+        Action<TimeSpan>? delay = null,
+        TimeSpan? responseTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentException.ThrowIfNullOrWhiteSpace(labRoot);
@@ -48,119 +46,48 @@ internal static class ProjectReviewDataService
             paths.RuntimePath,
             requestId);
         string command = BuildCommand(requestId, query);
-        LiveLabCommandResult sent = ProjectReviewService.ExecuteCommand(
-            command,
-            LiveLabState.SingleTopology,
-            role: null,
-            labRoot,
-            inputSender);
-        ProjectReviewCommandReport commandReport =
-            sent.Report as ProjectReviewCommandReport
-            ?? throw new InvalidDataException(
-                "The review-data transport returned an unexpected report type.");
-        if (sent.ExitCode != Success || commandReport.CommandWritten != true)
-        {
-            return Failure(
-                query.Operation,
-                commandReport.Problems.Count > 0
-                    ? commandReport.Problems
-                        .Select(problem => Problem(problem.Code, problem.Message))
-                        .ToArray()
-                    : [Problem(
-                        "dataTransportFailed",
-                        "The bounded review-data request was not written to the exact owned review.")]);
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        Action<TimeSpan> wait = delay ?? Thread.Sleep;
-        while (!File.Exists(responsePath) && stopwatch.Elapsed < ResponseTimeout)
-        {
-            wait(TimeSpan.FromMilliseconds(50));
-        }
-
-        if (!File.Exists(responsePath))
-        {
-            return Failure(
-                query.Operation,
-                Problem(
-                    "dataResponseTimedOut",
-                    "The exact owned review did not publish the bounded data response in time; the request was not retried."));
-        }
-
-        bool regularResponse = false;
-        try
-        {
-            FileAttributes attributes = File.GetAttributes(responsePath);
-            if ((attributes & FileAttributes.ReparsePoint) != 0
-                || (attributes & FileAttributes.Directory) != 0)
-            {
-                return Failure(
-                    query.Operation,
-                    Problem(
-                        "dataResponseInvalid",
-                        "The review-data response is not a regular file."));
-            }
-            regularResponse = true;
-
-            long length = new FileInfo(responsePath).Length;
-            if (length <= 0 || length > ReviewDataContract.MaximumResponseBytes)
-            {
-                throw new InvalidDataException(
-                    "The review-data response is empty or exceeds its bounded maximum.");
-            }
-
-            ReviewDataResponseEnvelope? envelope = JsonSerializer.Deserialize<ReviewDataResponseEnvelope>(
-                File.ReadAllBytes(responsePath),
-                ResponseJsonOptions);
-            if (envelope is null
-                || envelope.SchemaVersion != ReviewDataContract.SchemaVersion
-                || !string.Equals(
-                    envelope.RequestId,
-                    requestId,
-                    StringComparison.Ordinal)
-                || envelope.Report.SchemaVersion != ReviewDataContract.SchemaVersion
-                || !string.Equals(
-                    envelope.Report.Operation,
-                    query.Operation,
-                    StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    "The review-data response does not match the exact request.");
-            }
-
-            var result = new LiveLabCommandResult(
-                envelope.Report.Problems.Count == 0
+        ProjectReviewResponseTransportResult<ReviewDataResponseEnvelope> transported =
+            ProjectReviewResponseTransport.Execute(
+                command,
+                responsePath,
+                ReviewDataContract.MaximumResponseBytes,
+                "data",
+                "review-data",
+                labRoot,
+                bytes => JsonSerializer.Deserialize<ReviewDataResponseEnvelope>(
+                    bytes,
+                    ResponseJsonOptions),
+                envelope => envelope.Report is not null
+                    && envelope.Report.Problems is not null
+                    && envelope.SchemaVersion == ReviewDataContract.SchemaVersion
                     && string.Equals(
-                        envelope.Report.State,
-                        "ready",
+                        envelope.RequestId,
+                        requestId,
                         StringComparison.Ordinal)
-                            ? Success
-                            : OperationFailed,
-                envelope.Report);
-            File.Delete(responsePath);
-            regularResponse = false;
-            return result;
-        }
-        catch (Exception exception) when (IsControlledFailure(exception))
+                    && envelope.Report.SchemaVersion == ReviewDataContract.SchemaVersion
+                    && string.Equals(
+                        envelope.Report.Operation,
+                        query.Operation,
+                        StringComparison.Ordinal),
+                inputSender,
+                delay,
+                responseTimeout);
+        if (transported.Response is null)
         {
-            if (regularResponse)
-            {
-                try
-                {
-                    File.Delete(responsePath);
-                }
-                catch (Exception cleanupException) when (IsControlledFailure(cleanupException))
-                {
-                    // The request still fails closed; a unique response name is never reused.
-                }
-            }
-
             return Failure(
                 query.Operation,
-                Problem(
-                    "dataResponseInvalid",
-                    $"The review-data response could not be validated ({exception.GetType().Name})."));
+                transported.Problems
+                    .Select(problem => Problem(problem.Code, problem.Message))
+                    .ToArray());
         }
+
+        ReviewDataReport report = transported.Response.Report;
+        return new LiveLabCommandResult(
+            report.Problems.Count == 0
+                && string.Equals(report.State, "ready", StringComparison.Ordinal)
+                    ? 0
+                    : OperationFailed,
+            report);
     }
 
     internal static string BuildCommand(

@@ -211,7 +211,7 @@ public sealed class ReviewScreenshotCommandTests
     }
 
     [Fact]
-    public void OneSdvkitRootRoutesScreenshotAndFixtureActions()
+    public void OneSdvkitRootRoutesAllReviewActions()
     {
         string source = ReadSource("ReviewScreenshotCommand.cs");
         string modEntry = ReadSource("ModEntry.cs");
@@ -224,6 +224,7 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Contains("ReviewInputCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewDataCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewMapCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
         Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
     }
