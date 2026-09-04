@@ -172,6 +172,22 @@ If a cue operand starts with `-` or matches an option name, put every CLI option
 
 Audio introspection has no MCP tools. Do not route it through the native MCP server or invent a bridge; use these existing CLI commands directly.
 
+### Inspect observed mod-owned asset namespaces
+
+Use the CLI-only `mod-assets` surface during the exact, target-load-confirmed `single` review:
+
+```text
+sdvkit project review mod-assets assets --offset 0 --limit 100 --topology single --json
+sdvkit project review mod-assets keys "Mods/Example.Mod/Words" --offset 0 --limit 50 --topology single --json
+sdvkit project review mod-assets get "Mods/Example.Mod/Words" "Greeting" --topology single --json
+```
+
+This catalogue contains only conventional `Mods/<owner>/...` requests observed since AlwaysOn subscribed; it is not a filesystem scan and cannot prove the existence of assets no loaded mod requested in that interval. Page `assets` through `nextOffset` and require `coverage.complete=true` before claiming the observed set has no dropped requests. Keep namespace ownership separate from provider provenance: one loaded mod ID may resolve the conventional owner segment, but the supported public SMAPI API does not reliably expose the loader/editor which produced an arbitrary final value, so provider detail remains unavailable.
+
+SMAPI identity casing and slash direction consolidate into one catalogue entry. Stable hyphen/underscore collisions, multiple runtime types for one identity, invalidation generations, removal, unsupported adapters, and malformed or oversized observations stay explicit and fail closed. Query operands must retain the canonical `Mods/<owner>/...` path shape; stable matching must not flatten owner or path-segment boundaries. Put options before `--` when a key resembles one, then treat every following token as an operand.
+
+Use `keys` and `get` only for one observed asset whose runtime type has one of the six reviewed adapters: the four string/integer dictionary combinations, `List<string>`, or a string singleton. Pages remain 1-100, `get` accepts no pagination, keys are bounded to 480 well-formed UTF-16 code units, and returned values are only one string or 32-bit integer. Never introduce arbitrary reflection, serialize an unknown type, bulk-export records, mutate or invalidate content, scan normal `Mods`, retry an unchanged failed request, use a network role, or advertise a mod-asset MCP tool.
+
 ### Drive review input without desktop automation
 
 Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:

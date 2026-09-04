@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace SdvKit.Cli.LiveLab;
@@ -10,20 +9,24 @@ internal static class ReviewModAssetContract
     public const int MaximumPageLimit = 100;
     public const int MaximumObservedAssets = 2048;
     public const int MaximumAssetLength = 512;
-    public const int MaximumKeyLength = 2048;
+    public const int MaximumKeyLength = 480;
     public const int MaximumRecordsPerAsset = 10_000;
     public const int MaximumStringValueLength = 64 * 1024;
     public const int MaximumAdaptedPayloadBytes = 4 * 1024 * 1024;
     public const int MaximumResponseBytes = 5 * 1024 * 1024;
+    public const int MaximumVersionLength = 128;
+    public const int MaximumDataTypeLength = 512;
+    public const int MaximumIdentityStatusLength = 64;
+    public const int MaximumShapeLength = 64;
+    public const int MaximumLifecycleLength = 32;
+    public const int MaximumProblemCount = 8;
+    public const int MaximumProblemCodeLength = 64;
+    public const int MaximumProblemMessageLength = 512;
     public const string AssetsOperation = "assets";
     public const string KeysOperation = "keys";
     public const string GetOperation = "get";
     public const string SingletonKey = "singleton";
     public const string CoverageScope = "observedRequestsSinceAlwaysOnSubscribed";
-
-    private static readonly UTF8Encoding StrictUtf8 = new(
-        encoderShouldEmitUTF8Identifier: false,
-        throwOnInvalidBytes: true);
 
     public static string ResponsePath(string runtimePath, string requestId)
     {
@@ -44,66 +47,85 @@ internal static class ReviewModAssetContract
     }
 
     public static bool IsRequestId(string? value) =>
-        value is not null && Guid.TryParseExact(value, "N", out _);
+        ReviewTransportToken.IsRequestId(value);
 
-    public static string Encode(string value)
+    public static string Encode(string value) => ReviewTransportToken.Encode(value);
+
+    public static bool TryDecode(string token, int maximumLength, out string value) =>
+        ReviewTransportToken.TryDecode(token, maximumLength, out value);
+
+    public static bool IsCanonicalAssetName(string? value)
     {
-        ArgumentNullException.ThrowIfNull(value);
-        return Convert.ToBase64String(StrictUtf8.GetBytes(value))
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        if (!IsBoundedText(value, MaximumAssetLength)
+            || !string.Equals(value, value!.Trim(), StringComparison.Ordinal)
+            || value.Contains('\\'))
+        {
+            return false;
+        }
+
+        string[] segments = value.Split('/');
+        return segments.Length >= 3
+            && string.Equals(segments[0], "Mods", StringComparison.Ordinal)
+            && segments.All(segment =>
+                segment.Length > 0
+                && segment is not "." and not ".."
+                && StableIdentityNormalizer.Normalize(segment).Length > 0);
     }
 
-    public static bool TryDecode(string token, int maximumLength, out string value)
+    public static bool IsBoundedText(string? value, int maximumLength) =>
+        value is not null
+        && value.Length is > 0
+        && value.Length <= maximumLength
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
+
+    public static bool AssetIdentityEquals(string left, string right) =>
+        string.Equals(
+            left.Replace('\\', '/'),
+            right.Replace('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    public static bool StableAssetIdentityEquals(string left, string right)
     {
-        ArgumentNullException.ThrowIfNull(token);
-        value = string.Empty;
-        if (token.Length == 0
-            || token.Any(character =>
-                character is not (>= 'A' and <= 'Z')
-                    and not (>= 'a' and <= 'z')
-                    and not (>= '0' and <= '9')
-                    and not '-'
-                    and not '_'))
+        string[] leftSegments = left.Replace('\\', '/').Split('/');
+        string[] rightSegments = right.Replace('\\', '/').Split('/');
+        if (leftSegments.Length < 3
+            || leftSegments.Length != rightSegments.Length
+            || !string.Equals(leftSegments[0], "Mods", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(rightSegments[0], "Mods", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(leftSegments[1], rightSegments[1], StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        string padded = token.Replace('-', '+').Replace('_', '/');
-        padded += (padded.Length % 4) switch
+        for (var index = 2; index < leftSegments.Length; index++)
         {
-            0 => string.Empty,
-            2 => "==",
-            3 => "=",
-            _ => "\0",
-        };
-        if (padded[^1] == '\0')
-        {
-            return false;
-        }
-
-        try
-        {
-            value = StrictUtf8.GetString(Convert.FromBase64String(padded));
-        }
-        catch (Exception exception) when (exception is FormatException
-            or DecoderFallbackException)
-        {
-            value = string.Empty;
-            return false;
-        }
-
-        if (value.Length == 0
-            || value.Length > maximumLength
-            || value.Any(char.IsControl)
-            || !string.Equals(Encode(value), token, StringComparison.Ordinal))
-        {
-            value = string.Empty;
-            return false;
+            if (!string.Equals(
+                    StableIdentityNormalizer.Normalize(leftSegments[index]),
+                    StableIdentityNormalizer.Normalize(rightSegments[index]),
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    public static string StableAssetIdentityKey(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        string[] segments = value.Replace('\\', '/').Split('/');
+        if (segments.Length < 3)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            '/',
+            "mods",
+            segments[1].ToUpperInvariant(),
+            string.Join('/', segments.Skip(2).Select(StableIdentityNormalizer.Normalize)));
     }
 }
 

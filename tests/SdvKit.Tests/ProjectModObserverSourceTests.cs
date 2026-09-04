@@ -88,7 +88,9 @@ public sealed class ProjectModObserverSourceTests
 
     [Theory]
     [InlineData("LoadedModsModels.cs")]
+    [InlineData("ReviewAudioModels.cs")]
     [InlineData("ReviewMapModels.cs")]
+    [InlineData("ReviewModAssetModels.cs")]
     [InlineData("ReviewTextureModels.cs")]
     [InlineData("ReviewTexturePngValidator.cs")]
     [InlineData("ReviewTransportModels.cs")]

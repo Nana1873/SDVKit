@@ -46,6 +46,22 @@ internal sealed record ReviewModAssetLoadResult(
     object? Value,
     string? ProblemCode);
 
+internal static class ReviewModAssetRegistryReader
+{
+    public static IReadOnlyList<string> Read(Func<IEnumerable<string>> readModIds)
+    {
+        ArgumentNullException.ThrowIfNull(readModIds);
+        try
+        {
+            return readModIds().ToArray();
+        }
+        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        {
+            return [];
+        }
+    }
+}
+
 internal interface IReviewModAssetSource
 {
     string GameVersion { get; }
@@ -84,10 +100,9 @@ internal sealed class ReviewModAssetQueryObservationGuard
         return active is not null
             && ReferenceEquals(active.Owner, this)
             && active.DataType == dataType
-            && string.Equals(
+            && ReviewModAssetContract.AssetIdentityEquals(
                 active.AssetName,
-                assetName,
-                StringComparison.OrdinalIgnoreCase);
+                assetName);
     }
 
     public bool SuppressesReady(string assetName)
@@ -95,10 +110,9 @@ internal sealed class ReviewModAssetQueryObservationGuard
         Identity? active = Active;
         return active is not null
             && ReferenceEquals(active.Owner, this)
-            && string.Equals(
+            && ReviewModAssetContract.AssetIdentityEquals(
                 active.AssetName,
-                assetName,
-                StringComparison.OrdinalIgnoreCase);
+                assetName);
     }
 
     private sealed record Identity(
@@ -172,7 +186,9 @@ internal sealed class ReviewModAssetCatalog
         {
             Entry[] matchingName = MatchingName(canonicalName).ToArray();
             Entry? existing = matchingName.FirstOrDefault(entry =>
-                string.Equals(entry.AssetName, canonicalName, StringComparison.Ordinal)
+                ReviewModAssetContract.AssetIdentityEquals(
+                    entry.AssetName,
+                    canonicalName)
                 && entry.DataType == dataType);
             if (existing is not null)
             {
@@ -295,7 +311,9 @@ internal sealed class ReviewModAssetCatalog
         {
             Entry[] matchingName = MatchingName(assetName).ToArray();
             Entry? entry = matchingName.FirstOrDefault(candidate =>
-                string.Equals(candidate.AssetName, assetName, StringComparison.Ordinal)
+                ReviewModAssetContract.AssetIdentityEquals(
+                    candidate.AssetName,
+                    assetName)
                 && candidate.DataType == dataType);
             if (entry is null
                 || matchingName.Length != 1)
@@ -328,12 +346,12 @@ internal sealed class ReviewModAssetCatalog
         {
             IReadOnlyDictionary<string, int> nameCollisions = _entries
                 .GroupBy(
-                    entry => StableIdentityNormalizer.Normalize(entry.AssetName),
+                    entry => ReviewModAssetContract.StableAssetIdentityKey(entry.AssetName),
                     StringComparer.Ordinal)
                 .ToDictionary(
                     group => group.Key,
                     group => group.Select(entry => entry.AssetName)
-                        .Distinct(StringComparer.Ordinal)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
                         .Count(),
                     StringComparer.Ordinal);
             IReadOnlyDictionary<string, int> typeCollisions = _entries
@@ -356,7 +374,7 @@ internal sealed class ReviewModAssetCatalog
                     entry.RequestCount,
                     entry.ReadyCount,
                     entry.Available,
-                    nameCollisions[StableIdentityNormalizer.Normalize(entry.AssetName)] > 1,
+                    nameCollisions[ReviewModAssetContract.StableAssetIdentityKey(entry.AssetName)] > 1,
                     typeCollisions[entry.AssetName] > 1))
                 .ToArray();
             int observed = _dropped > int.MaxValue - assets.Length
@@ -371,14 +389,15 @@ internal sealed class ReviewModAssetCatalog
     }
 
     private IEnumerable<Entry> MatchingName(string canonicalName) =>
-        _entries.Where(entry => string.Equals(
+        _entries.Where(entry => ReviewModAssetContract.AssetIdentityEquals(
             entry.AssetName,
-            canonicalName,
-            StringComparison.OrdinalIgnoreCase));
+            canonicalName));
 
     private Entry? FindExact(string assetName, Type dataType) =>
         _entries.FirstOrDefault(entry =>
-            string.Equals(entry.AssetName, assetName, StringComparison.Ordinal)
+            ReviewModAssetContract.AssetIdentityEquals(
+                entry.AssetName,
+                assetName)
             && entry.DataType == dataType);
 
     private static bool TryParseNamespace(
@@ -419,12 +438,28 @@ internal sealed class ReviewModAssetCatalog
             return false;
         }
 
-        canonicalName = trimmed.ToString().Replace('\\', '/');
-        return !canonicalName.EndsWith('/')
-            && canonicalName.Split('/').All(segment =>
+        if (!ReviewTransportText.IsWellFormedUtf16(assetName)
+            || !trimmed.SequenceEqual(assetName.AsSpan()))
+        {
+            return false;
+        }
+
+        string[] segments = assetName.Replace('\\', '/').Split('/');
+        if (segments.Length < 3
+            || !string.Equals(segments[0], "Mods", StringComparison.OrdinalIgnoreCase)
+            || segments.Any(segment =>
                 segment.Length > 0
-                && segment is not "." and not ".."
-                && !segment.Any(char.IsControl));
+                    ? segment is "." or ".."
+                        || segment.Any(char.IsControl)
+                        || StableIdentityNormalizer.Normalize(segment).Length == 0
+                    : true))
+        {
+            return false;
+        }
+
+        segments[0] = "Mods";
+        canonicalName = string.Join('/', segments);
+        return true;
     }
 
     private static bool LooksLikeConventionalNamespace(string? assetName)
@@ -707,7 +742,11 @@ internal static class ReviewModAssetAdapterRegistry
 
         var adapted = new List<ReviewModAssetRecord>(value.Count);
         var payloadBytes = 0;
-        foreach ((int key, string item) in value.OrderBy(pair => pair.Key))
+        foreach ((string key, string item) in value
+            .Select(pair => (
+                Key: pair.Key.ToString(CultureInfo.InvariantCulture),
+                Item: pair.Value))
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             if (!IsBoundedString(item))
             {
@@ -715,7 +754,7 @@ internal static class ReviewModAssetAdapterRegistry
             }
             if (!TryAddRecord(
                     adapted,
-                    key.ToString(CultureInfo.InvariantCulture),
+                    key,
                     JsonSerializer.SerializeToElement(item),
                     ref payloadBytes,
                     out records,
@@ -742,11 +781,15 @@ internal static class ReviewModAssetAdapterRegistry
 
         var adapted = new List<ReviewModAssetRecord>(value.Count);
         var payloadBytes = 0;
-        foreach ((int key, int item) in value.OrderBy(pair => pair.Key))
+        foreach ((string key, int item) in value
+            .Select(pair => (
+                Key: pair.Key.ToString(CultureInfo.InvariantCulture),
+                Item: pair.Value))
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             if (!TryAddRecord(
                     adapted,
-                    key.ToString(CultureInfo.InvariantCulture),
+                    key,
                     JsonSerializer.SerializeToElement(item),
                     ref payloadBytes,
                     out records,
@@ -864,13 +907,16 @@ internal static class ReviewModAssetAdapterRegistry
     }
 
     private static bool IsStableKey(string? key) =>
-        key is not null
-        && key.Length is > 0 and <= ReviewModAssetContract.MaximumKeyLength
-        && !key.Any(char.IsControl);
+        !string.IsNullOrWhiteSpace(key)
+        && key!.Length <= ReviewModAssetContract.MaximumKeyLength
+        && !key.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(key);
 
     private static bool IsBoundedString(string? value)
     {
-        if (value is null || value.Length > ReviewModAssetContract.MaximumStringValueLength)
+        if (value is null
+            || value.Length > ReviewModAssetContract.MaximumStringValueLength
+            || !ReviewTransportText.IsWellFormedUtf16(value))
         {
             return false;
         }
@@ -1045,7 +1091,12 @@ internal static class ReviewModAssetOperation
             return AssetFailure(query.Operation, source, asset, problem!);
         }
 
-        if (!TryResolveKey(query.Key!, records!, out ReviewModAssetRecord? selected, out problem))
+        if (!TryResolveKey(
+                query.Key!,
+                asset!.DataType,
+                records!,
+                out ReviewModAssetRecord? selected,
+                out problem))
         {
             return AssetFailure(query.Operation, source, asset, problem!);
         }
@@ -1136,10 +1187,9 @@ internal static class ReviewModAssetOperation
         IReviewModAssetSource source,
         ReviewModAssetObservation prior) =>
         source.GetInventory().Assets.FirstOrDefault(candidate =>
-            string.Equals(
+            ReviewModAssetContract.AssetIdentityEquals(
                 candidate.AssetName,
-                prior.AssetName,
-                StringComparison.Ordinal)
+                prior.AssetName)
             && candidate.DataType == prior.DataType)
         ?? prior;
 
@@ -1150,10 +1200,9 @@ internal static class ReviewModAssetOperation
         out ReviewModAssetProblem? problem)
     {
         ReviewModAssetObservation[] exact = assets
-            .Where(candidate => string.Equals(
+            .Where(candidate => ReviewModAssetContract.AssetIdentityEquals(
                 candidate.AssetName,
-                input,
-                StringComparison.Ordinal))
+                input))
             .Take(3)
             .ToArray();
         if (exact.Length == 1 && !exact[0].NameCollision && !exact[0].TypeCollision)
@@ -1179,12 +1228,10 @@ internal static class ReviewModAssetOperation
             return false;
         }
 
-        string normalized = StableIdentityNormalizer.Normalize(input);
         ReviewModAssetObservation[] normalizedMatches = assets
-            .Where(candidate => string.Equals(
-                StableIdentityNormalizer.Normalize(candidate.AssetName),
-                normalized,
-                StringComparison.Ordinal))
+            .Where(candidate => ReviewModAssetContract.StableAssetIdentityEquals(
+                candidate.AssetName,
+                input))
             .Take(3)
             .ToArray();
         if (normalizedMatches.Length == 1
@@ -1209,6 +1256,7 @@ internal static class ReviewModAssetOperation
 
     private static bool TryResolveKey(
         string input,
+        Type dataType,
         IReadOnlyList<ReviewModAssetRecord> records,
         out ReviewModAssetRecord? selected,
         out ReviewModAssetProblem? problem)
@@ -1222,6 +1270,17 @@ internal static class ReviewModAssetOperation
             selected = exact[0];
             problem = null;
             return true;
+        }
+
+        bool allowsStableAlias = dataType == typeof(Dictionary<string, string>)
+            || dataType == typeof(Dictionary<string, int>);
+        if (!allowsStableAlias)
+        {
+            selected = null;
+            problem = Problem(
+                "modAssetKeyUnknown",
+                "The adapted asset has no record with that exact key.");
+            return false;
         }
 
         string normalized = StableIdentityNormalizer.Normalize(input);
@@ -1340,31 +1399,33 @@ internal static class ReviewModAssetOperation
         {
             return Problem("modAssetOperationUnknown", "The review-mod-assets operation is unknown.");
         }
+        bool listOperation = query.Operation is ReviewModAssetContract.AssetsOperation
+            or ReviewModAssetContract.KeysOperation;
         if (query.Offset < 0
             || query.Limit < 1
-            || query.Limit > ReviewModAssetContract.MaximumPageLimit)
+            || query.Limit > ReviewModAssetContract.MaximumPageLimit
+            || (!listOperation && (query.Offset != 0 || query.Limit != 1)))
         {
             return Problem(
                 "modAssetPaginationInvalid",
-                $"Offset must be non-negative and limit must be between 1 and {ReviewModAssetContract.MaximumPageLimit}.");
+                $"List offsets must be non-negative with limits from 1 through {ReviewModAssetContract.MaximumPageLimit}; exact reads do not accept pagination.");
         }
 
         bool needsAsset = query.Operation is ReviewModAssetContract.KeysOperation
             or ReviewModAssetContract.GetOperation;
         bool needsKey = query.Operation is ReviewModAssetContract.GetOperation;
         if (needsAsset
-            && (string.IsNullOrWhiteSpace(query.Asset)
-                || query.Asset.Length > ReviewModAssetContract.MaximumAssetLength
-                || query.Asset.Any(char.IsControl)))
+            && !ReviewModAssetContract.IsCanonicalAssetName(query.Asset))
         {
             return Problem(
                 "modAssetNameInvalid",
-                "A bounded non-empty observed mod-owned asset name is required.");
+                "A canonical bounded Mods/<owner>/... asset name is required.");
         }
         if (needsKey
-            && (string.IsNullOrWhiteSpace(query.Key)
-                || query.Key.Length > ReviewModAssetContract.MaximumKeyLength
-                || query.Key.Any(char.IsControl)))
+            && (!ReviewModAssetContract.IsBoundedText(
+                    query.Key,
+                    ReviewModAssetContract.MaximumKeyLength)
+                || string.IsNullOrWhiteSpace(query.Key)))
         {
             return Problem(
                 "modAssetKeyInvalid",
@@ -1411,6 +1472,98 @@ internal static class ReviewModAssetOperation
             or UnauthorizedAccessException;
 }
 
+internal static class ReviewModAssetResponseWriter
+{
+    private static readonly JsonSerializerOptions ResponseJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public static void Write(
+        string runtimePath,
+        ReviewModAssetResponseEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review-mod-assets runtime path is required.",
+                nameof(runtimePath));
+        }
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
+        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
+        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
+            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                "The review runtime response root is not a regular directory.");
+        }
+
+        string responsePath = ReviewModAssetContract.ResponsePath(
+            absoluteRuntimePath,
+            envelope.RequestId);
+        string temporaryPath = responsePath + ".tmp";
+        if (File.Exists(responsePath)
+            || Directory.Exists(responsePath)
+            || File.Exists(temporaryPath)
+            || Directory.Exists(temporaryPath))
+        {
+            throw new InvalidDataException(
+                "The review-mod-assets response target already exists.");
+        }
+
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
+            envelope,
+            ResponseJsonOptions);
+        if (bytes.Length > ReviewModAssetContract.MaximumResponseBytes)
+        {
+            throw new InvalidDataException(
+                "The bounded review-mod-assets response exceeds its maximum size.");
+        }
+
+        var ownsTemporary = false;
+        try
+        {
+            using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough))
+            {
+                ownsTemporary = true;
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            FileAttributes temporaryAttributes = File.GetAttributes(temporaryPath);
+            if ((temporaryAttributes & FileAttributes.ReparsePoint) != 0
+                || (temporaryAttributes & FileAttributes.Directory) != 0)
+            {
+                throw new InvalidDataException(
+                    "The owned review-mod-assets temporary response is not a regular file.");
+            }
+
+            File.Move(temporaryPath, responsePath);
+            ownsTemporary = false;
+        }
+        finally
+        {
+            if (ownsTemporary && File.Exists(temporaryPath))
+            {
+                FileAttributes attributes = File.GetAttributes(temporaryPath);
+                if ((attributes & FileAttributes.ReparsePoint) == 0
+                    && (attributes & FileAttributes.Directory) == 0)
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+        }
+    }
+}
+
 #if SDVKIT_GAME_AVAILABLE
 internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
 {
@@ -1423,12 +1576,13 @@ internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
         ArgumentNullException.ThrowIfNull(helper);
         _helper = helper;
         _catalogue = new ReviewModAssetCatalog(
-            helper.ModRegistry.GetAll()
-                .Select(mod => mod.Manifest.UniqueID)
-                .Where(id => !string.Equals(
-                    id,
-                    "SDVKit.AlwaysOn",
-                    StringComparison.OrdinalIgnoreCase)));
+            ReviewModAssetRegistryReader.Read(() =>
+                helper.ModRegistry.GetAll()
+                    .Select(mod => mod.Manifest.UniqueID)
+                    .Where(id => !string.Equals(
+                        id,
+                        "SDVKit.AlwaysOn",
+                        StringComparison.OrdinalIgnoreCase))));
     }
 
     public string GameVersion => Game1.version.ToString();
@@ -1535,10 +1689,6 @@ internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
 internal static class ReviewModAssetCommand
 {
     private const string MissingToken = "-";
-    private static readonly JsonSerializerOptions ResponseJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     public static void Handle(
         string[] arguments,
@@ -1596,7 +1746,7 @@ internal static class ReviewModAssetCommand
             {
                 report = ReviewModAssetOperation.Execute(query!, source);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
             {
                 report = ReviewModAssetOperation.Failure(
                     query!.Operation,
@@ -1613,12 +1763,12 @@ internal static class ReviewModAssetCommand
             report);
         try
         {
-            WriteResponse(runtimePath, envelope);
+            ReviewModAssetResponseWriter.Write(runtimePath, envelope);
             monitor.Log(
                 $"SDVKit review-mod-assets completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
         {
             monitor.Log(
                 $"SDVKit review-mod-assets could not publish its bounded response ({exception.GetType().Name}).",
@@ -1691,58 +1841,5 @@ internal static class ReviewModAssetCommand
         return false;
     }
 
-    private static void WriteResponse(
-        string runtimePath,
-        ReviewModAssetResponseEnvelope envelope)
-    {
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-
-        string responsePath = ReviewModAssetContract.ResponsePath(
-            absoluteRuntimePath,
-            envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath) || File.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response target already exists.");
-        }
-
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
-            envelope,
-            ResponseJsonOptions);
-        if (bytes.Length > ReviewModAssetContract.MaximumResponseBytes)
-        {
-            throw new InvalidDataException(
-                "The bounded review-mod-assets response exceeds its maximum size.");
-        }
-
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-        }
-        finally
-        {
-            File.Delete(temporaryPath);
-        }
-    }
 }
 #endif

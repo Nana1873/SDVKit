@@ -1,3 +1,4 @@
+using System.Reflection;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
 
@@ -164,6 +165,55 @@ public sealed class ReviewModAssetCommandTests
 
         Assert.Null(asset.NamespaceOwnerId);
         Assert.Equal("unknown", asset.NamespaceOwnerStatus);
+    }
+
+    [Fact]
+    public void CatalogueConsolidatesCaseAndSlashEquivalentSmapiIdentities()
+    {
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+
+        catalogue.ObserveRequested(
+            "mods\\example.mod\\Words",
+            typeof(Dictionary<string, string>));
+        catalogue.ObserveReady("MODS/EXAMPLE.MOD/WORDS");
+        catalogue.ObserveRequested(
+            "Mods/Example.Mod/words",
+            typeof(Dictionary<string, string>));
+
+        ReviewModAssetInventorySnapshot snapshot = catalogue.Snapshot();
+        ReviewModAssetObservation asset = Assert.Single(snapshot.Assets);
+        Assert.Equal("Mods/example.mod/Words", asset.AssetName);
+        Assert.Equal("Example.Mod", asset.NamespaceOwnerId);
+        Assert.Equal(2, asset.RequestCount);
+        Assert.Equal(1, asset.ReadyCount);
+        Assert.False(asset.NameCollision);
+        Assert.False(asset.TypeCollision);
+    }
+
+    [Fact]
+    public void StableLookupCannotFlattenAnOwnerOrPathBoundary()
+    {
+        const string name = "Mods/Example-Mod/Words";
+        var catalogue = new ReviewModAssetCatalog(["Example-Mod"], StartedAt);
+        catalogue.ObserveRequested(name, typeof(string));
+        catalogue.ObserveReady(name);
+        var source = new FakeSource(catalogue);
+        source.Values[(name, typeof(string))] = "one";
+
+        ReviewModAssetReport flattened = Execute(
+            source,
+            ReviewModAssetContract.GetOperation,
+            "Mods/Example/Mod/Words",
+            ReviewModAssetContract.SingletonKey);
+        ReviewModAssetReport traversal = Execute(
+            source,
+            ReviewModAssetContract.GetOperation,
+            "Mods/Example-Mod/../Words",
+            ReviewModAssetContract.SingletonKey);
+
+        Assert.Equal("modAssetUnknown", Assert.Single(flattened.Problems).Code);
+        Assert.Equal("modAssetNameInvalid", Assert.Single(traversal.Problems).Code);
+        Assert.Equal(0, source.LoadCount);
     }
 
     [Fact]
@@ -434,6 +484,109 @@ public sealed class ReviewModAssetCommandTests
             out _));
     }
 
+    [Fact]
+    public void MalformedObservedIdentityCreatesCoverageGapWithoutEchoingIt()
+    {
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+
+        catalogue.ObserveRequested("Mods/Example.Mod/\uD800", typeof(string));
+
+        ReviewModAssetInventorySnapshot snapshot = catalogue.Snapshot();
+        Assert.Empty(snapshot.Assets);
+        Assert.Equal(1, snapshot.Observed);
+        Assert.Equal(1, snapshot.Dropped);
+    }
+
+    [Fact]
+    public void RegistryReaderFailsClosedWhenEnumerationFails()
+    {
+        Assert.Empty(ReviewModAssetRegistryReader.Read(FailingModIds));
+    }
+
+    [Fact]
+    public void RegistryReaderDoesNotSwallowDirectOrWrappedFatalFailures()
+    {
+        var direct = Assert.IsType<OutOfMemoryException>(Activator.CreateInstance(
+            typeof(OutOfMemoryException),
+            "Synthetic fatal failure."));
+        OutOfMemoryException directThrown = Assert.Throws<OutOfMemoryException>(() =>
+            ReviewModAssetRegistryReader.Read(() => throw direct));
+
+        var wrapped = new TargetInvocationException(
+            Assert.IsType<OutOfMemoryException>(Activator.CreateInstance(
+                typeof(OutOfMemoryException),
+                "Synthetic wrapped fatal failure.")));
+        TargetInvocationException wrappedThrown = Assert.Throws<TargetInvocationException>(() =>
+            ReviewModAssetRegistryReader.Read(() => throw wrapped));
+
+        Assert.Same(direct, directThrown);
+        Assert.Same(wrapped, wrappedThrown);
+    }
+
+    [Fact]
+    public void ResponseWriterNeverDeletesPreExistingTemporaryTarget()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        string responsePath = ReviewModAssetContract.ResponsePath(
+            temporary.Path,
+            requestId);
+        string temporaryPath = responsePath + ".tmp";
+        byte[] foreignBytes = [1, 2, 3, 4];
+        File.WriteAllBytes(temporaryPath, foreignBytes);
+        ReviewModAssetResponseEnvelope envelope = EmptyEnvelope(requestId);
+
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewModAssetResponseWriter.Write(temporary.Path, envelope));
+
+        Assert.Equal(foreignBytes, File.ReadAllBytes(temporaryPath));
+        Assert.False(File.Exists(responsePath));
+    }
+
+    [Fact]
+    public void ResponseWriterNeverRemovesPreExistingTemporaryDirectory()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        string responsePath = ReviewModAssetContract.ResponsePath(
+            temporary.Path,
+            requestId);
+        string temporaryPath = responsePath + ".tmp";
+        Directory.CreateDirectory(temporaryPath);
+        string marker = Path.Combine(temporaryPath, "foreign.txt");
+        File.WriteAllText(marker, "foreign");
+
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewModAssetResponseWriter.Write(
+                temporary.Path,
+                EmptyEnvelope(requestId)));
+
+        Assert.True(Directory.Exists(temporaryPath));
+        Assert.Equal("foreign", File.ReadAllText(marker));
+        Assert.False(File.Exists(responsePath));
+    }
+
+    [Fact]
+    public void ResponseWriterPublishesOneCreateNewRegularResponse()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        string responsePath = ReviewModAssetContract.ResponsePath(
+            temporary.Path,
+            requestId);
+        ReviewModAssetResponseEnvelope envelope = EmptyEnvelope(requestId);
+
+        ReviewModAssetResponseWriter.Write(temporary.Path, envelope);
+
+        Assert.True(File.Exists(responsePath));
+        Assert.False(File.Exists(responsePath + ".tmp"));
+        FileAttributes attributes = File.GetAttributes(responsePath);
+        Assert.False(attributes.HasFlag(FileAttributes.Directory));
+        Assert.False(attributes.HasFlag(FileAttributes.ReparsePoint));
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewModAssetResponseWriter.Write(temporary.Path, envelope));
+    }
+
     public static TheoryData<Type, object, string[], string, string> KnownShapes =>
         new()
         {
@@ -481,15 +634,46 @@ public sealed class ReviewModAssetCommandTests
             },
         };
 
+    private static ReviewModAssetResponseEnvelope EmptyEnvelope(string requestId) =>
+        new(
+            ReviewModAssetContract.SchemaVersion,
+            requestId,
+            new ReviewModAssetReport(
+                ReviewModAssetContract.SchemaVersion,
+                "blocked",
+                ReviewModAssetContract.AssetsOperation,
+                "1.6.15",
+                "1.6.15.24356",
+                ReviewModAssetContract.CoverageScope,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                [new ReviewModAssetProblem("expected", "Expected.")]));
+
+    private static IEnumerable<string> FailingModIds()
+    {
+        yield return "Example.Mod";
+        throw new InvalidOperationException("Synthetic registry enumeration failure.");
+    }
+
     private static ReviewModAssetReport Execute(
         IReviewModAssetSource source,
         string operation,
         string? asset = null,
         string? key = null,
         int offset = 0,
-        int limit = 50) =>
+        int? limit = null) =>
         ReviewModAssetOperation.Execute(
-            new ReviewModAssetQuery(operation, asset, key, offset, limit),
+            new ReviewModAssetQuery(
+                operation,
+                asset,
+                key,
+                offset,
+                limit ?? (operation == ReviewModAssetContract.GetOperation ? 1 : 50)),
             source);
 
     private sealed class FakeSource(ReviewModAssetCatalog catalogue)

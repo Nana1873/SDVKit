@@ -184,9 +184,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio transports";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
