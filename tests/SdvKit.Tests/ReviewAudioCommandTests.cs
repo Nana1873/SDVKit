@@ -1074,6 +1074,18 @@ public sealed class ReviewAudioCommandTests
         Assert.Contains("soundBank.GetCueDefinition(cueId)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("soundBank.GetCue(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("soundBank.Play", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "new Dictionary<string, string?>(\n            StringComparer.OrdinalIgnoreCase)",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "playableCueIds\n                .Where",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "cueIds.Add(effectiveCueId)\n                && cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds",
+            source,
+            StringComparison.Ordinal);
         int audioLoadStart = source.IndexOf(
             "public IReadOnlyList<ReviewAudioChangeDefinition> LoadAudioChanges()",
             StringComparison.Ordinal);

@@ -504,27 +504,50 @@ internal static class ReviewAudioOperation
             }
         }
 
+        if (cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds)
+        {
+            return AudioInventory.Failed(
+                Problem(
+                    "audioInventoryTooLarge",
+                    $"The data-driven cue inventory exceeds the bounded maximum of {ReviewAudioContract.MaximumDiscoverableCueIds} identities."));
+        }
+
+        var playableCueIdsByIgnoreCase = new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (string playableCueId in playableCueIds)
+        {
+            if (!playableCueIdsByIgnoreCase.TryAdd(playableCueId, playableCueId))
+            {
+                playableCueIdsByIgnoreCase[playableCueId] = null;
+            }
+        }
+
         foreach (EffectiveJukeboxAlternative alternative in effectiveAlternatives.Values)
         {
-            string[] playableMatches = playableCueIds
-                .Where(cueId => string.Equals(
-                    cueId,
+            string effectiveCueId = alternative.CueId;
+            if (playableCueIdsByIgnoreCase.TryGetValue(
                     alternative.CueId,
-                    StringComparison.OrdinalIgnoreCase))
-                .Take(2)
-                .ToArray();
-            if (playableMatches.Length > 1)
+                    out string? playableMatch))
+            {
+                if (playableMatch is null)
+                {
+                    return AudioInventory.Failed(
+                        Problem(
+                            "audioJukeboxAlternativeAmbiguous",
+                            "A jukebox alternative matches multiple playable cue identities case-insensitively."));
+                }
+
+                effectiveCueId = playableMatch;
+            }
+
+            if (cueIds.Add(effectiveCueId)
+                && cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds)
             {
                 return AudioInventory.Failed(
                     Problem(
-                        "audioJukeboxAlternativeAmbiguous",
-                        "A jukebox alternative matches multiple playable cue identities case-insensitively."));
+                        "audioInventoryTooLarge",
+                        $"The data-driven cue inventory exceeds the bounded maximum of {ReviewAudioContract.MaximumDiscoverableCueIds} identities."));
             }
-
-            string effectiveCueId = playableMatches.Length == 1
-                ? playableMatches[0]
-                : alternative.CueId;
-            cueIds.Add(effectiveCueId);
             AddSource(
                 sources,
                 effectiveCueId,
@@ -535,14 +558,6 @@ internal static class ReviewAudioOperation
                 new ReviewAudioJukeboxReference(
                     alternative.TrackCueId,
                     ReviewAudioContract.AlternativeJukeboxRelation));
-        }
-
-        if (cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds)
-        {
-            return AudioInventory.Failed(
-                Problem(
-                    "audioInventoryTooLarge",
-                    $"The data-driven cue inventory exceeds the bounded maximum of {ReviewAudioContract.MaximumDiscoverableCueIds} identities."));
         }
 
         int collisionGroups = cueIds

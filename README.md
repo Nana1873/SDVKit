@@ -248,7 +248,7 @@ Every response and preview target is create-new, regular-file and reparse checke
 
 ### Inspect active audio metadata
 
-An exact active `single` review can inventory the bounded audio identities visible through the final `Data/AudioChanges` and `Data/JukeboxTracks` assets, or probe one exact cue through Stardew's public soundbank API. Both Data assets are reloaded through SMAPI's active content pipeline on every request, so the result reflects the currently loaded review mods without reading their audio files.
+An exact active `single` review can inventory the bounded audio identities visible through the final `Data/AudioChanges` and `Data/JukeboxTracks` assets, or probe one exact cue through Stardew's public soundbank API. Every request reads the current final asset state through SMAPI's active content pipeline, so normal SMAPI cache and invalidation behavior still applies and no audio file is read directly.
 
 ```powershell
 sdvkit project review audio cues --offset 0 --limit 100 --topology single --json
