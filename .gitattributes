@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Preserve the vendored upstream schemas byte-for-byte for provenance checks.
+src/SdvKit.Cli/Projects/Schemas/*.json -text

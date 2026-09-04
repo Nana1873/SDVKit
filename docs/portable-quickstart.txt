@@ -14,9 +14,13 @@ directory before live commands; that directory's .sdvkit owns the lab state.
 Never use your normal Saves or normal/mod-manager-owned Mods directory as a lab.
 
   & $sdvkit project inspect .\ExampleMod --json
+  & $sdvkit project check .\ExampleMod --json
   & $sdvkit project smoke .\ExampleMod --topology single --json
 
 ExampleMod must be your explicitly selected standalone C# mod project.
+Check also accepts one CP 2.9.x root. It checks manifest/content/direct i18n JSON
+offline; keep the bundled schemas/ directory beside sdvkit.exe. It does not prove
+runtime behavior or resolve referenced assets and Include fragments.
 Smoke checks load and bounded ticks; it does not verify every mod feature.
 Normal saves and Mods stay outside automatic operations. This is process/data
 isolation, not a Windows sandbox for arbitrary mod code.

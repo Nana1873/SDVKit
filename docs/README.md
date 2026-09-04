@@ -4,7 +4,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 
 | Task | Guide |
 | --- | --- |
-| Create, inspect, build, or package a mod | [Toolkit](toolkit.md) |
+| Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
@@ -20,6 +20,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Capability | CLI | Native MCP | Topology / prerequisites |
 | --- | --- | --- | --- |
 | Create, inspect, package | `project` | No | C# mods or content packs; no live review |
+| Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, direct i18n; no game/network |
 | Build | `project build` | No | One C# project and ready game/SMAPI |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Review lifecycle | `project review start/status/stop/reset` | No | C# target in either topology; content-pack target single only, with explicit provider |

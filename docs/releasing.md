@@ -38,7 +38,7 @@ From the checkout, substitute the selected artifact path and version:
 .\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-0.7.0-win-x64.zip -ExpectedVersion 0.7.0 -ExpectedDoctorStatus ready
 ```
 
-Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, and create/inspect. It does not prove live MCP behavior or compile the game-bound adapter.
+Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It does not prove live MCP behavior or compile the game-bound adapter.
 
 The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves independence from repository files; this temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
 

@@ -66,6 +66,7 @@ public static class CliApplication
     private const int UsageError = 2;
     private const int InspectionFailed = 3;
     private const string InspectUsage = "Usage: sdvkit project inspect [path] --json";
+    private const string CheckUsage = "Usage: sdvkit project check [path] [--json]";
     private const string CreateUsage = "Usage: sdvkit project create <smapi-mod|content-pack> <path> --name <name> --author <author> --unique-id <id> --description <text> --json";
     private const string BuildUsage = "Usage: sdvkit project build [path] --json";
     private const string PackageUsage = "Usage: sdvkit project package [path] --json";
@@ -363,13 +364,14 @@ public static class CliApplication
         if (arguments.Count < 2)
         {
             error.WriteLine(
-                "Usage: sdvkit project <inspect|create|build|package|smoke|review> ...");
+                "Usage: sdvkit project <inspect|check|create|build|package|smoke|review> ...");
             return UsageError;
         }
 
         return arguments[1] switch
         {
             "inspect" => RunProjectInspect(arguments, output, error),
+            "check" => RunProjectCheck(arguments, output, error),
             "create" => RunProjectCreate(arguments, output, error),
             "build" => RunProjectBuild(arguments, output, error, discoverInstallations),
             "package" => RunProjectPackage(arguments, output, error, discoverInstallations),
@@ -414,6 +416,41 @@ public static class CliApplication
             && !string.Equals(report.Kind, ProjectInspectionReport.Unknown, StringComparison.Ordinal)
             ? Success
             : InspectionFailed;
+    }
+
+    private static int RunProjectCheck(IReadOnlyList<string> arguments, TextWriter output, TextWriter error)
+    {
+        if (arguments.Count == 3 && IsHelp(arguments[2]))
+        {
+            output.WriteLine(CheckUsage);
+            output.WriteLine("Offline schema check of one mod root: manifest.json, CP 2.9.x content.json, and direct i18n/*.json.");
+            output.WriteLine("No recursive mod discovery, Include/FromFile resolution, build, or runtime validation.");
+            return Success;
+        }
+
+        bool json = arguments.Contains("--json", StringComparer.Ordinal);
+        IReadOnlyList<string> parseArguments = json ? arguments : [.. arguments, "--json"];
+        if (!TryParseOptionalPath(parseArguments, out string? path))
+        {
+            error.WriteLine(CheckUsage);
+            return UsageError;
+        }
+
+        ProjectCheckReport report = ProjectChecker.Check(path!);
+        if (json)
+        {
+            WriteJson(output, report);
+        }
+        else
+        {
+            output.WriteLine($"Project check {report.Status}: {report.Files.Count} file(s) evaluated.");
+            foreach (ProjectCheckProblem problem in report.Problems)
+            {
+                output.WriteLine($"{problem.File} {problem.Field} [{problem.Code}]: {problem.Message}");
+            }
+            output.WriteLine("Schema checks do not prove that patches apply in game or translations are complete.");
+        }
+        return report.Problems.Count == 0 ? Success : InspectionFailed;
     }
 
     private static int RunProjectCreate(
@@ -1888,7 +1925,7 @@ public static class CliApplication
     private static int ProjectUsageError(TextWriter error)
     {
         error.WriteLine(
-            "Usage: sdvkit project <inspect|create|build|package|smoke|review> ...");
+            "Usage: sdvkit project <inspect|check|create|build|package|smoke|review> ...");
         return UsageError;
     }
 
@@ -1975,7 +2012,7 @@ public static class CliApplication
         output.WriteLine("Usage: sdvkit <command> [options]");
         output.WriteLine("  version [--json]  Show the installed version.");
         output.WriteLine("  doctor --json     Discover a ready game and SMAPI installation.");
-        output.WriteLine("  project --help    Create, inspect, build, package, smoke-test, or review a mod.");
+        output.WriteLine("  project --help    Create, inspect, check, build, package, smoke-test, or review a mod.");
         output.WriteLine("  lab --help        Control the isolated live lab and disposable world.");
         output.WriteLine();
         output.WriteLine("Use each subcommand's --help for syntax and supported options.");
@@ -1993,6 +2030,7 @@ public static class CliApplication
         output.WriteLine("SDVKit project toolkit");
         output.WriteLine();
         output.WriteLine(InspectUsage);
+        output.WriteLine(CheckUsage);
         output.WriteLine(CreateUsage);
         output.WriteLine(BuildUsage);
         output.WriteLine(PackageUsage);
