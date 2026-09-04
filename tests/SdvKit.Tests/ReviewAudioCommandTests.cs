@@ -824,6 +824,44 @@ public sealed class ReviewAudioCommandTests
     }
 
     [Fact]
+    public void InventoryProbeFailureRemainsBoundToTheInventoryOperation()
+    {
+        var source = new FakeReviewAudioSource(
+            tracks:
+            [
+                new ReviewAudioJukeboxDefinition("Cue", []),
+            ],
+            probes: new Dictionary<string, ReviewAudioCueProbe>
+            {
+                ["Cue"] = new ReviewAudioCueProbe(
+                    "Cue",
+                    true,
+                    true,
+                    "Other",
+                    1),
+            });
+        var query = new ReviewAudioQuery(
+            ReviewAudioContract.CuesOperation,
+            null,
+            0,
+            100);
+
+        ReviewAudioReport report = ReviewAudioOperation.Execute(query, source);
+
+        Assert.Equal("blocked", report.State);
+        Assert.Null(report.CueId);
+        Assert.Equal("audioCueProbeInvalid", Assert.Single(report.Problems).Code);
+        string requestId = Guid.NewGuid().ToString("N");
+        Assert.True(ProjectReviewAudioService.MatchesResponse(
+            new ReviewAudioResponseEnvelope(
+                ReviewAudioContract.SchemaVersion,
+                requestId,
+                report),
+            requestId,
+            query));
+    }
+
+    [Fact]
     public void RepeatedQueriesAreDeterministic()
     {
         var source = new FakeReviewAudioSource(

@@ -1980,6 +1980,102 @@ public sealed class ProjectReviewServiceTests
         }
     }
 
+    [Fact]
+    public void AudioInventoryPreservesABoundedProbeFailureFromAlwaysOn()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string? responsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        responsePath = ReviewAudioContract.ResponsePath(
+                            paths.RuntimePath,
+                            requestId);
+                        var report = new ReviewAudioReport(
+                            ReviewAudioContract.SchemaVersion,
+                            "blocked",
+                            ReviewAudioContract.CuesOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            null,
+                            null,
+                            null,
+                            new ReviewAudioCoverageReport(
+                                0,
+                                1,
+                                0,
+                                1,
+                                0,
+                                0,
+                                0,
+                                0,
+                                true,
+                                null,
+                                ReviewAudioContract.BuiltInInventoryStatus),
+                            [
+                                new ReviewAudioProblem(
+                                    "audioCueProbeInvalid",
+                                    "The soundbank returned inconsistent metadata."),
+                            ]);
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(
+                                new ReviewAudioResponseEnvelope(
+                                    ReviewAudioContract.SchemaVersion,
+                                    requestId,
+                                    report),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewAudioService.Execute(
+                    new ReviewAudioQuery(
+                        ReviewAudioContract.CuesOperation,
+                        null,
+                        0,
+                        100),
+                    temporary.Path,
+                    sender);
+
+                ReviewAudioReport report = Assert.IsType<ReviewAudioReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Null(report.CueId);
+                Assert.Equal(
+                    "audioCueProbeInvalid",
+                    Assert.Single(report.Problems).Code);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit audio ", sender.Line, StringComparison.Ordinal);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
     [Theory]
     [InlineData(
         ProjectModContract.WaitingForGameLaunchPhase,

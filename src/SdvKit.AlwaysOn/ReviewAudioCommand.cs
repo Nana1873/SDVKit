@@ -222,7 +222,7 @@ internal static class ReviewAudioOperation
                 return Blocked(
                     query.Operation,
                     source,
-                    cueId,
+                    cueId: null,
                     cues: null,
                     page: null,
                     Coverage(inventory, reports.Count, reports.Count(report => report.SessionResident), reports.Count(report => !report.SessionResident)),
