@@ -8,7 +8,7 @@
 6. Distinguish build success, automated tests, and verified in-game behavior. Claim only the level actually proven.
 7. Do not add generic frameworks, duplicate state machines, new runtime projects, protocol layers, or evidence schemas without a demonstrated current need.
 8. Automated in-game UI mouse input must use SDVKit's existing process-local virtual cursor after exact review ownership and role verification, and must fail closed. Never use global `SendInput`, physical cursor movement, window focus changes, or generic computer-use automation for review mouse input.
-9. Use German for chat and progress updates; use English for code, CLI text, documentation, issues, and pull requests.
+9. Use English for code, CLI text, documentation, issues, and pull requests. Use the contributor's preferred language for chat and progress updates.
 10. Implementation and offline checks may run in parallel. Before live tests, identify the intended lab context and its owner; if another task owns it, wait for that task's verified stop/reset before taking over. Use existing task/status and ownership checks, and never stop another task's game or modify its worktree.
 11. Capture deferred user ideas in this repository's GitHub issues after checking for an existing match, and return the issue link. Capture does not authorize implementation; do not create a parallel local roadmap.
 12. Continue already authorized steps without repeated confirmation. Ask only if authorization for a changed scope or target is unclear; explain actual tool/policy blocks without bypassing them.
