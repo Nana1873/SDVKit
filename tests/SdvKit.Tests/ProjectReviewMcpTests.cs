@@ -228,7 +228,7 @@ public sealed class ProjectReviewMcpTests
         ListToolsResult listed = await client.ListToolsAsync(
             new ListToolsRequestParams(),
             timeout.Token);
-        Assert.Equal(6, listed.Tools.Count);
+        Assert.Equal(7, listed.Tools.Count);
         Tool tool = Assert.Single(
             listed.Tools,
             candidate => string.Equals(
@@ -319,6 +319,7 @@ public sealed class ProjectReviewMcpTests
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
+                ProjectReviewMcpScreenshotTools.CaptureToolName,
             ],
             listed.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)
@@ -405,6 +406,7 @@ public sealed class ProjectReviewMcpTests
                         ProjectReviewMcpDiagnosticsTools.ModsToolName,
                         ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                         ProjectReviewMcpServer.RuntimeToolName,
+                        ProjectReviewMcpScreenshotTools.CaptureToolName,
                     ],
                     listed.Tools.Select(tool => tool.Name)
                         .Order(StringComparer.Ordinal)
@@ -477,7 +479,7 @@ public sealed class ProjectReviewMcpTests
         }
     }
 
-    private static ProjectReviewMcpRuntimeReader CreateReadyNetworkReview(
+    internal static ProjectReviewMcpRuntimeReader CreateReadyNetworkReview(
         TemporaryDirectory temporary,
         string role,
         bool reciprocalPair = true,

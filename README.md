@@ -46,7 +46,7 @@ Before replacing the program files, cleanly stop any active SDVKit lab or projec
 
 ## Current main (unreleased)
 
-Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, create one bounded diagnostic PNG, inventory final audio metadata without playback, and inspect observed conventional `Mods/<owner>/...` requests through six primitive adapters. Map, texture, audio, and mod-asset introspection are CLI-only and do not expose bulk asset extraction.
+Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, create one bounded diagnostic PNG, inventory final audio metadata without playback, and inspect observed conventional `Mods/<owner>/...` requests through six primitive adapters. Map, texture, audio, and mod-asset introspection remain CLI-only and do not expose bulk asset extraction. Native MCP can now request one existing map or viewport capture path and receive the exact validated role-local PNG as image content.
 
 ## What's new in v0.6.1
 
@@ -403,7 +403,7 @@ stdin ends the child server process.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
-`farmhand` for `network-2`. Every server exposes these three read-only tools:
+`farmhand` for `network-2`. Every server exposes three read-only observation tools:
 
 - `stardew_runtime_get {}` returns matching structured JSON and compact JSON
   text with schema version, launch ID, topology, selected role, observation
@@ -423,6 +423,19 @@ tool call. `role` is `null` for `single` and exactly the configured `host` or
   warning/error arrays.
   Offset defaults to 0, limit defaults to 50, and limit remains within 1-100;
   follow `page.nextOffset` until it is `null`.
+
+Every server also exposes one controlled evidence-capture tool:
+
+- `stardew_screenshot_capture { "mode": "viewport", "label": "menu-open" }`
+  accepts exactly `map` or `viewport` and a 1-64 character ASCII label made of
+  letters, digits, `-`, or `_`. It reuses AlwaysOn's existing capture paths,
+  creates `SDVKit-<label>.png` without overwriting, and returns compact
+  launch/topology/role metadata followed by real `image/png` content. The PNG
+  must be a fresh, complete, bounded 8-bit RGB or RGBA file at the exact selected role's
+  isolated `StardewValley/Screenshots` path; path escapes, reparse points,
+  stale or mismatched results, malformed PNGs, files over 16 MiB, and timed-out
+  requests fail closed without retry. Map mode still requires a loaded world;
+  viewport mode uses the current game backbuffer.
 
 The mod diagnostics are fixed SDVKit messages for a selected mod that is not
 loaded or whose loaded version or kind differs. They are not raw SMAPI loader
@@ -462,6 +475,7 @@ enabled_tools = [
   "stardew_runtime_get",
   "stardew_review_get",
   "stardew_mods_list",
+  "stardew_screenshot_capture",
   "stardew_data_assets_list",
   "stardew_data_keys_list",
   "stardew_data_record_get",
@@ -480,6 +494,7 @@ enabled_tools = [
   "stardew_runtime_get",
   "stardew_review_get",
   "stardew_mods_list",
+  "stardew_screenshot_capture",
 ]
 ```
 
@@ -501,13 +516,15 @@ role states and processes, identical staged target/build/fixture/save bindings,
 and returns only the role fixed at server startup. The lock is released before
 MCP serialization.
 
-A mismatch returns a controlled tool error and no stale payload; Data failures
-expose a bounded internal code rather than raw paths or transport details. MCP
+A mismatch returns a controlled tool error and no stale payload; Data and
+screenshot failures expose a bounded internal code rather than raw paths or
+transport details. MCP
 responses never expose peer runtime data, filesystem paths, PIDs, environment
 values, raw SMAPI loader warnings or logs, menu CLR types, or arbitrary state.
 The MCP server never reads the normal or mod-manager-owned `Mods` directory or
-normal saves. It opens no listener and cannot start, stop, reset, or otherwise
-mutate a review.
+normal saves. It opens no listener and cannot start, stop, reset, send arbitrary
+commands, or mutate game state. The screenshot tool's only write is its named,
+create-new evidence PNG below the selected role's ignored isolated profile.
 
 ## Agent workflow
 

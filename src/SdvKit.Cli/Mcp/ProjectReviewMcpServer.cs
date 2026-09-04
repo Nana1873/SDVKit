@@ -114,11 +114,20 @@ internal static class ProjectReviewMcpServer
 
     internal static McpServerOptions CreateOptions(
         ProjectReviewMcpRuntimeReader reader,
-        ProjectReviewMcpDataQueryRunner? runData = null)
+        ProjectReviewMcpDataQueryRunner? runData = null,
+        ProjectReviewMcpScreenshotRunner? runScreenshot = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
+        runScreenshot ??= (query, cancellationToken) =>
+            ProjectReviewScreenshotService.Execute(
+                query,
+                reader.Topology,
+                reader.Role,
+                reader.ProjectRoot,
+                cancellationToken: cancellationToken);
+        tools.AddRange(ProjectReviewMcpScreenshotTools.Create(reader, runScreenshot));
         if (runData is not null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
@@ -133,7 +142,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.6.1",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review and loaded-mod diagnostics are available for every topology; canonical Data tools remain single-only. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
+                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
             ToolCollection = [.. tools],
         };
     }
