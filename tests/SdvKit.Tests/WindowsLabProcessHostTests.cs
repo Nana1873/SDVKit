@@ -194,20 +194,27 @@ public sealed class WindowsLabProcessHostTests
     }
 
     [Fact]
-    public void ConsoleInputRecordsPreserveUnicodeAndTerminateWithEnter()
+    public void ConsoleInputRecordsClearEditedLinePreserveUnicodeAndTerminateWithEnter()
     {
         const string line = "sic ü 😀";
 
         WindowsProjectReviewConsoleInputWorker.ConsoleInputRecord[] records =
             WindowsProjectReviewConsoleInputWorker.CreateInputRecords(line);
 
-        Assert.Equal(checked((line.Length + 1) * 2), records.Length);
+        Assert.Equal(checked((line.Length + 2) * 2), records.Length);
+        Assert.True(records[0].KeyEvent.KeyDown);
+        Assert.False(records[1].KeyEvent.KeyDown);
+        Assert.Equal('\u001b', records[0].KeyEvent.UnicodeChar);
+        Assert.Equal('\u001b', records[1].KeyEvent.UnicodeChar);
+        Assert.Equal(checked((ushort)0x001B), records[0].KeyEvent.VirtualKeyCode);
+        Assert.Equal(checked((ushort)0x001B), records[1].KeyEvent.VirtualKeyCode);
         for (var index = 0; index < line.Length; index++)
         {
-            Assert.True(records[index * 2].KeyEvent.KeyDown);
-            Assert.False(records[(index * 2) + 1].KeyEvent.KeyDown);
-            Assert.Equal(line[index], records[index * 2].KeyEvent.UnicodeChar);
-            Assert.Equal(line[index], records[(index * 2) + 1].KeyEvent.UnicodeChar);
+            int recordIndex = (index + 1) * 2;
+            Assert.True(records[recordIndex].KeyEvent.KeyDown);
+            Assert.False(records[recordIndex + 1].KeyEvent.KeyDown);
+            Assert.Equal(line[index], records[recordIndex].KeyEvent.UnicodeChar);
+            Assert.Equal(line[index], records[recordIndex + 1].KeyEvent.UnicodeChar);
         }
 
         Assert.True(records[^2].KeyEvent.KeyDown);
@@ -216,6 +223,18 @@ public sealed class WindowsLabProcessHostTests
         Assert.Equal('\r', records[^1].KeyEvent.UnicodeChar);
         Assert.Equal(checked((ushort)0x000D), records[^2].KeyEvent.VirtualKeyCode);
         Assert.Equal(checked((ushort)0x000D), records[^1].KeyEvent.VirtualKeyCode);
+    }
+
+    [Theory]
+    [InlineData(0x0000u, false)]
+    [InlineData(0x0001u, false)]
+    [InlineData(0x0002u, true)]
+    [InlineData(0x0003u, true)]
+    public void ConsoleInputRequiresCookedLineMode(uint mode, bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WindowsProjectReviewConsoleInputWorker.UsesCookedLineInput(mode));
     }
 
     [Theory]

@@ -36,7 +36,7 @@ public sealed class ProjectReviewMcpFixtureTests
             reader.Read().Snapshot);
         await using ClientHarness optedIn = await ClientHarness.StartAsync(
             reader,
-            (query, _) => Ready(query, expected));
+            (query, _, _) => Ready(query, expected));
         ListToolsResult enabled = await optedIn.Client.ListToolsAsync(
             new ListToolsRequestParams(),
             optedIn.Token);
@@ -156,7 +156,7 @@ public sealed class ProjectReviewMcpFixtureTests
         var queries = new List<ReviewFixtureQuery>();
         await using ClientHarness harness = await ClientHarness.StartAsync(
             reader,
-            (query, _) =>
+            (query, _, _) =>
             {
                 queries.Add(query);
                 return Ready(query, expected);
@@ -208,7 +208,7 @@ public sealed class ProjectReviewMcpFixtureTests
         var dispatches = 0;
         await using (ClientHarness normalSave = await ClientHarness.StartAsync(
             normalSaveReader,
-            (_, _) =>
+            (_, _, _) =>
             {
                 dispatches++;
                 throw new InvalidOperationException("Must not dispatch.");
@@ -228,7 +228,7 @@ public sealed class ProjectReviewMcpFixtureTests
             withTestSave: true);
         await using (ClientHarness changed = await ClientHarness.StartAsync(
             reader,
-            (_, _) =>
+            (_, _, _) =>
             {
                 dispatches++;
                 throw new InvalidOperationException("Must not dispatch.");
@@ -268,7 +268,7 @@ public sealed class ProjectReviewMcpFixtureTests
         var queries = new List<ReviewFixtureQuery>();
         await using ClientHarness harness = await ClientHarness.StartAsync(
             reader,
-            (query, _) =>
+            (query, _, _) =>
             {
                 queries.Add(query);
                 return Ready(query, expected);
@@ -311,7 +311,7 @@ public sealed class ProjectReviewMcpFixtureTests
         var queries = new List<ReviewFixtureQuery>();
         await using ClientHarness harness = await ClientHarness.StartAsync(
             reader,
-            (query, _) =>
+            (query, _, _) =>
             {
                 queries.Add(query);
                 return Ready(query, expected);
@@ -365,7 +365,7 @@ public sealed class ProjectReviewMcpFixtureTests
         var calls = 0;
         await using ClientHarness harness = await ClientHarness.StartAsync(
             reader,
-            (query, _) =>
+            (query, _, _) =>
             {
                 calls++;
                 return new LiveLabCommandResult(
@@ -437,6 +437,26 @@ public sealed class ProjectReviewMcpFixtureTests
             query,
             expected,
             requestedAt.AddMilliseconds(1));
+
+        Assert.True(ProjectReviewFixtureService.HasSameActionBinding(expected, expected));
+        Assert.False(ProjectReviewFixtureService.HasSameActionBinding(
+            expected with { LaunchId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            expected));
+        Assert.False(ProjectReviewFixtureService.HasSameActionBinding(
+            expected with
+            {
+                Target = expected.Target with
+                {
+                    BuildIdentity = "sha256:" + new string('8', 64),
+                },
+            },
+            expected));
+        Assert.False(ProjectReviewFixtureService.HasSameActionBinding(
+            expected with
+            {
+                TestSave = expected.TestSave! with { SaveId = "SDVKit_other" },
+            },
+            expected));
 
         Assert.False(ProjectReviewFixtureService.Matches(
             stale,

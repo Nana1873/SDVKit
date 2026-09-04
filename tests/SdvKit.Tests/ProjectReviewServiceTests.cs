@@ -4,6 +4,7 @@ using System.Text.Json;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Tests;
 
@@ -564,6 +565,77 @@ public sealed class ProjectReviewServiceTests
                 Assert.True(waits >= 2);
                 using ProjectReviewActionLock released = Assert.IsType<ProjectReviewActionLock>(
                     ProjectReviewActionLock.TryAcquire(paths.RuntimePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void FixtureMcpBindingChangeBlocksUnderLockBeforeConsoleDispatch()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState first = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(first);
+                WriteReadySingleStatus(paths, first, staging.TargetLaunchState, fixture);
+                ProjectReviewMcpRuntimeSnapshot expected =
+                    Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
+                        new ProjectReviewMcpRuntimeReader(temporary.Path).Read().Snapshot);
+
+                LiveLabState restarted = first with
+                {
+                    LaunchId = "dddddddddddddddddddddddddddddddd",
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(restarted);
+                WriteReadySingleStatus(paths, restarted, staging.TargetLaunchState, fixture);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewFixtureService.Execute(
+                    new ReviewFixtureQuery(ReviewFixtureTransportContract.StatusOperation),
+                    LiveLabState.SingleTopology,
+                    role: null,
+                    temporary.Path,
+                    sender,
+                    expectedSnapshot: expected);
+
+                ReviewFixtureReport report = Assert.IsType<ReviewFixtureReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Equal("fixtureBindingChanged", Assert.Single(report.Problems).Code);
+                Assert.False(report.CommandWritten);
+                Assert.False(report.MayHaveRun);
+                Assert.False(report.CancellationRequested);
+                Assert.Equal(0, sender.CallCount);
             }
             finally
             {

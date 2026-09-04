@@ -25,6 +25,7 @@ internal static class ProjectReviewFixtureService
         IProjectReviewConsoleInputSender? inputSender = null,
         Action<TimeSpan>? delay = null,
         TimeSpan? responseTimeout = null,
+        ProjectReviewMcpRuntimeSnapshot? expectedSnapshot = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -38,25 +39,9 @@ internal static class ProjectReviewFixtureService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        ProjectReviewMcpReadResult preflight;
         LiveLabPaths paths;
         try
         {
-            preflight = new ProjectReviewMcpRuntimeReader(labRoot, topology, role).Read();
-            if (!preflight.Succeeded
-                || preflight.Snapshot?.TestSave is null
-                || !preflight.Snapshot.Runtime.WorldReady)
-            {
-                return Failure(
-                    query.Operation,
-                    topology,
-                    role,
-                    Problem(
-                        preflight.ErrorCode ?? "fixtureTestSaveRequired",
-                        preflight.ErrorMessage
-                            ?? "Fixture actions require the exact ready SDVKit-owned test save."));
-            }
-
             LiveLabPaths singlePaths = LiveLabPaths.Resolve(labRoot);
             paths = string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
                 ? LiveLabPaths.ResolveNetworkRole(singlePaths, role!)
@@ -85,12 +70,53 @@ internal static class ProjectReviewFixtureService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        ProjectReviewMcpReadResult preflight;
+        try
+        {
+            preflight = new ProjectReviewMcpRuntimeReader(labRoot, topology, role).Read();
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return Failure(
+                query.Operation,
+                topology,
+                role,
+                Problem("fixturePreflightInvalid", exception.Message));
+        }
+
+        if (!preflight.Succeeded
+            || preflight.Snapshot?.TestSave is null
+            || !preflight.Snapshot.Runtime.WorldReady)
+        {
+            return Failure(
+                query.Operation,
+                topology,
+                role,
+                Problem(
+                    preflight.ErrorCode ?? "fixtureTestSaveRequired",
+                    preflight.ErrorMessage
+                        ?? "Fixture actions require the exact ready SDVKit-owned test save."));
+        }
+
+        ProjectReviewMcpRuntimeSnapshot current = preflight.Snapshot;
+        if (expectedSnapshot is not null
+            && !HasSameActionBinding(current, expectedSnapshot))
+        {
+            return Failure(
+                query.Operation,
+                topology,
+                role,
+                Problem(
+                    "fixtureBindingChanged",
+                    "The active review binding changed after MCP tool preflight; no fixture command was written."));
+        }
+
         string requestId = Guid.NewGuid().ToString("N");
         string responsePath = ReviewFixtureTransportContract.ResponsePath(
             paths.RuntimePath,
             requestId);
         DateTimeOffset requestedAtUtc = DateTimeOffset.UtcNow;
-        ProjectReviewMcpRuntimeSnapshot expected = preflight.Snapshot!;
+        ProjectReviewMcpRuntimeSnapshot expected = current;
         var binding = new ReviewFixtureRequestBinding(
             expected.LaunchId,
             expected.Topology,
@@ -157,6 +183,20 @@ internal static class ProjectReviewFixtureService
         operation == ReviewFixtureTransportContract.SaveOperation
             ? SaveResponseTimeout
             : FixtureResponseTimeout;
+
+    internal static bool HasSameActionBinding(
+        ProjectReviewMcpRuntimeSnapshot current,
+        ProjectReviewMcpRuntimeSnapshot expected)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(expected);
+        return current.SchemaVersion == expected.SchemaVersion
+            && string.Equals(current.LaunchId, expected.LaunchId, StringComparison.Ordinal)
+            && string.Equals(current.Topology, expected.Topology, StringComparison.Ordinal)
+            && string.Equals(current.Role, expected.Role, StringComparison.Ordinal)
+            && current.Target == expected.Target
+            && current.TestSave == expected.TestSave;
+    }
 
     internal static string BuildCommand(
         string requestId,

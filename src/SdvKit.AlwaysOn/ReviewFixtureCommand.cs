@@ -540,6 +540,21 @@ internal interface IReviewFixtureRuntime
         string building);
 
     ReviewFixtureResult Farm(ReviewFixtureAccess access);
+
+    void BeginNavigation(
+        ReviewFixtureAccess access,
+        ReviewFixtureRequest request,
+        Action<ReviewFixtureResult> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(completed);
+        completed(request switch
+        {
+            ReviewFixtureEnterRequest enter => Enter(access, enter.Building),
+            ReviewFixtureFarmRequest => Farm(access),
+            _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
+        });
+    }
 }
 
 internal static class ReviewFixtureOperation
@@ -656,6 +671,101 @@ internal static class ReviewFixtureOperation
         string message,
         ReviewFixtureProblem? problem = null) =>
         new(access, new ReviewFixtureResult(false, message), problem);
+}
+
+internal static class ReviewFixtureNavigationOperation
+{
+    public static void ExecuteBound(
+        ReviewFixtureRequest request,
+        IReviewFixtureRuntime runtime,
+        ReviewFixtureRequestBinding expected,
+        Action<ReviewFixtureExecution> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(completed);
+
+        if (request is not ReviewFixtureEnterRequest
+            && request is not ReviewFixtureFarmRequest)
+        {
+            throw new ArgumentException(
+                "Only fixture navigation requests can use deferred navigation.",
+                nameof(request));
+        }
+
+        ReviewFixtureExecution verification = ReviewFixtureOperation.VerifyBound(
+            request.RequiresMainPlayer,
+            runtime,
+            expected);
+        if (!verification.Result.Succeeded)
+        {
+            completed(verification);
+            return;
+        }
+
+        var completionClaimed = 0;
+        void CompleteOnce(ReviewFixtureResult result)
+        {
+            if (Interlocked.Exchange(ref completionClaimed, 1) != 0)
+            {
+                return;
+            }
+
+            ReviewFixtureExecution completionVerification;
+            try
+            {
+                completionVerification = ReviewFixtureOperation.VerifyBound(
+                    request.RequiresMainPlayer,
+                    runtime,
+                    expected);
+            }
+            catch (Exception exception)
+            {
+                completed(new ReviewFixtureExecution(
+                    verification.Access,
+                    new ReviewFixtureResult(
+                        false,
+                        $"The fixture navigation completion check failed closed ({exception.GetType().Name}).")));
+                return;
+            }
+
+            if (!completionVerification.Result.Succeeded)
+            {
+                if (string.Equals(
+                        completionVerification.Problem?.Code,
+                        "fixtureBindingChanged",
+                        StringComparison.Ordinal))
+                {
+                    const string message =
+                        "The live review fixture identity changed before navigation completed; "
+                        + "the completed warp result cannot be attributed to the requested fixture.";
+                    completionVerification = new ReviewFixtureExecution(
+                        completionVerification.Access,
+                        new ReviewFixtureResult(false, message),
+                        new ReviewFixtureProblem("fixtureBindingChanged", message));
+                }
+
+                completed(completionVerification);
+                return;
+            }
+
+            completed(new ReviewFixtureExecution(
+                completionVerification.Access,
+                result));
+        }
+
+        try
+        {
+            runtime.BeginNavigation(verification.Access, request, CompleteOnce);
+        }
+        catch (Exception exception)
+        {
+            CompleteOnce(new ReviewFixtureResult(
+                false,
+                $"The fixture navigation failed closed ({exception.GetType().Name})."));
+        }
+    }
 }
 
 internal enum ReviewFixtureEnsureDecision
@@ -1150,6 +1260,49 @@ internal static class ReviewFixtureTransportCommand
             return;
         }
 
+        void PublishExecution(ReviewFixtureExecution execution)
+        {
+            ReviewFixtureResult completedResult = execution.Result;
+            Publish(
+                runtimePath,
+                requestId!,
+                binding,
+                operation,
+                execution.Access,
+                completedResult,
+                completedResult.Succeeded
+                    ? []
+                    : [execution.Problem
+                        ?? new ReviewFixtureProblem(
+                            "fixtureActionRejected",
+                            completedResult.Message)],
+                save: null,
+                monitor);
+        }
+
+        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest)
+        {
+            try
+            {
+                ReviewFixtureNavigationOperation.ExecuteBound(
+                    request,
+                    runtime,
+                    binding,
+                    PublishExecution);
+            }
+            catch (Exception exception)
+            {
+                ReviewFixtureAccess failedAccess = runtime.VerifyExactReviewFixture();
+                PublishExecution(new ReviewFixtureExecution(
+                    failedAccess,
+                    new ReviewFixtureResult(
+                        false,
+                        $"The fixture action failed closed ({exception.GetType().Name}).")));
+            }
+
+            return;
+        }
+
         ReviewFixtureExecution execution;
         try
         {
@@ -1165,20 +1318,7 @@ internal static class ReviewFixtureTransportCommand
                     $"The fixture action failed closed ({exception.GetType().Name})."));
         }
 
-        ReviewFixtureResult result = execution.Result;
-        Publish(
-            runtimePath,
-            requestId!,
-            binding,
-            operation,
-            execution.Access,
-            result,
-            result.Succeeded
-                ? []
-                : [execution.Problem
-                    ?? new ReviewFixtureProblem("fixtureActionRejected", result.Message)],
-            save: null,
-            monitor);
+        PublishExecution(execution);
     }
 
     private static void Publish(
@@ -1308,6 +1448,12 @@ internal sealed class StardewReviewFixtureRuntime(
     Func<NetworkTwoAutomation?> networkTwo,
     Func<long> getNewMultiplayerId) : IReviewFixtureRuntime
 {
+    private sealed record NavigationPlan(
+        GameLocation Location,
+        int TileX,
+        int TileY,
+        string Message);
+
     private sealed record BuildingPlacementPreparation(
         IReadOnlyList<ReviewFixtureTile> ObjectTiles,
         IReadOnlyList<ReviewFixtureTile> TerrainFeatureTiles,
@@ -1865,6 +2011,90 @@ internal sealed class StardewReviewFixtureRuntime(
         ReviewFixtureAccess access,
         string building)
     {
+        ReviewFixtureResult? immediate = PrepareEnter(
+            access,
+            building,
+            out NavigationPlan? plan);
+        if (immediate is not null)
+        {
+            return immediate;
+        }
+
+        Game1.warpFarmer(
+            plan!.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            false);
+        return SuccessNavigation(
+            plan.Message,
+            plan.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            changed: true);
+    }
+
+    public ReviewFixtureResult Farm(ReviewFixtureAccess access)
+    {
+        ReviewFixtureResult? immediate = PrepareFarm(
+            access,
+            out NavigationPlan? plan);
+        if (immediate is not null)
+        {
+            return immediate;
+        }
+
+        Game1.warpFarmer(
+            plan!.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            false);
+        return SuccessNavigation(
+            plan.Message,
+            plan.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            changed: true);
+    }
+
+    public void BeginNavigation(
+        ReviewFixtureAccess access,
+        ReviewFixtureRequest request,
+        Action<ReviewFixtureResult> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(completed);
+
+        ReviewFixtureResult? immediate;
+        NavigationPlan? plan;
+        if (request is ReviewFixtureEnterRequest enter)
+        {
+            immediate = PrepareEnter(access, enter.Building, out plan);
+        }
+        else if (request is ReviewFixtureFarmRequest)
+        {
+            immediate = PrepareFarm(access, out plan);
+        }
+        else
+        {
+            completed(Failure(ReviewFixtureArguments.Usage));
+            return;
+        }
+
+        if (immediate is not null)
+        {
+            completed(immediate);
+            return;
+        }
+
+        BeginWarp(plan!, completed);
+    }
+
+    private static ReviewFixtureResult? PrepareEnter(
+        ReviewFixtureAccess access,
+        string building,
+        out NavigationPlan? plan)
+    {
+        plan = null;
         string fixtureId = RequiredFixtureId(access);
         if (!TryResolveEnterBuilding(
                 building,
@@ -1900,17 +2130,19 @@ internal sealed class StardewReviewFixtureRuntime(
             return Failure(error);
         }
 
-        Game1.warpFarmer(indoors.NameOrUniqueName, (int)entry.X, (int)entry.Y, false);
-        return SuccessNavigation(
-            $"Warped through the natural entry of {targetDescription} at {entry.X},{entry.Y}.",
-            indoors.NameOrUniqueName,
+        plan = new NavigationPlan(
+            indoors,
             (int)entry.X,
             (int)entry.Y,
-            changed: true);
+            $"Warped through the natural entry of {targetDescription} at {entry.X},{entry.Y}.");
+        return null;
     }
 
-    public ReviewFixtureResult Farm(ReviewFixtureAccess access)
+    private static ReviewFixtureResult? PrepareFarm(
+        ReviewFixtureAccess access,
+        out NavigationPlan? plan)
     {
+        plan = null;
         string fixtureId = RequiredFixtureId(access);
         Farm farm = Game1.getFarm();
         if (ReferenceEquals(Game1.currentLocation, farm))
@@ -1962,18 +2194,59 @@ internal sealed class StardewReviewFixtureRuntime(
             return Failure("The fixture interior's natural Farm warp target is not passable.");
         }
 
-        Game1.warpFarmer("Farm", exit.TargetX, exit.TargetY, false);
         string sourceDescription = parent is not null
             ? $"fixture building {parent.id.Value:D}"
             : greenhouse is not null
                 ? $"Greenhouse {greenhouse.id.Value:D}"
                 : $"review FarmHouse '{current.NameOrUniqueName}'";
-        return SuccessNavigation(
-            $"Warped through the natural Farm exit of {sourceDescription} at {target.X},{target.Y}.",
-            farm.NameOrUniqueName,
-            (int)target.X,
-            (int)target.Y,
-            changed: true);
+        plan = new NavigationPlan(
+            farm,
+            exit.TargetX,
+            exit.TargetY,
+            $"Warped through the natural Farm exit of {sourceDescription} at {target.X},{target.Y}.");
+        return null;
+    }
+
+    private static void BeginWarp(
+        NavigationPlan plan,
+        Action<ReviewFixtureResult> completed)
+    {
+        string expectedLocationId = plan.Location.NameOrUniqueName;
+        bool expectedIsStructure = plan.Location.isStructure.Value;
+        var locationRequest = new LocationRequest(
+            expectedLocationId,
+            expectedIsStructure,
+            plan.Location);
+        locationRequest.OnWarp += () =>
+        {
+            GameLocation? actualLocation = Game1.currentLocation;
+            GameLocation? requestedLocation = locationRequest.Location;
+            if (actualLocation is null
+                || requestedLocation is null
+                || !ReferenceEquals(actualLocation, requestedLocation)
+                || !string.Equals(
+                    actualLocation.NameOrUniqueName,
+                    expectedLocationId,
+                    StringComparison.Ordinal)
+                || actualLocation.isStructure.Value != expectedIsStructure)
+            {
+                completed(Failure(
+                    "Stardew completed the fixture warp without reaching the exact requested location."));
+                return;
+            }
+
+            completed(SuccessNavigation(
+                plan.Message,
+                actualLocation.NameOrUniqueName,
+                Game1.player.TilePoint.X,
+                Game1.player.TilePoint.Y,
+                changed: true));
+        };
+        Game1.warpFarmer(
+            locationRequest,
+            plan.TileX,
+            plan.TileY,
+            Game1.player.FacingDirection);
     }
 
     private static ReviewFixtureAccess Denied(string message) =>

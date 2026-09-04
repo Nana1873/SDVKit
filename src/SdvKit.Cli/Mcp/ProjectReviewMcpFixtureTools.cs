@@ -9,6 +9,7 @@ namespace SdvKit.Cli.Mcp;
 
 internal delegate LiveLabCommandResult ProjectReviewMcpFixtureQueryRunner(
     ReviewFixtureQuery query,
+    ProjectReviewMcpRuntimeSnapshot expected,
     CancellationToken cancellationToken);
 
 internal static class ProjectReviewMcpFixtureTools
@@ -352,7 +353,10 @@ internal static class ProjectReviewMcpFixtureTools
                         ?? "The exact ready SDVKit-owned test save is required.")));
             }
 
-            LiveLabCommandResult result = runQuery(query, cancellationToken);
+            LiveLabCommandResult result = runQuery(
+                query,
+                preflight.Snapshot,
+                cancellationToken);
             if (result.ExitCode != 0
                 || result.Report is not ReviewFixtureReport report
                 || !MatchesReadyReport(query, report, preflight.Snapshot))

@@ -126,12 +126,13 @@ internal static class ProjectReviewMcpServer
                     cancellationToken: token))
             : null;
         ProjectReviewMcpFixtureQueryRunner? runFixture = allowFixtureActions
-            ? (query, token) => ProjectReviewFixtureService.Execute(
+            ? (query, expected, token) => ProjectReviewFixtureService.Execute(
                 query,
                 topology,
                 role,
                 projectRoot,
-                cancellationToken: token)
+                cancellationToken: token,
+                expectedSnapshot: expected)
             : null;
         McpServerOptions options = CreateOptions(
             reader,
