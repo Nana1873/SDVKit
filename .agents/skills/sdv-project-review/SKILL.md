@@ -110,6 +110,31 @@ stardew_data_record_get { "asset": "Data/Buildings", "key": "Barn" }
 
 The first two default to offset 0 and limit 50; the limit remains 1-100. Treat the returned page and coverage exactly like their CLI equivalents, and require structured JSON and compact text content to be semantically identical. These tools first revalidate the fresh MCP review binding and then reuse the CLI data service's independent exact-review gate. A bounded tool error is not stale data and must not be retried unchanged. Network-role MCP servers do not advertise these tools.
 
+### Inspect canonical map structure
+
+Use the top-level read-only map surface only during an exact, target-load-confirmed `single` review. These are CLI operations, not console lines and not MCP tools:
+
+```text
+sdvkit project review map assets --offset 0 --limit 100 --topology single --json
+sdvkit project review map get "Maps/Town" --topology single --json
+sdvkit project review map layers "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map layer "Maps/Town" "Buildings" --topology single --json
+sdvkit project review map tilesheets "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map warps "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map tile "Maps/Town" "Buildings" 10 12 --topology single --json
+sdvkit project review map property "Maps/Town" map "Outdoors" --topology single --json
+sdvkit project review map property "Maps/Town" layer "Buildings" "NoSpawn" --topology single --json
+sdvkit project review map property "Maps/Town" tile "Buildings" 10 12 direct "Action" --topology single --json
+sdvkit project review map property "Maps/Town" tile "Buildings" 10 12 tile-index "Passable" --frame 0 --topology single --json
+sdvkit project review map property "Maps/Town" layer --topology single --json -- "--frame" "--json"
+```
+
+If a map, layer, or property operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker. Every following token is then an operand; the last example reads property `--json` from layer `--frame`.
+
+Page `assets`, `layers`, `tilesheets`, and `warps` through `nextOffset`; their limits remain 1-100. Require `coverage.complete=true` before describing the independently discovered physical game map inventory as complete. A non-map XNB under `Content/Maps` is a valid classified candidate, while unknown, unclassified, unsupported, colliding, malformed, or unsafe entries are real gaps. Unsafe physical names are replaced with deterministic `invalid-map-asset-NNNN` labels instead of being echoed. The inventory covers physical game candidates; exact canonical `Maps/*` names introduced by loaded mods remain readable through SMAPI's active content pipeline. Keep a pipeline absence distinct from a name outside that namespace. Treat general `Warp` entries as `playerAndNpc` and `NPCWarp` entries as `npc`.
+
+Use `get` for counts and checked display dimensions, `layer` for one exact stable layer, and `tile` for one in-bounds empty/static/animated tile. Tile output deliberately contains property counts and ordered frame identities rather than property values or a tile matrix. Read one property with an explicit scope: map and layer properties are direct; tile properties must name `direct` or `tile-index`; animated tile-index properties require the stable zero-based frame. Preserve returned JSON value types and never merge direct with tile-index properties. Treat any bounded problem as fail-closed and do not retry an unchanged request or substitute raw XNB access, reflection, export, mutation, network-2, or MCP.
+
 ### Drive review input without desktop automation
 
 Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:

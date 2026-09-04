@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
@@ -30,6 +31,10 @@ public sealed class CliApplicationTests
             StringComparison.Ordinal);
         Assert.Contains(
             "sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... [--topology single] --json",
             output,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -831,6 +836,192 @@ public sealed class CliApplicationTests
         Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProjectReviewMapDispatchesPagedInventoryQuery()
+    {
+        ReviewMapQuery? received = null;
+        ProjectReviewMapCommandRunner runner = (query, labRoot) =>
+        {
+            received = query;
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return new LiveLabCommandResult(0, new { state = "ready", operation = query.Operation });
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMap(
+            runner,
+            "project",
+            "review",
+            "map",
+            "assets",
+            "--offset",
+            "5",
+            "--limit",
+            "2",
+            "--topology",
+            "single",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal(
+            new ReviewMapQuery("assets", null, null, null, null, null, null, null, null, 5, 2),
+            received);
+        Assert.Contains("\"operation\":\"assets\"", output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("map", "direct", null)]
+    [InlineData("layer", "direct", null)]
+    [InlineData("tile", "direct", null)]
+    [InlineData("tile", "tile-index", 1)]
+    public void ProjectReviewMapDispatchesExplicitPropertyScopes(
+        string scope,
+        string source,
+        int? frame)
+    {
+        ReviewMapQuery? received = null;
+        ProjectReviewMapCommandRunner runner = (query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+        var arguments = new List<string> { "project", "review", "map", "property", "Maps/Town", scope };
+        if (scope == "map")
+        {
+            arguments.Add("Outdoors");
+        }
+        else if (scope == "layer")
+        {
+            arguments.AddRange(["Buildings", "NoSpawn"]);
+        }
+        else
+        {
+            arguments.AddRange(["Buildings", "1", "2", source, "Action"]);
+        }
+        if (frame is not null)
+        {
+            arguments.AddRange(["--frame", frame.Value.ToString(CultureInfo.InvariantCulture)]);
+        }
+        arguments.Add("--json");
+
+        (int exitCode, _, string error) = RunWithProjectReviewMap(runner, [.. arguments]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal(scope, received!.PropertyScope);
+        Assert.Equal(source, received.PropertySource);
+        Assert.Equal(frame, received.FrameIndex);
+    }
+
+    [Fact]
+    public void ProjectReviewMapEndOfOptionsAllowsAnOptionLikeLayerId()
+    {
+        ReviewMapQuery? received = null;
+        ProjectReviewMapCommandRunner runner = (query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReviewMap(
+            runner,
+            "project",
+            "review",
+            "map",
+            "layer",
+            "Maps/Town",
+            "--json",
+            "--",
+            "--limit");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal("Maps/Town", received!.Asset);
+        Assert.Equal("--limit", received.Layer);
+    }
+
+    [Fact]
+    public void ProjectReviewMapEndOfOptionsAllowsOptionLikePropertyOperands()
+    {
+        ReviewMapQuery? received = null;
+        ProjectReviewMapCommandRunner runner = (query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReviewMap(
+            runner,
+            "project",
+            "review",
+            "map",
+            "property",
+            "Maps/Town",
+            "layer",
+            "--topology",
+            "single",
+            "--json",
+            "--",
+            "--frame",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal("Maps/Town", received!.Asset);
+        Assert.Equal("layer", received.PropertyScope);
+        Assert.Equal("--frame", received.Layer);
+        Assert.Equal("--json", received.Property);
+        Assert.Null(received.FrameIndex);
+    }
+
+    [Theory]
+    [InlineData("project", "review", "map")]
+    [InlineData("project", "review", "map", "unknown", "--json")]
+    [InlineData("project", "review", "map", "assets")]
+    [InlineData("project", "review", "map", "assets", "extra", "--json")]
+    [InlineData("project", "review", "map", "assets", "--limit", "101", "--json")]
+    [InlineData("project", "review", "map", "get", "Maps/Town", "--limit", "1", "--json")]
+    [InlineData("project", "review", "map", "tile", "Maps/Town", "Buildings", "-1", "0", "--json")]
+    [InlineData("project", "review", "map", "property", "Maps/Town", "map", "Outdoors", "--frame", "0", "--json")]
+    [InlineData("project", "review", "map", "property", "Maps/Town", "tile", "Buildings", "1", "2", "direct", "Action", "--frame", "0", "--json")]
+    [InlineData("project", "review", "map", "assets", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "map", "assets", "--json", "--json")]
+    public void ProjectReviewMapSyntaxErrorsUseTheExactMapUsage(params string[] arguments)
+    {
+        ProjectReviewMapCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-map should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMap(runner, arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("project review map assets", error, StringComparison.Ordinal);
+        Assert.Contains("project review map layer <map> <layer>", error, StringComparison.Ordinal);
+        Assert.Contains("project review map property", error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("map", "--help")]
+    [InlineData("map", "assets", "--help")]
+    public void ProjectReviewMapHelpListsOnlyTheBoundedSingleSurface(params string[] suffix)
+    {
+        ProjectReviewMapCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-map should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMap(
+            runner,
+            ["project", "review", .. suffix]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Contains("map assets", output, StringComparison.Ordinal);
+        Assert.Contains("map tile <map> <layer> <x> <y>", output, StringComparison.Ordinal);
+        Assert.Contains("active owned single review", output, StringComparison.Ordinal);
+        Assert.Contains("put every CLI option before '--'", output, StringComparison.Ordinal);
+        Assert.Contains("every following token is treated as an operand", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -954,6 +1145,8 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review data get <asset> <key> [--topology single] --json"
                 + Environment.NewLine
+                + "       sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... --json"
+                + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"
@@ -1041,6 +1234,7 @@ public sealed class CliApplicationTests
         Assert.Contains("project review start", output, StringComparison.Ordinal);
         Assert.Contains("project review status", output, StringComparison.Ordinal);
         Assert.Contains("project review command", output, StringComparison.Ordinal);
+        Assert.Contains("project review map", output, StringComparison.Ordinal);
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
         Assert.Contains("project review mcp serve", output, StringComparison.Ordinal);
@@ -1493,6 +1687,21 @@ public sealed class CliApplicationTests
             error,
             GameInstallationDiscovery.Discover,
             runProjectReviewData: runProjectReviewData);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReviewMap(
+        ProjectReviewMapCommandRunner runProjectReviewMap,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectReviewMap: runProjectReviewMap);
         return (exitCode, output.ToString(), error.ToString());
     }
 

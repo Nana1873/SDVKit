@@ -203,6 +203,27 @@ Asset and string-key lookup accepts case differences plus small space, hyphen, u
 
 Pages default to 50 entries and accept 1-100; offsets are non-negative. Asset and key tokens, one record, and the complete response are size-bounded. There is no unbounded full-dump default, no mutation operation, no network-topology variant, and no new public RPC or generic reflection surface. Each request reuses the existing exact review lock, process, staging, target-load, console-input, and cleanup checks.
 
+### Inspect active map structure
+
+The `map` subcommands inspect the canonical map assets visible through SMAPI's active content pipeline in the same exact, load-confirmed `single` review. They do not read through the normal `Mods` directory, export source XNBs, return a tile matrix, or mutate a map.
+
+```powershell
+sdvkit project review map assets --offset 0 --limit 100 --topology single --json
+sdvkit project review map get "Maps/Town" --topology single --json
+sdvkit project review map layers "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map layer "Maps/Town" "Buildings" --topology single --json
+sdvkit project review map tilesheets "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map warps "Maps/Town" --offset 0 --limit 50 --topology single --json
+sdvkit project review map tile "Maps/Town" "Back" 10 12 --topology single --json
+sdvkit project review map property "Maps/Town" map "Outdoors" --topology single --json
+```
+
+Run `sdvkit project review map --help` for the exact layer, direct-tile, and tile-index property forms. Supply only property names and coordinates known to exist in the selected map; SDVKit deliberately does not guess them, and an absent selection returns a machine-checkable `blocked` result. If a map, layer, or property operand starts with `-` or has the same spelling as an option, put every CLI option before the `--` end-of-options marker. Every following token is then treated as an operand.
+
+`assets` independently scans the installed `Content/Maps` XNB candidates without following reparse points, excludes locale siblings, and classifies each pipeline result as a supported xTile map, a known non-map candidate, or an explicit gap. Unsafe physical candidate names are represented only by deterministic `invalid-map-asset-NNNN` labels and are never echoed into the report. This inventory describes physical game candidates only; an exact canonical `Maps/*` name introduced by a loaded mod can still be inspected through SMAPI's active content pipeline. Require `coverage.complete=true` before claiming complete physical-inventory support. A canonical name unavailable through that pipeline is reported separately from a name outside the namespace; load failures, normalized identity collisions, malformed warps, unsafe shapes, and oversized structures fail closed.
+
+List operations are paged from stable collection order, while `get`, `layer`, `tile`, and `property` return one bounded selection. Warp entries distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`). Tile output identifies an empty, static, or animated tile and returns stable frame references and property counts, never the layer's tile matrix. Exact property reads preserve their JSON type and require an explicit map, layer, direct-tile, or tile-index scope. An animated tile-index property additionally requires its stable zero-based `--frame`; direct and tile-index properties are never merged. Map access is intentionally CLI-only here and is not added to MCP.
+
 AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` requests a full-map PNG through Stardew's native map-screenshot path and remains gated on a loaded world plus Stardew's map-screenshot capability. `sdvkit screenshot viewport <label>` captures the current rendered game viewport, including title and loading screens before `Context.IsWorldReady`, menus, and HUD. For example, transport `sdvkit screenshot viewport menu-open` through `project review command` to inspect a menu without desktop automation. Labels are limited to 1-64 ASCII letters, digits, `-`, or `_`; the fixed result name is `SDVKit-<label>.png`, and an existing target is never overwritten. Success is proven only when the AlwaysOn log reports the full path and that exact PNG exists below the role's isolated `StardewValley/Screenshots` directory; `commandWritten=true` still proves console delivery only.
 
 Automated review mouse input is restricted to SDVKit's existing process-local virtual cursor after exact review ownership and topology-role verification. It fails closed and never uses global `SendInput`, moves the physical pointer, changes window focus, or delegates review mouse input to generic computer-use automation.

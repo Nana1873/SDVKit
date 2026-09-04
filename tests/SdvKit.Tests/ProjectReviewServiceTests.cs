@@ -1300,6 +1300,247 @@ public sealed class ProjectReviewServiceTests
         }
     }
 
+    [Fact]
+    public void MapQueryTimesOutWithoutRetryingTheExactReadyReview()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewMapService.Execute(
+                    new ReviewMapQuery(
+                        ReviewMapContract.AssetsOperation,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        ReviewMapContract.DefaultPageLimit),
+                    temporary.Path,
+                    sender,
+                    responseTimeout: TimeSpan.Zero);
+
+                ReviewMapReport report = Assert.IsType<ReviewMapReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Equal("mapResponseTimedOut", Assert.Single(report.Problems).Code);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit map ", sender.Line, StringComparison.Ordinal);
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MapQueryReusesTheExactReadyReviewBindingAndConsumesItsResponse(
+        bool mismatchRequestId)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string? responsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string requestId = line.Split(' ')[2];
+                        responsePath = ReviewMapContract.ResponsePath(paths.RuntimePath, requestId);
+                        var coverage = new ReviewMapCoverageReport(1, 1, 1, 0, 1, 0, 0, 0);
+                        var report = new ReviewMapReport(
+                            ReviewMapContract.SchemaVersion,
+                            "ready",
+                            ReviewMapContract.AssetsOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            [
+                                new ReviewMapAssetReport(
+                                    "Maps/Town",
+                                    "xTile.Map",
+                                    "map",
+                                    new ReviewMapSummary(64, 64, 3, 2, 1, 4),
+                                    true,
+                                    null),
+                            ],
+                            null,
+                            null,
+                            null,
+                            new ReviewMapPage(0, 50, 1, 1, null),
+                            coverage,
+                            []);
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(
+                                new ReviewMapResponseEnvelope(
+                                    ReviewMapContract.SchemaVersion,
+                                    mismatchRequestId
+                                        ? Guid.NewGuid().ToString("N")
+                                        : requestId,
+                                    report),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewMapService.Execute(
+                    new ReviewMapQuery(
+                        ReviewMapContract.AssetsOperation,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        ReviewMapContract.DefaultPageLimit),
+                    temporary.Path,
+                    sender);
+
+                ReviewMapReport report = Assert.IsType<ReviewMapReport>(result.Report);
+                Assert.Equal(mismatchRequestId ? 3 : 0, result.ExitCode);
+                Assert.Equal(mismatchRequestId ? "blocked" : "ready", report.State);
+                if (mismatchRequestId)
+                {
+                    Assert.Equal("mapResponseInvalid", Assert.Single(report.Problems).Code);
+                }
+                else
+                {
+                    Assert.True(report.Coverage!.Complete);
+                    Assert.Equal("Maps/Town", Assert.Single(report.Assets!).AssetName);
+                }
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit map ", sender.Line, StringComparison.Ordinal);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SharedResponseTransportRejectsNullDataReportOrProblems(bool nullReport)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string? responsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string requestId = line.Split(' ')[2];
+                        responsePath = ReviewDataContract.ResponsePath(paths.RuntimePath, requestId);
+                        object envelope = nullReport
+                            ? new
+                            {
+                                schemaVersion = ReviewDataContract.SchemaVersion,
+                                requestId,
+                                report = (object?)null,
+                            }
+                            : new
+                            {
+                                schemaVersion = ReviewDataContract.SchemaVersion,
+                                requestId,
+                                report = new
+                                {
+                                    schemaVersion = ReviewDataContract.SchemaVersion,
+                                    operation = ReviewDataContract.AssetsOperation,
+                                    problems = (object?)null,
+                                },
+                            };
+                        File.WriteAllText(responsePath, JsonSerializer.Serialize(envelope));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewDataService.Execute(
+                    new ReviewDataQuery(
+                        ReviewDataContract.AssetsOperation,
+                        null,
+                        null,
+                        0,
+                        ReviewDataContract.DefaultPageLimit),
+                    temporary.Path,
+                    sender);
+
+                ReviewDataReport report = Assert.IsType<ReviewDataReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("dataResponseInvalid", Assert.Single(report.Problems).Code);
+                Assert.Equal(1, sender.CallCount);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
     [Theory]
     [InlineData(
         ProjectModContract.WaitingForGameLaunchPhase,
