@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using SdvKit.Cli.LiveLab;
 
 #if SDVKIT_GAME_AVAILABLE
 using System.Reflection;
@@ -22,7 +24,8 @@ internal sealed record ReviewInputRequest(
     ReviewInputKind Kind,
     string? Button,
     int X,
-    int Y);
+    int Y,
+    string? RequestId = null);
 
 internal static class ReviewInputArguments
 {
@@ -43,38 +46,66 @@ internal static class ReviewInputArguments
             return false;
         }
 
-        if (arguments.Count == 3
-            && string.Equals(arguments[1], "press", StringComparison.Ordinal)
-            && IsValidButtonToken(arguments[2]))
+        var actionIndex = 1;
+        string? requestId = null;
+        if (arguments.Count >= 5
+            && string.Equals(arguments[1], "request", StringComparison.Ordinal)
+            && ReviewTransportToken.IsRequestId(arguments[2]))
+        {
+            requestId = arguments[2];
+            actionIndex = 3;
+        }
+
+        if (arguments.Count == actionIndex + 2
+            && string.Equals(arguments[actionIndex], "press", StringComparison.Ordinal)
+            && IsValidButtonToken(arguments[actionIndex + 1])
+            && (requestId is null || !IsMouseWheelToken(arguments[actionIndex + 1])))
         {
             request = new ReviewInputRequest(
-                IsMouseWheelToken(arguments[2])
+                IsMouseWheelToken(arguments[actionIndex + 1])
                     ? ReviewInputKind.Scroll
                     : ReviewInputKind.Press,
-                arguments[2],
+                arguments[actionIndex + 1],
                 0,
-                0);
+                0,
+                requestId);
         }
-        else if (arguments.Count == 4
-            && string.Equals(arguments[1], "cursor", StringComparison.Ordinal)
-            && TryParseCoordinate(arguments[2], out int x)
-            && TryParseCoordinate(arguments[3], out int y))
+        else if (requestId is not null
+            && arguments.Count == actionIndex + 2
+            && string.Equals(arguments[actionIndex], "wheel", StringComparison.Ordinal)
+            && arguments[actionIndex + 1] is "up" or "down")
+        {
+            request = new ReviewInputRequest(
+                ReviewInputKind.Scroll,
+                string.Equals(arguments[actionIndex + 1], "up", StringComparison.Ordinal)
+                    ? "MouseWheelUp"
+                    : "MouseWheelDown",
+                0,
+                0,
+                requestId);
+        }
+        else if (arguments.Count == actionIndex + 3
+            && string.Equals(arguments[actionIndex], "cursor", StringComparison.Ordinal)
+            && TryParseCoordinate(arguments[actionIndex + 1], out int x)
+            && TryParseCoordinate(arguments[actionIndex + 2], out int y))
         {
             request = new ReviewInputRequest(
                 ReviewInputKind.Cursor,
                 null,
                 x,
-                y);
+                y,
+                requestId);
         }
-        else if (arguments.Count == 3
-            && string.Equals(arguments[1], "cursor", StringComparison.Ordinal)
-            && string.Equals(arguments[2], "clear", StringComparison.Ordinal))
+        else if (arguments.Count == actionIndex + 2
+            && string.Equals(arguments[actionIndex], "cursor", StringComparison.Ordinal)
+            && string.Equals(arguments[actionIndex + 1], "clear", StringComparison.Ordinal))
         {
             request = new ReviewInputRequest(
                 ReviewInputKind.ClearCursor,
                 null,
                 0,
-                0);
+                0,
+                requestId);
         }
 
         return request is not null;
@@ -92,6 +123,13 @@ internal static class ReviewInputArguments
         string.Equals(value, "MouseWheelUp", StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, "MouseWheelDown", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsMouseButtonToken(string? value) =>
+        string.Equals(value, "MouseLeft", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "MouseRight", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "MouseMiddle", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "MouseX1", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "MouseX2", StringComparison.OrdinalIgnoreCase);
+
     private static bool TryParseCoordinate(string value, out int coordinate) =>
         int.TryParse(
             value,
@@ -106,6 +144,14 @@ internal interface IReviewInputRuntime
 
     int UiHeight { get; }
 
+    int GameTick => 0;
+
+    bool InputAdapterReady => false;
+
+    bool CursorSet => false;
+
+    bool MenuOpen => false;
+
     bool TryPress(string button, out string canonicalButton, out string error);
 
     bool TryScroll(int direction, out string error);
@@ -115,7 +161,79 @@ internal interface IReviewInputRuntime
     bool TryClearCursor(out string error);
 }
 
-internal sealed record ReviewInputResult(bool Succeeded, string Message);
+internal sealed record ReviewInputResult(
+    bool Succeeded,
+    string Message,
+    string? CanonicalButton = null,
+    string? ProblemCode = null);
+
+internal static class ReviewInputResponseFile
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public static void Write(
+        string runtimePath,
+        ReviewInputResponseEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review runtime path is required.",
+                nameof(runtimePath));
+        }
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
+        FileAttributes attributes = File.GetAttributes(absoluteRuntimePath);
+        if ((attributes & FileAttributes.ReparsePoint) != 0
+            || (attributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                "The review runtime response root is not a regular directory.");
+        }
+
+        string responsePath = ReviewInputContract.ResponsePath(
+            absoluteRuntimePath,
+            envelope.RequestId);
+        string temporaryPath = responsePath + ".tmp";
+        if (File.Exists(responsePath) || File.Exists(temporaryPath))
+        {
+            throw new InvalidDataException(
+                "The review-input response target already exists.");
+        }
+
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+        if (bytes.Length == 0 || bytes.Length > ReviewInputContract.MaximumResponseBytes)
+        {
+            throw new InvalidDataException(
+                "The bounded review-input response exceeds its maximum size.");
+        }
+
+        try
+        {
+            using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough))
+            {
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporaryPath, responsePath);
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
+}
 
 internal static class ReviewInputOperation
 {
@@ -130,23 +248,60 @@ internal static class ReviewInputOperation
         {
             return runtime.TryClearCursor(out string clearError)
                 ? new ReviewInputResult(true, "Cleared the virtual review cursor.")
-                : Failure(clearError);
+                : Failure("inputClearFailed", clearError);
         }
 
         if (request.Kind == ReviewInputKind.Press)
         {
             if (!ReviewInputArguments.IsValidButtonToken(request.Button))
             {
-                return Failure(ReviewInputArguments.Usage);
+                return Failure("inputArgumentsInvalid", ReviewInputArguments.Usage);
+            }
+
+            if (!runtime.InputAdapterReady)
+            {
+                return Failure(
+                    "inputAdapterUnavailable",
+                    "The process-local background input adapter is not installed and ready.");
+            }
+
+            if (ReviewInputArguments.IsMouseButtonToken(request.Button)
+                && !runtime.CursorSet)
+            {
+                return Failure(
+                    "inputCursorMissing",
+                    "Set the virtual review cursor before pressing a mouse button.");
             }
 
             return runtime.TryPress(request.Button!, out string canonicalButton, out string error)
-                ? new ReviewInputResult(true, $"Pressed review input '{canonicalButton}' for one input tick.")
-                : Failure(error);
+                ? new ReviewInputResult(
+                    true,
+                    $"Pressed review input '{canonicalButton}' for one input tick.",
+                    canonicalButton)
+                : Failure("inputButtonUnsupported", error, request.Button);
         }
 
         if (request.Kind == ReviewInputKind.Scroll)
         {
+            if (!runtime.InputAdapterReady)
+            {
+                return Failure(
+                    "inputAdapterUnavailable",
+                    "The process-local background input adapter is not installed and ready.");
+            }
+            if (!runtime.CursorSet)
+            {
+                return Failure(
+                    "inputCursorMissing",
+                    "Set the virtual review cursor before sending mouse-wheel input.");
+            }
+            if (!runtime.MenuOpen)
+            {
+                return Failure(
+                    "inputMenuMissing",
+                    "Mouse-wheel review input requires an active game menu.");
+            }
+
             int direction = string.Equals(
                 request.Button,
                 "MouseWheelUp",
@@ -155,8 +310,11 @@ internal static class ReviewInputOperation
                 : -120;
             string canonicalButton = direction > 0 ? "MouseWheelUp" : "MouseWheelDown";
             return runtime.TryScroll(direction, out string error)
-                ? new ReviewInputResult(true, $"Pressed review input '{canonicalButton}' for one mouse-wheel notch.")
-                : Failure(error);
+                ? new ReviewInputResult(
+                    true,
+                    $"Pressed review input '{canonicalButton}' for one mouse-wheel notch.",
+                    canonicalButton)
+                : Failure("inputWheelRejected", error);
         }
 
         if (request.Kind != ReviewInputKind.Cursor
@@ -166,18 +324,30 @@ internal static class ReviewInputOperation
             || request.Y >= runtime.UiHeight)
         {
             return Failure(
+                "inputCursorOutOfBounds",
                 $"Review cursor coordinates must be inside the current UI viewport "
                 + $"{runtime.UiWidth}x{runtime.UiHeight}.");
+        }
+
+        if (!runtime.InputAdapterReady)
+        {
+            return Failure(
+                "inputAdapterUnavailable",
+                "The process-local background input adapter is not installed and ready.");
         }
 
         return runtime.TrySetCursor(request.X, request.Y, out string cursorError)
             ? new ReviewInputResult(
                 true,
                 $"Set the virtual review cursor to UI coordinate {request.X},{request.Y}; the physical pointer was not moved.")
-            : Failure(cursorError);
+            : Failure("inputCursorUnavailable", cursorError);
     }
 
-    private static ReviewInputResult Failure(string message) => new(false, message);
+    private static ReviewInputResult Failure(
+        string code,
+        string message,
+        string? canonicalButton = null) =>
+        new(false, message, canonicalButton, code);
 }
 
 #if SDVKIT_GAME_AVAILABLE
@@ -186,6 +356,7 @@ internal static class ReviewInputCommand
     public static void Handle(
         string[] arguments,
         IReviewInputRuntime runtime,
+        string runtimePath,
         IMonitor monitor)
     {
         if (!ReviewInputArguments.TryParse(
@@ -200,13 +371,93 @@ internal static class ReviewInputCommand
         try
         {
             ReviewInputResult result = ReviewInputOperation.Execute(request!, runtime);
+            if (request!.RequestId is not null)
+            {
+                ReviewInputResponseFile.Write(
+                    runtimePath,
+                    CreateResponse(request, runtime, result));
+            }
             monitor.Log(result.Message, result.Succeeded ? LogLevel.Info : LogLevel.Error);
         }
         catch (Exception exception)
         {
+            if (request!.RequestId is not null)
+            {
+                TryWriteFailureResponse(request, runtimePath, runtime);
+            }
             monitor.Log(
                 $"SDVKit input command failed without confirming input: {exception.Message}",
                 LogLevel.Error);
+        }
+    }
+
+    private static ReviewInputResponseEnvelope CreateResponse(
+        ReviewInputRequest request,
+        IReviewInputRuntime runtime,
+        ReviewInputResult result)
+    {
+        string action = request.Kind switch
+        {
+            ReviewInputKind.Press => ReviewInputContract.PressAction,
+            ReviewInputKind.Scroll => ReviewInputContract.WheelAction,
+            ReviewInputKind.Cursor => ReviewInputContract.CursorSetAction,
+            ReviewInputKind.ClearCursor => ReviewInputContract.CursorClearAction,
+            _ => throw new InvalidOperationException(
+                "The review-input action is unsupported."),
+        };
+        string? direction = request.Kind == ReviewInputKind.Scroll
+            ? string.Equals(request.Button, "MouseWheelUp", StringComparison.OrdinalIgnoreCase)
+                ? "up"
+                : "down"
+            : null;
+        return new ReviewInputResponseEnvelope(
+            ReviewInputContract.SchemaVersion,
+            request.RequestId!,
+            DateTimeOffset.UtcNow,
+            runtime.GameTick,
+            action,
+            result.Succeeded,
+            request.Kind == ReviewInputKind.Press
+                ? result.CanonicalButton ?? request.Button
+                : null,
+            direction,
+            request.Kind == ReviewInputKind.Cursor ? request.X : null,
+            request.Kind == ReviewInputKind.Cursor ? request.Y : null,
+            runtime.CursorSet,
+            runtime.MenuOpen,
+            result.Succeeded
+                ? null
+                : new ReviewInputProblem(
+                    result.ProblemCode ?? "inputRejected",
+                    result.Message.Length <= ReviewInputContract.MaximumProblemLength
+                        ? result.Message
+                        : result.Message[..ReviewInputContract.MaximumProblemLength]));
+    }
+
+    private static void TryWriteFailureResponse(
+        ReviewInputRequest request,
+        string runtimePath,
+        IReviewInputRuntime runtime)
+    {
+        try
+        {
+            ReviewInputResponseFile.Write(
+                runtimePath,
+                CreateResponse(
+                    request,
+                    runtime,
+                    new ReviewInputResult(
+                        false,
+                        "The bounded review-input action failed before acknowledgement.",
+                        ProblemCode: "inputRejected")));
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or InvalidDataException
+            or InvalidOperationException
+            or ArgumentException)
+        {
+            // A failed create-new acknowledgement must never be retried or replaced.
         }
     }
 }
@@ -217,8 +468,31 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
 
     public int UiHeight => Game1.uiViewport.Height;
 
+    public int GameTick => Game1.ticks;
+
+    public bool InputAdapterReady => ReviewVirtualCursor.IsInstalled;
+
+    public bool CursorSet => ReviewVirtualCursor.IsSet;
+
+    public bool MenuOpen => Game1.activeClickableMenu is not null;
+
     public bool TryPress(string button, out string canonicalButton, out string error)
     {
+        if (!ReviewVirtualCursor.IsInstalled)
+        {
+            canonicalButton = string.Empty;
+            error = "The process-local background input adapter is not installed and ready.";
+            return false;
+        }
+
+        if (ReviewInputArguments.IsMouseButtonToken(button)
+            && !ReviewVirtualCursor.IsSet)
+        {
+            canonicalButton = string.Empty;
+            error = "Set the virtual review cursor before pressing a mouse button.";
+            return false;
+        }
+
         if (!Enum.TryParse(button, ignoreCase: true, out SButton parsed)
             || !Enum.IsDefined(parsed)
             || parsed == SButton.None)
@@ -284,6 +558,17 @@ internal static class ReviewVirtualCursor
             lock (Sync)
             {
                 return _uiX is not null && _uiY is not null;
+            }
+        }
+    }
+
+    public static bool IsInstalled
+    {
+        get
+        {
+            lock (Sync)
+            {
+                return _installed;
             }
         }
     }

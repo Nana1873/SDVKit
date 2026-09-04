@@ -281,7 +281,7 @@ AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` request
 
 Automated review mouse input is restricted to SDVKit's existing process-local virtual cursor after exact review ownership and topology-role verification. It fails closed and never uses global `SendInput`, moves the physical pointer, changes window focus, or delegates review mouse input to generic computer-use automation.
 
-For input-driven reviews, transport `sdvkit input press <SButton>` to press one exact SMAPI button for one input tick, or `sdvkit input cursor <ui-x> <ui-y>` to enable a process-local virtual cursor at a coordinate inside the current UI viewport. Button and cursor dispatch are available on title and loading screens before `Context.IsWorldReady` as well as in a loaded world. `MouseWheelUp` and `MouseWheelDown` are explicit review tokens for one directional wheel notch and still require the virtual cursor to be set over an active menu first. Every SDVKit-controlled lab start prepares only its isolated profile for an initial bordered 1280x720 game window; AlwaysOn applies and verifies that baseline once after Stardew's title-window initialization, then leaves resize and UI-scale testing alone. Interactive review also keeps the separate SMAPI terminal visible and asks Windows not to activate the new process; a transient terminal activation can still be terminal-host behavior. Automated network roles may start minimized, but their game display mode is still windowed rather than borderless or fullscreen. The virtual cursor overrides only the mouse coordinates Stardew reads inside the isolated game process; it does not focus a window or move the user's physical pointer. For a bounded four-tick interval around an injected SMAPI button press, AlwaysOn lets SMAPI complete its normal pressed-to-released input update and also lets Stardew's own menu-input path run while its window stays in the background. Outside that interval, both activity getters retain their original values. Use `sdvkit input cursor clear` to remove the coordinate override, and AlwaysOn also clears it on return to title and controlled exit. This supports keyboard, virtual mouse, and controller paths; invalid button names, wheel input without a virtual cursor and active menu, and out-of-viewport cursor coordinates fail closed. Each successful result confirms only input injection, so verify the resulting UI or state separately.
+For input-driven reviews, transport `sdvkit input press <SButton>` to press one exact SMAPI button for one input tick, or `sdvkit input cursor <ui-x> <ui-y>` to enable a process-local virtual cursor at a coordinate inside the current UI viewport. Button and cursor dispatch are available on title and loading screens before `Context.IsWorldReady` as well as in a loaded world. A mouse-button press and the explicit `MouseWheelUp` or `MouseWheelDown` review tokens require the process-local virtual cursor to be set first; wheel input additionally requires an active menu. Every SDVKit-controlled lab start prepares only its isolated profile for an initial bordered 1280x720 game window; AlwaysOn applies and verifies that baseline once after Stardew's title-window initialization, then leaves resize and UI-scale testing alone. Interactive review also keeps the separate SMAPI terminal visible and asks Windows not to activate the new process; a transient terminal activation can still be terminal-host behavior. Automated network roles may start minimized, but their game display mode is still windowed rather than borderless or fullscreen. The virtual cursor overrides only the mouse coordinates Stardew reads inside the isolated game process; it does not focus a window or move the user's physical pointer. For a bounded four-tick interval around an injected SMAPI button press, AlwaysOn lets SMAPI complete its normal pressed-to-released input update and also lets Stardew's own menu-input path run while its window stays in the background. Outside that interval, both activity getters retain their original values. The commands fail closed unless that adapter is installed and ready. Use `sdvkit input cursor clear` to remove the coordinate override, and AlwaysOn also clears it on return to title and controlled exit. This supports keyboard, virtual mouse, and controller paths; unavailable adapter state, invalid button names, mouse input without a virtual cursor, wheel input without an active menu, and out-of-viewport cursor coordinates fail closed. Each successful result confirms only input injection, so verify the resulting UI or state separately.
 
 For a fixture-backed `single` review or a `network-2` pair that has not joined yet, `project review command` relaxes scenario readiness only for the exact built-in input grammar above and `sdvkit screenshot viewport <label>`. It still requires the exact owned staging, state, process and target-load binding; network-2 also requires both retained roles to be exact running AlwaysOn processes and one explicit selected role. Map screenshots, fixture and Data operations, target or companion commands, malformed variants, and broad `sdvkit input` prefixes keep the full fixture or joined-pair gate.
 
@@ -399,7 +399,10 @@ Omitting `--topology` selects `single`. A role is rejected for `single`, while
 missing, or unknown option values are usage errors. The command deliberately has
 no `--json`, HTTP, TCP, relay, secret, or Python mode. Protocol frames are the
 only stdout output; bounded startup diagnostics use stderr. Closing the client's
-stdin ends the child server process.
+stdin ends the child server process. Input tools are absent by default. Add the
+granular `--allow-input` startup flag only when that client is explicitly
+authorized to exercise process-local review input; the flag does not authorize
+fixture changes, arbitrary console text, or future action families.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
@@ -464,6 +467,34 @@ envelopes and identical compact JSON text. They are deliberately absent from a
 `network-2` server; use the existing single-review CLI or MCP
 surface rather than inferring one role's game-content pipeline from the other.
 
+With `--allow-input`, and only for that server process, every topology also
+exposes four typed action tools:
+
+- `stardew_input_press { "button": "F8" }` injects one exact non-wheel SMAPI
+  `SButton` for one input tick. Mouse buttons require a previously confirmed
+  virtual cursor; they never fall back to the physical pointer position.
+- `stardew_input_cursor_set { "x": 200, "y": 100 }` sets the existing
+  process-local virtual cursor at one in-viewport UI coordinate without moving
+  the physical pointer.
+- `stardew_input_cursor_clear {}` clears the virtual cursor and transient
+  background-input state.
+- `stardew_input_wheel { "direction": "up" | "down" }` sends one wheel notch
+  and requires both the virtual cursor and an active game menu.
+
+Each call is bound to the role selected at server startup, takes a closed JSON
+object, acquires the role-local cross-process action lock without queueing,
+revalidates the exact review and published foreground-window identity before
+dispatch, waits for one request-ID-bound, fresh, create-new AlwaysOn
+acknowledgement, and accepts it only after a later AlwaysOn status timestamp and
+game tick preserve that same binding. A request is never retried after console
+delivery is possible. If cancellation arrives after a valid acknowledgement,
+the result retains that acknowledgement, sets `cancellationRequested` to
+`true`, reports an error, and still completes the post-action binding check.
+Server EOF performs a bounded cursor/transient-input clear when this MCP session
+may have dispatched input; an unconfirmed cleanup makes the server exit
+nonzero. A successful acknowledgement proves only the bounded input operation;
+verify the intended target-mod effect separately.
+
 A project-local Codex configuration can keep the surface explicitly limited:
 
 ```toml
@@ -481,6 +512,12 @@ enabled_tools = [
   "stardew_data_record_get",
 ]
 ```
+
+For an explicitly authorized input session, add `"--allow-input"` to `args`
+and independently allow only the needed names from
+`stardew_input_press`, `stardew_input_cursor_set`,
+`stardew_input_cursor_clear`, and `stardew_input_wheel`. Omitting the startup
+flag keeps all four absent even if the client requests or allowlists them.
 
 For example, bind a separate network-2 host client by changing only the server
 name and arguments:
@@ -522,9 +559,12 @@ transport details. MCP
 responses never expose peer runtime data, filesystem paths, PIDs, environment
 values, raw SMAPI loader warnings or logs, menu CLR types, or arbitrary state.
 The MCP server never reads the normal or mod-manager-owned `Mods` directory or
-normal saves. It opens no listener and cannot start, stop, reset, send arbitrary
-commands, or mutate game state. The screenshot tool's only write is its named,
-create-new evidence PNG below the selected role's ignored isolated profile.
+normal saves. It opens no listener and cannot start, stop, reset, transport
+arbitrary console text, or mutate a review except through an explicitly enabled
+typed action family. `--allow-input` wraps only the existing process-local
+cursor, one-tick button, and one-notch wheel paths described above. Without an
+action opt-in, the screenshot tool's only write is its named, create-new evidence
+PNG below the selected role's ignored isolated profile.
 
 ## Agent workflow
 

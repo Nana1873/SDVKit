@@ -414,7 +414,9 @@ public sealed class ModEntry : Mod
     {
         bool networkHost = _networkTwo?.IsHost == true;
         WindowsForegroundWindowObservation? foregroundWindow =
-            _networkTwo?.ForegroundWindow;
+            _networkTwo is null
+                ? WindowsForegroundWindowProbe.Observe()
+                : _networkTwo.ForegroundWindow;
         WriteStatus(
             "active",
             Game1.ticks,

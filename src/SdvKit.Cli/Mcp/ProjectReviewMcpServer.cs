@@ -84,6 +84,7 @@ internal static class ProjectReviewMcpServer
         string projectRoot,
         string topology,
         string? role,
+        bool allowInput,
         TextWriter error,
         CancellationToken cancellationToken = default)
     {
@@ -105,17 +106,57 @@ internal static class ProjectReviewMcpServer
             StringComparison.Ordinal)
                 ? query => ProjectReviewDataService.Execute(query, projectRoot)
                 : null;
-        McpServerOptions options = CreateOptions(reader, runData);
-        await using var transport = new StdioServerTransport(options);
-        await using McpServer server = McpServer.Create(transport, options);
-        await server.RunAsync(cancellationToken).ConfigureAwait(false);
-        return 0;
+        ProjectReviewMcpInputSession? inputSession = allowInput
+            ? new ProjectReviewMcpInputSession(
+                reader,
+                ProjectReviewInputService.RuntimePath(projectRoot, topology, role),
+                (query, token) => ProjectReviewInputService.Execute(
+                    query,
+                    projectRoot,
+                    topology,
+                    role,
+                    cancellationToken: token))
+            : null;
+        McpServerOptions options = CreateOptions(
+            reader,
+            runData,
+            inputSession: inputSession);
+        var exitCode = 0;
+        try
+        {
+            await using var transport = new StdioServerTransport(options);
+            await using McpServer server = McpServer.Create(transport, options);
+            await server.RunAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            exitCode = CompleteInputCleanup(inputSession, error);
+        }
+
+        return exitCode;
+    }
+
+    internal static int CompleteInputCleanup(
+        ProjectReviewMcpInputSession? inputSession,
+        TextWriter error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        ReviewInputProblem? cleanupProblem = inputSession?.Cleanup();
+        if (cleanupProblem is null)
+        {
+            return 0;
+        }
+
+        error.WriteLine(
+            $"SDVKit MCP input cleanup failed [{cleanupProblem.Code}]: {cleanupProblem.Message}");
+        return OperationFailed;
     }
 
     internal static McpServerOptions CreateOptions(
         ProjectReviewMcpRuntimeReader reader,
         ProjectReviewMcpDataQueryRunner? runData = null,
-        ProjectReviewMcpScreenshotRunner? runScreenshot = null)
+        ProjectReviewMcpScreenshotRunner? runScreenshot = null,
+        ProjectReviewMcpInputSession? inputSession = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -132,6 +173,10 @@ internal static class ProjectReviewMcpServer
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
         }
+        if (inputSession is not null)
+        {
+            tools.AddRange(ProjectReviewMcpInputTools.Create(inputSession));
+        }
 
         return new McpServerOptions
         {
@@ -141,8 +186,9 @@ internal static class ProjectReviewMcpServer
                 Version = typeof(ProjectReviewMcpServer).Assembly
                     .GetName().Version?.ToString(3) ?? "0.6.1",
             },
-            ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods.",
+            ServerInstructions = inputSession is null
+                ? "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Input actions are disabled. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods."
+                : "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Never infer access to normal saves, Mods, OS-wide input, or arbitrary console commands.",
             ToolCollection = [.. tools],
         };
     }

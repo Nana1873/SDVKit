@@ -56,6 +56,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
     string labRoot,
+    bool allowInput,
     TextWriter error);
 
 public static class CliApplication
@@ -126,11 +127,13 @@ public static class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input]";
     private const string ReviewMcpNetworkUsage =
-        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>";
+        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input]";
     private const string ReviewMcpToolsDescription =
         "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
+    private const string ReviewMcpInputDescription =
+        "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -221,11 +224,12 @@ public static class CliApplication
             ProjectReviewAudioService.Execute(query, labRoot);
         runProjectReviewModAsset ??= (query, labRoot) =>
             ProjectReviewModAssetService.Execute(query, labRoot);
-        runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
+        runProjectReviewMcp ??= (topology, role, labRoot, allowInput, mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
                 topology,
                 role,
+                allowInput,
                 mcpError)
                 .GetAwaiter().GetResult();
 
@@ -565,12 +569,14 @@ public static class CliApplication
         if (TryParseProjectReviewMcp(
                 arguments,
                 out string? mcpTopology,
-                out string? mcpRole))
+                out string? mcpRole,
+                out bool allowInput))
         {
             return runProjectReviewMcp(
                 mcpTopology!,
                 mcpRole,
                 Environment.CurrentDirectory,
+                allowInput,
                 error);
         }
 
@@ -1510,10 +1516,12 @@ public static class CliApplication
     private static bool TryParseProjectReviewMcp(
         IReadOnlyList<string> arguments,
         out string? topology,
-        out string? role)
+        out string? role,
+        out bool allowInput)
     {
         topology = LiveLabState.SingleTopology;
         role = null;
+        allowInput = false;
         if (arguments.Count < 4
             || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
             || !string.Equals(arguments[3], "serve", StringComparison.Ordinal))
@@ -1523,9 +1531,17 @@ public static class CliApplication
 
         var topologyCount = 0;
         var roleCount = 0;
+        var allowInputCount = 0;
         for (var index = 4; index < arguments.Count; index++)
         {
             string option = arguments[index];
+            if (string.Equals(option, "--allow-input", StringComparison.Ordinal))
+            {
+                allowInputCount++;
+                allowInput = true;
+                continue;
+            }
+
             if (index + 1 >= arguments.Count
                 || arguments[index + 1].StartsWith('-'))
             {
@@ -1549,7 +1565,7 @@ public static class CliApplication
             }
         }
 
-        if (topologyCount > 1 || roleCount > 1)
+        if (topologyCount > 1 || roleCount > 1 || allowInputCount > 1)
         {
             return false;
         }
@@ -1944,6 +1960,7 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review mcp serve --topology network-2 --role <host|farmhand>");
         output.WriteLine(ReviewMcpToolsDescription.TrimStart());
+        output.WriteLine(ReviewMcpInputDescription.TrimStart());
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -1992,6 +2009,7 @@ public static class CliApplication
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
         output.WriteLine(ReviewMcpNetworkUsage);
+        output.WriteLine(ReviewMcpInputDescription);
         WriteReviewFixtureConsoleUsage(output);
     }
 
@@ -2017,6 +2035,7 @@ public static class CliApplication
         output.WriteLine(ReviewMcpSingleUsage);
         output.WriteLine(ReviewMcpNetworkUsage);
         output.WriteLine(ReviewMcpToolsDescription);
+        output.WriteLine(ReviewMcpInputDescription);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);

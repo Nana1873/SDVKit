@@ -466,7 +466,11 @@ internal static class ReviewCommand
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "input", StringComparison.Ordinal))
                 {
-                    ReviewInputCommand.Handle(arguments, inputRuntime, monitor);
+                    ReviewInputCommand.Handle(
+                        arguments,
+                        inputRuntime,
+                        runtimePath,
+                        monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "fixture", StringComparison.Ordinal))

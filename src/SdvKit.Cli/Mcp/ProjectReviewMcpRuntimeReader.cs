@@ -33,7 +33,15 @@ internal sealed record ProjectReviewMcpRuntimeSnapshot(
     ProjectReviewMcpTarget Target,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ProjectReviewMcpTestSave? TestSave,
-    ProjectReviewMcpRuntime Runtime);
+    ProjectReviewMcpRuntime Runtime,
+    [property: JsonIgnore]
+    int StatusTick,
+    [property: JsonIgnore]
+    DateTimeOffset StatusObservedAtUtc,
+    [property: JsonIgnore]
+    long? ForegroundWindowHandle,
+    [property: JsonIgnore]
+    int? ForegroundProcessId);
 
 internal sealed record ProjectReviewMcpReadResult(
     ProjectReviewMcpRuntimeSnapshot? Snapshot,
@@ -361,7 +369,11 @@ internal sealed class ProjectReviewMcpRuntimeReader
                     runtime.LocationId,
                     runtime.TileX,
                     runtime.TileY,
-                    runtime.MenuOpen.Value)),
+                    runtime.MenuOpen.Value),
+                alwaysOn.Tick!.Value,
+                alwaysOn.ObservedAtUtc!.Value,
+                alwaysOn.ForegroundWindowHandle,
+                alwaysOn.ForegroundProcessId),
             null,
             null);
     }

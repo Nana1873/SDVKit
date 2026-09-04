@@ -1,9 +1,12 @@
 using SdvKit.AlwaysOn;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
 public sealed class ReviewInputCommandTests
 {
+    private const string RequestId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     [Theory]
     [InlineData("F8")]
     [InlineData("Enter")]
@@ -64,6 +67,54 @@ public sealed class ReviewInputCommandTests
     }
 
     [Theory]
+    [InlineData("press", "MouseLeft", 0)]
+    [InlineData("wheel", "up", 1)]
+    [InlineData("wheel", "down", 1)]
+    public void ParserAcceptsRequestBoundActions(
+        string action,
+        string value,
+        int expectedKind)
+    {
+        Assert.True(
+            ReviewInputArguments.TryParse(
+                ["input", "request", RequestId, action, value],
+                out ReviewInputRequest? request,
+                out string error),
+            error);
+        Assert.Equal((ReviewInputKind)expectedKind, request!.Kind);
+        Assert.Equal(RequestId, request.RequestId);
+    }
+
+    [Fact]
+    public void ParserAcceptsRequestBoundCursorLifecycle()
+    {
+        Assert.True(ReviewInputArguments.TryParse(
+            ["input", "request", RequestId, "cursor", "20", "30"],
+            out ReviewInputRequest? set,
+            out string setError), setError);
+        Assert.Equal(ReviewInputKind.Cursor, set!.Kind);
+        Assert.Equal(RequestId, set.RequestId);
+
+        Assert.True(ReviewInputArguments.TryParse(
+            ["input", "request", RequestId, "cursor", "clear"],
+            out ReviewInputRequest? clear,
+            out string clearError), clearError);
+        Assert.Equal(ReviewInputKind.ClearCursor, clear!.Kind);
+        Assert.Equal(RequestId, clear.RequestId);
+    }
+
+    [Theory]
+    [InlineData("MouseWheelUp")]
+    [InlineData("MouseWheelDown")]
+    public void RequestBoundPressRejectsWheelAliases(string button)
+    {
+        Assert.False(ReviewInputArguments.TryParse(
+            ["input", "request", RequestId, "press", button],
+            out _,
+            out _));
+    }
+
+    [Theory]
     [InlineData("Input", "press", "F8")]
     [InlineData("input", "Press", "F8")]
     [InlineData("input", "press", "Mouse-Left")]
@@ -99,6 +150,39 @@ public sealed class ReviewInputCommandTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(1, runtime.PressRequests);
         Assert.Contains("ControllerA", result.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("MouseLeft")]
+    [InlineData("mouseright")]
+    [InlineData("MouseMiddle")]
+    [InlineData("MouseX1")]
+    [InlineData("MouseX2")]
+    public void OperationRejectsMouseButtonsUntilTheVirtualCursorIsSet(string button)
+    {
+        var runtime = new FakeRuntime { CursorSet = false };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0),
+            runtime);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("inputCursorMissing", result.ProblemCode);
+        Assert.Equal(0, runtime.PressRequests);
+    }
+
+    [Fact]
+    public void OperationRejectsPressWhenTheBackgroundInputAdapterIsNotReady()
+    {
+        var runtime = new FakeRuntime { InputAdapterReady = false };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Press, "F8", 0, 0),
+            runtime);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("inputAdapterUnavailable", result.ProblemCode);
+        Assert.Equal(0, runtime.PressRequests);
     }
 
     [Theory]
@@ -180,6 +264,14 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("SetForegroundWindow", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AppActivate", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Context.IsWorldReady", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "WindowsForegroundWindowProbe.Observe()",
+            File.ReadAllText(Path.Combine(
+                FindRepositoryRoot(),
+                "src",
+                "SdvKit.AlwaysOn",
+                "ModEntry.cs")),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -192,6 +284,8 @@ public sealed class ReviewInputCommandTests
             "ReviewInputCommand.cs"));
 
         Assert.Contains("helper.Input.Press(parsed);", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewVirtualCursor.IsInstalled", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewVirtualCursor.IsSet", source, StringComparison.Ordinal);
         Assert.Contains("typeof(Microsoft.Xna.Framework.Game)", source, StringComparison.Ordinal);
         Assert.Contains("nameof(Microsoft.Xna.Framework.Game.IsActive)", source, StringComparison.Ordinal);
         Assert.Contains("typeof(Game1)", source, StringComparison.Ordinal);
@@ -200,6 +294,38 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("helper.Input.Suppress", source, StringComparison.Ordinal);
         Assert.DoesNotContain("pendingButtonReleases", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ReleasePendingPresses", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResponseFileIsRequestBoundCreateNewAndBounded()
+    {
+        using TemporaryDirectory temporary = new();
+        var envelope = new ReviewInputResponseEnvelope(
+            ReviewInputContract.SchemaVersion,
+            RequestId,
+            DateTimeOffset.UtcNow,
+            42,
+            ReviewInputContract.CursorSetAction,
+            true,
+            null,
+            null,
+            10,
+            20,
+            true,
+            false,
+            null);
+
+        ReviewInputResponseFile.Write(temporary.Path, envelope);
+
+        string path = ReviewInputContract.ResponsePath(temporary.Path, RequestId);
+        Assert.True(File.Exists(path));
+        Assert.InRange(
+            new FileInfo(path).Length,
+            1,
+            ReviewInputContract.MaximumResponseBytes);
+        Assert.False(File.Exists(path + ".tmp"));
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewInputResponseFile.Write(temporary.Path, envelope));
     }
 
     private static string FindRepositoryRoot()
@@ -228,6 +354,12 @@ public sealed class ReviewInputCommandTests
         public int UiWidth { get; init; } = 1280;
 
         public int UiHeight { get; init; } = 720;
+
+        public bool InputAdapterReady { get; init; } = true;
+
+        public bool CursorSet { get; init; } = true;
+
+        public bool MenuOpen { get; init; } = true;
 
         public string CanonicalButton { get; init; } = "F8";
 

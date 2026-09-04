@@ -348,8 +348,11 @@ public sealed class ProjectReviewMcpTests
         await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    [Fact]
-    public async Task RealStdioEntryPointEndsOnClientEofWithoutStoppingTheReview()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealStdioEntryPointEndsOnClientEofWithoutStoppingTheReview(
+        bool allowInput)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -386,6 +389,10 @@ public sealed class ProjectReviewMcpTests
             serverProcess.StartInfo.ArgumentList.Add("review");
             serverProcess.StartInfo.ArgumentList.Add("mcp");
             serverProcess.StartInfo.ArgumentList.Add("serve");
+            if (allowInput)
+            {
+                serverProcess.StartInfo.ArgumentList.Add("--allow-input");
+            }
             Assert.True(serverProcess.Start());
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var transport = new StreamClientTransport(
@@ -398,16 +405,29 @@ public sealed class ProjectReviewMcpTests
                 ListToolsResult listed = await client.ListToolsAsync(
                     new ListToolsRequestParams(),
                     timeout.Token);
-                Assert.Equal(
+                string[] expectedTools =
+                [
+                    ProjectReviewMcpDataTools.AssetsToolName,
+                    ProjectReviewMcpDataTools.KeysToolName,
+                    ProjectReviewMcpDataTools.RecordToolName,
+                    ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                    ProjectReviewMcpDiagnosticsTools.ReviewToolName,
+                    ProjectReviewMcpServer.RuntimeToolName,
+                    ProjectReviewMcpScreenshotTools.CaptureToolName,
+                ];
+                if (allowInput)
+                {
+                    expectedTools =
                     [
-                        ProjectReviewMcpDataTools.AssetsToolName,
-                        ProjectReviewMcpDataTools.KeysToolName,
-                        ProjectReviewMcpDataTools.RecordToolName,
-                        ProjectReviewMcpDiagnosticsTools.ModsToolName,
-                        ProjectReviewMcpDiagnosticsTools.ReviewToolName,
-                        ProjectReviewMcpServer.RuntimeToolName,
-                        ProjectReviewMcpScreenshotTools.CaptureToolName,
-                    ],
+                        .. expectedTools,
+                        ProjectReviewMcpInputTools.PressToolName,
+                        ProjectReviewMcpInputTools.CursorSetToolName,
+                        ProjectReviewMcpInputTools.CursorClearToolName,
+                        ProjectReviewMcpInputTools.WheelToolName,
+                    ];
+                }
+                Assert.Equal(
+                    expectedTools.Order(StringComparer.Ordinal).ToArray(),
                     listed.Tools.Select(tool => tool.Name)
                         .Order(StringComparer.Ordinal)
                         .ToArray());
@@ -742,6 +762,8 @@ public sealed class ProjectReviewMcpTests
             IsActive: false,
             PauseWhenOutOfFocus: false,
             observedAt,
+            ForegroundWindowHandle: 1,
+            ForegroundProcessId: process.ProcessId,
             ProjectMod: new ProjectModStatusMarker(
                 ProjectModContract.SchemaVersion,
                 ProjectModContract.LoadedPhase,
