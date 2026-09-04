@@ -34,27 +34,21 @@ dotnet test SDVKit.sln -c Release --no-build
 
 ## Portable Windows-x64
 
-Install the .NET 8 SDK, then download `SDVKit-0.6.1-win-x64.zip` and `SDVKit-0.6.1-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
+Install the .NET 8 SDK, then download `SDVKit-0.7.0-win-x64.zip` and `SDVKit-0.7.0-win-x64.zip.sha256` from the GitHub release assets. Extract and start the CLI without a repository checkout:
 
 ```powershell
-Get-FileHash .\SDVKit-0.6.1-win-x64.zip -Algorithm SHA256
-Expand-Archive .\SDVKit-0.6.1-win-x64.zip
-& .\SDVKit-0.6.1-win-x64\sdvkit.exe --help
+Get-FileHash .\SDVKit-0.7.0-win-x64.zip -Algorithm SHA256
+Expand-Archive .\SDVKit-0.7.0-win-x64.zip
+& .\SDVKit-0.7.0-win-x64\sdvkit.exe --help
 ```
 
 Before replacing the program files, cleanly stop any active SDVKit lab or project review.
 
-## Current main (unreleased)
+## What's new in v0.7.0
 
-Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, create one bounded diagnostic PNG, inventory final audio metadata without playback, and inspect observed conventional `Mods/<owner>/...` requests through six primitive adapters. Map, texture, audio, and mod-asset introspection remain CLI-only and do not expose bulk asset extraction. Native MCP can now request one existing map or viewport capture path and receive the exact validated role-local PNG as image content.
+Since `v0.6.1`, exact owned reviews add bounded CLI-only introspection for canonical maps, final post-pipeline textures and diagnostic previews, audio metadata without playback, and observed conventional `Mods/<owner>/...` asset requests. These adapters do not expose bulk asset extraction and are not native MCP tools.
 
-Fixture actions remain absent from the native local-STDIO MCP server by default. The separate `--allow-fixture-actions` startup opt-in adds only six typed operations against a freshly verified SDVKit-owned disposable test save.
-
-## What's new in v0.6.1
-
-Since `v0.6.0`, interactive reviews support exact directional virtual-wheel input and complete read-only discovery and retrieval of Stardew's installed canonical data assets. The native local-STDIO MCP server exposes closed-world runtime state for exact owned single and network-role reviews, plus the same canonical Data inventory, keys, and exact-record reads for `single`.
-
-Unfocused review-button dispatch now completes SMAPI's normal pressed-to-released lifecycle while preserving Stardew's bounded menu path. It does not suppress the injected button, focus the game, or move the physical pointer; all save, fixture, role, staging, MCP, and ownership boundaries remain fail-closed.
+The native local-STDIO MCP server now binds to exact `single`, `host`, or `farmhand` roles and adds review and loaded-mod diagnostics, canonical Data reads for `single`, role-local map or viewport screenshots, and explicit opt-ins for process-local input and typed owned-fixture actions. Action tools remain absent by default; farmhands are limited to role-local status and navigation and cannot create buildings or animals or save; and no network listener, generic console, or arbitrary RPC surface is introduced. Owned review boundaries and default windowed profile preparation were tightened to support these workflows without selecting normal saves or the normal or mod-manager-owned `Mods` directory.
 
 ## Isolated singleplayer live lab
 
