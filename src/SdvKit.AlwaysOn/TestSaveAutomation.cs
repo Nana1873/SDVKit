@@ -618,6 +618,17 @@ internal sealed class TestSaveAutomation
                 "Stardew is already processing save data for the exact fixture.");
         }
 
+        if (_allowMultiplayer)
+        {
+            if (!Context.IsMultiplayer || !Game1.IsServer)
+            {
+                throw new InvalidOperationException(
+                    "The multiplayer fixture save requires the exact active Stardew host.");
+            }
+
+            Game1.Multiplayer.saveFarmhands();
+        }
+
         Game1.game1.IsSaving = true;
         try
         {
