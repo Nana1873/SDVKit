@@ -60,7 +60,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     bool allowFixtureActions,
     TextWriter error);
 
-public static class CliApplication
+public static partial class CliApplication
 {
     private const int Success = 0;
     private const int UsageError = 2;
@@ -131,7 +131,7 @@ public static class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string ReviewMcpFixtureDescription =
@@ -561,6 +561,11 @@ public static class CliApplication
         ProjectReviewMapCommandRunner runProjectReviewMap,
         ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
+        if (arguments.Count > 2 && arguments[2] == "diagnostics")
+        {
+            return RunProjectReviewDiagnostics(arguments, output, error);
+        }
+
         if (arguments.Count > 2
             && string.Equals(arguments[2], "data", StringComparison.Ordinal))
         {
@@ -2056,6 +2061,7 @@ public static class CliApplication
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
         output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
+        output.WriteLine("  sdvkit project review diagnostics --help Selected-mod warnings and exceptions.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");

@@ -14,6 +14,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Added
 
 - `project check [path] [--json]` checks one mod root's manifest, Content Patcher 2.9.x content, and direct i18n files offline, with relative file/field errors and bundled official SMAPI schemas. It accepts comments and trailing commas without changing source files; runtime patch behavior and referenced assets still need separate checks.
+- Selected-mod warnings and multiline exceptions are available through `project review diagnostics` and read-only `stardew_mod_diagnostics`, with exact review/role binding, visible attribution uncertainty, withheld private context, and bounded counts/truncation.
 - A short `README.txt` inside newly built portable packages.
 - A shared release-note extractor and this versioned changelog, including summaries of all previous releases.
 - A reusable portable archive verifier shared by CI and local checks.

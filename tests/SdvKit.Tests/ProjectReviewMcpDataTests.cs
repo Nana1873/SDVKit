@@ -36,6 +36,7 @@ public sealed class ProjectReviewMcpDataTests
                 ProjectReviewMcpDataTools.AssetsToolName,
                 ProjectReviewMcpDataTools.KeysToolName,
                 ProjectReviewMcpDataTools.RecordToolName,
+                ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,

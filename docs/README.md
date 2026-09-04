@@ -25,6 +25,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Review lifecycle | `project review start/status/stop/reset` | No | C# target in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
+| Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |
 | Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |

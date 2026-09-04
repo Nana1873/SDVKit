@@ -184,6 +184,7 @@ internal static class ProjectReviewMcpServer
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
+        tools.Add(ProjectReviewMcpLogTools.Create(reader));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
