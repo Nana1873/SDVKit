@@ -89,8 +89,6 @@ public static class CliApplication
         "       sdvkit project review data get <asset> <key> [--topology single] --json";
     private const string ReviewMapAssetsUsage =
         "       sdvkit project review map assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
-    private const string ReviewMapSummaryUsage =
-        "       sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... --json";
     private const string ReviewMapGetUsage =
         "       sdvkit project review map get <map> [--topology single] --json";
     private const string ReviewMapLayersUsage =
@@ -576,6 +574,17 @@ public static class CliApplication
                 runProjectReviewModAsset);
         }
 
+        if (arguments.Count >= 4
+            && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
+            && ((arguments.Count == 4 && IsHelp(arguments[3]))
+                || (arguments.Count == 5
+                    && string.Equals(arguments[3], "serve", StringComparison.Ordinal)
+                    && IsHelp(arguments[4]))))
+        {
+            WriteProjectReviewMcpUsage(output);
+            return Success;
+        }
+
         if (TryParseProjectReviewMcp(
                 arguments,
                 out string? mcpTopology,
@@ -595,7 +604,17 @@ public static class CliApplication
         if ((arguments.Count == 3 && IsHelp(arguments[2]))
             || (arguments.Count == 4 && IsHelp(arguments[3])))
         {
-            WriteProjectReviewUsage(output);
+            if (arguments.Count == 4
+                && string.Equals(arguments[2], "command", StringComparison.Ordinal))
+            {
+                output.WriteLine(ReviewCommandUsage.TrimStart());
+                WriteReviewFixtureConsoleUsage(output);
+            }
+            else
+            {
+                WriteProjectReviewUsage(output);
+            }
+
             return Success;
         }
 
@@ -1951,57 +1970,16 @@ public static class CliApplication
 
     private static void WriteHelp(TextWriter output)
     {
-        output.WriteLine("SDVKit — lean Stardew Valley modding toolkit and live test lab");
+        output.WriteLine("SDVKit — Stardew Valley modding toolkit and isolated live test lab");
         output.WriteLine();
-        output.WriteLine("Usage:");
-        output.WriteLine("  sdvkit help");
-        output.WriteLine("  sdvkit version [--json]");
-        output.WriteLine("  sdvkit doctor --json");
-        output.WriteLine("  sdvkit project inspect [path] --json");
-        output.WriteLine("  sdvkit project create <smapi-mod|content-pack> <path> [options] --json");
-        output.WriteLine("  sdvkit project build [path] --json");
-        output.WriteLine("  sdvkit project package [path] --json");
-        output.WriteLine(
-            "  sdvkit project smoke [path] --topology <single|network-2> --json");
-        output.WriteLine(
-            "  sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json");
-        output.WriteLine(
-            "  sdvkit project review status [--topology <single|network-2>] --json");
-        output.WriteLine(
-            "  sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json");
-        output.WriteLine(
-            "  sdvkit project review data <assets|keys|get> ... [--topology single] --json");
-        output.WriteLine(
-            "  sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... [--topology single] --json");
-        output.WriteLine(
-            "  sdvkit project review texture <assets|get|preview> ... [--topology single] --json");
-        output.WriteLine(
-            "  sdvkit project review audio <cues|cue> ... [--topology single] --json");
-        output.WriteLine(
-            "  sdvkit project review mod-assets <assets|keys|get> ... [--topology single] --json");
-        output.WriteLine(
-            "    Owned review-fixture console lines are transported as <text>; see project review --help.");
-        output.WriteLine(
-            "  sdvkit project review stop [--topology <single|network-2>] --json");
-        output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
-        output.WriteLine(ReviewMcpSingleUsage.TrimStart());
-        output.WriteLine(
-            ReviewMcpNetworkUsage.TrimStart());
-        output.WriteLine(ReviewMcpToolsDescription.TrimStart());
-        output.WriteLine(ReviewMcpInputDescription.TrimStart());
-        output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
-        output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
-        output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
+        output.WriteLine("Usage: sdvkit <command> [options]");
+        output.WriteLine("  version [--json]  Show the installed version.");
+        output.WriteLine("  doctor --json     Discover a ready game and SMAPI installation.");
+        output.WriteLine("  project --help    Create, inspect, build, package, smoke-test, or review a mod.");
+        output.WriteLine("  lab --help        Control the isolated live lab and disposable world.");
         output.WriteLine();
-        output.WriteLine("Commands:");
-        output.WriteLine("  doctor          Detect ready Stardew Valley + SMAPI installations (read-only).");
-        output.WriteLine("  project inspect Classify a SMAPI mod, content pack, or hybrid (read-only).");
-        output.WriteLine("  project create  Create a minimal SMAPI mod or Content Patcher pack.");
-        output.WriteLine("  project build   Build one SMAPI project with deployment disabled.");
-        output.WriteLine("  project package Create an isolated release archive below .sdvkit/packages.");
-        output.WriteLine("  project smoke   Build and smoke-test one mod in the isolated live lab.");
-        output.WriteLine("  project review  Review one C# mod target, or one root content-pack target in singleplayer.");
-        output.WriteLine("  lab             Control one isolated process or run an isolated live-lab smoke.");
+        output.WriteLine("Use each subcommand's --help for syntax and supported options.");
+        output.WriteLine("Documentation: https://github.com/Nana1873/SDVKit#readme");
     }
 
     private static void WriteLabUsage(TextWriter output)
@@ -2019,28 +1997,10 @@ public static class CliApplication
         output.WriteLine(BuildUsage);
         output.WriteLine(PackageUsage);
         output.WriteLine(SmokeUsage);
-        output.WriteLine(ReviewStartUsage);
-        output.WriteLine(ReviewStatusUsage);
-        output.WriteLine(ReviewCommandUsage);
-        output.WriteLine(ReviewDataAssetsUsage);
-        output.WriteLine(ReviewDataKeysUsage);
-        output.WriteLine(ReviewDataGetUsage);
-        output.WriteLine(ReviewMapSummaryUsage);
-        output.WriteLine(ReviewTextureAssetsUsage);
-        output.WriteLine(ReviewTextureGetUsage);
-        output.WriteLine(ReviewTexturePreviewUsage);
-        output.WriteLine(ReviewAudioCuesUsage);
-        output.WriteLine(ReviewAudioCueUsage);
-        output.WriteLine(ReviewModAssetAssetsUsage);
-        output.WriteLine(ReviewModAssetKeysUsage);
-        output.WriteLine(ReviewModAssetGetUsage);
-        output.WriteLine(ReviewStopUsage);
-        output.WriteLine(ReviewResetUsage);
-        output.WriteLine(ReviewMcpSingleUsage);
-        output.WriteLine(ReviewMcpNetworkUsage);
-        output.WriteLine(ReviewMcpInputDescription);
-        output.WriteLine(ReviewMcpFixtureDescription);
-        WriteReviewFixtureConsoleUsage(output);
+        output.WriteLine("       sdvkit project review --help");
+        output.WriteLine();
+        output.WriteLine("Smoke checks loading and bounded game ticks for one standalone C# mod.");
+        output.WriteLine("Review keeps a C# mod or single-player content-pack target running for functional checks.");
     }
 
     private static void WriteProjectReviewUsage(TextWriter output)
@@ -2048,28 +2008,31 @@ public static class CliApplication
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
-        output.WriteLine(ReviewDataAssetsUsage);
-        output.WriteLine(ReviewDataKeysUsage);
-        output.WriteLine(ReviewDataGetUsage);
-        output.WriteLine(ReviewMapSummaryUsage);
-        output.WriteLine(ReviewTextureAssetsUsage);
-        output.WriteLine(ReviewTextureGetUsage);
-        output.WriteLine(ReviewTexturePreviewUsage);
-        output.WriteLine(ReviewAudioCuesUsage);
-        output.WriteLine(ReviewAudioCueUsage);
-        output.WriteLine(ReviewModAssetAssetsUsage);
-        output.WriteLine(ReviewModAssetKeysUsage);
-        output.WriteLine(ReviewModAssetGetUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
-        output.WriteLine(ReviewMcpSingleUsage);
-        output.WriteLine(ReviewMcpNetworkUsage);
-        output.WriteLine(ReviewMcpToolsDescription);
-        output.WriteLine(ReviewMcpInputDescription);
-        output.WriteLine(ReviewMcpFixtureDescription);
-        output.WriteLine(
-            "Content-pack targets require --topology single and an explicit provider --companion.");
-        WriteReviewFixtureConsoleUsage(output);
+        output.WriteLine();
+        output.WriteLine("Reference help:");
+        output.WriteLine("  sdvkit project review command --help     Console input, screenshots, and fixtures.");
+        output.WriteLine("  sdvkit project review data --help        Canonical structured Data.");
+        output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
+        output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
+        output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
+        output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
+        output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
+        output.WriteLine();
+        output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
+        output.WriteLine("Inspection subcommands require single; network console commands require an explicit role.");
+    }
+
+    private static void WriteProjectReviewMcpUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewMcpSingleUsage.TrimStart());
+        output.WriteLine(ReviewMcpNetworkUsage.TrimStart());
+        output.WriteLine(ReviewMcpToolsDescription.TrimStart());
+        output.WriteLine(ReviewMcpInputDescription.TrimStart());
+        output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
+        output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
+        output.WriteLine("The role is fixed at startup. Closing stdin stops this server; stdout contains only MCP frames.");
     }
 
     private static void WriteProjectReviewDataUsage(TextWriter output)

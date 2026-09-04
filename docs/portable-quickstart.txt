@@ -1,0 +1,28 @@
+SDVKit portable Windows x64
+
+Requires Windows x64 and the .NET 8 SDK, version 8.0.419 or a later 8.0 SDK
+selected by global.json (not just the runtime).
+Building and live tests also need a local Stardew Valley + SMAPI installation.
+
+Open PowerShell in this extracted directory:
+  $sdvkit = (Resolve-Path .\sdvkit.exe).Path
+  & $sdvkit --help
+  & $sdvkit doctor --json
+
+Keep $sdvkit as the absolute executable path. Change to your intended project/lab
+directory before live commands; that directory's .sdvkit owns the lab state.
+Never use your normal Saves or normal/mod-manager-owned Mods directory as a lab.
+
+  & $sdvkit project inspect .\ExampleMod --json
+  & $sdvkit project smoke .\ExampleMod --topology single --json
+
+ExampleMod must be your explicitly selected standalone C# mod project.
+Smoke checks load and bounded ticks; it does not verify every mod feature.
+Normal saves and Mods stay outside automatic operations. This is process/data
+isolation, not a Windows sandbox for arbitrary mod code.
+
+Stop active labs/reviews and finish their required reset before replacing SDVKit.
+Run --version to identify this package; select that tag in the documentation:
+  https://github.com/Nana1873/SDVKit/tags
+  https://github.com/Nana1873/SDVKit#readme
+  https://github.com/Nana1873/SDVKit/releases

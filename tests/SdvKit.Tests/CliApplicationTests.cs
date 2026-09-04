@@ -15,52 +15,12 @@ public sealed class CliApplicationTests
         Assert.Equal(0, exitCode);
         Assert.Contains("modding toolkit", output, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("live test lab", output, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("sdvkit version", output, StringComparison.Ordinal);
-        Assert.Contains("sdvkit doctor --json", output, StringComparison.Ordinal);
-        Assert.Contains("sdvkit project inspect [path] --json", output, StringComparison.Ordinal);
-        Assert.Contains("sdvkit project create", output, StringComparison.Ordinal);
-        Assert.Contains("sdvkit project build [path] --json", output, StringComparison.Ordinal);
-        Assert.Contains("sdvkit project package [path] --json", output, StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project smoke [path] --topology <single|network-2> --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... [--topology single] --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Owned review-fixture console lines are transported as <text>",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review status [--topology <single|network-2>] --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review stop [--topology <single|network-2>] --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review reset --topology <single|network-2> --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit lab <start|status|stop|test-save> --topology single --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit lab smoke --topology network-2 --json",
-            output,
-            StringComparison.Ordinal);
+        Assert.Contains("version [--json]", output, StringComparison.Ordinal);
+        Assert.Contains("doctor --json", output, StringComparison.Ordinal);
+        Assert.Contains("project --help", output, StringComparison.Ordinal);
+        Assert.Contains("lab --help", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("stardew_", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("fixture building", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -355,31 +315,15 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
-    public void ProjectHelpListsTheExactSmokeCommand()
+    public void ProjectHelpListsSmokeAndRoutesReviewDetailsToTheirOwnHelp()
     {
         (int exitCode, string output, string error) = Run("project", "--help");
 
         Assert.Equal(0, exitCode);
-        Assert.Contains(
-            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit project review reset --topology <single|network-2> --json",
-            output,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sdvkit fixture building ensure <alias> <building-kind> <x> <y>",
-            output,
-            StringComparison.Ordinal);
+        Assert.Contains("Usage: sdvkit project smoke [path] --topology <single|network-2> --json", output, StringComparison.Ordinal);
+        Assert.Contains("sdvkit project review --help", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("stardew_", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("sdvkit fixture", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
@@ -1440,7 +1384,7 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "mcp", "serve", "--allow-input", "--allow-input")]
     [InlineData("project", "review", "mcp", "serve", "--allow-actions")]
     [InlineData("project", "review", "mcp", "serve", "--allow-fixture-actions", "--allow-fixture-actions")]
-    public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
+    public void ProjectReviewSyntaxErrorsReturnReviewHelpWithoutRunning(params string[] arguments)
     {
         ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
@@ -1451,86 +1395,9 @@ public sealed class CliApplicationTests
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
-        Assert.Equal(
-            "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json"
-                + Environment.NewLine
-                + "       sdvkit project review status [--topology <single|network-2>] --json"
-                + Environment.NewLine
-                + "       sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json"
-                + Environment.NewLine
-                + "       sdvkit project review data assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review data get <asset> <key> [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review map <assets|get|layers|layer|tilesheets|warps|tile|property> ... --json"
-                + Environment.NewLine
-                + "       sdvkit project review texture assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review texture get <asset> [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review texture preview <asset> [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review audio cues [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review audio cue <id> [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review mod-assets assets [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review mod-assets keys <Mods/owner/asset> [--offset <n>] [--limit <1-100>] [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json"
-                + Environment.NewLine
-                + "       sdvkit project review stop [--topology <single|network-2>] --json"
-                + Environment.NewLine
-                + "       sdvkit project review reset --topology <single|network-2> --json"
-                + Environment.NewLine
-                + "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions]"
-                + Environment.NewLine
-                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]"
-                + Environment.NewLine
-                + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
-                + Environment.NewLine
-                + "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel"
-                + Environment.NewLine
-                + "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role"
-                + Environment.NewLine
-                + "Content-pack targets require --topology single and an explicit provider --companion."
-                + Environment.NewLine
-                + "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):"
-                + Environment.NewLine
-                + "  sdvkit screenshot <label>"
-                + Environment.NewLine
-                + "  sdvkit screenshot viewport <label>"
-                + Environment.NewLine
-                + "  sdvkit input press <SButton>"
-                + Environment.NewLine
-                + "  sdvkit input cursor <ui-x> <ui-y>"
-                + Environment.NewLine
-                + "  sdvkit input cursor clear"
-                + Environment.NewLine
-                + "  sdvkit fixture status"
-                + Environment.NewLine
-                + "  sdvkit fixture building ensure <alias> <building-kind> <x> <y>"
-                + Environment.NewLine
-                + "  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>"
-                + Environment.NewLine
-                + "  sdvkit fixture object clear-owned <alias-or-id>"
-                + Environment.NewLine
-                + "  sdvkit fixture animal ensure <alias-or-id> <animal-kind>"
-                + Environment.NewLine
-                + "  Kinds resolve from loaded canonical Stardew data IDs; legacy deluxe-barn and white-cow remain valid."
-                + Environment.NewLine
-                + "  Unknown, ambiguous, unplaceable, or animal-house-incompatible kinds fail before mutation."
-                + Environment.NewLine
-                + "  sdvkit fixture enter <alias-or-id>"
-                + Environment.NewLine
-                + "  sdvkit fixture enter greenhouse"
-                + Environment.NewLine
-                + "  sdvkit fixture farm"
-                + Environment.NewLine,
-            error);
+        Assert.Contains("Usage: sdvkit project review start", error, StringComparison.Ordinal);
+        Assert.Contains("project review command --help", error, StringComparison.Ordinal);
+        Assert.Contains("project review mcp serve --help", error, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1577,15 +1444,27 @@ public sealed class CliApplicationTests
         Assert.Contains("project review stop", output, StringComparison.Ordinal);
         Assert.Contains("project review reset", output, StringComparison.Ordinal);
         Assert.Contains("project review mcp serve", output, StringComparison.Ordinal);
-        Assert.Contains("stardew_data_assets_list", output, StringComparison.Ordinal);
-        Assert.Contains("stardew_review_get", output, StringComparison.Ordinal);
-        Assert.Contains("stardew_mods_list", output, StringComparison.Ordinal);
-        Assert.Contains("single additionally", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("stardew_", output, StringComparison.Ordinal);
+        Assert.Contains("project review command --help", output, StringComparison.Ordinal);
         Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
         Assert.Contains(
             "Content-pack targets require --topology single and an explicit provider --companion.",
             output,
             StringComparison.Ordinal);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectReviewCommandHelpExposesConsoleGrammarWithoutDispatch()
+    {
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", "--help");
+
+        Assert.Equal(0, exitCode);
         string[] reviewConsoleLines =
         [
             "sdvkit screenshot <label>",
@@ -1609,6 +1488,25 @@ public sealed class CliApplicationTests
 
         Assert.Contains("not top-level CLI", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("mcp", "--help")]
+    [InlineData("mcp", "serve", "--help")]
+    public void McpHelpExplainsRoleAndOptInsWithoutStartingServer(params string[] suffix)
+    {
+        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _) =>
+            throw new InvalidOperationException("MCP must not start for help.");
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            runner, ["project", "review", .. suffix]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Contains("--role <host|farmhand>", output, StringComparison.Ordinal);
+        Assert.Contains("--allow-input", output, StringComparison.Ordinal);
+        Assert.Contains("--allow-fixture-actions", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_data_assets_list", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_screenshot_capture", output, StringComparison.Ordinal);
     }
 
     [Theory]
