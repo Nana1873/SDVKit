@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 
 #if SDVKIT_GAME_AVAILABLE
@@ -228,6 +229,152 @@ internal static class ReviewFixtureArguments
             out coordinate);
 }
 
+internal static class ReviewFixtureTransportArguments
+{
+    public static bool TryParse(
+        IReadOnlyList<string>? arguments,
+        out string? requestId,
+        out ReviewFixtureRequestBinding? binding,
+        out ReviewFixtureQuery? query,
+        out ReviewFixtureRequest? request,
+        out ReviewFixtureProblem? problem)
+    {
+        requestId = null;
+        binding = null;
+        query = null;
+        request = null;
+        problem = null;
+        if (arguments is null
+            || arguments.Count < 8
+            || !string.Equals(arguments[0], "fixture", StringComparison.Ordinal)
+            || !ReviewTransportToken.IsRequestId(arguments[1]))
+        {
+            problem = Problem("fixtureTransportInvalid", "The bounded review-fixture transport request is invalid.");
+            return false;
+        }
+
+        requestId = arguments[1];
+        string launchId = arguments[2];
+        string topology = arguments[3];
+        string roleToken = arguments[4];
+        bool single = string.Equals(topology, "single", StringComparison.Ordinal)
+            && string.Equals(
+                roleToken,
+                ReviewFixtureTransportContract.SingleRoleToken,
+                StringComparison.Ordinal);
+        bool network = string.Equals(
+                topology,
+                NetworkTwoContract.Topology,
+                StringComparison.Ordinal)
+            && NetworkTwoContract.IsRole(roleToken);
+        if (!ReviewTransportToken.IsRequestId(launchId)
+            || (!single && !network)
+            || !TryDecode(arguments[5], out string fixtureId)
+            || !TryDecode(arguments[6], out string saveId))
+        {
+            problem = Problem(
+                "fixtureBindingInvalid",
+                "The bounded review-fixture identity binding is invalid.");
+            return false;
+        }
+
+        binding = new ReviewFixtureRequestBinding(
+            launchId,
+            topology,
+            network ? roleToken : null,
+            fixtureId,
+            saveId);
+        string operation = arguments[7];
+        if (operation == ReviewFixtureTransportContract.StatusOperation
+            && arguments.Count == 8)
+        {
+            query = new ReviewFixtureQuery(operation);
+            request = new ReviewFixtureStatusRequest();
+            return true;
+        }
+
+        if (operation == ReviewFixtureTransportContract.FarmOperation
+            && arguments.Count == 8)
+        {
+            query = new ReviewFixtureQuery(operation);
+            request = new ReviewFixtureFarmRequest();
+            return true;
+        }
+
+        if (operation == ReviewFixtureTransportContract.SaveOperation
+            && arguments.Count == 8)
+        {
+            query = new ReviewFixtureQuery(operation);
+            return true;
+        }
+
+        if (operation == ReviewFixtureTransportContract.EnterOperation
+            && arguments.Count == 9
+            && TryDecode(arguments[8], out string building)
+            && ReviewFixtureArguments.IsValidBuildingToken(building))
+        {
+            query = new ReviewFixtureQuery(operation, Building: building);
+            request = new ReviewFixtureEnterRequest(building);
+            return true;
+        }
+
+        if (operation == ReviewFixtureTransportContract.BuildingEnsureOperation
+            && arguments.Count == 12
+            && TryDecode(arguments[8], out string alias)
+            && TryDecode(arguments[9], out string buildingKind)
+            && ReviewFixtureArguments.IsValidAlias(alias)
+            && IsValidKind(buildingKind)
+            && int.TryParse(arguments[10], NumberStyles.None, CultureInfo.InvariantCulture, out int x)
+            && int.TryParse(arguments[11], NumberStyles.None, CultureInfo.InvariantCulture, out int y)
+            && x >= 0
+            && y >= 0)
+        {
+            query = new ReviewFixtureQuery(
+                operation,
+                Alias: alias,
+                Kind: buildingKind,
+                X: x,
+                Y: y);
+            request = new ReviewFixtureBuildingEnsureRequest(alias, buildingKind, x, y);
+            return true;
+        }
+
+        if (operation == ReviewFixtureTransportContract.AnimalEnsureOperation
+            && arguments.Count == 10
+            && TryDecode(arguments[8], out string animalBuilding)
+            && TryDecode(arguments[9], out string animalKind)
+            && ReviewFixtureArguments.IsValidBuildingToken(animalBuilding)
+            && IsValidKind(animalKind))
+        {
+            query = new ReviewFixtureQuery(
+                operation,
+                Building: animalBuilding,
+                Kind: animalKind);
+            request = new ReviewFixtureAnimalEnsureRequest(animalBuilding, animalKind);
+            return true;
+        }
+
+        problem = Problem(
+            "fixtureTransportInvalid",
+            "The bounded review-fixture operation or its encoded operands are invalid.");
+        return false;
+    }
+
+    private static bool TryDecode(string token, out string value) =>
+        ReviewTransportToken.TryDecode(
+            token,
+            ReviewFixtureTransportContract.MaximumTokenLength,
+            out value);
+
+    private static bool IsValidKind(string value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= ReviewFixtureTransportContract.MaximumTokenLength
+        && !value.Any(char.IsControl);
+
+    private static ReviewFixtureProblem Problem(string code, string message) =>
+        new(code, message);
+}
+
 internal sealed record ReviewFixtureKindResolution(
     string CanonicalId,
     string CanonicalToken);
@@ -343,9 +490,23 @@ internal sealed record ReviewFixtureAccess(
     bool CanMutate,
     string? FixtureId,
     string? Role,
-    string Message);
+    string Message,
+    string? LaunchId = null,
+    string? Topology = null,
+    string? SaveId = null);
 
-internal sealed record ReviewFixtureResult(bool Succeeded, string Message);
+internal sealed record ReviewFixtureExecution(
+    ReviewFixtureAccess Access,
+    ReviewFixtureResult Result,
+    ReviewFixtureProblem? Problem = null);
+
+internal sealed record ReviewFixtureResult(
+    bool Succeeded,
+    string Message,
+    ReviewFixtureStatusReport? Status = null,
+    ReviewFixtureNavigationReport? Navigation = null,
+    ReviewFixtureBuildingReport? Building = null,
+    ReviewFixtureAnimalReport? Animal = null);
 
 internal interface IReviewFixtureRuntime
 {
@@ -379,39 +540,49 @@ internal interface IReviewFixtureRuntime
         string building);
 
     ReviewFixtureResult Farm(ReviewFixtureAccess access);
+
+    void BeginNavigation(
+        ReviewFixtureAccess access,
+        ReviewFixtureRequest request,
+        Action<ReviewFixtureResult> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(completed);
+        completed(request switch
+        {
+            ReviewFixtureEnterRequest enter => Enter(access, enter.Building),
+            ReviewFixtureFarmRequest => Farm(access),
+            _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
+        });
+    }
 }
 
 internal static class ReviewFixtureOperation
 {
     public static ReviewFixtureResult Execute(
         ReviewFixtureRequest request,
-        IReviewFixtureRuntime runtime)
+        IReviewFixtureRuntime runtime) =>
+        ExecuteBound(request, runtime, expected: null).Result;
+
+    public static ReviewFixtureExecution ExecuteBound(
+        ReviewFixtureRequest request,
+        IReviewFixtureRuntime runtime,
+        ReviewFixtureRequestBinding? expected)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(runtime);
 
-        ReviewFixtureAccess access = runtime.VerifyExactReviewFixture();
-        if (!access.Succeeded)
+        ReviewFixtureExecution verification = VerifyBound(
+            request.RequiresMainPlayer,
+            runtime,
+            expected);
+        if (!verification.Result.Succeeded)
         {
-            return new ReviewFixtureResult(false, access.Message);
+            return verification;
         }
 
-        if (string.IsNullOrWhiteSpace(access.FixtureId)
-            || string.IsNullOrWhiteSpace(access.Role))
-        {
-            return new ReviewFixtureResult(
-                false,
-                "The freshly verified review fixture returned an incomplete identity.");
-        }
-
-        if (request.RequiresMainPlayer && !access.CanMutate)
-        {
-            return new ReviewFixtureResult(
-                false,
-                "Only the freshly verified main player or network-2 host may mutate the fixture.");
-        }
-
-        return request switch
+        ReviewFixtureAccess access = verification.Access;
+        ReviewFixtureResult result = request switch
         {
             ReviewFixtureStatusRequest => runtime.Status(access),
             ReviewFixtureBuildingEnsureRequest building => runtime.EnsureBuilding(
@@ -435,6 +606,165 @@ internal static class ReviewFixtureOperation
             ReviewFixtureFarmRequest => runtime.Farm(access),
             _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
         };
+        return new ReviewFixtureExecution(access, result);
+    }
+
+    public static ReviewFixtureExecution VerifyBound(
+        bool requiresMainPlayer,
+        IReviewFixtureRuntime runtime,
+        ReviewFixtureRequestBinding? expected)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+
+        ReviewFixtureAccess access = runtime.VerifyExactReviewFixture();
+        if (!access.Succeeded)
+        {
+            return Failed(access, access.Message);
+        }
+
+        if (string.IsNullOrWhiteSpace(access.FixtureId)
+            || string.IsNullOrWhiteSpace(access.Role))
+        {
+            return Failed(
+                access,
+                "The freshly verified review fixture returned an incomplete identity.");
+        }
+
+        if (expected is not null && !MatchesBinding(access, expected))
+        {
+            const string message =
+                "The live review fixture identity changed after preflight; no fixture action was run.";
+            return Failed(
+                access,
+                message,
+                new ReviewFixtureProblem("fixtureBindingChanged", message));
+        }
+
+        if (requiresMainPlayer && !access.CanMutate)
+        {
+            return Failed(
+                access,
+                "Only the freshly verified main player or network-2 host may mutate the fixture.");
+        }
+
+        return new ReviewFixtureExecution(
+            access,
+            new ReviewFixtureResult(true, access.Message));
+    }
+
+    private static bool MatchesBinding(
+        ReviewFixtureAccess access,
+        ReviewFixtureRequestBinding expected) =>
+        string.Equals(access.LaunchId, expected.LaunchId, StringComparison.Ordinal)
+        && string.Equals(access.Topology, expected.Topology, StringComparison.Ordinal)
+        && string.Equals(
+            string.Equals(access.Role, ReviewFixtureTransportContract.SingleRoleToken, StringComparison.Ordinal)
+                ? null
+                : access.Role,
+            expected.Role,
+            StringComparison.Ordinal)
+        && string.Equals(access.FixtureId, expected.FixtureId, StringComparison.Ordinal)
+        && string.Equals(access.SaveId, expected.SaveId, StringComparison.Ordinal);
+
+    private static ReviewFixtureExecution Failed(
+        ReviewFixtureAccess access,
+        string message,
+        ReviewFixtureProblem? problem = null) =>
+        new(access, new ReviewFixtureResult(false, message), problem);
+}
+
+internal static class ReviewFixtureNavigationOperation
+{
+    public static void ExecuteBound(
+        ReviewFixtureRequest request,
+        IReviewFixtureRuntime runtime,
+        ReviewFixtureRequestBinding expected,
+        Action<ReviewFixtureExecution> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(completed);
+
+        if (request is not ReviewFixtureEnterRequest
+            && request is not ReviewFixtureFarmRequest)
+        {
+            throw new ArgumentException(
+                "Only fixture navigation requests can use deferred navigation.",
+                nameof(request));
+        }
+
+        ReviewFixtureExecution verification = ReviewFixtureOperation.VerifyBound(
+            request.RequiresMainPlayer,
+            runtime,
+            expected);
+        if (!verification.Result.Succeeded)
+        {
+            completed(verification);
+            return;
+        }
+
+        var completionClaimed = 0;
+        void CompleteOnce(ReviewFixtureResult result)
+        {
+            if (Interlocked.Exchange(ref completionClaimed, 1) != 0)
+            {
+                return;
+            }
+
+            ReviewFixtureExecution completionVerification;
+            try
+            {
+                completionVerification = ReviewFixtureOperation.VerifyBound(
+                    request.RequiresMainPlayer,
+                    runtime,
+                    expected);
+            }
+            catch (Exception exception)
+            {
+                completed(new ReviewFixtureExecution(
+                    verification.Access,
+                    new ReviewFixtureResult(
+                        false,
+                        $"The fixture navigation completion check failed closed ({exception.GetType().Name}).")));
+                return;
+            }
+
+            if (!completionVerification.Result.Succeeded)
+            {
+                if (string.Equals(
+                        completionVerification.Problem?.Code,
+                        "fixtureBindingChanged",
+                        StringComparison.Ordinal))
+                {
+                    const string message =
+                        "The live review fixture identity changed before navigation completed; "
+                        + "the completed warp result cannot be attributed to the requested fixture.";
+                    completionVerification = new ReviewFixtureExecution(
+                        completionVerification.Access,
+                        new ReviewFixtureResult(false, message),
+                        new ReviewFixtureProblem("fixtureBindingChanged", message));
+                }
+
+                completed(completionVerification);
+                return;
+            }
+
+            completed(new ReviewFixtureExecution(
+                completionVerification.Access,
+                result));
+        }
+
+        try
+        {
+            runtime.BeginNavigation(verification.Access, request, CompleteOnce);
+        }
+        catch (Exception exception)
+        {
+            CompleteOnce(new ReviewFixtureResult(
+                false,
+                $"The fixture navigation failed closed ({exception.GetType().Name})."));
+        }
     }
 }
 
@@ -752,8 +1082,30 @@ internal static class ReviewFixtureCommand
     public static void Handle(
         string[] arguments,
         IReviewFixtureRuntime runtime,
-        IMonitor monitor)
+        IMonitor monitor,
+        string? runtimePath = null,
+        Func<TestSaveAutomation?>? testSave = null)
     {
+        if (arguments.Length > 1
+            && ReviewTransportToken.IsRequestId(arguments[1]))
+        {
+            if (string.IsNullOrWhiteSpace(runtimePath) || testSave is null)
+            {
+                monitor.Log(
+                    "SDVKit review-fixture transport is unavailable.",
+                    LogLevel.Error);
+                return;
+            }
+
+            ReviewFixtureTransportCommand.Handle(
+                arguments,
+                runtime,
+                testSave,
+                runtimePath,
+                monitor);
+            return;
+        }
+
         if (!ReviewFixtureArguments.TryParse(arguments, out ReviewFixtureRequest? request, out string error))
         {
             monitor.Log(error, LogLevel.Error);
@@ -774,11 +1126,334 @@ internal static class ReviewFixtureCommand
     }
 }
 
+internal static class ReviewFixtureTransportCommand
+{
+    private static readonly JsonSerializerOptions ResponseJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public static void Handle(
+        string[] arguments,
+        IReviewFixtureRuntime runtime,
+        Func<TestSaveAutomation?> testSave,
+        string runtimePath,
+        IMonitor monitor)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(testSave);
+        if (string.IsNullOrWhiteSpace(runtimePath))
+        {
+            throw new ArgumentException(
+                "The review-fixture runtime path is required.",
+                nameof(runtimePath));
+        }
+        ArgumentNullException.ThrowIfNull(monitor);
+
+        _ = ReviewFixtureTransportArguments.TryParse(
+            arguments,
+            out string? requestId,
+            out ReviewFixtureRequestBinding? binding,
+            out ReviewFixtureQuery? query,
+            out ReviewFixtureRequest? request,
+            out ReviewFixtureProblem? parseProblem);
+        if (!ReviewTransportToken.IsRequestId(requestId))
+        {
+            monitor.Log(
+                "SDVKit review-fixture rejected an invalid request ID.",
+                LogLevel.Error);
+            return;
+        }
+
+        if (binding is null)
+        {
+            monitor.Log(
+                "SDVKit review-fixture rejected an invalid identity binding.",
+                LogLevel.Error);
+            return;
+        }
+
+        string operation = query?.Operation
+            ?? (arguments.Length > 7 ? arguments[7] : "unknown");
+        if (parseProblem is not null)
+        {
+            ReviewFixtureAccess parseAccess = runtime.VerifyExactReviewFixture();
+            Publish(
+                runtimePath,
+                requestId!,
+                binding,
+                operation,
+                parseAccess,
+                new ReviewFixtureResult(false, parseProblem.Message),
+                [parseProblem],
+                save: null,
+                monitor);
+            return;
+        }
+
+        if (operation == ReviewFixtureTransportContract.SaveOperation)
+        {
+            ReviewFixtureExecution verification = ReviewFixtureOperation.VerifyBound(
+                requiresMainPlayer: true,
+                runtime,
+                binding);
+            ReviewFixtureAccess access = verification.Access;
+            if (!verification.Result.Succeeded)
+            {
+                ReviewFixtureProblem problem = verification.Problem
+                    ?? new ReviewFixtureProblem(
+                        "fixtureIdentityRejected",
+                        verification.Result.Message);
+                Publish(
+                    runtimePath,
+                    requestId!,
+                    binding,
+                    operation,
+                    access,
+                    verification.Result,
+                    [problem],
+                    save: null,
+                    monitor);
+                return;
+            }
+
+            TestSaveAutomation? automation = testSave();
+            string reason =
+                "The exact disposable test-save automation is unavailable.";
+            bool started = automation is not null
+                && automation.TryStartReviewSave(
+                    (succeeded, message) => Publish(
+                        runtimePath,
+                        requestId!,
+                        binding,
+                        operation,
+                        access,
+                        new ReviewFixtureResult(succeeded, message),
+                        succeeded
+                            ? []
+                            : [new ReviewFixtureProblem("fixtureSaveFailed", message)],
+                        succeeded
+                            ? new ReviewFixtureSaveReport(
+                                Constants.SaveFolderName!,
+                                DateTimeOffset.UtcNow)
+                            : null,
+                        monitor),
+                    out reason);
+            if (!started)
+            {
+                string message = automation is null
+                    ? "The exact disposable test-save automation is unavailable."
+                    : reason;
+                Publish(
+                    runtimePath,
+                    requestId!,
+                    binding,
+                    operation,
+                    access,
+                    new ReviewFixtureResult(false, message),
+                    [new ReviewFixtureProblem("fixtureSaveRejected", message)],
+                    save: null,
+                    monitor);
+            }
+
+            return;
+        }
+
+        void PublishExecution(ReviewFixtureExecution execution)
+        {
+            ReviewFixtureResult completedResult = execution.Result;
+            Publish(
+                runtimePath,
+                requestId!,
+                binding,
+                operation,
+                execution.Access,
+                completedResult,
+                completedResult.Succeeded
+                    ? []
+                    : [execution.Problem
+                        ?? new ReviewFixtureProblem(
+                            "fixtureActionRejected",
+                            completedResult.Message)],
+                save: null,
+                monitor);
+        }
+
+        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest)
+        {
+            try
+            {
+                ReviewFixtureNavigationOperation.ExecuteBound(
+                    request,
+                    runtime,
+                    binding,
+                    PublishExecution);
+            }
+            catch (Exception exception)
+            {
+                ReviewFixtureAccess failedAccess = runtime.VerifyExactReviewFixture();
+                PublishExecution(new ReviewFixtureExecution(
+                    failedAccess,
+                    new ReviewFixtureResult(
+                        false,
+                        $"The fixture action failed closed ({exception.GetType().Name}).")));
+            }
+
+            return;
+        }
+
+        ReviewFixtureExecution execution;
+        try
+        {
+            execution = ReviewFixtureOperation.ExecuteBound(request!, runtime, binding);
+        }
+        catch (Exception exception)
+        {
+            ReviewFixtureAccess failedAccess = runtime.VerifyExactReviewFixture();
+            execution = new ReviewFixtureExecution(
+                failedAccess,
+                new ReviewFixtureResult(
+                    false,
+                    $"The fixture action failed closed ({exception.GetType().Name})."));
+        }
+
+        PublishExecution(execution);
+    }
+
+    private static void Publish(
+        string runtimePath,
+        string requestId,
+        ReviewFixtureRequestBinding binding,
+        string operation,
+        ReviewFixtureAccess access,
+        ReviewFixtureResult result,
+        IReadOnlyList<ReviewFixtureProblem> problems,
+        ReviewFixtureSaveReport? save,
+        IMonitor monitor)
+    {
+        string? networkRole = Environment
+            .GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE")
+            ?.Trim();
+        bool network = networkRole is not null
+            && NetworkTwoContract.IsRole(networkRole);
+        string topology = network
+            ? NetworkTwoContract.Topology
+            : "single";
+        string? role = network ? networkRole : null;
+        string launchId = access.LaunchId
+            ?? Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID")?.Trim()
+            ?? string.Empty;
+        topology = access.Topology ?? topology;
+        role = string.Equals(
+                access.Role,
+                ReviewFixtureTransportContract.SingleRoleToken,
+                StringComparison.Ordinal)
+            ? null
+            : access.Role ?? role;
+        var report = new ReviewFixtureReport(
+            ReviewFixtureTransportContract.SchemaVersion,
+            result.Succeeded ? "ready" : "blocked",
+            operation,
+            launchId,
+            topology,
+            role,
+            DateTimeOffset.UtcNow,
+            access.FixtureId,
+            access.SaveId,
+            result.Message,
+            problems,
+            result.Status,
+            result.Navigation,
+            result.Building,
+            result.Animal,
+            save);
+        var envelope = new ReviewFixtureResponseEnvelope(
+            ReviewFixtureTransportContract.SchemaVersion,
+            requestId,
+            binding,
+            report);
+        try
+        {
+            WriteResponse(runtimePath, envelope);
+            monitor.Log(
+                $"SDVKit review-fixture completed '{operation}' with state '{report.State}'.",
+                result.Succeeded ? LogLevel.Info : LogLevel.Error);
+        }
+        catch (Exception exception)
+        {
+            monitor.Log(
+                $"SDVKit review-fixture could not publish its bounded response ({exception.GetType().Name}).",
+                LogLevel.Error);
+        }
+    }
+
+    private static void WriteResponse(
+        string runtimePath,
+        ReviewFixtureResponseEnvelope envelope)
+    {
+        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
+        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
+        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
+            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        {
+            throw new InvalidDataException(
+                "The review runtime response root is not a regular directory.");
+        }
+
+        string responsePath = ReviewFixtureTransportContract.ResponsePath(
+            absoluteRuntimePath,
+            envelope.RequestId);
+        string temporaryPath = responsePath + ".tmp";
+        if (File.Exists(responsePath) || File.Exists(temporaryPath))
+        {
+            throw new InvalidDataException(
+                "The review-fixture response target already exists.");
+        }
+
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
+            envelope,
+            ResponseJsonOptions);
+        if (bytes.Length > ReviewFixtureTransportContract.MaximumResponseBytes)
+        {
+            throw new InvalidDataException(
+                "The bounded review-fixture response exceeds its maximum size.");
+        }
+
+        try
+        {
+            using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough))
+            {
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporaryPath, responsePath);
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
+}
+
 internal sealed class StardewReviewFixtureRuntime(
     Func<TestSaveAutomation?> testSave,
     Func<NetworkTwoAutomation?> networkTwo,
     Func<long> getNewMultiplayerId) : IReviewFixtureRuntime
 {
+    private sealed record NavigationPlan(
+        GameLocation Location,
+        int TileX,
+        int TileY,
+        string Message);
+
     private sealed record BuildingPlacementPreparation(
         IReadOnlyList<ReviewFixtureTile> ObjectTiles,
         IReadOnlyList<ReviewFixtureTile> TerrainFeatureTiles,
@@ -813,6 +1488,7 @@ internal sealed class StardewReviewFixtureRuntime(
             if (!network.TryVerifyReviewFixture(
                     out string networkFixtureId,
                     out string role,
+                    out string networkSaveId,
                     out string reason))
             {
                 return Denied(reason);
@@ -849,7 +1525,10 @@ internal sealed class StardewReviewFixtureRuntime(
                 network.IsHost && Context.IsMainPlayer,
                 networkFixtureId,
                 role,
-                "The exact live network-2 review pair was freshly verified.");
+                "The exact live network-2 review pair was freshly verified.",
+                Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID")?.Trim(),
+                NetworkTwoContract.Topology,
+                networkSaveId);
         }
 
         TestSaveAutomation? single = testSave();
@@ -868,13 +1547,17 @@ internal sealed class StardewReviewFixtureRuntime(
             Context.IsMainPlayer,
             fixtureId,
             "single",
-            "The exact live single-player review fixture was freshly verified.");
+            "The exact live single-player review fixture was freshly verified.",
+            Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID")?.Trim(),
+            "single",
+            Constants.SaveFolderName);
     }
 
     public ReviewFixtureResult Status(ReviewFixtureAccess access)
     {
         Farm farm = Game1.getFarm();
         string fixtureId = RequiredFixtureId(access);
+        Building[] ownedBuildings = GetOwnedBuildings(farm, fixtureId).ToArray();
         var lines = new List<string>
         {
             $"SDVKit fixture status fixture={fixtureId} role={access.Role} "
@@ -884,7 +1567,7 @@ internal sealed class StardewReviewFixtureRuntime(
             + $"mainPlayer={Context.IsMainPlayer} multiplayer={Context.IsMultiplayer}",
         };
 
-        foreach (Building building in GetOwnedBuildings(farm, fixtureId))
+        foreach (Building building in ownedBuildings)
         {
             GameLocation? indoors = building.GetIndoors();
             string alias = building.modData[ReviewFixtureContract.BuildingAliasMarkerKey];
@@ -904,7 +1587,22 @@ internal sealed class StardewReviewFixtureRuntime(
                 + $"ownedObjects={ownedObjects} ownedAnimals={ownedAnimals}");
         }
 
-        return Success(string.Join(Environment.NewLine, lines));
+        return new ReviewFixtureResult(
+            true,
+            string.Join(Environment.NewLine, lines),
+            Status: new ReviewFixtureStatusReport(
+                Game1.currentLocation?.NameOrUniqueName ?? "<none>",
+                Game1.player.UniqueMultiplayerID,
+                Context.IsMainPlayer,
+                Context.IsMultiplayer,
+                ownedBuildings
+                    .Select(building => DescribeBuilding(
+                        building,
+                        fixtureId,
+                        building.buildingType.Value,
+                        ReviewFixtureKindResolver.Normalize(building.buildingType.Value),
+                        changed: false))
+                    .ToArray()));
     }
 
     public ReviewFixtureResult EnsureBuilding(
@@ -964,14 +1662,22 @@ internal sealed class StardewReviewFixtureRuntime(
         if (decision == ReviewFixtureEnsureDecision.Confirm)
         {
             Building existing = aliases[0];
-            if (existing.isUnderConstruction(ignoreUpgrades: false))
+            bool finishedConstruction = existing.isUnderConstruction(ignoreUpgrades: false);
+            if (finishedConstruction)
             {
                 existing.FinishConstruction(onGameStart: false);
             }
 
-            return Success(
-                $"Fixture building '{alias}' already exists as {existing.id.Value:D} "
-                + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} at {x},{y}.");
+            return SuccessBuilding(
+                $"Fixture building '{alias}' "
+                + (finishedConstruction ? "was finished" : "already exists")
+                + $" as {existing.id.Value:D} "
+                + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} at {x},{y}.",
+                existing,
+                fixtureId,
+                resolved.CanonicalId,
+                resolved.CanonicalToken,
+                changed: finishedConstruction);
         }
 
         if (!ReferenceEquals(Game1.currentLocation, farm))
@@ -1062,10 +1768,15 @@ internal sealed class StardewReviewFixtureRuntime(
             constructed.modData[ReviewFixtureContract.FixtureIdMarkerKey] = fixtureId;
             constructed.modData[ReviewFixtureContract.BuildingAliasMarkerKey] = alias;
             constructed.FinishConstruction(onGameStart: false);
-            return Success(
+            return SuccessBuilding(
                 $"Created finished fixture building '{alias}' as {constructed.id.Value:D} "
                 + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} at {x},{y}; "
-                + $"removed {removed} from the exact placement area.");
+                + $"removed {removed} from the exact placement area.",
+                constructed,
+                fixtureId,
+                resolved.CanonicalId,
+                resolved.CanonicalToken,
+                changed: true);
         }
         catch (Exception exception)
         {
@@ -1235,10 +1946,14 @@ internal sealed class StardewReviewFixtureRuntime(
         if (decision == ReviewFixtureEnsureDecision.Confirm)
         {
             FarmAnimal existing = ownedAnimals[0];
-            return Success(
+            return SuccessAnimal(
                 $"Owned fixture animal {existing.myID.Value} already exists "
                 + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} "
-                + $"home={target.id.Value:D} assigned=true.");
+                + $"home={target.id.Value:D} assigned=true.",
+                existing,
+                target,
+                resolved,
+                changed: false);
         }
 
         var animal = new FarmAnimal(
@@ -1282,16 +1997,104 @@ internal sealed class StardewReviewFixtureRuntime(
                     : "The exact partial animal couldn't be removed; reset the disposable fixture."));
         }
 
-        return Success(
+        return SuccessAnimal(
             $"Created owned fixture animal {animal.myID.Value} "
             + $"type='{resolved.CanonicalId}' token={resolved.CanonicalToken} "
-            + $"home={target.id.Value:D} assigned=true.");
+            + $"home={target.id.Value:D} assigned=true.",
+            animal,
+            target,
+            resolved,
+            changed: true);
     }
 
     public ReviewFixtureResult Enter(
         ReviewFixtureAccess access,
         string building)
     {
+        ReviewFixtureResult? immediate = PrepareEnter(
+            access,
+            building,
+            out NavigationPlan? plan);
+        if (immediate is not null)
+        {
+            return immediate;
+        }
+
+        Game1.warpFarmer(
+            plan!.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            false);
+        return SuccessNavigation(
+            plan.Message,
+            plan.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            changed: true);
+    }
+
+    public ReviewFixtureResult Farm(ReviewFixtureAccess access)
+    {
+        ReviewFixtureResult? immediate = PrepareFarm(
+            access,
+            out NavigationPlan? plan);
+        if (immediate is not null)
+        {
+            return immediate;
+        }
+
+        Game1.warpFarmer(
+            plan!.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            false);
+        return SuccessNavigation(
+            plan.Message,
+            plan.Location.NameOrUniqueName,
+            plan.TileX,
+            plan.TileY,
+            changed: true);
+    }
+
+    public void BeginNavigation(
+        ReviewFixtureAccess access,
+        ReviewFixtureRequest request,
+        Action<ReviewFixtureResult> completed)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(completed);
+
+        ReviewFixtureResult? immediate;
+        NavigationPlan? plan;
+        if (request is ReviewFixtureEnterRequest enter)
+        {
+            immediate = PrepareEnter(access, enter.Building, out plan);
+        }
+        else if (request is ReviewFixtureFarmRequest)
+        {
+            immediate = PrepareFarm(access, out plan);
+        }
+        else
+        {
+            completed(Failure(ReviewFixtureArguments.Usage));
+            return;
+        }
+
+        if (immediate is not null)
+        {
+            completed(immediate);
+            return;
+        }
+
+        BeginWarp(plan!, completed);
+    }
+
+    private static ReviewFixtureResult? PrepareEnter(
+        ReviewFixtureAccess access,
+        string building,
+        out NavigationPlan? plan)
+    {
+        plan = null;
         string fixtureId = RequiredFixtureId(access);
         if (!TryResolveEnterBuilding(
                 building,
@@ -1309,7 +2112,12 @@ internal sealed class StardewReviewFixtureRuntime(
             : $"fixture building {target.id.Value:D}";
         if (ReferenceEquals(Game1.currentLocation, indoors))
         {
-            return Success($"Player is already inside {targetDescription}.");
+            return SuccessNavigation(
+                $"Player is already inside {targetDescription}.",
+                indoors.NameOrUniqueName,
+                Game1.player.TilePoint.X,
+                Game1.player.TilePoint.Y,
+                changed: false);
         }
 
         if (!ReferenceEquals(Game1.currentLocation, Game1.getFarm()))
@@ -1322,18 +2130,29 @@ internal sealed class StardewReviewFixtureRuntime(
             return Failure(error);
         }
 
-        Game1.warpFarmer(indoors.NameOrUniqueName, (int)entry.X, (int)entry.Y, false);
-        return Success(
+        plan = new NavigationPlan(
+            indoors,
+            (int)entry.X,
+            (int)entry.Y,
             $"Warped through the natural entry of {targetDescription} at {entry.X},{entry.Y}.");
+        return null;
     }
 
-    public ReviewFixtureResult Farm(ReviewFixtureAccess access)
+    private static ReviewFixtureResult? PrepareFarm(
+        ReviewFixtureAccess access,
+        out NavigationPlan? plan)
     {
+        plan = null;
         string fixtureId = RequiredFixtureId(access);
         Farm farm = Game1.getFarm();
         if (ReferenceEquals(Game1.currentLocation, farm))
         {
-            return Success("Player is already on the Farm.");
+            return SuccessNavigation(
+                "Player is already on the Farm.",
+                farm.NameOrUniqueName,
+                Game1.player.TilePoint.X,
+                Game1.player.TilePoint.Y,
+                changed: false);
         }
 
         GameLocation? current = Game1.currentLocation;
@@ -1375,20 +2194,141 @@ internal sealed class StardewReviewFixtureRuntime(
             return Failure("The fixture interior's natural Farm warp target is not passable.");
         }
 
-        Game1.warpFarmer("Farm", exit.TargetX, exit.TargetY, false);
         string sourceDescription = parent is not null
             ? $"fixture building {parent.id.Value:D}"
             : greenhouse is not null
                 ? $"Greenhouse {greenhouse.id.Value:D}"
                 : $"review FarmHouse '{current.NameOrUniqueName}'";
-        return Success(
+        plan = new NavigationPlan(
+            farm,
+            exit.TargetX,
+            exit.TargetY,
             $"Warped through the natural Farm exit of {sourceDescription} at {target.X},{target.Y}.");
+        return null;
+    }
+
+    private static void BeginWarp(
+        NavigationPlan plan,
+        Action<ReviewFixtureResult> completed)
+    {
+        string expectedLocationId = plan.Location.NameOrUniqueName;
+        bool expectedIsStructure = plan.Location.isStructure.Value;
+        var locationRequest = new LocationRequest(
+            expectedLocationId,
+            expectedIsStructure,
+            plan.Location);
+        locationRequest.OnWarp += () =>
+        {
+            GameLocation? actualLocation = Game1.currentLocation;
+            GameLocation? requestedLocation = locationRequest.Location;
+            if (actualLocation is null
+                || requestedLocation is null
+                || !ReferenceEquals(actualLocation, requestedLocation)
+                || !string.Equals(
+                    actualLocation.NameOrUniqueName,
+                    expectedLocationId,
+                    StringComparison.Ordinal)
+                || actualLocation.isStructure.Value != expectedIsStructure)
+            {
+                completed(Failure(
+                    "Stardew completed the fixture warp without reaching the exact requested location."));
+                return;
+            }
+
+            completed(SuccessNavigation(
+                plan.Message,
+                actualLocation.NameOrUniqueName,
+                Game1.player.TilePoint.X,
+                Game1.player.TilePoint.Y,
+                changed: true));
+        };
+        Game1.warpFarmer(
+            locationRequest,
+            plan.TileX,
+            plan.TileY,
+            Game1.player.FacingDirection);
     }
 
     private static ReviewFixtureAccess Denied(string message) =>
         new(false, false, null, null, message);
 
     private static ReviewFixtureResult Success(string message) => new(true, message);
+
+    private static ReviewFixtureResult SuccessNavigation(
+        string message,
+        string locationId,
+        int tileX,
+        int tileY,
+        bool changed) =>
+        new(
+            true,
+            message,
+            Navigation: new ReviewFixtureNavigationReport(
+                locationId,
+                tileX,
+                tileY,
+                changed));
+
+    private static ReviewFixtureResult SuccessBuilding(
+        string message,
+        Building building,
+        string fixtureId,
+        string canonicalKind,
+        string canonicalToken,
+        bool changed) =>
+        new(
+            true,
+            message,
+            Building: DescribeBuilding(
+                building,
+                fixtureId,
+                canonicalKind,
+                canonicalToken,
+                changed));
+
+    private static ReviewFixtureResult SuccessAnimal(
+        string message,
+        FarmAnimal animal,
+        Building building,
+        ReviewFixtureKindResolution resolution,
+        bool changed) =>
+        new(
+            true,
+            message,
+            Animal: new ReviewFixtureAnimalReport(
+                animal.myID.Value,
+                resolution.CanonicalId,
+                resolution.CanonicalToken,
+                building.id.Value.ToString("D"),
+                animal.home?.id.Value == building.id.Value
+                    && building.GetIndoors() is AnimalHouse animalHouse
+                    && animalHouse.animalsThatLiveHere.Contains(animal.myID.Value),
+                changed));
+
+    private static ReviewFixtureBuildingReport DescribeBuilding(
+        Building building,
+        string fixtureId,
+        string canonicalKind,
+        string canonicalToken,
+        bool changed)
+    {
+        GameLocation? indoors = building.GetIndoors();
+        Farm farm = Game1.getFarm();
+        return new ReviewFixtureBuildingReport(
+            building.modData[ReviewFixtureContract.BuildingAliasMarkerKey],
+            building.id.Value.ToString("D"),
+            canonicalKind,
+            canonicalToken,
+            building.tileX.Value,
+            building.tileY.Value,
+            indoors?.NameOrUniqueName,
+            indoors?.mapPath.Value,
+            indoors?.Objects.Pairs.Count(pair =>
+                IsOwnedObject(pair.Value, fixtureId, building.id.Value)) ?? 0,
+            GetAllFarmAnimals(farm).Count(animal =>
+                IsOwnedAnimal(animal, fixtureId, building.id.Value)),
+            changed);
+    }
 
     private static ReviewFixtureResult Failure(string message) => new(false, message);
 

@@ -48,6 +48,8 @@ Before replacing the program files, cleanly stop any active SDVKit lab or projec
 
 Exact owned `single` reviews can inspect bounded canonical map structure, measure the installed canonical texture population, inspect one final post-pipeline texture, create one bounded diagnostic PNG, inventory final audio metadata without playback, and inspect observed conventional `Mods/<owner>/...` requests through six primitive adapters. Map, texture, audio, and mod-asset introspection remain CLI-only and do not expose bulk asset extraction. Native MCP can now request one existing map or viewport capture path and receive the exact validated role-local PNG as image content.
 
+Fixture actions remain absent from the native local-STDIO MCP server by default. The separate `--allow-fixture-actions` startup opt-in adds only six typed operations against a freshly verified SDVKit-owned disposable test save.
+
 ## What's new in v0.6.1
 
 Since `v0.6.0`, interactive reviews support exact directional virtual-wheel input and complete read-only discovery and retrieval of Stardew's installed canonical data assets. The native local-STDIO MCP server exposes closed-world runtime state for exact owned single and network-role reviews, plus the same canonical Data inventory, keys, and exact-record reads for `single`.
@@ -189,7 +191,7 @@ sdvkit project review start .\ExamplePack `
 
 Run all review commands from the same lab-owning directory. The optional target path defaults to that current directory. `start` requires exactly one standalone SMAPI C# target project or one ready root content-pack directory. A content-pack target supports only `single`, and its `ContentPackFor.UniqueID` provider must be an explicitly selected local `--companion`; `network-2` rejects that target before launch or lab mutation. Every repeatable `--companion` value must explicitly name either another single code-mod project or a ready root mod directory, and every `--content-pack` value still explicitly names one additional ready root content-pack directory. SDVKit does not scan a `Mods` directory, search for dependencies, or download anything.
 
-`command` writes exactly one complete, quoted SMAPI, target, companion, or AlwaysOn console line to the currently active exact review process; it does not discover or download anything. Use it only while the interactive console prompt is idle, with no partially typed command or parallel manual console input. A successful JSON result sets `commandWritten` to `true` only after the complete line was added to the Windows console input buffer; it does not confirm that SMAPI recognized or successfully executed the command.
+`command` clears an unsubmitted edited line without executing it, then writes exactly one complete, quoted SMAPI, target, companion, or AlwaysOn console line to the currently active exact review process; it does not discover or download anything. Pending raw input observed before dispatch fails closed. Concurrent manual console input is unsupported because it can race dispatch, so don't type in the interactive console while dispatching a command. A successful JSON result sets `commandWritten` to `true` only after the clear sequence and complete line were added to the Windows console input buffer; it does not confirm that SMAPI recognized or successfully executed the command.
 
 ### Read canonical Data definitions
 
@@ -333,7 +335,7 @@ Before a new building is placed, `building ensure` derives the exact placement a
 
 `object clear-owned` remains separate and removes only the fixture object carrying SDVKit's exact ownership markers; it does not clear a building's object collection or touch an unowned object. Fixture status and results report only generic SDVKit-owned world facts. They do not interpret a target mod's state, special-case StardewInteriorChanger, or enumerate or expose foreign `modData`.
 
-The fixture surface deliberately has no save or sleep command. Use an explicitly selected existing SMAPI, target, or companion command for those actions, and verify its own completion evidence. For fixture commands too, `commandWritten=true` proves console delivery only: require the matching AlwaysOn result plus direct world, log, persistence, or visual evidence for the intended effect.
+The game-console fixture surface deliberately has no save or sleep command. Without the explicit MCP fixture-action opt-in, use an explicitly selected existing SMAPI, target, or companion command for those actions and verify its own completion evidence. The opted-in `stardew_fixture_save` tool described below is the sole fixture-save adapter and reuses the existing test-save iterator. For console fixture commands, `commandWritten=true` proves delivery only: require the matching AlwaysOn result plus direct world, log, persistence, or visual evidence for the intended effect.
 
 A confirmed `stop` unmounts the exact fixture but deliberately preserves its Work-Copy. Repeating `start` with the same explicit target selection and `--test-save` launches a new process against that retained work state. After the final stop, reset only that verified fixture and any retained exact single-review staging:
 
@@ -392,6 +394,8 @@ sdvkit project review mcp serve
 sdvkit project review mcp serve --topology single
 sdvkit project review mcp serve --topology network-2 --role host
 sdvkit project review mcp serve --topology network-2 --role farmhand
+sdvkit project review mcp serve --topology single --allow-fixture-actions
+sdvkit project review mcp serve --topology network-2 --role host --allow-fixture-actions
 ```
 
 Omitting `--topology` selects `single`. A role is rejected for `single`, while
@@ -403,6 +407,12 @@ stdin ends the child server process. Input tools are absent by default. Add the
 granular `--allow-input` startup flag only when that client is explicitly
 authorized to exercise process-local review input; the flag does not authorize
 fixture changes, arbitrary console text, or future action families.
+
+`--allow-fixture-actions` is a granular capability grant, not a general action
+or input switch. Without it, no `stardew_fixture_*` tool is advertised. With it,
+startup requires the exact selected role to be bound to a fresh SDVKit-owned
+disposable test save; a plain review or normal save is rejected. The flag never
+selects a save and never grants access to the normal Stardew `Saves` directory.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
@@ -495,6 +505,50 @@ may have dispatched input; an unconfirmed cleanup makes the server exit
 nonzero. A successful acknowledgement proves only the bounded input operation;
 verify the intended target-mod effect separately.
 
+With the explicit `--allow-fixture-actions` opt-in, a `single` server or a
+`network-2` host server additionally exposes exactly these six tools:
+
+- `stardew_fixture_status_get {}` returns the role-local location, player and
+  multiplayer state plus bounded stable identities for SDVKit-owned fixture
+  buildings.
+- `stardew_fixture_enter { "building": "<alias-or-guid>" }` enters one owned
+  fixture building, or use the exact `greenhouse` token for the canonical
+  greenhouse, through its natural warp.
+- `stardew_fixture_farm {}` returns from an allowed review interior through its
+  natural Farm warp.
+- `stardew_fixture_building_ensure { "alias": "barn-a", "kind": "Deluxe Barn", "x": 16, "y": 20 }`
+  reuses the canonical building resolver, complete placement preflight,
+  ownership markers, idempotence and rollback path.
+- `stardew_fixture_animal_ensure { "building": "barn-a", "kind": "White Cow" }`
+  reuses canonical animal resolution, house compatibility, stable ownership,
+  idempotence and rollback.
+- `stardew_fixture_save {}` completes Stardew's existing supported save iterator
+  and returns the exact Save ID and persistence time only after its completion
+  signal.
+
+A farmhand server advertises only `status_get`, `enter`, and `farm`; it cannot
+discover or dispatch building, animal, or save mutations. Object creation and
+clearing, arbitrary commands, generic RPC, unrestricted warps, and other world
+editing are not MCP tools. Every call repeats the exact launch, role, process,
+target, fixture and Save identity preflight immediately before dispatch. One
+cross-process action lock rejects concurrent input or fixture work for that
+role instead of queueing it. Response files are unique, create-new, bounded,
+freshness checked, and bound to the request, launch, topology, role, fixture and
+Save. Cancellation before dispatch writes nothing. After confirmed dispatch,
+the action lock stays held while SDVKit drains and validates the acknowledgement
+up to that operation's bound (the existing two-minute save bound plus a bounded
+five-second acknowledgement grace), and the action is never retried. A missing or invalid acknowledgement returns
+`mayHaveRun=true`; a validated acknowledgement returns the exact result with
+`cancellationRequested=true` when cancellation was observed.
+
+Ensure results carry canonical kinds and stable building or animal IDs plus a
+`changed` flag, so an unchanged repeat is deterministic evidence of
+idempotence. Navigation results carry the final location/tile and `changed`;
+save results carry `saveId` and `persistedAtUtc`. A tool result never exposes
+foreign `modData`, paths, peer state, or normal-save data. Prove actual restart
+persistence by stopping and starting the same explicitly selected review, then
+finish with the existing topology-specific `project review reset` lifecycle.
+
 A project-local Codex configuration can keep the surface explicitly limited:
 
 ```toml
@@ -562,9 +616,11 @@ The MCP server never reads the normal or mod-manager-owned `Mods` directory or
 normal saves. It opens no listener and cannot start, stop, reset, transport
 arbitrary console text, or mutate a review except through an explicitly enabled
 typed action family. `--allow-input` wraps only the existing process-local
-cursor, one-tick button, and one-notch wheel paths described above. Without an
-action opt-in, the screenshot tool's only write is its named, create-new evidence
-PNG below the selected role's ignored isolated profile.
+cursor, one-tick button, and one-notch wheel paths described above.
+`--allow-fixture-actions` wraps only the closed typed operations above inside the
+already active owned disposable fixture. Without either action opt-in, the
+screenshot tool's only write is its named, create-new evidence PNG below the
+selected role's ignored isolated profile.
 
 ## Agent workflow
 

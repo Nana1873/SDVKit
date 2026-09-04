@@ -116,6 +116,7 @@ $linkedFiles = @(
     "ReviewAudioModels.cs",
     "ReviewInputModels.cs",
     "ReviewDataModels.cs",
+    "ReviewFixtureModels.cs",
     "ReviewMapModels.cs",
     "ReviewModAssetModels.cs",
     "ReviewScreenshotModels.cs",

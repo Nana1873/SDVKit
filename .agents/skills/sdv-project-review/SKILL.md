@@ -20,7 +20,7 @@ Use `single` by default. Use `network-2` only when the user explicitly requests 
 - A content-pack target supports only `single`; pass its `ContentPackFor.UniqueID` provider as an explicit local `--companion` and honor its minimum version.
 - `--content-pack` remains for additional packs, not for replacing the target argument.
 
-For agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The role is fixed at server startup and is never a tool argument. Every topology exposes the read-only `stardew_runtime_get`, `stardew_review_get`, and `stardew_mods_list` tools plus controlled `stardew_screenshot_capture`; the three canonical Data tools remain single-only. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns only the configured role's data; never infer one role from its peer. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations. Input tools remain absent unless the user explicitly authorizes the granular `--allow-input` startup flag; never substitute an aggregate action flag.
+For agent access to a currently active review, run the native STDIO entry point from the same lab-owning current directory. Use `sdvkit project review mcp serve [--topology single]` without a role for `single`. For `network-2`, start `sdvkit project review mcp serve --topology network-2 --role <host|farmhand>` and bind a separate server/client process for each role that must be inspected. The role is fixed at server startup and is never a tool argument. Every topology exposes the read-only `stardew_runtime_get`, `stardew_review_get`, and `stardew_mods_list` tools plus controlled `stardew_screenshot_capture`; the three canonical Data tools remain single-only. Input tools remain absent unless the user explicitly authorizes the granular `--allow-input` startup flag. Fixture tools remain absent unless the user separately authorizes `--allow-fixture-actions`, which is valid only with the freshly verified SDVKit-owned disposable test save. Both grants may be combined, but never substitute an aggregate action flag. The server must revalidate both exact role states, processes, target/build bindings, owned fixture, and reciprocal joined-pair proof before it returns or changes only the configured role's data; never infer one role from its peer. Do not add `--json`, network transport, or a relay, and continue to use the existing review commands for lifecycle operations.
 
 ## Start and confirm the load
 
@@ -247,7 +247,30 @@ World mutations (`building ensure`, `object ensure`, `object clear-owned`, and `
 
 Building and animal kinds resolve only from stable internal IDs in the canonical data loaded by the running Stardew version, never from localized display names. Kind tokens are case-insensitive and separator-normalized; legacy `deluxe-barn` and `white-cow` remain valid, and `coop` plus `white-chicken` use the same path. The exact available set can vary with the loaded game data. Unknown or colliding tokens, unplaceable building data, and incompatible animal-house pairs must fail before mutation. Ensure operations must be idempotent for the same SDVKit-owned alias and exact resolved kind, position, home, assignment, and fixture. Never convert or move an existing animal. `object clear-owned` may remove only the exact SDVKit-owned fixture object, never an entire object collection or an unowned object.
 
-Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The fixture surface has no save or sleep command; use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
+Treat the fixture result as generic world preparation and evidence only. Do not infer or report a target-mod selection from it, special-case StardewInteriorChanger, or inspect or expose foreign `modData`. The game-console fixture surface has no save or sleep command; without the explicit MCP fixture-action grant, use an explicitly selected existing SMAPI, target, or companion command when a review requires either action, then prove that action independently. As with every transported line, `commandWritten=true` is not execution evidence: require the matching AlwaysOn result and direct state, log, persistence, or visual confirmation.
+
+When the user explicitly authorizes typed MCP fixture actions, start a separate server for the already active fixture-backed review:
+
+```text
+sdvkit project review mcp serve --topology single --allow-fixture-actions
+sdvkit project review mcp serve --topology network-2 --role host --allow-fixture-actions
+sdvkit project review mcp serve --topology network-2 --role farmhand --allow-fixture-actions
+```
+
+The opt-in never selects, imports, or grants access to a normal save. Startup and every call must verify the same exact launch, target build, process, role, fixture ID, Save ID, readiness and freshness. Do not reuse an error or stale response, and do not retry an unchanged mutation automatically. One role may have only one MCP input or fixture action in flight; a busy result is a rejection, not a queue. Cancellation before dispatch writes nothing. After dispatch, retain the action lock and drain the request-bound acknowledgement through the operation limit (the existing two-minute save operation plus a five-second acknowledgement grace); treat `mayHaveRun=true` as an ambiguous outcome that must not be retried automatically.
+
+The closed tool surface is:
+
+```text
+stardew_fixture_status_get {}
+stardew_fixture_enter { "building": "<alias-or-guid-or-greenhouse>" }
+stardew_fixture_farm {}
+stardew_fixture_building_ensure { "alias": "coop_a", "kind": "Coop", "x": 16, "y": 20 }
+stardew_fixture_animal_ensure { "building": "coop_a", "kind": "White Chicken" }
+stardew_fixture_save {}
+```
+
+Farmhand servers advertise only status, enter, and farm. Single and host servers additionally advertise building ensure, animal ensure, and save. No MCP tool exposes object mutation, arbitrary console text, a generic warp, a second fixture engine, or a second save state machine. Building and animal calls return their stable IDs, canonical kinds and `changed`; navigation returns the exact location/tile and `changed`; save returns only after the existing Stardew save iterator reports completion and includes the exact Save ID and persistence time. Require the returned launch, topology, role, fixture, Save and operation identities to match the request. A successful MCP save is durable-operation evidence, but restart persistence still requires the real stop/start/reload proof followed by the existing final reset.
 
 Request screenshots only through the existing AlwaysOn commands, with a unique label. Use the map form only after `WorldReady` for world layout. The viewport form captures the current backbuffer and may also be used on title, loading, and error screens before fixture or pair readiness:
 

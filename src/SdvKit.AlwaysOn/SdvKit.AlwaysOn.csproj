@@ -20,6 +20,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewAudioModels.cs" Link="LiveLab\ReviewAudioModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewInputModels.cs" Link="LiveLab\ReviewInputModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewFixtureModels.cs" Link="LiveLab\ReviewFixtureModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewModAssetModels.cs" Link="LiveLab\ReviewModAssetModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenshotModels.cs" Link="LiveLab\ReviewScreenshotModels.cs" />

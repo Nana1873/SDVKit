@@ -85,6 +85,7 @@ internal static class ProjectReviewMcpServer
         string topology,
         string? role,
         bool allowInput,
+        bool allowFixtureActions,
         TextWriter error,
         CancellationToken cancellationToken = default)
     {
@@ -97,6 +98,13 @@ internal static class ProjectReviewMcpServer
         {
             error.WriteLine(
                 $"SDVKit MCP startup failed [{preflight.ErrorCode}]: {preflight.ErrorMessage}");
+            return OperationFailed;
+        }
+
+        if (allowFixtureActions && preflight.Context!.TestSave is null)
+        {
+            error.WriteLine(
+                "SDVKit MCP startup failed [fixtureTestSaveRequired]: Fixture actions require the exact ready SDVKit-owned test save.");
             return OperationFailed;
         }
 
@@ -117,10 +125,22 @@ internal static class ProjectReviewMcpServer
                     role,
                     cancellationToken: token))
             : null;
+        ProjectReviewMcpFixtureQueryRunner? runFixture = allowFixtureActions
+            ? (query, expected, token) => ProjectReviewFixtureService.Execute(
+                query,
+                topology,
+                role,
+                projectRoot,
+                cancellationToken: token,
+                expectedSnapshot: expected)
+            : null;
         McpServerOptions options = CreateOptions(
             reader,
             runData,
-            inputSession: inputSession);
+            inputSession: inputSession,
+            runFixture: runFixture,
+            topology: topology,
+            role: role);
         var exitCode = 0;
         try
         {
@@ -156,7 +176,10 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpRuntimeReader reader,
         ProjectReviewMcpDataQueryRunner? runData = null,
         ProjectReviewMcpScreenshotRunner? runScreenshot = null,
-        ProjectReviewMcpInputSession? inputSession = null)
+        ProjectReviewMcpInputSession? inputSession = null,
+        ProjectReviewMcpFixtureQueryRunner? runFixture = null,
+        string topology = LiveLabState.SingleTopology,
+        string? role = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -177,6 +200,14 @@ internal static class ProjectReviewMcpServer
         {
             tools.AddRange(ProjectReviewMcpInputTools.Create(inputSession));
         }
+        if (runFixture is not null)
+        {
+            tools.AddRange(ProjectReviewMcpFixtureTools.Create(
+                reader,
+                runFixture,
+                topology,
+                role));
+        }
 
         return new McpServerOptions
         {
@@ -186,9 +217,15 @@ internal static class ProjectReviewMcpServer
                 Version = typeof(ProjectReviewMcpServer).Assembly
                     .GetName().Version?.ToString(3) ?? "0.6.1",
             },
-            ServerInstructions = inputSession is null
-                ? "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Input actions are disabled. Re-check errors by starting or repairing that review; never infer access to normal saves or Mods."
-                : "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Never infer access to normal saves, Mods, OS-wide input, or arbitrary console commands.",
+            ServerInstructions =
+                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "
+                + (inputSession is null
+                    ? "Input actions are disabled. "
+                    : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")
+                + (runFixture is null
+                    ? "Fixture actions are disabled. "
+                    : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
+                + "Re-check errors by starting or repairing that review; never infer access to normal saves, Mods, OS-wide input, or arbitrary console commands.",
             ToolCollection = [.. tools],
         };
     }

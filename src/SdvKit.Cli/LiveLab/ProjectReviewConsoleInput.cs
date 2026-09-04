@@ -373,8 +373,10 @@ internal static class WindowsProjectReviewConsoleInputWorker
     private const uint FileShareWrite = 0x00000002;
     private const uint OpenExisting = 3;
     private const uint ToolhelpSnapshotProcess = 0x00000002;
+    private const uint EnableLineInput = 0x0002;
     private const ushort KeyEvent = 0x0001;
     private const ushort VirtualKeyReturn = 0x000D;
+    private const ushort VirtualKeyEscape = 0x001B;
 
     internal static bool IsInvocation(IReadOnlyList<string> arguments) =>
         arguments.Count > 0
@@ -547,8 +549,13 @@ internal static class WindowsProjectReviewConsoleInputWorker
             throw new ArgumentException(validationError, nameof(line));
         }
 
-        var records = new ConsoleInputRecord[checked((line.Length + 1) * 2)];
+        // ReadConsole can retain an unsubmitted edited line after its input event
+        // queue is empty. Clear that cooked line without executing it before
+        // enqueueing the exact SDVKit command.
+        var records = new ConsoleInputRecord[checked((line.Length + 2) * 2)];
         var index = 0;
+        records[index++] = Record('\u001b', keyDown: true, VirtualKeyEscape);
+        records[index++] = Record('\u001b', keyDown: false, VirtualKeyEscape);
         foreach (char character in line)
         {
             records[index++] = Record(character, keyDown: true, virtualKeyCode: 0);
@@ -559,6 +566,9 @@ internal static class WindowsProjectReviewConsoleInputWorker
         records[index] = Record('\r', keyDown: false, VirtualKeyReturn);
         return records;
     }
+
+    internal static bool UsesCookedLineInput(uint consoleMode) =>
+        (consoleMode & EnableLineInput) != 0;
 
     private static ProjectReviewConsoleInputResult WriteAttachedConsole(
         SafeProcessHandle processHandle,
@@ -603,6 +613,20 @@ internal static class WindowsProjectReviewConsoleInputWorker
             return Failure(
                 ProjectReviewConsoleInputStatus.InputOpenFailed,
                 "Windows could not open the exact SMAPI console input buffer");
+        }
+
+        if (!GetConsoleMode(inputHandle, out uint consoleMode))
+        {
+            return Failure(
+                ProjectReviewConsoleInputStatus.InputOpenFailed,
+                "Windows could not inspect the exact SMAPI console input mode");
+        }
+
+        if (!UsesCookedLineInput(consoleMode))
+        {
+            return new ProjectReviewConsoleInputResult(
+                ProjectReviewConsoleInputStatus.InputOpenFailed,
+                "The exact SMAPI console is not using the required cooked line-input mode; no command was written.");
         }
 
         if (!GetNumberOfConsoleInputEvents(inputHandle, out uint pendingEvents))
@@ -925,6 +949,13 @@ internal static class WindowsProjectReviewConsoleInputWorker
         uint creationDisposition,
         uint flagsAndAttributes,
         IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetConsoleMode(
+        SafeFileHandle consoleHandle,
+        out uint mode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

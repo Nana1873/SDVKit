@@ -4,6 +4,7 @@ using System.Text.Json;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Tests;
 
@@ -384,6 +385,261 @@ public sealed class ProjectReviewServiceTests
             {
                 EnsureExited(farmhandProcess);
                 EnsureExited(hostProcess);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void FixtureStatusDispatchesThroughTheExactRunningNetworkRole(string role)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.HostRole);
+        LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
+            paths,
+            NetworkTwoContract.FarmhandRole);
+        string hostProcessRoot = Path.Combine(temporary.Path, "host-process");
+        string farmhandProcessRoot = Path.Combine(temporary.Path, "farmhand-process");
+        Directory.CreateDirectory(hostProcessRoot);
+        Directory.CreateDirectory(farmhandProcessRoot);
+        (OwnedProcessIdentity hostIdentity, Process hostProcess) =
+            StartRunningProcess(hostProcessRoot);
+        (OwnedProcessIdentity farmhandIdentity, Process farmhandProcess) =
+            StartRunningProcess(farmhandProcessRoot);
+        using (hostProcess)
+        using (farmhandProcess)
+        {
+            try
+            {
+                LiveLabState hostState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.HostRole,
+                    hostIdentity);
+                LiveLabState farmhandState = NetworkReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    NetworkTwoContract.FarmhandRole,
+                    farmhandIdentity);
+                new JsonLiveLabStateStore(hostPaths.StatePath).Write(hostState);
+                new JsonLiveLabStateStore(farmhandPaths.StatePath).Write(farmhandState);
+                DateTimeOffset observedAtUtc = DateTimeOffset.UtcNow;
+                WriteReadyNetworkStatus(
+                    hostPaths,
+                    hostState,
+                    staging.TargetLaunchState,
+                    observedAtUtc,
+                    123456789,
+                    TestSaveContract.PlayerName,
+                    987654321,
+                    NetworkTwoContract.FarmhandName);
+                WriteReadyNetworkStatus(
+                    farmhandPaths,
+                    farmhandState,
+                    staging.TargetLaunchState,
+                    observedAtUtc,
+                    987654321,
+                    NetworkTwoContract.FarmhandName,
+                    123456789,
+                    TestSaveContract.PlayerName);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewFixtureService.Execute(
+                    new ReviewFixtureQuery(ReviewFixtureTransportContract.StatusOperation),
+                    NetworkTwoContract.Topology,
+                    role,
+                    temporary.Path,
+                    sender,
+                    responseTimeout: TimeSpan.Zero);
+
+                ReviewFixtureReport report =
+                    Assert.IsType<ReviewFixtureReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Equal(role, report.Role);
+                Assert.True(report.CommandWritten);
+                Assert.True(report.MayHaveRun);
+                Assert.False(report.CancellationRequested);
+                Assert.Equal(
+                    "fixtureResponseTimedOut",
+                    Assert.Single(report.Problems).Code);
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(
+                    role == NetworkTwoContract.HostRole
+                        ? hostIdentity
+                        : farmhandIdentity,
+                    sender.Identity);
+                Assert.Equal(role, sender.Line!.Split(' ')[5]);
+            }
+            finally
+            {
+                EnsureExited(farmhandProcess);
+                EnsureExited(hostProcess);
+            }
+        }
+    }
+
+    [Fact]
+    public void FixtureCancellationAfterDispatchDrainsValidatedAckWhileHoldingActionLock()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        using (var cancellation = new CancellationTokenSource())
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteReadySingleStatus(paths, state, staging.TargetLaunchState, fixture);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+                var waits = 0;
+                var parallelRejected = false;
+
+                LiveLabCommandResult result = ProjectReviewFixtureService.Execute(
+                    new ReviewFixtureQuery(ReviewFixtureTransportContract.StatusOperation),
+                    LiveLabState.SingleTopology,
+                    role: null,
+                    temporary.Path,
+                    sender,
+                    delay: _ =>
+                    {
+                        waits++;
+                        if (waits == 1)
+                        {
+                            cancellation.Cancel();
+                            using ProjectReviewActionLock? contender =
+                                ProjectReviewActionLock.TryAcquire(paths.RuntimePath);
+                            parallelRejected = contender is null;
+                            return;
+                        }
+
+                        WriteFixtureStatusResponse(paths, sender.Line!, fixture);
+                    },
+                    responseTimeout: TimeSpan.FromSeconds(2),
+                    cancellationToken: cancellation.Token);
+
+                ReviewFixtureReport report = Assert.IsType<ReviewFixtureReport>(result.Report);
+                Assert.Equal(0, result.ExitCode);
+                Assert.Equal("ready", report.State);
+                Assert.True(report.CommandWritten);
+                Assert.False(report.MayHaveRun);
+                Assert.True(report.CancellationRequested);
+                Assert.True(parallelRejected);
+                Assert.True(waits >= 2);
+                using ProjectReviewActionLock released = Assert.IsType<ProjectReviewActionLock>(
+                    ProjectReviewActionLock.TryAcquire(paths.RuntimePath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
+    public void FixtureMcpBindingChangeBlocksUnderLockBeforeConsoleDispatch()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState first = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(first);
+                WriteReadySingleStatus(paths, first, staging.TargetLaunchState, fixture);
+                ProjectReviewMcpRuntimeSnapshot expected =
+                    Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
+                        new ProjectReviewMcpRuntimeReader(temporary.Path).Read().Snapshot);
+
+                LiveLabState restarted = first with
+                {
+                    LaunchId = "dddddddddddddddddddddddddddddddd",
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(restarted);
+                WriteReadySingleStatus(paths, restarted, staging.TargetLaunchState, fixture);
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewFixtureService.Execute(
+                    new ReviewFixtureQuery(ReviewFixtureTransportContract.StatusOperation),
+                    LiveLabState.SingleTopology,
+                    role: null,
+                    temporary.Path,
+                    sender,
+                    expectedSnapshot: expected);
+
+                ReviewFixtureReport report = Assert.IsType<ReviewFixtureReport>(result.Report);
+                Assert.Equal(3, result.ExitCode);
+                Assert.Equal("blocked", report.State);
+                Assert.Equal("fixtureBindingChanged", Assert.Single(report.Problems).Code);
+                Assert.False(report.CommandWritten);
+                Assert.False(report.MayHaveRun);
+                Assert.False(report.CancellationRequested);
+                Assert.Equal(0, sender.CallCount);
+            }
+            finally
+            {
+                EnsureExited(child);
             }
         }
     }
@@ -3157,6 +3413,164 @@ public sealed class ProjectReviewServiceTests
         File.WriteAllText(
             paths.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
+    }
+
+    private static void WriteReadyNetworkStatus(
+        LiveLabPaths paths,
+        LiveLabState state,
+        ProjectModLaunchState target,
+        DateTimeOffset observedAtUtc,
+        long localPlayerId,
+        string localPlayerName,
+        long remotePlayerId,
+        string remotePlayerName)
+    {
+        WriteNetworkStatus(paths, state, target, "passed");
+        AlwaysOnStatusMarker marker = Assert.IsType<AlwaysOnStatusMarker>(
+            JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+                File.ReadAllText(paths.StatusPath),
+                LiveLabJsonOptions.CamelCase));
+        NetworkTwoStatusMarker network = Assert.IsType<NetworkTwoStatusMarker>(
+            marker.NetworkTwo);
+        marker = marker with
+        {
+            ObservedAtUtc = observedAtUtc,
+            TestSave = marker.TestSave is null
+                ? null
+                : marker.TestSave with
+                {
+                    Phase = "passed",
+                    IdentityVerified = true,
+                    Message = "Exact review fixture loaded.",
+                },
+            NetworkTwo = network with
+            {
+                Phase = "passed",
+                IdentityVerified = true,
+                JoinedTicks = NetworkTwoContract.RequiredJoinedTicks,
+                LocalPlayerId = localPlayerId,
+                LocalPlayerName = localPlayerName,
+                RemotePlayerId = remotePlayerId,
+                RemotePlayerName = remotePlayerName,
+                Message = "Exact pair joined.",
+            },
+            ForegroundWindowHandle = 1,
+            ForegroundProcessId = Environment.ProcessId,
+            Runtime = new RuntimeSnapshotMarker(
+                RuntimeSnapshotContract.SchemaVersion,
+                true,
+                "spring",
+                1,
+                1,
+                600,
+                "Farm",
+                1,
+                2,
+                false,
+                observedAtUtc),
+        };
+        File.WriteAllText(
+            paths.StatusPath,
+            JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
+    }
+
+    private static void WriteReadySingleStatus(
+        LiveLabPaths paths,
+        LiveLabState state,
+        ProjectModLaunchState target,
+        TestSaveIdentity fixture)
+    {
+        DateTimeOffset observedAtUtc = DateTimeOffset.UtcNow;
+        WriteLoadedStatus(
+            paths,
+            state,
+            target,
+            testSave: new TestSaveStatusMarker(
+                TestSaveContract.SchemaVersion,
+                TestSaveContract.ReviewMode,
+                "passed",
+                fixture.FixtureId,
+                fixture.SaveId,
+                IdentityVerified: true,
+                WaitedTicks: 0,
+                "Exact review fixture loaded.",
+                paths.TestSaveScenarioLogPath));
+        AlwaysOnStatusMarker marker = Assert.IsType<AlwaysOnStatusMarker>(
+            JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+                File.ReadAllText(paths.StatusPath),
+                LiveLabJsonOptions.CamelCase));
+        File.WriteAllText(
+            paths.StatusPath,
+            JsonSerializer.Serialize(
+                marker with
+                {
+                    ObservedAtUtc = observedAtUtc,
+                    Runtime = new RuntimeSnapshotMarker(
+                        RuntimeSnapshotContract.SchemaVersion,
+                        true,
+                        "spring",
+                        1,
+                        1,
+                        600,
+                        "Farm",
+                        1,
+                        2,
+                        false,
+                        observedAtUtc),
+                },
+                LiveLabJsonOptions.CamelCase));
+    }
+
+    private static void WriteFixtureStatusResponse(
+        LiveLabPaths paths,
+        string command,
+        TestSaveIdentity fixture)
+    {
+        string[] tokens = command.Split(' ');
+        Assert.Equal("sdvkit", tokens[0]);
+        Assert.Equal("fixture", tokens[1]);
+        Assert.True(ReviewTransportToken.TryDecode(
+            tokens[6],
+            ReviewFixtureTransportContract.MaximumTokenLength,
+            out string fixtureId));
+        Assert.True(ReviewTransportToken.TryDecode(
+            tokens[7],
+            ReviewFixtureTransportContract.MaximumTokenLength,
+            out string saveId));
+        var binding = new ReviewFixtureRequestBinding(
+            tokens[3],
+            tokens[4],
+            tokens[5] == ReviewFixtureTransportContract.SingleRoleToken
+                ? null
+                : tokens[5],
+            fixtureId,
+            saveId);
+        var report = new ReviewFixtureReport(
+            ReviewFixtureTransportContract.SchemaVersion,
+            "ready",
+            ReviewFixtureTransportContract.StatusOperation,
+            binding.LaunchId,
+            binding.Topology,
+            binding.Role,
+            DateTimeOffset.UtcNow,
+            fixture.FixtureId,
+            fixture.SaveId,
+            "Exact fixture status captured.",
+            [],
+            Status: new ReviewFixtureStatusReport(
+                "Farm",
+                123456789,
+                true,
+                false,
+                []));
+        var envelope = new ReviewFixtureResponseEnvelope(
+            ReviewFixtureTransportContract.SchemaVersion,
+            tokens[2],
+            binding,
+            report);
+        File.WriteAllText(
+            ReviewFixtureTransportContract.ResponsePath(paths.RuntimePath, tokens[2]),
+            JsonSerializer.Serialize(envelope, LiveLabJsonOptions.CamelCase));
     }
 
     internal static (OwnedProcessIdentity Identity, Process Process) StartRunningProcess(

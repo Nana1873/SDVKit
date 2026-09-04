@@ -57,6 +57,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     string? role,
     string labRoot,
     bool allowInput,
+    bool allowFixtureActions,
     TextWriter error);
 
 public static class CliApplication
@@ -127,13 +128,15 @@ public static class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single] [--allow-input]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpNetworkUsage =
-        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input]";
+        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
         "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
+    private const string ReviewMcpFixtureDescription =
+        "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -224,12 +227,19 @@ public static class CliApplication
             ProjectReviewAudioService.Execute(query, labRoot);
         runProjectReviewModAsset ??= (query, labRoot) =>
             ProjectReviewModAssetService.Execute(query, labRoot);
-        runProjectReviewMcp ??= (topology, role, labRoot, allowInput, mcpError) =>
+        runProjectReviewMcp ??= (
+            topology,
+            role,
+            labRoot,
+            allowInput,
+            allowFixtureActions,
+            mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
                 topology,
                 role,
                 allowInput,
+                allowFixtureActions,
                 mcpError)
                 .GetAwaiter().GetResult();
 
@@ -570,13 +580,15 @@ public static class CliApplication
                 arguments,
                 out string? mcpTopology,
                 out string? mcpRole,
-                out bool allowInput))
+                out bool allowInput,
+                out bool allowFixtureActions))
         {
             return runProjectReviewMcp(
                 mcpTopology!,
                 mcpRole,
                 Environment.CurrentDirectory,
                 allowInput,
+                allowFixtureActions,
                 error);
         }
 
@@ -1517,11 +1529,13 @@ public static class CliApplication
         IReadOnlyList<string> arguments,
         out string? topology,
         out string? role,
-        out bool allowInput)
+        out bool allowInput,
+        out bool allowFixtureActions)
     {
         topology = LiveLabState.SingleTopology;
         role = null;
         allowInput = false;
+        allowFixtureActions = false;
         if (arguments.Count < 4
             || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
             || !string.Equals(arguments[3], "serve", StringComparison.Ordinal))
@@ -1532,6 +1546,7 @@ public static class CliApplication
         var topologyCount = 0;
         var roleCount = 0;
         var allowInputCount = 0;
+        var allowFixtureActionsCount = 0;
         for (var index = 4; index < arguments.Count; index++)
         {
             string option = arguments[index];
@@ -1539,6 +1554,16 @@ public static class CliApplication
             {
                 allowInputCount++;
                 allowInput = true;
+                continue;
+            }
+
+            if (string.Equals(
+                    option,
+                    "--allow-fixture-actions",
+                    StringComparison.Ordinal))
+            {
+                allowFixtureActionsCount++;
+                allowFixtureActions = true;
                 continue;
             }
 
@@ -1565,7 +1590,10 @@ public static class CliApplication
             }
         }
 
-        if (topologyCount > 1 || roleCount > 1 || allowInputCount > 1)
+        if (topologyCount > 1
+            || roleCount > 1
+            || allowInputCount > 1
+            || allowFixtureActionsCount > 1)
         {
             return false;
         }
@@ -1956,11 +1984,12 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
         output.WriteLine("  sdvkit project review reset --topology <single|network-2> --json");
-        output.WriteLine("  sdvkit project review mcp serve [--topology single]");
+        output.WriteLine(ReviewMcpSingleUsage.TrimStart());
         output.WriteLine(
-            "  sdvkit project review mcp serve --topology network-2 --role <host|farmhand>");
+            ReviewMcpNetworkUsage.TrimStart());
         output.WriteLine(ReviewMcpToolsDescription.TrimStart());
         output.WriteLine(ReviewMcpInputDescription.TrimStart());
+        output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
         output.WriteLine("  sdvkit lab <start|status|stop|test-save> --topology single --json");
         output.WriteLine("  sdvkit lab smoke --topology network-2 --json");
         output.WriteLine();
@@ -2010,6 +2039,7 @@ public static class CliApplication
         output.WriteLine(ReviewMcpSingleUsage);
         output.WriteLine(ReviewMcpNetworkUsage);
         output.WriteLine(ReviewMcpInputDescription);
+        output.WriteLine(ReviewMcpFixtureDescription);
         WriteReviewFixtureConsoleUsage(output);
     }
 
@@ -2036,6 +2066,7 @@ public static class CliApplication
         output.WriteLine(ReviewMcpNetworkUsage);
         output.WriteLine(ReviewMcpToolsDescription);
         output.WriteLine(ReviewMcpInputDescription);
+        output.WriteLine(ReviewMcpFixtureDescription);
         output.WriteLine(
             "Content-pack targets require --topology single and an explicit provider --companion.");
         WriteReviewFixtureConsoleUsage(output);

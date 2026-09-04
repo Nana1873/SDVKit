@@ -1,4 +1,5 @@
 using SdvKit.AlwaysOn;
+using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
 
@@ -209,6 +210,215 @@ public sealed class ReviewFixtureCommandTests
             ReviewFixtureOperation.Execute(new ReviewFixtureStatusRequest(), incomplete).Succeeded);
         Assert.Equal(0, failed.Dispatches);
         Assert.Equal(0, incomplete.Dispatches);
+    }
+
+    [Fact]
+    public void RequestBindingIsRecheckedImmediatelyBeforeMutation()
+    {
+        const string launchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string fixtureId = "fixture-a";
+        const string saveId = "SDVKit_123";
+        var runtime = new FakeRuntime
+        {
+            Access = new ReviewFixtureAccess(
+                true,
+                true,
+                fixtureId,
+                "single",
+                "verified",
+                launchId,
+                LiveLabState.SingleTopology,
+                saveId),
+        };
+        var request = new ReviewFixtureBuildingEnsureRequest(
+            "barn",
+            "deluxe-barn",
+            1,
+            2);
+        var changed = new ReviewFixtureRequestBinding(
+            launchId,
+            LiveLabState.SingleTopology,
+            null,
+            fixtureId,
+            "SDVKit_other");
+
+        ReviewFixtureExecution rejected = ReviewFixtureOperation.ExecuteBound(
+            request,
+            runtime,
+            changed);
+
+        Assert.False(rejected.Result.Succeeded);
+        Assert.Equal("fixtureBindingChanged", rejected.Problem?.Code);
+        Assert.Equal(1, runtime.Verifications);
+        Assert.Equal(0, runtime.Dispatches);
+
+        ReviewFixtureExecution accepted = ReviewFixtureOperation.ExecuteBound(
+            request,
+            runtime,
+            changed with { SaveId = saveId });
+        Assert.True(accepted.Result.Succeeded);
+        Assert.Equal(2, runtime.Verifications);
+        Assert.Equal(1, runtime.Dispatches);
+    }
+
+    [Fact]
+    public void NavigationCompletesOnlyAfterWarpCallbackAndReturnsActualPosition()
+    {
+        const string launchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string fixtureId = "fixture-a";
+        const string saveId = "SDVKit_123";
+        var runtime = new FakeRuntime
+        {
+            Access = new ReviewFixtureAccess(
+                true,
+                true,
+                fixtureId,
+                "single",
+                "verified",
+                launchId,
+                LiveLabState.SingleTopology,
+                saveId),
+            DeferNavigation = true,
+            NavigationResult = new ReviewFixtureResult(
+                true,
+                "warp completed",
+                Navigation: new ReviewFixtureNavigationReport(
+                    "Barn-actual",
+                    8,
+                    9,
+                    Changed: true)),
+        };
+        var binding = new ReviewFixtureRequestBinding(
+            launchId,
+            LiveLabState.SingleTopology,
+            null,
+            fixtureId,
+            saveId);
+        ReviewFixtureExecution? completed = null;
+        var completionCount = 0;
+
+        ReviewFixtureNavigationOperation.ExecuteBound(
+            new ReviewFixtureEnterRequest("barn"),
+            runtime,
+            binding,
+            result =>
+            {
+                completionCount++;
+                completed = result;
+            });
+
+        Assert.Null(completed);
+        Assert.Equal(1, runtime.Verifications);
+        Assert.Equal(1, runtime.Dispatches);
+
+        runtime.CompleteNavigation();
+        runtime.CompleteNavigation();
+
+        ReviewFixtureExecution execution = Assert.IsType<ReviewFixtureExecution>(completed);
+        Assert.True(execution.Result.Succeeded);
+        Assert.Equal("Barn-actual", execution.Result.Navigation?.LocationId);
+        Assert.Equal(8, execution.Result.Navigation?.TileX);
+        Assert.Equal(9, execution.Result.Navigation?.TileY);
+        Assert.Equal(2, runtime.Verifications);
+        Assert.Equal(1, completionCount);
+    }
+
+    [Fact]
+    public void NavigationCompletionFailsClosedWhenFixtureBindingChangesDuringWarp()
+    {
+        const string launchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string fixtureId = "fixture-a";
+        const string saveId = "SDVKit_123";
+        var runtime = new FakeRuntime
+        {
+            Access = new ReviewFixtureAccess(
+                true,
+                true,
+                fixtureId,
+                "single",
+                "verified",
+                launchId,
+                LiveLabState.SingleTopology,
+                saveId),
+            DeferNavigation = true,
+            NavigationResult = new ReviewFixtureResult(
+                true,
+                "warp completed",
+                Navigation: new ReviewFixtureNavigationReport(
+                    "Barn-actual",
+                    8,
+                    9,
+                    Changed: true)),
+        };
+        var binding = new ReviewFixtureRequestBinding(
+            launchId,
+            LiveLabState.SingleTopology,
+            null,
+            fixtureId,
+            saveId);
+        ReviewFixtureExecution? completed = null;
+
+        ReviewFixtureNavigationOperation.ExecuteBound(
+            new ReviewFixtureEnterRequest("barn"),
+            runtime,
+            binding,
+            result => completed = result);
+        runtime.Access = runtime.Access with { SaveId = "SDVKit_other" };
+        runtime.CompleteNavigation();
+
+        ReviewFixtureExecution execution = Assert.IsType<ReviewFixtureExecution>(completed);
+        Assert.False(execution.Result.Succeeded);
+        Assert.Null(execution.Result.Navigation);
+        Assert.Equal("fixtureBindingChanged", execution.Problem?.Code);
+        Assert.Contains("completed warp result", execution.Result.Message, StringComparison.Ordinal);
+        Assert.Equal(2, runtime.Verifications);
+    }
+
+    [Fact]
+    public void IdempotentNavigationCanCompleteSynchronouslyAfterSecondVerification()
+    {
+        const string launchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string fixtureId = "fixture-a";
+        const string saveId = "SDVKit_123";
+        var runtime = new FakeRuntime
+        {
+            Access = new ReviewFixtureAccess(
+                true,
+                true,
+                fixtureId,
+                "single",
+                "verified",
+                launchId,
+                LiveLabState.SingleTopology,
+                saveId),
+            NavigationResult = new ReviewFixtureResult(
+                true,
+                "already there",
+                Navigation: new ReviewFixtureNavigationReport(
+                    "Farm",
+                    64,
+                    15,
+                    Changed: false)),
+        };
+        var binding = new ReviewFixtureRequestBinding(
+            launchId,
+            LiveLabState.SingleTopology,
+            null,
+            fixtureId,
+            saveId);
+        ReviewFixtureExecution? completed = null;
+
+        ReviewFixtureNavigationOperation.ExecuteBound(
+            new ReviewFixtureFarmRequest(),
+            runtime,
+            binding,
+            result => completed = result);
+
+        ReviewFixtureExecution execution = Assert.IsType<ReviewFixtureExecution>(completed);
+        Assert.True(execution.Result.Succeeded);
+        Assert.False(execution.Result.Navigation?.Changed);
+        Assert.Equal(2, runtime.Verifications);
+        Assert.Equal(1, runtime.Dispatches);
     }
 
     [Fact]
@@ -859,6 +1069,12 @@ public sealed class ReviewFixtureCommandTests
         Assert.Contains(ReviewFixtureContract.GreenhouseBuildingType, source, StringComparison.Ordinal);
         Assert.Contains("indoors.isTileOnMap(entry)", source, StringComparison.Ordinal);
         Assert.Contains("indoors.isTilePassable(entry)", source, StringComparison.Ordinal);
+        Assert.Contains("locationRequest.OnWarp +=", source, StringComparison.Ordinal);
+        Assert.Contains("requestedLocation = locationRequest.Location", source, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(actualLocation, requestedLocation)", source, StringComparison.Ordinal);
+        Assert.Contains("actualLocation.NameOrUniqueName", source, StringComparison.Ordinal);
+        Assert.Contains("actualLocation.isStructure.Value != expectedIsStructure", source, StringComparison.Ordinal);
+        Assert.Contains("Game1.player.TilePoint.X", source, StringComparison.Ordinal);
         Assert.DoesNotContain("indoors.isTileLocationOpen(entry)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("indoors.IsTileOccupiedBy(entry)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("indoors.Objects.ContainsKey(entry)", source, StringComparison.Ordinal);
@@ -929,6 +1145,204 @@ public sealed class ReviewFixtureCommandTests
         Assert.True(automation > expectedValue);
     }
 
+    [Fact]
+    public void McpTransportAcceptsOnlyTheSixClosedTypedFixtureOperations()
+    {
+        string requestId = Guid.NewGuid().ToString("N");
+        string building = ReviewTransportToken.Encode("barn-a");
+        string buildingKind = ReviewTransportToken.Encode("Deluxe Barn");
+        string animalKind = ReviewTransportToken.Encode("White Cow");
+
+        AssertTransport(
+            ["fixture", requestId, ReviewFixtureTransportContract.StatusOperation],
+            ReviewFixtureTransportContract.StatusOperation,
+            typeof(ReviewFixtureStatusRequest));
+        AssertTransport(
+            ["fixture", requestId, ReviewFixtureTransportContract.EnterOperation, building],
+            ReviewFixtureTransportContract.EnterOperation,
+            typeof(ReviewFixtureEnterRequest));
+        AssertTransport(
+            ["fixture", requestId, ReviewFixtureTransportContract.FarmOperation],
+            ReviewFixtureTransportContract.FarmOperation,
+            typeof(ReviewFixtureFarmRequest));
+        AssertTransport(
+            [
+                "fixture",
+                requestId,
+                ReviewFixtureTransportContract.BuildingEnsureOperation,
+                building,
+                buildingKind,
+                "16",
+                "20",
+            ],
+            ReviewFixtureTransportContract.BuildingEnsureOperation,
+            typeof(ReviewFixtureBuildingEnsureRequest));
+        AssertTransport(
+            [
+                "fixture",
+                requestId,
+                ReviewFixtureTransportContract.AnimalEnsureOperation,
+                building,
+                animalKind,
+            ],
+            ReviewFixtureTransportContract.AnimalEnsureOperation,
+            typeof(ReviewFixtureAnimalEnsureRequest));
+        AssertTransport(
+            ["fixture", requestId, ReviewFixtureTransportContract.SaveOperation],
+            ReviewFixtureTransportContract.SaveOperation,
+            requestType: null);
+
+        Assert.False(ReviewFixtureTransportArguments.TryParse(
+            Bound(["fixture", requestId, "object", "ensure", building]),
+            out _,
+            out _,
+            out _,
+            out _,
+            out ReviewFixtureProblem? objectProblem));
+        Assert.Equal("fixtureTransportInvalid", objectProblem?.Code);
+        Assert.False(ReviewFixtureTransportArguments.TryParse(
+            Bound(["fixture", requestId, "console", ReviewTransportToken.Encode("anything")]),
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.False(ReviewFixtureTransportArguments.TryParse(
+            Bound(["fixture", requestId, ReviewFixtureTransportContract.EnterOperation, "not+base64"]),
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+    }
+
+    [Fact]
+    public void McpBoundaryKeepsForeignStateOutAndRetainsExistingRollbackPaths()
+    {
+        const string expectedFixture = "fixture-a";
+        const string foreignFixture = "fixture-b";
+        var foreignBuilding = new ReviewFixtureBuildingState(
+            foreignFixture,
+            "Deluxe Barn",
+            16,
+            20);
+        var foreignAnimal = new ReviewFixtureAnimalState(
+            "brown-cow",
+            "Brown Cow",
+            HasExactHome: true,
+            HasExactAssignment: true);
+
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideBuildingEnsure(
+                [foreignBuilding],
+                expectedFixture,
+                "Deluxe Barn",
+                16,
+                20));
+        Assert.Equal(
+            ReviewFixtureEnsureDecision.Reject,
+            ReviewFixturePolicy.DecideAnimalEnsure(
+                [foreignAnimal],
+                "white-cow",
+                "White Cow",
+                assignedAnimalCount: 1,
+                animalCapacity: 12));
+        Assert.False(ReviewFixturePolicy.IsOwnedObject(
+            foreignFixture,
+            "11111111-1111-1111-1111-111111111111",
+            expectedFixture,
+            "11111111-1111-1111-1111-111111111111"));
+
+        string source = ReadSource();
+        Assert.Contains("TryRollbackFailedBuilding(farm, constructed)", source, StringComparison.Ordinal);
+        Assert.Contains("TryRollbackFailedAnimal(animalHouse, animal)", source, StringComparison.Ordinal);
+        Assert.Contains("No partial building remains", source, StringComparison.Ordinal);
+        Assert.Contains("No partial animal remains", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FinishingAnExistingConstructionIsReportedAsAWorldChange()
+    {
+        string source = ReadSource();
+        int observed = source.IndexOf(
+            "bool finishedConstruction = existing.isUnderConstruction",
+            StringComparison.Ordinal);
+        int finished = source.IndexOf(
+            "existing.FinishConstruction(onGameStart: false);",
+            observed,
+            StringComparison.Ordinal);
+        int reported = source.IndexOf(
+            "changed: finishedConstruction",
+            finished,
+            StringComparison.Ordinal);
+
+        Assert.True(observed >= 0);
+        Assert.True(finished > observed);
+        Assert.True(reported > finished);
+    }
+
+    [Fact]
+    public void ReviewSaveTransportReusesTheOnlyDurableSaveIteratorAndPublishesAfterCompletion()
+    {
+        string source = ReadRepositorySource("src", "SdvKit.AlwaysOn", "TestSaveAutomation.cs");
+        string fixtureSource = ReadSource();
+
+        Assert.Equal(
+            1,
+            source.Split("SaveGame.Save()", StringSplitOptions.None).Length - 1);
+        Assert.Contains("public bool TryStartReviewSave(", source, StringComparison.Ordinal);
+        Assert.Contains("StartDurableSave();", source, StringComparison.Ordinal);
+        Assert.Contains("DriveDurableSave();", source, StringComparison.Ordinal);
+        Assert.Contains("if (!_saveReachedCompletion)", source, StringComparison.Ordinal);
+        Assert.Contains("Action<bool, string>? _reviewSaveCompletion", source, StringComparison.Ordinal);
+        Assert.Contains("completion(true, message);", source, StringComparison.Ordinal);
+        Assert.Contains("completion?.Invoke(false, message);", source, StringComparison.Ordinal);
+        Assert.Contains("automation.TryStartReviewSave(", fixtureSource, StringComparison.Ordinal);
+        Assert.Contains("new ReviewFixtureSaveReport(", fixtureSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("SaveGame.Save()", fixtureSource, StringComparison.Ordinal);
+    }
+
+    private static void AssertTransport(
+        IReadOnlyList<string> arguments,
+        string expectedOperation,
+        Type? requestType)
+    {
+        Assert.True(ReviewFixtureTransportArguments.TryParse(
+            Bound(arguments),
+            out string? requestId,
+            out ReviewFixtureRequestBinding? binding,
+            out ReviewFixtureQuery? query,
+            out ReviewFixtureRequest? request,
+            out ReviewFixtureProblem? problem),
+            problem?.Message);
+        Assert.True(ReviewTransportToken.IsRequestId(requestId));
+        Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", binding?.LaunchId);
+        Assert.Equal("fixture-a", binding?.FixtureId);
+        Assert.Equal("SDVKit_123", binding?.SaveId);
+        Assert.Equal(expectedOperation, query?.Operation);
+        if (requestType is null)
+        {
+            Assert.Null(request);
+        }
+        else
+        {
+            Assert.IsType(requestType, request);
+        }
+    }
+
+    private static IReadOnlyList<string> Bound(IReadOnlyList<string> arguments) =>
+        [
+            arguments[0],
+            arguments[1],
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            LiveLabState.SingleTopology,
+            ReviewFixtureTransportContract.SingleRoleToken,
+            ReviewTransportToken.Encode("fixture-a"),
+            ReviewTransportToken.Encode("SDVKit_123"),
+            .. arguments.Skip(2),
+        ];
+
     private static ReviewFixtureRequest Parse(params string[] arguments)
     {
         Assert.True(
@@ -938,15 +1352,14 @@ public sealed class ReviewFixtureCommandTests
     }
 
     private static string ReadSource()
+        => ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureCommand.cs");
+
+    private static string ReadRepositorySource(params string[] parts)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            string path = Path.Combine(
-                directory.FullName,
-                "src",
-                "SdvKit.AlwaysOn",
-                "ReviewFixtureCommand.cs");
+            string path = Path.Combine([directory.FullName, .. parts]);
             if (File.Exists(path))
             {
                 return File.ReadAllText(path).ReplaceLineEndings("\n");
@@ -961,12 +1374,19 @@ public sealed class ReviewFixtureCommandTests
 
     private sealed class FakeRuntime : IReviewFixtureRuntime
     {
-        public ReviewFixtureAccess Access { get; init; } = new(
+        public ReviewFixtureAccess Access { get; set; } = new(
             true,
             true,
             Guid.NewGuid().ToString("N"),
             "single",
             "verified");
+
+        public bool DeferNavigation { get; init; }
+
+        public ReviewFixtureResult NavigationResult { get; init; } =
+            new(true, "navigation completed");
+
+        private Action<ReviewFixtureResult>? NavigationCompletion { get; set; }
 
         public int Verifications { get; private set; }
 
@@ -1006,6 +1426,24 @@ public sealed class ReviewFixtureCommandTests
             string building) => Dispatched();
 
         public ReviewFixtureResult Farm(ReviewFixtureAccess access) => Dispatched();
+
+        public void BeginNavigation(
+            ReviewFixtureAccess access,
+            ReviewFixtureRequest request,
+            Action<ReviewFixtureResult> completed)
+        {
+            Dispatches++;
+            if (DeferNavigation)
+            {
+                NavigationCompletion = completed;
+                return;
+            }
+
+            completed(NavigationResult);
+        }
+
+        public void CompleteNavigation() =>
+            Assert.IsType<Action<ReviewFixtureResult>>(NavigationCompletion)(NavigationResult);
 
         private ReviewFixtureResult Dispatched()
         {

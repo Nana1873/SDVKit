@@ -716,13 +716,14 @@ public sealed class ProjectReviewMcpTests
     internal static ProjectReviewMcpRuntimeReader CreateReadyReview(
         TemporaryDirectory temporary,
         LabProcessInspectStatus processStatus = LabProcessInspectStatus.Running,
-        DateTimeOffset? nowUtc = null)
+        DateTimeOffset? nowUtc = null,
+        bool withTestSave = false)
     {
         var process = new OwnedProcessIdentity(
             4242,
             StartedAt,
             Path.Combine(temporary.Path, "StardewModdingAPI.exe"));
-        PrepareReadyReview(temporary, process, ObservedAt);
+        PrepareReadyReview(temporary, process, ObservedAt, withTestSave);
         return new ProjectReviewMcpRuntimeReader(
             temporary.Path,
             new FakeProcessHost(processStatus),
@@ -732,7 +733,8 @@ public sealed class ProjectReviewMcpTests
     private static void PrepareReadyReview(
         TemporaryDirectory temporary,
         OwnedProcessIdentity process,
-        DateTimeOffset observedAt)
+        DateTimeOffset observedAt,
+        bool withTestSave = false)
     {
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
@@ -742,6 +744,39 @@ public sealed class ProjectReviewMcpTests
             "Nana.Target");
         ProjectReviewStagingResult staged = ProjectModStager.StageReview([target], paths);
         ProjectReviewStaging staging = Assert.IsType<ProjectReviewStaging>(staged.Staging);
+        TestSaveLaunchState? testSave = null;
+        TestSaveStatusMarker? testSaveStatus = null;
+        if (withTestSave)
+        {
+            const string fixtureId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+            const string saveId = "SDVKit_987654321";
+            var identity = new TestSaveIdentity(
+                TestSaveContract.SchemaVersion,
+                new string('f', 32),
+                fixtureId,
+                987654321,
+                saveId,
+                TestSaveContract.PlayerName,
+                TestSaveContract.FarmName,
+                TestSaveContract.FavoriteThing);
+            testSave = new TestSaveLaunchState(
+                TestSaveContract.ReviewMode,
+                identity,
+                Path.Combine(paths.SavesPath, saveId),
+                paths.TestSaveWorkPath,
+                paths.TestSaveScenarioLogPath);
+            testSaveStatus = new TestSaveStatusMarker(
+                TestSaveContract.SchemaVersion,
+                TestSaveContract.ReviewMode,
+                "passed",
+                fixtureId,
+                saveId,
+                IdentityVerified: true,
+                WaitedTicks: 0,
+                "Exact review fixture loaded.",
+                paths.TestSaveScenarioLogPath);
+        }
+
         var state = new LiveLabState(
             LiveLabState.CurrentSchemaVersion,
             LiveLabState.SingleTopology,
@@ -750,6 +785,7 @@ public sealed class ProjectReviewMcpTests
             paths.ModsPath,
             paths.StatusPath,
             paths.StopRequestPath,
+            TestSave: testSave,
             ProjectMod: staging.TargetLaunchState);
         new JsonLiveLabStateStore(paths.StatePath).Write(state);
         var marker = new AlwaysOnStatusMarker(
@@ -764,6 +800,7 @@ public sealed class ProjectReviewMcpTests
             observedAt,
             ForegroundWindowHandle: 1,
             ForegroundProcessId: process.ProcessId,
+            TestSave: testSaveStatus,
             ProjectMod: new ProjectModStatusMarker(
                 ProjectModContract.SchemaVersion,
                 ProjectModContract.LoadedPhase,

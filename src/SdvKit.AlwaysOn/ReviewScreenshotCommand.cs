@@ -475,7 +475,12 @@ internal static class ReviewCommand
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "fixture", StringComparison.Ordinal))
                 {
-                    ReviewFixtureCommand.Handle(arguments, fixtureRuntime, monitor);
+                    ReviewFixtureCommand.Handle(
+                        arguments,
+                        fixtureRuntime,
+                        monitor,
+                        runtimePath,
+                        testSave);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "data", StringComparison.Ordinal))

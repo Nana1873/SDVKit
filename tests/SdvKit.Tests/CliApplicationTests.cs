@@ -1223,11 +1223,18 @@ public sealed class CliApplicationTests
     public void ProjectReviewMcpServeDispatchesOnlySingleWithoutJson(bool explicitTopology)
     {
         var called = false;
-        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, allowInput, _) =>
+        ProjectReviewMcpCommandRunner mcpRunner = (
+            topology,
+            role,
+            labRoot,
+            allowInput,
+            allowFixtureActions,
+            _) =>
         {
             called = true;
             Assert.Equal("single", topology);
             Assert.Null(role);
+            Assert.False(allowFixtureActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1251,10 +1258,17 @@ public sealed class CliApplicationTests
     [InlineData(NetworkTwoContract.FarmhandRole)]
     public void ProjectReviewMcpServeDispatchesExactNetworkRole(string expectedRole)
     {
-        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, allowInput, _) =>
+        ProjectReviewMcpCommandRunner mcpRunner = (
+            topology,
+            role,
+            labRoot,
+            allowInput,
+            allowFixtureActions,
+            _) =>
         {
             Assert.Equal(NetworkTwoContract.Topology, topology);
             Assert.Equal(expectedRole, role);
+            Assert.False(allowFixtureActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1276,6 +1290,38 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewMcpServeDispatchesExplicitFixtureActionOptIn()
+    {
+        ProjectReviewMcpCommandRunner mcpRunner = (
+            topology,
+            role,
+            labRoot,
+            allowInput,
+            allowFixtureActions,
+            _) =>
+        {
+            Assert.Equal(LiveLabState.SingleTopology, topology);
+            Assert.Null(role);
+            Assert.False(allowInput);
+            Assert.True(allowFixtureActions);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            return 0;
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            mcpRunner,
+            "project",
+            "review",
+            "mcp",
+            "serve",
+            "--allow-fixture-actions");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
     [Theory]
     [InlineData("single", null)]
     [InlineData("network-2", "host")]
@@ -1288,12 +1334,14 @@ public sealed class CliApplicationTests
             actualRole,
             labRoot,
             allowInput,
+            allowFixtureActions,
             _) =>
         {
             Assert.Equal(topology, actualTopology);
             Assert.Equal(role, actualRole);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
+            Assert.False(allowFixtureActions);
             return 0;
         };
         var arguments = new List<string>
@@ -1308,6 +1356,39 @@ public sealed class CliApplicationTests
         (int exitCode, string output, string error) = RunWithProjectReviewMcp(
             mcpRunner,
             [.. arguments]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void ProjectReviewMcpServeForwardsBothExplicitOptIns()
+    {
+        ProjectReviewMcpCommandRunner mcpRunner = (
+            topology,
+            role,
+            labRoot,
+            allowInput,
+            allowFixtureActions,
+            _) =>
+        {
+            Assert.Equal(LiveLabState.SingleTopology, topology);
+            Assert.Null(role);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            Assert.True(allowInput);
+            Assert.True(allowFixtureActions);
+            return 0;
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            mcpRunner,
+            "project",
+            "review",
+            "mcp",
+            "serve",
+            "--allow-input",
+            "--allow-fixture-actions");
 
         Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, output);
@@ -1358,6 +1439,7 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role")]
     [InlineData("project", "review", "mcp", "serve", "--allow-input", "--allow-input")]
     [InlineData("project", "review", "mcp", "serve", "--allow-actions")]
+    [InlineData("project", "review", "mcp", "serve", "--allow-fixture-actions", "--allow-fixture-actions")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
@@ -1404,13 +1486,15 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"
                 + Environment.NewLine
-                + "       sdvkit project review mcp serve [--topology single] [--allow-input]"
+                + "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions]"
                 + Environment.NewLine
-                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input]"
+                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]"
                 + Environment.NewLine
                 + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
                 + Environment.NewLine
                 + "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel"
+                + Environment.NewLine
+                + "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
