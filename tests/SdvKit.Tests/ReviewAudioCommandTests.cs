@@ -1196,15 +1196,15 @@ public sealed class ReviewAudioCommandTests
     [Fact]
     public void PublicDocumentationUsesTheCanonicalKnownCueExample()
     {
-        string readme = ReadRepositoryFile("README.md");
+        string reference = ReadRepositoryFile("docs", "inspection.md");
 
         Assert.Contains(
             "project review audio cue \"maintheme\"",
-            readme,
+            reference,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "project review audio cue \"MainTheme\"",
-            readme,
+            reference,
             StringComparison.Ordinal);
     }
 

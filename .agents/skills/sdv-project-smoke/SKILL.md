@@ -7,10 +7,12 @@ description: Run and interpret SDVKit's existing end-to-end project smoke for on
 
 Use the existing SDVKit CLI to prove that one supported mod builds, is loaded by SMAPI, completes the bounded live smoke, and leaves the selected isolated topology clean. Do not add a wrapper or change the mod while following this workflow.
 
+See the [live guide](../../../docs/live-review.md#automated-smoke) for user-facing examples and the [capability matrix](../../../docs/README.md#capability-matrix) for supported targets.
+
 ## Preflight
 
 1. Read the repository-root `AGENTS.md` and every applicable project-specific instruction file. Treat those instructions as authoritative.
-2. Keep the working directory at the intended lab root whose ignored `.sdvkit/` directory owns the live-lab state. Use the user-selected mod project path exactly; do not substitute a plausible path.
+2. Identify the owner of any active lab and wait for another task's verified teardown before live work. Keep the working directory at the intended lab root whose ignored `.sdvkit/` directory owns the live-lab state. Use the user-selected mod project path exactly; do not substitute a plausible path.
 3. Run discovery and retain both its JSON and process exit code:
 
    ```text
@@ -66,9 +68,11 @@ The JSON has no dedicated failure-stage field. On failure, name the earliest sta
 - **Mod-Load** — SMAPI did not confirm the expected ID/version, or target `loadErrors` were reported.
 - **Multiplayer-Join** — host/farmhand joining or joined-pair identity failed for `network-2`.
 - **Tick-Smoke** — loading was confirmed but a role did not reach `requiredTicks`.
-- **Stop** — clean exit, exact-process stop, or option restoration failed.
+- **Stop** — clean exit or exact-process stop could not be confirmed.
 - **Cleanup** — owned fixture/staging cleanup was not confirmed, including `stagingRemoved: false`.
 - **Reset** — the disposable fixture was not reset, including `fixtureReset: false` when no earlier cause explains it.
+
+An unconfirmed isolated-profile option restore is a warning when exact exit and cleanup succeeded; report it without turning a passing smoke into a Stop failure.
 
 Do not promote a later cleanup symptom over an earlier explicit cause. If the available evidence cannot distinguish adjacent stages, state that limit instead of guessing.
 

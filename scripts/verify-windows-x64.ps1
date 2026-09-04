@@ -15,6 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+$verificationTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $archive = Get-Item -LiteralPath $ArchivePath
@@ -157,3 +158,5 @@ finally {
 
 Write-Output "Portable archive verified: $($archive.Name) (SHA-256 $($actualHash.ToLowerInvariant()))"
 Write-Output "Extracted package: $packageRoot"
+$verificationTimer.Stop()
+Write-Output ("Offline verification elapsed: {0:n1}s" -f $verificationTimer.Elapsed.TotalSeconds)

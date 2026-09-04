@@ -94,6 +94,10 @@ foreach ($fileName in @(
 }
 
 $alwaysOnSource = Join-Path $repositoryRoot "src\SdvKit.AlwaysOn"
+Copy-Item `
+    -LiteralPath (Join-Path $repositoryRoot "docs\portable-quickstart.txt") `
+    -Destination (Join-Path $packageRoot "README.txt")
+
 $alwaysOnDestination = Join-Path $packageRoot "src\SdvKit.AlwaysOn"
 New-Item -ItemType Directory -Path $alwaysOnDestination -Force | Out-Null
 $alwaysOnFiles = @(
