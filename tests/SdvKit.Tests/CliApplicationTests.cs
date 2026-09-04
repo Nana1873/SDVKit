@@ -1022,6 +1022,201 @@ public sealed class CliApplicationTests
         Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProjectReviewAudioDispatchesBoundedSingleQueriesAndWritesStableJson()
+    {
+        ReviewAudioQuery? received = null;
+        string? receivedLabRoot = null;
+        ProjectReviewAudioCommandRunner runner = (query, labRoot) =>
+        {
+            received = query;
+            receivedLabRoot = labRoot;
+            return new LiveLabCommandResult(
+                0,
+                new ReviewAudioReport(
+                    ReviewAudioContract.SchemaVersion,
+                    "ready",
+                    query.Operation,
+                    "1.6.15",
+                    "1.6.15.24356",
+                    null,
+                    [
+                        new ReviewAudioCueReport(
+                            "MainTheme",
+                            [ReviewAudioContract.JukeboxTrackSource],
+                            false,
+                            true,
+                            true,
+                            3,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            [
+                                new ReviewAudioJukeboxReference(
+                                    "MainTheme",
+                                    ReviewAudioContract.PrimaryJukeboxRelation),
+                            ]),
+                    ],
+                    new ReviewAudioPage(5, 2, 1, 6, null),
+                    new ReviewAudioCoverageReport(
+                        0,
+                        6,
+                        2,
+                        6,
+                        1,
+                        1,
+                        0,
+                        0,
+                        true,
+                        null,
+                        ReviewAudioContract.BuiltInInventoryStatus),
+                    []));
+        };
+
+        (int exitCode, string output, string error) = RunWithProjectReviewAudio(
+            runner,
+            "project",
+            "review",
+            "audio",
+            "cues",
+            "--offset",
+            "5",
+            "--limit",
+            "2",
+            "--topology",
+            "single",
+            "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal(
+            new ReviewAudioQuery(
+                ReviewAudioContract.CuesOperation,
+                null,
+                5,
+                2),
+            received);
+        Assert.Equal(Environment.CurrentDirectory, receivedLabRoot);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Assert.Equal("1.6.15.24356", root.GetProperty("gameFileVersion").GetString());
+        Assert.Equal(
+            "MainTheme",
+            root.GetProperty("cues")[0].GetProperty("cueId").GetString());
+        Assert.Equal(
+            "unavailableByPublicApi",
+            root.GetProperty("coverage")
+                .GetProperty("builtInCueInventoryStatus")
+                .GetString());
+    }
+
+    [Theory]
+    [InlineData("project", "review", "audio")]
+    [InlineData("project", "review", "audio", "unknown", "--json")]
+    [InlineData("project", "review", "audio", "cues")]
+    [InlineData("project", "review", "audio", "cues", "extra", "--json")]
+    [InlineData("project", "review", "audio", "cues", "--limit", "0", "--json")]
+    [InlineData("project", "review", "audio", "cues", "--limit", "101", "--json")]
+    [InlineData("project", "review", "audio", "cues", "--offset", "-1", "--json")]
+    [InlineData("project", "review", "audio", "cues", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "audio", "cue", "--json")]
+    [InlineData("project", "review", "audio", "cue", "MainTheme", "--limit", "1", "--json")]
+    [InlineData("project", "review", "audio", "cue", "MainTheme", "--json", "--json")]
+    [InlineData("project", "review", "audio", "cue", "--option-like", "--json")]
+    public void ProjectReviewAudioSyntaxErrorsUseTheExactAudioUsage(
+        params string[] arguments)
+    {
+        ProjectReviewAudioCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-audio should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewAudio(
+            runner,
+            arguments);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains(
+            "sdvkit project review audio cues",
+            error,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sdvkit project review audio cue <id>",
+            error,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProjectReviewAudioEndOfOptionsAllowsAnOptionLikeCueId()
+    {
+        ReviewAudioQuery? received = null;
+        ProjectReviewAudioCommandRunner runner = (query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReviewAudio(
+            runner,
+            "project",
+            "review",
+            "audio",
+            "cue",
+            "--topology",
+            "single",
+            "--json",
+            "--",
+            "--option-like");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal("--option-like", received!.CueId);
+    }
+
+    [Fact]
+    public void ProjectReviewAudioRejectsMalformedUtf16BeforeDispatch()
+    {
+        ProjectReviewAudioCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-audio should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewAudio(
+            runner,
+            "project",
+            "review",
+            "audio",
+            "cue",
+            "\ud800",
+            "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("project review audio cue", error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("audio", "--help")]
+    [InlineData("audio", "cues", "--help")]
+    public void ProjectReviewAudioHelpListsOnlyTheBoundedSingleSurface(
+        params string[] suffix)
+    {
+        ProjectReviewAudioCommandRunner runner = (_, _) =>
+            throw new InvalidOperationException("Review-audio should not run.");
+
+        (int exitCode, string output, string error) = RunWithProjectReviewAudio(
+            runner,
+            ["project", "review", .. suffix]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Contains("audio cues", output, StringComparison.Ordinal);
+        Assert.Contains("audio cue <id>", output, StringComparison.Ordinal);
+        Assert.Contains("active owned single review", output, StringComparison.Ordinal);
+        Assert.Contains("cannot enumerate", output, StringComparison.Ordinal);
+        Assert.Contains("before '--'", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1152,6 +1347,10 @@ public sealed class CliApplicationTests
                 + "       sdvkit project review texture get <asset> [--topology single] --json"
                 + Environment.NewLine
                 + "       sdvkit project review texture preview <asset> [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review audio cues [--offset <n>] [--limit <1-100>] [--topology single] --json"
+                + Environment.NewLine
+                + "       sdvkit project review audio cue <id> [--topology single] --json"
                 + Environment.NewLine
                 + "       sdvkit project review stop [--topology <single|network-2>] --json"
                 + Environment.NewLine
@@ -1708,6 +1907,21 @@ public sealed class CliApplicationTests
             error,
             GameInstallationDiscovery.Discover,
             runProjectReviewMap: runProjectReviewMap);
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
+    private static (int ExitCode, string Output, string Error) RunWithProjectReviewAudio(
+        ProjectReviewAudioCommandRunner runProjectReviewAudio,
+        params string[] arguments)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = CliApplication.Run(
+            arguments,
+            output,
+            error,
+            GameInstallationDiscovery.Discover,
+            runProjectReviewAudio: runProjectReviewAudio);
         return (exitCode, output.ToString(), error.ToString());
     }
 

@@ -113,6 +113,7 @@ $linkedFiles = @(
     "ModBuildIdentity.cs",
     "NetworkTwoModels.cs",
     "ProjectModModels.cs",
+    "ReviewAudioModels.cs",
     "ReviewDataModels.cs",
     "ReviewMapModels.cs",
     "ReviewTextureModels.cs",

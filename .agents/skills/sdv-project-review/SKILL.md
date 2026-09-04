@@ -155,6 +155,23 @@ Use `preview` only when one bounded visual diagnostic is needed. It requires the
 
 Unknown, ambiguous, non-texture, unclassified, oversized, stale, or mismatched requests must remain fail-closed. Never loop `preview` into bulk extraction, request raw pixels or source XNBs, mutate or dispose the game-cached texture, use this surface for a network role, or advertise a texture MCP tool.
 
+### Inspect active audio metadata
+
+Use the top-level read-only audio surface only during an exact, target-load-confirmed `single` review:
+
+```text
+sdvkit project review audio cues --offset 0 --limit 100 --topology single --json
+sdvkit project review audio cue "<exact-cue-id>" --topology single --json
+```
+
+This is not a line to pass through `project review command`. `cues` inventories only the final post-pipeline `AudioCueData.Id` values plus primary and effective alternative cue references from `Data/JukeboxTracks`; the `Data/AudioChanges` dictionary keys are modification keys and are never treated as playable cue IDs. Multiple modification entries with the same exact `Id` use the later final-pipeline definition. Alternative IDs use one global ordinal-ignore-case later-track-wins mapping. Fold an effective alternative onto its one case-insensitive matching playable data or primary-track identity; fail closed on multiple playable matches, and otherwise retain the later unmatched spelling. Coverage counts raw bounded alternative references while cue output contains only the effective relation. Page through `nextOffset` until it is `null`. Keep `audioChanges`, primary jukebox-track, and alternative-unlock provenance distinct. An alternative unlock is a save-history relationship, not proof of a playable soundbank alias.
+
+Use `cue` for one exact case-sensitive identity, including a caller-known built-in cue or a session-resident cue whose current `AudioChanges` entry was removed. `sessionResident` reports the result of the public soundbank existence probe; `definitionAvailable` and the two variant counts remain separate. Never infer the built-in population from an exact probe: require `builtInCueCount=null` and `builtInCueInventoryStatus=unavailableByPublicApi` because Stardew's public API cannot enumerate the XACT bank.
+
+If a cue operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker. Require a ready response with an empty problem list and a page or exact cue bound to the request. Treat unknown, case-mismatched, non-exact ambiguous, malformed, oversized, dummy-bank, disposed-bank, stale, or mismatched responses as fail-closed. The surface may return only bounded identity, provenance, counts, category, stream, loop, and reverb metadata. It must never expose modification keys, file paths, custom fields, raw banks, PCM or wave data, play or record audio, mutate content, or bulk-export assets.
+
+Audio introspection has no MCP tools. Do not route it through the native MCP server or invent a bridge; use these existing CLI commands directly.
+
 ### Drive review input without desktop automation
 
 Use AlwaysOn's bounded input surface when a review needs real SMAPI input events without foreground interaction:

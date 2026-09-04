@@ -44,6 +44,10 @@ internal delegate LiveLabCommandResult ProjectReviewTextureCommandRunner(
     ReviewTextureQuery query,
     string labRoot);
 
+internal delegate LiveLabCommandResult ProjectReviewAudioCommandRunner(
+    ReviewAudioQuery query,
+    string labRoot);
+
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
@@ -107,6 +111,10 @@ public static class CliApplication
         "       sdvkit project review texture get <asset> [--topology single] --json";
     private const string ReviewTexturePreviewUsage =
         "       sdvkit project review texture preview <asset> [--topology single] --json";
+    private const string ReviewAudioCuesUsage =
+        "       sdvkit project review audio cues [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewAudioCueUsage =
+        "       sdvkit project review audio cue <id> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single]";
     private const string ReviewMcpNetworkUsage =
@@ -142,6 +150,7 @@ public static class CliApplication
         ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
         ProjectReviewDataCommandRunner? runProjectReviewData = null,
         ProjectReviewTextureCommandRunner? runProjectReviewTexture = null,
+        ProjectReviewAudioCommandRunner? runProjectReviewAudio = null,
         ProjectReviewMcpCommandRunner? runProjectReviewMcp = null,
         ProjectReviewMapCommandRunner? runProjectReviewMap = null)
     {
@@ -197,6 +206,8 @@ public static class CliApplication
             ProjectReviewMapService.Execute(query, labRoot);
         runProjectReviewTexture ??= (query, labRoot) =>
             ProjectReviewTextureService.Execute(query, labRoot);
+        runProjectReviewAudio ??= (query, labRoot) =>
+            ProjectReviewAudioService.Execute(query, labRoot);
         runProjectReviewMcp ??= (topology, role, labRoot, mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
@@ -233,6 +244,7 @@ public static class CliApplication
                 runProjectReviewConsole,
                 runProjectReviewData,
                 runProjectReviewTexture,
+                runProjectReviewAudio,
                 runProjectReviewMcp,
                 runProjectReviewMap);
         }
@@ -311,6 +323,7 @@ public static class CliApplication
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
         ProjectReviewTextureCommandRunner runProjectReviewTexture,
+        ProjectReviewAudioCommandRunner runProjectReviewAudio,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
         ProjectReviewMapCommandRunner runProjectReviewMap)
     {
@@ -342,6 +355,7 @@ public static class CliApplication
                 runProjectReviewConsole,
                 runProjectReviewData,
                 runProjectReviewTexture,
+                runProjectReviewAudio,
                 runProjectReviewMcp,
                 runProjectReviewMap),
             _ => ProjectUsageError(error),
@@ -477,6 +491,7 @@ public static class CliApplication
         ProjectReviewConsoleCommandRunner runProjectReviewConsole,
         ProjectReviewDataCommandRunner runProjectReviewData,
         ProjectReviewTextureCommandRunner runProjectReviewTexture,
+        ProjectReviewAudioCommandRunner runProjectReviewAudio,
         ProjectReviewMcpCommandRunner runProjectReviewMcp,
         ProjectReviewMapCommandRunner runProjectReviewMap)
     {
@@ -508,6 +523,16 @@ public static class CliApplication
                 output,
                 error,
                 runProjectReviewTexture);
+        }
+
+        if (arguments.Count > 2
+            && string.Equals(arguments[2], "audio", StringComparison.Ordinal))
+        {
+            return RunProjectReviewAudio(
+                arguments,
+                output,
+                error,
+                runProjectReviewAudio);
         }
 
         if (TryParseProjectReviewMcp(
@@ -707,6 +732,148 @@ public static class CliApplication
             offset,
             limit);
         return true;
+    }
+
+    private static int RunProjectReviewAudio(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        ProjectReviewAudioCommandRunner runProjectReviewAudio)
+    {
+        if ((arguments.Count == 4 && IsHelp(arguments[3]))
+            || (arguments.Count == 5 && IsHelp(arguments[4])))
+        {
+            WriteProjectReviewAudioUsage(output);
+            return Success;
+        }
+
+        if (!TryParseProjectReviewAudio(arguments, out ReviewAudioQuery? query))
+        {
+            WriteProjectReviewAudioUsage(error);
+            return UsageError;
+        }
+
+        LiveLabCommandResult result = runProjectReviewAudio(
+            query!,
+            Environment.CurrentDirectory);
+        WriteJson(output, result.Report);
+        return result.ExitCode;
+    }
+
+    private static bool TryParseProjectReviewAudio(
+        IReadOnlyList<string> arguments,
+        out ReviewAudioQuery? query)
+    {
+        query = null;
+        if (arguments.Count < 5
+            || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
+            || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "audio", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string operation = arguments[3];
+        if (operation is not (
+                ReviewAudioContract.CuesOperation
+                or ReviewAudioContract.CueOperation))
+        {
+            return false;
+        }
+
+        var operands = new List<string>();
+        var jsonOptionCount = 0;
+        var topologyOptionCount = 0;
+        var offsetOptionCount = 0;
+        var limitOptionCount = 0;
+        string topology = LiveLabState.SingleTopology;
+        var offset = 0;
+        int limit = operation == ReviewAudioContract.CueOperation
+            ? 1
+            : ReviewAudioContract.DefaultPageLimit;
+        var optionsEnded = false;
+        for (var index = 4; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
+            {
+                optionsEnded = true;
+                continue;
+            }
+
+            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
+            {
+                jsonOptionCount++;
+                continue;
+            }
+
+            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
+            {
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith('-'))
+                {
+                    return false;
+                }
+
+                string value = arguments[++index];
+                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
+                {
+                    topologyOptionCount++;
+                    topology = value;
+                }
+                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
+                {
+                    offsetOptionCount++;
+                    if (!TryParseNonNegative(value, out offset))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    limitOptionCount++;
+                    if (!TryParseNonNegative(value, out limit))
+                    {
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            if (!optionsEnded && argument.StartsWith('-'))
+            {
+                return false;
+            }
+
+            operands.Add(argument);
+        }
+
+        int expectedOperands = operation == ReviewAudioContract.CueOperation ? 1 : 0;
+        if (jsonOptionCount != 1
+            || topologyOptionCount > 1
+            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || offsetOptionCount > 1
+            || limitOptionCount > 1
+            || offset < 0
+            || limit < 1
+            || limit > ReviewAudioContract.MaximumPageLimit
+            || operands.Count != expectedOperands
+            || operands.Any(string.IsNullOrWhiteSpace)
+            || (operation == ReviewAudioContract.CueOperation
+                && (offsetOptionCount > 0 || limitOptionCount > 0))
+            || (operation == ReviewAudioContract.CueOperation
+                && !ReviewAudioValidation.IsSafeCueId(operands[0])))
+        {
+            return false;
+        }
+
+        query = new ReviewAudioQuery(
+            operation,
+            operands.Count == 1 ? operands[0] : null,
+            offset,
+            limit);
+        return ProjectReviewAudioService.Validate(query) is null;
     }
 
     private static int RunProjectReviewMap(
@@ -1579,6 +1746,8 @@ public static class CliApplication
         output.WriteLine(
             "  sdvkit project review texture <assets|get|preview> ... [--topology single] --json");
         output.WriteLine(
+            "  sdvkit project review audio <cues|cue> ... [--topology single] --json");
+        output.WriteLine(
             "    Owned review-fixture console lines are transported as <text>; see project review --help.");
         output.WriteLine(
             "  sdvkit project review stop [--topology <single|network-2>] --json");
@@ -1626,6 +1795,8 @@ public static class CliApplication
         output.WriteLine(ReviewTextureAssetsUsage);
         output.WriteLine(ReviewTextureGetUsage);
         output.WriteLine(ReviewTexturePreviewUsage);
+        output.WriteLine(ReviewAudioCuesUsage);
+        output.WriteLine(ReviewAudioCueUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1645,6 +1816,8 @@ public static class CliApplication
         output.WriteLine(ReviewTextureAssetsUsage);
         output.WriteLine(ReviewTextureGetUsage);
         output.WriteLine(ReviewTexturePreviewUsage);
+        output.WriteLine(ReviewAudioCuesUsage);
+        output.WriteLine(ReviewAudioCueUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine(ReviewMcpSingleUsage);
@@ -1692,6 +1865,16 @@ public static class CliApplication
             "Queries require an active owned single review. Inventory is canonical and measured; exact metadata and one bounded diagnostic PNG reflect the final SMAPI content pipeline without claiming per-mod provenance.");
         output.WriteLine(
             "For an asset operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
+    }
+
+    private static void WriteProjectReviewAudioUsage(TextWriter output)
+    {
+        output.WriteLine(ReviewAudioCuesUsage.TrimStart());
+        output.WriteLine(ReviewAudioCueUsage.TrimStart());
+        output.WriteLine(
+            "Queries require an active owned single review. Discovery covers the final Data/AudioChanges and Data/JukeboxTracks populations; the public API cannot enumerate the built-in XACT cue bank.");
+        output.WriteLine(
+            "For a cue operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)

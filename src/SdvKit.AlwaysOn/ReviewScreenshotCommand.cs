@@ -184,9 +184,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture transports";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ...";
 
     public static void Register(
         IModHelper helper,
@@ -211,6 +211,7 @@ internal static class ReviewCommand
         var dataSource = new StardewReviewDataSource(helper);
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);
+        var audioSource = new StardewReviewAudioSource(helper);
         var fixtureRuntime = new StardewReviewFixtureRuntime(
             testSave,
             networkTwo,
@@ -253,6 +254,11 @@ internal static class ReviewCommand
                         textureSource,
                         runtimePath,
                         monitor);
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "audio", StringComparison.Ordinal))
+                {
+                    ReviewAudioCommand.Handle(arguments, audioSource, runtimePath, monitor);
                 }
                 else
                 {
