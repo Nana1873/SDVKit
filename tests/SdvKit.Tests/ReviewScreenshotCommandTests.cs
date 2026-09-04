@@ -311,7 +311,7 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Contains("private const string RootCommand = \"sdvkit\";", source, StringComparison.Ordinal);
         Assert.Contains("ReviewScreenshotCommand.Handle(", source, StringComparison.Ordinal);
         Assert.Contains("ReviewInputCommand.Handle(", source, StringComparison.Ordinal);
-        Assert.Contains("ReviewFixtureCommand.Handle(arguments", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewFixtureCommand.Handle(", source, StringComparison.Ordinal);
         Assert.Contains("ReviewDataCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewMapCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewTextureCommand.Handle(", source, StringComparison.Ordinal);

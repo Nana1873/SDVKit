@@ -35,6 +35,8 @@ internal sealed class TestSaveAutomation
     private bool _saveCreated;
     private IEnumerator<int>? _saveIterator;
     private bool _saveReachedCompletion;
+    private DateTimeOffset? _saveOperationStartedAtUtc;
+    private Action<bool, string>? _reviewSaveCompletion;
     private string? _message;
 
     private TestSaveAutomation(
@@ -273,6 +275,44 @@ internal sealed class TestSaveAutomation
         }
     }
 
+    public bool TryStartReviewSave(
+        Action<bool, string> completion,
+        out string reason)
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+        if (!IsPassedReview)
+        {
+            reason = "Fixture save requires the exact test save in passed review mode.";
+            return false;
+        }
+
+        if (_reviewSaveCompletion is not null
+            || _saveIterator is not null
+            || SaveGame.IsProcessing
+            || Game1.game1.IsSaving)
+        {
+            reason = "Stardew is already processing an action or save for the exact fixture.";
+            return false;
+        }
+
+        try
+        {
+            VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
+            _reviewSaveCompletion = completion;
+            _saveOperationStartedAtUtc = DateTimeOffset.UtcNow;
+            StartDurableSave();
+            reason = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _reviewSaveCompletion = null;
+            _saveOperationStartedAtUtc = null;
+            reason = exception.GetBaseException().Message;
+            return false;
+        }
+    }
+
     public void OnUpdateTicked()
     {
         try
@@ -280,7 +320,9 @@ internal sealed class TestSaveAutomation
             if (_saveIterator is not null)
             {
                 if (!string.Equals(_phase, "failed", StringComparison.Ordinal)
-                    && DateTimeOffset.UtcNow - _startedAtUtc > OperationTimeout)
+                    && DateTimeOffset.UtcNow
+                        - (_saveOperationStartedAtUtc ?? _startedAtUtc)
+                        > OperationTimeout)
                 {
                     Fail("The bounded test-save operation exceeded two minutes.");
                 }
@@ -569,7 +611,7 @@ internal sealed class TestSaveAutomation
 
     private void StartDurableSave()
     {
-        VerifyExactWorld();
+        VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
         if (SaveGame.IsProcessing || Game1.game1.IsSaving)
         {
             throw new InvalidOperationException(
@@ -618,7 +660,7 @@ internal sealed class TestSaveAutomation
     {
         if (!string.Equals(_phase, "failed", StringComparison.Ordinal))
         {
-            VerifyExactWorld();
+            VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
         }
 
         if (_saveIterator!.MoveNext())
@@ -644,7 +686,7 @@ internal sealed class TestSaveAutomation
 
     private bool MoveSaveIteratorWithIdentityVerification()
     {
-        VerifyExactWorld();
+        VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
         return _saveIterator!.MoveNext();
     }
 
@@ -672,7 +714,23 @@ internal sealed class TestSaveAutomation
             return;
         }
 
-        VerifyExactWorld();
+        VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
+        if (_reviewSaveCompletion is not null)
+        {
+            const string message =
+                "Stardew durably saved and retained the exact disposable review fixture.";
+            Action<bool, string> completion = _reviewSaveCompletion;
+            _reviewSaveCompletion = null;
+            _saveOperationStartedAtUtc = null;
+            _identityVerified = true;
+            _message = message;
+            Log("saved", message);
+            _publishStatus();
+            completion(true, message);
+            return;
+        }
+
+        _saveOperationStartedAtUtc = null;
         SetPhase(
             "created",
             "Stardew durably saved and retained the exact disposable fixture.");
@@ -883,6 +941,10 @@ internal sealed class TestSaveAutomation
         _message = message;
         Log("failed", message, LogLevel.Error);
         _publishStatus();
+        Action<bool, string>? completion = _reviewSaveCompletion;
+        _reviewSaveCompletion = null;
+        _saveOperationStartedAtUtc = null;
+        completion?.Invoke(false, message);
     }
 
     private void Log(string phase, string message, LogLevel level = LogLevel.Info)

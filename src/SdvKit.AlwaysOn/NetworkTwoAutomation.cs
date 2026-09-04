@@ -289,10 +289,12 @@ internal sealed class NetworkTwoAutomation
     public bool TryVerifyReviewFixture(
         out string fixtureId,
         out string role,
+        out string saveId,
         out string reason)
     {
         fixtureId = _launch.FixtureId;
         role = _launch.Role;
+        saveId = _launch.SaveId;
         if (!string.Equals(_phase, "passed", StringComparison.Ordinal))
         {
             reason = "Fixture commands require a passed network-2 review pair.";
