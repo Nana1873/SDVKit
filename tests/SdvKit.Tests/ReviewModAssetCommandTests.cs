@@ -32,6 +32,129 @@ public sealed class ReviewModAssetCommandTests
     }
 
     [Fact]
+    public void ReadyStateAndCountRemainStableUntilTheGenerationChanges()
+    {
+        const string name = "Mods/Example.Mod/Words";
+        Type type = typeof(Dictionary<string, string>);
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+
+        catalogue.ObserveRequested(name, type);
+        catalogue.ObserveReady(name);
+        catalogue.ObserveRequested(name, type);
+        catalogue.ObserveReady(name);
+        catalogue.MarkVerifiedReady(name, type);
+
+        ReviewModAssetObservation firstGeneration = Assert.Single(catalogue.Snapshot().Assets);
+        Assert.Equal("ready", firstGeneration.Lifecycle);
+        Assert.True(firstGeneration.Available);
+        Assert.Equal(0, firstGeneration.Generation);
+        Assert.Equal(2, firstGeneration.RequestCount);
+        Assert.Equal(1, firstGeneration.ReadyCount);
+
+        catalogue.ObserveInvalidated([name]);
+        catalogue.ObserveRequested(name, type);
+        catalogue.ObserveReady(name);
+        catalogue.MarkVerifiedReady(name, type);
+
+        ReviewModAssetObservation secondGeneration = Assert.Single(catalogue.Snapshot().Assets);
+        Assert.Equal("ready", secondGeneration.Lifecycle);
+        Assert.True(secondGeneration.Available);
+        Assert.Equal(1, secondGeneration.Generation);
+        Assert.Equal(3, secondGeneration.RequestCount);
+        Assert.Equal(2, secondGeneration.ReadyCount);
+    }
+
+    [Fact]
+    public void VerifiedQueryGuardSuppressesOnlyItsOwnAssetSignals()
+    {
+        const string name = "Mods/Example.Mod/Words";
+        Type type = typeof(Dictionary<string, string>);
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+        var guard = new ReviewModAssetQueryObservationGuard();
+        catalogue.ObserveRequested(name, type);
+        catalogue.ObserveReady(name);
+
+        using (guard.Enter(name, type))
+        {
+            Assert.True(guard.SuppressesRequested(name, type));
+            Assert.True(guard.SuppressesReady(name.ToUpperInvariant()));
+            Assert.False(guard.SuppressesRequested(name, typeof(string)));
+            Assert.False(guard.SuppressesReady("Mods/Example.Mod/Other"));
+
+            if (!guard.SuppressesRequested(name, type))
+            {
+                catalogue.ObserveRequested(name, type);
+            }
+            if (!guard.SuppressesReady(name))
+            {
+                catalogue.ObserveReady(name);
+            }
+        }
+        catalogue.MarkVerifiedReady(name, type);
+
+        ReviewModAssetObservation observed = Assert.Single(catalogue.Snapshot().Assets);
+        Assert.Equal("ready", observed.Lifecycle);
+        Assert.True(observed.Available);
+        Assert.Equal(1, observed.RequestCount);
+        Assert.Equal(1, observed.ReadyCount);
+        Assert.False(guard.SuppressesRequested(name, type));
+        Assert.False(guard.SuppressesReady(name));
+    }
+
+    [Fact]
+    public void TypeChangingReplacementKeepsTheNameGenerationAndReadySignalAmbiguous()
+    {
+        const string name = "Mods/Example.Mod/Words";
+        Type oldType = typeof(string);
+        Type replacementType = typeof(Dictionary<string, string>);
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+        catalogue.ObserveRequested(name, oldType);
+        catalogue.ObserveReady(name);
+        catalogue.ObserveInvalidated([name]);
+
+        catalogue.ObserveRequested(name, replacementType);
+        catalogue.ObserveReady(name);
+
+        ReviewModAssetObservation[] assets = catalogue.Snapshot().Assets.ToArray();
+        Assert.Equal(2, assets.Length);
+        Assert.All(assets, asset =>
+        {
+            Assert.Equal(1, asset.Generation);
+            Assert.True(asset.TypeCollision);
+            Assert.False(asset.Available);
+        });
+        Assert.Equal(
+            "invalidated",
+            Assert.Single(assets, asset => asset.DataType == oldType).Lifecycle);
+        Assert.Equal(
+            "requested",
+            Assert.Single(assets, asset => asset.DataType == replacementType).Lifecycle);
+    }
+
+    [Fact]
+    public void OversizedObservedModAssetCreatesAnExplicitCoverageGap()
+    {
+        string name = "Mods/Example.Mod/" + new string(
+            'x',
+            ReviewModAssetContract.MaximumAssetLength);
+        var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);
+
+        catalogue.ObserveRequested(name, typeof(string));
+
+        ReviewModAssetInventorySnapshot snapshot = catalogue.Snapshot();
+        Assert.Empty(snapshot.Assets);
+        Assert.Equal(1, snapshot.Observed);
+        Assert.Equal(1, snapshot.Dropped);
+
+        ReviewModAssetReport report = Execute(
+            new FakeSource(catalogue),
+            ReviewModAssetContract.AssetsOperation);
+        Assert.Equal("blocked", report.State);
+        Assert.False(report.Coverage!.Complete);
+        Assert.Equal("modAssetCoverageIncomplete", Assert.Single(report.Problems).Code);
+    }
+
+    [Fact]
     public void CatalogueKeepsUnknownOwnerWithoutInventingProvider()
     {
         var catalogue = new ReviewModAssetCatalog(["Example.Mod"], StartedAt);

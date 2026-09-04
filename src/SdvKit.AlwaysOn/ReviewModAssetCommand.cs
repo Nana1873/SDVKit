@@ -57,6 +57,79 @@ internal interface IReviewModAssetSource
     ReviewModAssetLoadResult Load(ReviewModAssetObservation asset);
 }
 
+internal sealed class ReviewModAssetQueryObservationGuard
+{
+    [ThreadStatic]
+    private static Identity? Active;
+
+    public IDisposable Enter(string assetName, Type dataType)
+    {
+        if (string.IsNullOrWhiteSpace(assetName))
+        {
+            throw new ArgumentException(
+                "The review-mod-assets query asset name is required.",
+                nameof(assetName));
+        }
+        ArgumentNullException.ThrowIfNull(dataType);
+
+        Identity? previous = Active;
+        var current = new Identity(this, assetName, dataType);
+        Active = current;
+        return new Scope(current, previous);
+    }
+
+    public bool SuppressesRequested(string assetName, Type dataType)
+    {
+        Identity? active = Active;
+        return active is not null
+            && ReferenceEquals(active.Owner, this)
+            && active.DataType == dataType
+            && string.Equals(
+                active.AssetName,
+                assetName,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool SuppressesReady(string assetName)
+    {
+        Identity? active = Active;
+        return active is not null
+            && ReferenceEquals(active.Owner, this)
+            && string.Equals(
+                active.AssetName,
+                assetName,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record Identity(
+        ReviewModAssetQueryObservationGuard Owner,
+        string AssetName,
+        Type DataType);
+
+    private sealed class Scope(
+        Identity current,
+        Identity? previous) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            if (!ReferenceEquals(Active, current))
+            {
+                throw new InvalidOperationException(
+                    "Review-mod-assets query observation scopes must be disposed in order.");
+            }
+
+            Active = previous;
+            _disposed = true;
+        }
+    }
+}
+
 internal sealed class ReviewModAssetCatalog
 {
     private readonly object _sync = new();
@@ -84,25 +157,41 @@ internal sealed class ReviewModAssetCatalog
         ArgumentNullException.ThrowIfNull(dataType);
         if (!TryParseNamespace(assetName, out string canonicalName, out string ownerSegment))
         {
+            if (LooksLikeConventionalNamespace(assetName))
+            {
+                lock (_sync)
+                {
+                    IncrementDropped();
+                }
+            }
+
             return;
         }
 
         lock (_sync)
         {
-            Entry? existing = _entries.FirstOrDefault(entry =>
+            Entry[] matchingName = MatchingName(canonicalName).ToArray();
+            Entry? existing = matchingName.FirstOrDefault(entry =>
                 string.Equals(entry.AssetName, canonicalName, StringComparison.Ordinal)
                 && entry.DataType == dataType);
             if (existing is not null)
             {
-                existing.RequestCount++;
-                existing.Lifecycle = "requested";
-                existing.Available = false;
+                IncrementRequestCount(existing);
+                existing.LastRequestedGeneration = existing.Generation;
+                // SMAPI may raise AssetRequested for an existence check which never loads.
+                if (!existing.Available
+                    || !string.Equals(existing.Lifecycle, "ready", StringComparison.Ordinal))
+                {
+                    existing.Lifecycle = "requested";
+                    existing.Available = false;
+                }
+
                 return;
             }
 
             if (_entries.Count >= ReviewModAssetContract.MaximumObservedAssets)
             {
-                _dropped++;
+                IncrementDropped();
                 return;
             }
 
@@ -110,7 +199,10 @@ internal sealed class ReviewModAssetCatalog
                 .Where(id => string.Equals(id, ownerSegment, StringComparison.OrdinalIgnoreCase))
                 .Take(2)
                 .ToArray();
-            _entries.Add(new Entry(
+            int generation = matchingName.Length == 0
+                ? 0
+                : matchingName.Max(entry => entry.Generation);
+            var added = new Entry(
                 canonicalName,
                 ownerMatches.Length == 1 ? ownerMatches[0] : null,
                 ownerMatches.Length switch
@@ -120,7 +212,18 @@ internal sealed class ReviewModAssetCatalog
                     _ => "unknown",
                 },
                 dataType,
-                FriendlyTypeName(dataType)));
+                FriendlyTypeName(dataType),
+                generation);
+            _entries.Add(added);
+
+            if (matchingName.Any(entry => entry.DataType != dataType))
+            {
+                added.Available = false;
+                foreach (Entry entry in matchingName)
+                {
+                    entry.Available = false;
+                }
+            }
         }
     }
 
@@ -133,12 +236,23 @@ internal sealed class ReviewModAssetCatalog
 
         lock (_sync)
         {
-            foreach (Entry entry in MatchingName(canonicalName))
+            Entry[] matchingName = MatchingName(canonicalName).ToArray();
+            Entry[] candidates = matchingName
+                .Where(entry =>
+                    entry.LastRequestedGeneration == entry.Generation
+                    && string.Equals(
+                        entry.Lifecycle,
+                        "requested",
+                        StringComparison.Ordinal))
+                .ToArray();
+            // SMAPI's public AssetReady event has no requested-type field.
+            if (matchingName.Select(entry => entry.DataType).Distinct().Take(2).Count() != 1
+                || candidates.Length != 1)
             {
-                entry.Lifecycle = "ready";
-                entry.ReadyCount++;
-                entry.Available = true;
+                return;
             }
+
+            MarkReady(candidates[0]);
         }
     }
 
@@ -154,9 +268,20 @@ internal sealed class ReviewModAssetCatalog
                     continue;
                 }
 
-                foreach (Entry entry in MatchingName(canonicalName))
+                Entry[] matchingName = MatchingName(canonicalName).ToArray();
+                if (matchingName.Length == 0)
                 {
-                    entry.Generation++;
+                    continue;
+                }
+
+                int generation = matchingName.Max(entry => entry.Generation);
+                if (generation < int.MaxValue)
+                {
+                    generation++;
+                }
+                foreach (Entry entry in matchingName)
+                {
+                    entry.Generation = generation;
                     entry.Lifecycle = "invalidated";
                     entry.Available = false;
                 }
@@ -168,15 +293,17 @@ internal sealed class ReviewModAssetCatalog
     {
         lock (_sync)
         {
-            Entry? entry = FindExact(assetName, dataType);
-            if (entry is null)
+            Entry[] matchingName = MatchingName(assetName).ToArray();
+            Entry? entry = matchingName.FirstOrDefault(candidate =>
+                string.Equals(candidate.AssetName, assetName, StringComparison.Ordinal)
+                && candidate.DataType == dataType);
+            if (entry is null
+                || matchingName.Length != 1)
             {
                 return;
             }
 
-            entry.Lifecycle = "ready";
-            entry.ReadyCount++;
-            entry.Available = true;
+            MarkReady(entry);
         }
     }
 
@@ -232,9 +359,12 @@ internal sealed class ReviewModAssetCatalog
                     nameCollisions[StableIdentityNormalizer.Normalize(entry.AssetName)] > 1,
                     typeCollisions[entry.AssetName] > 1))
                 .ToArray();
+            int observed = _dropped > int.MaxValue - assets.Length
+                ? int.MaxValue
+                : assets.Length + _dropped;
             return new ReviewModAssetInventorySnapshot(
                 ObservationStartedAtUtc,
-                assets.Length + _dropped,
+                observed,
                 _dropped,
                 assets);
         }
@@ -277,13 +407,76 @@ internal sealed class ReviewModAssetCatalog
         string? assetName,
         out string canonicalName)
     {
-        canonicalName = assetName?.Replace('\\', '/').Trim() ?? string.Empty;
-        return canonicalName.Length is > 0 and <= ReviewModAssetContract.MaximumAssetLength
-            && !canonicalName.EndsWith('/')
+        canonicalName = string.Empty;
+        if (assetName is null)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> trimmed = assetName.AsSpan().Trim();
+        if (trimmed.Length is <= 0 or > ReviewModAssetContract.MaximumAssetLength)
+        {
+            return false;
+        }
+
+        canonicalName = trimmed.ToString().Replace('\\', '/');
+        return !canonicalName.EndsWith('/')
             && canonicalName.Split('/').All(segment =>
                 segment.Length > 0
                 && segment is not "." and not ".."
                 && !segment.Any(char.IsControl));
+    }
+
+    private static bool LooksLikeConventionalNamespace(string? assetName)
+    {
+        if (assetName is null)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> value = assetName.AsSpan().Trim();
+        int firstSeparator = value.IndexOfAny('/', '\\');
+        if (firstSeparator != 4
+            || !value[..firstSeparator].Equals("Mods", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> remainder = value[(firstSeparator + 1)..];
+        int secondSeparator = remainder.IndexOfAny('/', '\\');
+        return secondSeparator > 0 && secondSeparator < remainder.Length - 1;
+    }
+
+    private static void IncrementRequestCount(Entry entry)
+    {
+        if (entry.RequestCount < int.MaxValue)
+        {
+            entry.RequestCount++;
+        }
+    }
+
+    private void IncrementDropped()
+    {
+        if (_dropped < int.MaxValue)
+        {
+            _dropped++;
+        }
+    }
+
+    private static void MarkReady(Entry entry)
+    {
+        if (entry.LastReadyGeneration != entry.Generation)
+        {
+            if (entry.ReadyCount < int.MaxValue)
+            {
+                entry.ReadyCount++;
+            }
+
+            entry.LastReadyGeneration = entry.Generation;
+        }
+
+        entry.Lifecycle = "ready";
+        entry.Available = true;
     }
 
     private static string FriendlyTypeName(Type type)
@@ -301,7 +494,8 @@ internal sealed class ReviewModAssetCatalog
         string? namespaceOwnerId,
         string namespaceOwnerStatus,
         Type dataType,
-        string dataTypeName)
+        string dataTypeName,
+        int generation)
     {
         public string AssetName { get; } = assetName;
 
@@ -315,7 +509,11 @@ internal sealed class ReviewModAssetCatalog
 
         public string Lifecycle { get; set; } = "requested";
 
-        public int Generation { get; set; }
+        public int Generation { get; set; } = generation;
+
+        public int LastRequestedGeneration { get; set; } = generation;
+
+        public int LastReadyGeneration { get; set; } = -1;
 
         public int RequestCount { get; set; } = 1;
 
@@ -1218,6 +1416,7 @@ internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
 {
     private readonly IModHelper _helper;
     private readonly ReviewModAssetCatalog _catalogue;
+    private readonly ReviewModAssetQueryObservationGuard _queryObservationGuard = new();
 
     public StardewReviewModAssetSource(IModHelper helper)
     {
@@ -1243,15 +1442,21 @@ internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
     public void OnAssetRequested(object? sender, AssetRequestedEventArgs eventArgs)
     {
         ArgumentNullException.ThrowIfNull(eventArgs);
-        _catalogue.ObserveRequested(
-            eventArgs.NameWithoutLocale.Name,
-            eventArgs.DataType);
+        string assetName = eventArgs.NameWithoutLocale.Name;
+        if (!_queryObservationGuard.SuppressesRequested(assetName, eventArgs.DataType))
+        {
+            _catalogue.ObserveRequested(assetName, eventArgs.DataType);
+        }
     }
 
     public void OnAssetReady(object? sender, AssetReadyEventArgs eventArgs)
     {
         ArgumentNullException.ThrowIfNull(eventArgs);
-        _catalogue.ObserveReady(eventArgs.NameWithoutLocale.Name);
+        string assetName = eventArgs.NameWithoutLocale.Name;
+        if (!_queryObservationGuard.SuppressesReady(assetName))
+        {
+            _catalogue.ObserveReady(assetName);
+        }
     }
 
     public void OnAssetsInvalidated(object? sender, AssetsInvalidatedEventArgs eventArgs)
@@ -1278,23 +1483,27 @@ internal sealed class StardewReviewModAssetSource : IReviewModAssetSource
 
         try
         {
-            object value = adapter switch
+            object value;
+            using (_queryObservationGuard.Enter(asset.AssetName, asset.DataType))
             {
-                ReviewModAssetAdapterKind.StringDictionary =>
-                    _helper.GameContent.Load<Dictionary<string, string>>(asset.AssetName),
-                ReviewModAssetAdapterKind.IntegerDictionary =>
-                    _helper.GameContent.Load<Dictionary<string, int>>(asset.AssetName),
-                ReviewModAssetAdapterKind.IntegerKeyStringDictionary =>
-                    _helper.GameContent.Load<Dictionary<int, string>>(asset.AssetName),
-                ReviewModAssetAdapterKind.IntegerKeyIntegerDictionary =>
-                    _helper.GameContent.Load<Dictionary<int, int>>(asset.AssetName),
-                ReviewModAssetAdapterKind.StringList =>
-                    _helper.GameContent.Load<List<string>>(asset.AssetName),
-                ReviewModAssetAdapterKind.StringSingleton =>
-                    _helper.GameContent.Load<string>(asset.AssetName),
-                _ => throw new InvalidOperationException(
-                    "The observed asset has no reviewed adapter."),
-            };
+                value = adapter switch
+                {
+                    ReviewModAssetAdapterKind.StringDictionary =>
+                        _helper.GameContent.Load<Dictionary<string, string>>(asset.AssetName),
+                    ReviewModAssetAdapterKind.IntegerDictionary =>
+                        _helper.GameContent.Load<Dictionary<string, int>>(asset.AssetName),
+                    ReviewModAssetAdapterKind.IntegerKeyStringDictionary =>
+                        _helper.GameContent.Load<Dictionary<int, string>>(asset.AssetName),
+                    ReviewModAssetAdapterKind.IntegerKeyIntegerDictionary =>
+                        _helper.GameContent.Load<Dictionary<int, int>>(asset.AssetName),
+                    ReviewModAssetAdapterKind.StringList =>
+                        _helper.GameContent.Load<List<string>>(asset.AssetName),
+                    ReviewModAssetAdapterKind.StringSingleton =>
+                        _helper.GameContent.Load<string>(asset.AssetName),
+                    _ => throw new InvalidOperationException(
+                        "The observed asset has no reviewed adapter."),
+                };
+            }
             if (value.GetType() != asset.DataType)
             {
                 _catalogue.MarkUnavailable(asset.AssetName, asset.DataType);
