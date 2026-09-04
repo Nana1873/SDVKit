@@ -10,10 +10,72 @@ internal static class ProjectReviewTextureService
 {
     private const int Success = 0;
     private const int OperationFailed = 3;
+    private const int MaximumJsonDepth = 16;
     private static readonly JsonSerializerOptions ResponseJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        MaxDepth = MaximumJsonDepth,
     };
+    private static readonly JsonDocumentOptions ResponseDocumentOptions = new()
+    {
+        MaxDepth = MaximumJsonDepth,
+    };
+    private static readonly HashSet<string> EnvelopeProperties = PropertySet(
+        "schemaVersion",
+        "requestId",
+        "report");
+    private static readonly HashSet<string> ReportProperties = PropertySet(
+        "schemaVersion",
+        "state",
+        "operation",
+        "gameVersion",
+        "gameFileVersion",
+        "assetName",
+        "sourceCategory",
+        "available",
+        "metadata",
+        "provenance",
+        "preview",
+        "assets",
+        "page",
+        "coverage",
+        "problems");
+    private static readonly HashSet<string> ProblemProperties = PropertySet(
+        "code",
+        "message");
+    private static readonly HashSet<string> AssetProperties = PropertySet(
+        "assetName",
+        "sourceCategory",
+        "available");
+    private static readonly HashSet<string> MetadataProperties = PropertySet(
+        "width",
+        "height",
+        "runtimeFormat",
+        "levelCount",
+        "hasMipMaps");
+    private static readonly HashSet<string> ProvenanceProperties = PropertySet(
+        "pipelineStage",
+        "detailedProviderAvailable",
+        "detail");
+    private static readonly HashSet<string> PreviewProperties = PropertySet(
+        "relativePath",
+        "width",
+        "height",
+        "encodedBytes",
+        "sha256");
+    private static readonly HashSet<string> PageProperties = PropertySet(
+        "offset",
+        "limit",
+        "returned",
+        "total",
+        "nextOffset");
+    private static readonly HashSet<string> CoverageProperties = PropertySet(
+        "candidates",
+        "classified",
+        "textures",
+        "nonTextures",
+        "gaps",
+        "complete");
 
     public static LiveLabCommandResult Execute(
         ReviewTextureQuery query,
@@ -70,9 +132,7 @@ internal static class ProjectReviewTextureService
                 "texture",
                 "review-texture",
                 labRoot,
-                bytes => JsonSerializer.Deserialize<ReviewTextureResponseEnvelope>(
-                    bytes,
-                    ResponseJsonOptions),
+                DeserializeResponse,
                 envelope => MatchesRequest(
                     envelope,
                     query,
@@ -109,6 +169,10 @@ internal static class ProjectReviewTextureService
                 "The review-texture request ID is invalid.",
                 nameof(requestId));
         }
+        if (Validate(query) is ReviewTextureProblem queryProblem)
+        {
+            throw new ArgumentException(queryProblem.Message, nameof(query));
+        }
 
         var tokens = new List<string>
         {
@@ -134,7 +198,36 @@ internal static class ProjectReviewTextureService
         return command;
     }
 
+    internal static ReviewTextureResponseEnvelope? DeserializeResponse(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        using (JsonDocument document = JsonDocument.Parse(bytes, ResponseDocumentOptions))
+        {
+            ValidateEnvelopeShape(document.RootElement);
+        }
+
+        return JsonSerializer.Deserialize<ReviewTextureResponseEnvelope>(
+            bytes,
+            ResponseJsonOptions);
+    }
+
     internal static bool MatchesRequest(
+        ReviewTextureResponseEnvelope? envelope,
+        ReviewTextureQuery query,
+        string requestId,
+        string runtimePath)
+    {
+        try
+        {
+            return MatchesRequestCore(envelope, query, requestId, runtimePath);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return false;
+        }
+    }
+
+    private static bool MatchesRequestCore(
         ReviewTextureResponseEnvelope? envelope,
         ReviewTextureQuery query,
         string requestId,
@@ -354,10 +447,13 @@ internal static class ProjectReviewTextureService
         }
 
         string? previous = null;
+        var normalizedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (ReviewTextureAssetReport? asset in report.Assets)
         {
             if (asset is null
                 || !ReviewTextureContract.IsCanonicalAssetName(asset.AssetName)
+                || !normalizedNames.Add(
+                    StableIdentityNormalizer.Normalize(asset.AssetName))
                 || !asset.Available
                 || !string.Equals(
                     asset.SourceCategory,
@@ -495,13 +591,11 @@ internal static class ProjectReviewTextureService
         bool needsAsset = query.Operation is ReviewTextureContract.GetOperation
             or ReviewTextureContract.PreviewOperation;
         if (needsAsset
-            && (string.IsNullOrWhiteSpace(query.Asset)
-                || query.Asset.Length > ReviewTextureContract.MaximumAssetLength
-                || query.Asset.Any(char.IsControl)))
+            && !ReviewTextureContract.IsCanonicalAssetName(query.Asset))
         {
             return Problem(
                 "textureAssetInvalid",
-                "A bounded non-empty texture asset name is required.");
+                "A canonical bounded texture asset name is required.");
         }
 
         if ((!needsAsset && query.Asset is not null)
@@ -514,6 +608,215 @@ internal static class ProjectReviewTextureService
 
         return null;
     }
+
+    private static void ValidateEnvelopeShape(JsonElement root)
+    {
+        RequireExactObject(root, EnvelopeProperties);
+        JsonElement report = root.GetProperty("report");
+        RequireExactObject(report, ReportProperties);
+
+        ValidateOptionalMetadata(report.GetProperty("metadata"));
+        ValidateOptionalProvenance(report.GetProperty("provenance"));
+        ValidateOptionalPreview(report.GetProperty("preview"));
+        ValidateOptionalArray(
+            report.GetProperty("assets"),
+            ReviewTextureContract.MaximumPageLimit,
+            asset =>
+            {
+                RequireExactObject(asset, AssetProperties);
+                RequiredBoolean(asset, "available");
+            });
+        ValidateOptionalPage(report.GetProperty("page"));
+        ValidateOptionalCoverage(report.GetProperty("coverage"));
+        ValidateRequiredArray(
+            report.GetProperty("problems"),
+            ReviewTextureContract.MaximumProblemCount,
+            problem => RequireExactObject(problem, ProblemProperties));
+    }
+
+    private static void ValidateOptionalMetadata(JsonElement metadata)
+    {
+        if (metadata.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(metadata, MetadataProperties);
+        RequiredInt32(metadata, "width");
+        RequiredInt32(metadata, "height");
+        RequiredInt32(metadata, "levelCount");
+        RequiredBoolean(metadata, "hasMipMaps");
+    }
+
+    private static void ValidateOptionalProvenance(JsonElement provenance)
+    {
+        if (provenance.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(provenance, ProvenanceProperties);
+        RequiredBoolean(provenance, "detailedProviderAvailable");
+    }
+
+    private static void ValidateOptionalPreview(JsonElement preview)
+    {
+        if (preview.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(preview, PreviewProperties);
+        RequiredInt32(preview, "width");
+        RequiredInt32(preview, "height");
+        RequiredInt64(preview, "encodedBytes");
+    }
+
+    private static void ValidateOptionalPage(JsonElement page)
+    {
+        if (page.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(page, PageProperties);
+        RequiredInt32(page, "offset");
+        RequiredInt32(page, "limit");
+        RequiredInt32(page, "returned");
+        RequiredInt32(page, "total");
+        JsonElement nextOffset = page.GetProperty("nextOffset");
+        if (nextOffset.ValueKind != JsonValueKind.Null
+            && (nextOffset.ValueKind != JsonValueKind.Number
+                || !nextOffset.TryGetInt32(out _)))
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid bounded page member.");
+        }
+    }
+
+    private static void ValidateOptionalCoverage(JsonElement coverage)
+    {
+        if (coverage.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        RequireExactObject(coverage, CoverageProperties);
+        int candidates = RequiredInt32(coverage, "candidates");
+        int classified = RequiredInt32(coverage, "classified");
+        int textures = RequiredInt32(coverage, "textures");
+        int nonTextures = RequiredInt32(coverage, "nonTextures");
+        int gaps = RequiredInt32(coverage, "gaps");
+        bool complete = RequiredBoolean(coverage, "complete");
+        bool calculatedComplete = (long)candidates == (long)classified + gaps
+            && (long)classified == (long)textures + nonTextures
+            && gaps == 0;
+        if (complete != calculatedComplete)
+        {
+            throw new InvalidDataException(
+                "The review-texture coverage completion flag is inconsistent.");
+        }
+    }
+
+    private static int RequiredInt32(JsonElement value, string propertyName)
+    {
+        JsonElement property = value.GetProperty(propertyName);
+        if (property.ValueKind != JsonValueKind.Number
+            || !property.TryGetInt32(out int result))
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid bounded integer member.");
+        }
+
+        return result;
+    }
+
+    private static long RequiredInt64(JsonElement value, string propertyName)
+    {
+        JsonElement property = value.GetProperty(propertyName);
+        if (property.ValueKind != JsonValueKind.Number
+            || !property.TryGetInt64(out long result))
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid bounded integer member.");
+        }
+
+        return result;
+    }
+
+    private static bool RequiredBoolean(JsonElement value, string propertyName)
+    {
+        JsonElement property = value.GetProperty(propertyName);
+        if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid Boolean member.");
+        }
+
+        return property.GetBoolean();
+    }
+
+    private static void ValidateOptionalArray(
+        JsonElement value,
+        int maximumCount,
+        Action<JsonElement> validateItem)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+
+        ValidateRequiredArray(value, maximumCount, validateItem);
+    }
+
+    private static void ValidateRequiredArray(
+        JsonElement value,
+        int maximumCount,
+        Action<JsonElement> validateItem)
+    {
+        if (value.ValueKind != JsonValueKind.Array
+            || value.GetArrayLength() > maximumCount)
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid bounded array shape.");
+        }
+
+        foreach (JsonElement item in value.EnumerateArray())
+        {
+            validateItem(item);
+        }
+    }
+
+    private static void RequireExactObject(
+        JsonElement value,
+        HashSet<string> requiredProperties)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException(
+                "The review-texture response has an invalid JSON object shape.");
+        }
+
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonProperty property in value.EnumerateObject())
+        {
+            if (!requiredProperties.Contains(property.Name)
+                || !observed.Add(property.Name))
+            {
+                throw new InvalidDataException(
+                    "The review-texture response has an unknown or duplicate JSON member.");
+            }
+        }
+
+        if (observed.Count != requiredProperties.Count)
+        {
+            throw new InvalidDataException(
+                "The review-texture response is missing a required JSON member.");
+        }
+    }
+
+    private static HashSet<string> PropertySet(params string[] names) =>
+        new(names, StringComparer.Ordinal);
 
     private static LiveLabCommandResult Failure(
         string operation,
@@ -548,6 +851,7 @@ internal static class ProjectReviewTextureService
             or InvalidOperationException
             or JsonException
             or NotSupportedException
+            or OverflowException
             or PathTooLongException
             or SecurityException
             or UnauthorizedAccessException;

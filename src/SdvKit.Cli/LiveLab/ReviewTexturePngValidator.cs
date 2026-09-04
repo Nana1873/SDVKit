@@ -233,8 +233,9 @@ internal static class ReviewTexturePngValidator
         int stride = checked(width * BytesPerPixel);
         int filteredLength = checked((stride + 1) * height);
         var filtered = new byte[filteredLength];
+        using (var exactInput = new NoReadAheadStream(compressed))
         using (var inflater = new ZLibStream(
-            compressed,
+            exactInput,
             CompressionMode.Decompress,
             leaveOpen: true))
         {
@@ -242,6 +243,10 @@ internal static class ReviewTexturePngValidator
             {
                 return false;
             }
+        }
+        if (compressed.Position != compressed.Length)
+        {
+            return false;
         }
 
         var decoded = new byte[checked(stride * height)];
@@ -363,5 +368,46 @@ internal static class ReviewTexturePngValidator
         }
 
         return crc;
+    }
+
+    private sealed class NoReadAheadStream(Stream inner) : Stream
+    {
+        private readonly Stream _inner = inner
+            ?? throw new ArgumentNullException(nameof(inner));
+
+        public override bool CanRead => _inner.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            _inner.Read(buffer, offset, Math.Min(count, 1));
+
+        public override int Read(Span<byte> buffer) =>
+            _inner.Read(buffer[..Math.Min(buffer.Length, 1)]);
+
+        public override int ReadByte() => _inner.ReadByte();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
     }
 }

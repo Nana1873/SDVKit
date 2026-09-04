@@ -93,22 +93,30 @@ internal static class ReviewTextureContract
         if (string.IsNullOrWhiteSpace(assetName)
             || assetName.Length > MaximumAssetLength
             || assetName.Any(char.IsControl)
+            || !ReviewTransportText.IsWellFormedUtf16(assetName)
+            || !string.Equals(assetName, assetName.Trim(), StringComparison.Ordinal)
             || assetName.Contains('\\')
+            || Path.IsPathFullyQualified(assetName)
             || assetName.StartsWith('/')
-            || assetName.EndsWith('/'))
+            || assetName.EndsWith('/')
+            || assetName.EndsWith(".xnb", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
         return assetName
             .Split('/')
-            .All(segment => segment.Length > 0 && segment is not "." and not "..");
+            .All(segment =>
+                segment.Length > 0
+                && segment is not "." and not ".."
+                && StableIdentityNormalizer.Normalize(segment).Length > 0);
     }
 
     public static bool IsBoundedText(string? value, int maximumLength) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
-        && !value.Any(char.IsControl);
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
 }
 
 internal sealed record ReviewTextureQuery(

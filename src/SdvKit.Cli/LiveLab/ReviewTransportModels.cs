@@ -71,3 +71,35 @@ internal static class ReviewTransportToken
         return true;
     }
 }
+
+internal static class ReviewTransportText
+{
+    public static bool IsWellFormedUtf16(string? value)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            char character = value[index];
+            if (char.IsHighSurrogate(character))
+            {
+                if (index + 1 >= value.Length
+                    || !char.IsLowSurrogate(value[index + 1]))
+                {
+                    return false;
+                }
+
+                index++;
+            }
+            else if (char.IsLowSurrogate(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

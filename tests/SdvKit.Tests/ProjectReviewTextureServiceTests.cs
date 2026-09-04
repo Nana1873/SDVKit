@@ -1,4 +1,7 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 
@@ -6,6 +9,11 @@ namespace SdvKit.Tests;
 
 public sealed class ProjectReviewTextureServiceTests
 {
+    private static readonly JsonSerializerOptions WireJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     [Fact]
     public void BuildCommandBindsAndEncodesTheExactAsset()
     {
@@ -46,6 +54,123 @@ public sealed class ProjectReviewTextureServiceTests
         ReviewTextureReport report = Assert.IsType<ReviewTextureReport>(result.Report);
         Assert.Equal("blocked", report.State);
         Assert.Equal("textureRequestInvalid", Assert.Single(report.Problems).Code);
+    }
+
+    [Theory]
+    [InlineData("../LooseSprites/Cursors")]
+    [InlineData("LooseSprites/Cursors.xnb")]
+    [InlineData("---/Cursors")]
+    [InlineData(" LooseSprites/Cursors")]
+    public void UnsafeAssetShapeFailsBeforeReviewTransport(string asset)
+    {
+        var query = new ReviewTextureQuery(
+            ReviewTextureContract.GetOperation,
+            asset,
+            0,
+            1);
+
+        LiveLabCommandResult result = ProjectReviewTextureService.Execute(
+            query,
+            "not-used");
+
+        Assert.Equal(3, result.ExitCode);
+        ReviewTextureReport report = Assert.IsType<ReviewTextureReport>(result.Report);
+        Assert.Equal("textureAssetInvalid", Assert.Single(report.Problems).Code);
+        Assert.Throws<ArgumentException>(() =>
+            ProjectReviewTextureService.BuildCommand(
+                "0123456789abcdef0123456789abcdef",
+                query));
+    }
+
+    [Fact]
+    public void MalformedUtf16FailsBeforeReviewTransport()
+    {
+        var query = new ReviewTextureQuery(
+            ReviewTextureContract.GetOperation,
+            "LooseSprites/\uD800",
+            0,
+            1);
+
+        LiveLabCommandResult result = ProjectReviewTextureService.Execute(
+            query,
+            "not-used");
+
+        Assert.Equal(3, result.ExitCode);
+        ReviewTextureReport report = Assert.IsType<ReviewTextureReport>(result.Report);
+        Assert.Equal("textureAssetInvalid", Assert.Single(report.Problems).Code);
+        Assert.Throws<ArgumentException>(() =>
+            ProjectReviewTextureService.BuildCommand(
+                "0123456789abcdef0123456789abcdef",
+                query));
+    }
+
+    [Fact]
+    public void DeserializeResponseRequiresTheExactRecursiveWireShape()
+    {
+        const string requestId = "0123456789abcdef0123456789abcdef";
+        var query = new ReviewTextureQuery(
+            ReviewTextureContract.AssetsOperation,
+            null,
+            1,
+            1);
+        byte[] valid = SerializeWire(AssetsEnvelope(requestId, query));
+
+        Assert.NotNull(ProjectReviewTextureService.DeserializeResponse(valid));
+
+        JsonObject missingPageMember = ParseWire(valid);
+        Assert.True(missingPageMember["report"]!["page"]!.AsObject().Remove("offset"));
+        AssertInvalidWire(missingPageMember);
+
+        JsonObject unknownNestedMember = ParseWire(valid);
+        unknownNestedMember["report"]!["assets"]![0]!["unknown"] = 1;
+        AssertInvalidWire(unknownNestedMember);
+
+        JsonObject wrongCoverageFlag = ParseWire(valid);
+        wrongCoverageFlag["report"]!["coverage"]!["complete"] = false;
+        AssertInvalidWire(wrongCoverageFlag);
+
+        JsonObject oversizedCoverageInteger = ParseWire(valid);
+        oversizedCoverageInteger["report"]!["coverage"]!["candidates"] =
+            (long)int.MaxValue + 1;
+        AssertInvalidWire(oversizedCoverageInteger);
+
+        var previewQuery = new ReviewTextureQuery(
+            ReviewTextureContract.PreviewOperation,
+            "LooseSprites/Cursors",
+            0,
+            1);
+        byte[] previewWire = SerializeWire(Envelope(
+            requestId,
+            previewQuery,
+            new ReviewTexturePreviewReport(
+                ReviewTextureContract.PreviewFileName(requestId),
+                64,
+                32,
+                128,
+                new string('0', 64))));
+        JsonObject missingMetadataMember = ParseWire(previewWire);
+        Assert.True(missingMetadataMember["report"]!["metadata"]!
+            .AsObject()
+            .Remove("runtimeFormat"));
+        AssertInvalidWire(missingMetadataMember);
+
+        JsonObject unknownProvenanceMember = ParseWire(previewWire);
+        unknownProvenanceMember["report"]!["provenance"]!["provider"] = "unknown";
+        AssertInvalidWire(unknownProvenanceMember);
+
+        JsonObject missingPreviewMember = ParseWire(previewWire);
+        Assert.True(missingPreviewMember["report"]!["preview"]!
+            .AsObject()
+            .Remove("encodedBytes"));
+        AssertInvalidWire(missingPreviewMember);
+
+        string duplicateMember = Encoding.UTF8.GetString(valid).Replace(
+            "{\"schemaVersion\":1,",
+            "{\"schemaVersion\":1,\"schemaVersion\":1,",
+            StringComparison.Ordinal);
+        Assert.Throws<InvalidDataException>(() =>
+            ProjectReviewTextureService.DeserializeResponse(
+                Encoding.UTF8.GetBytes(duplicateMember)));
     }
 
     [Fact]
@@ -273,6 +398,44 @@ public sealed class ProjectReviewTextureServiceTests
     }
 
     [Fact]
+    public void AssetsResponseRejectsNormalizedIdentityCollisions()
+    {
+        using TemporaryDirectory temporary = new();
+        string requestId = Guid.NewGuid().ToString("N");
+        var query = new ReviewTextureQuery(
+            ReviewTextureContract.AssetsOperation,
+            null,
+            0,
+            2);
+        ReviewTextureResponseEnvelope envelope = AssetsEnvelope(requestId, query);
+        envelope = envelope with
+        {
+            Report = envelope.Report with
+            {
+                Assets =
+                [
+                    new ReviewTextureAssetReport(
+                        "LooseSprites/A-B",
+                        ReviewTextureContract.CanonicalGameContentSource,
+                        true),
+                    new ReviewTextureAssetReport(
+                        "LooseSprites/A_B",
+                        ReviewTextureContract.CanonicalGameContentSource,
+                        true),
+                ],
+                Page = new ReviewTexturePage(0, 2, 2, 2, null),
+                Coverage = new ReviewTextureCoverageReport(2, 2, 2, 0, 0),
+            },
+        };
+
+        Assert.False(ProjectReviewTextureService.MatchesRequest(
+            envelope,
+            query,
+            requestId,
+            temporary.Path));
+    }
+
+    [Fact]
     public void StructurallyIncompletePngIsRejectedEvenWhenDimensionsAndHashMatch()
     {
         using TemporaryDirectory temporary = new();
@@ -325,6 +488,23 @@ public sealed class ProjectReviewTextureServiceTests
         Assert.Equal(
             Convert.ToHexString(SHA256.HashData(pixels)).ToLowerInvariant(),
             info.PixelSha256);
+    }
+
+    [Fact]
+    public void PngValidatorRejectsTrailingBytesInsideImageData()
+    {
+        byte[] png = PngTestData.CreateRgba8(
+            2,
+            1,
+            trailingCompressedBytes: [0x00, 0xff]);
+        using var stream = new MemoryStream(png);
+
+        Assert.False(ReviewTexturePngValidator.TryValidateRgba8(
+            stream,
+            ReviewTextureContract.MaximumPreviewBytes,
+            ReviewTextureContract.MaximumPreviewDimension,
+            ReviewTextureContract.MaximumPreviewPixels,
+            out _));
     }
 
     [Fact]
@@ -411,4 +591,15 @@ public sealed class ProjectReviewTextureServiceTests
                 new ReviewTexturePage(1, 1, 1, 2, null),
                 new ReviewTextureCoverageReport(3, 3, 2, 1, 0),
                 []));
+
+    private static byte[] SerializeWire(ReviewTextureResponseEnvelope envelope) =>
+        JsonSerializer.SerializeToUtf8Bytes(envelope, WireJsonOptions);
+
+    private static JsonObject ParseWire(byte[] bytes) =>
+        JsonNode.Parse(Encoding.UTF8.GetString(bytes))!.AsObject();
+
+    private static void AssertInvalidWire(JsonNode node) =>
+        Assert.Throws<InvalidDataException>(() =>
+            ProjectReviewTextureService.DeserializeResponse(
+                Encoding.UTF8.GetBytes(node.ToJsonString())));
 }

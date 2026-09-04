@@ -122,6 +122,54 @@ public sealed class CliTextureCommandTests
     }
 
     [Theory]
+    [InlineData("--json")]
+    [InlineData("--topology")]
+    public void EndOfOptionsAllowsOptionLikeAssetNames(string asset)
+    {
+        ReviewTextureQuery? received = null;
+        ProjectReviewTextureCommandRunner runner = (query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(
+                3,
+                new ReviewTextureReport(
+                    1,
+                    "blocked",
+                    query.Operation,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    [new ReviewTextureProblem("expected", "Expected.")]));
+        };
+
+        (int exitCode, _, string error) = Run(
+            runner,
+            "project",
+            "review",
+            "texture",
+            "get",
+            "--topology",
+            "single",
+            "--json",
+            "--",
+            asset);
+
+        Assert.Equal(3, exitCode);
+        Assert.Equal(string.Empty, error);
+        Assert.Equal(
+            new ReviewTextureQuery(ReviewTextureContract.GetOperation, asset, 0, 1),
+            received);
+    }
+
+    [Theory]
     [InlineData("project", "review", "texture")]
     [InlineData("project", "review", "texture", "unknown", "--json")]
     [InlineData("project", "review", "texture", "assets")]
@@ -133,6 +181,9 @@ public sealed class CliTextureCommandTests
     [InlineData("project", "review", "texture", "get", "--json")]
     [InlineData("project", "review", "texture", "preview", "LooseSprites/Cursors", "--limit", "1", "--json")]
     [InlineData("project", "review", "texture", "get", "LooseSprites/Cursors", "--json", "--json")]
+    [InlineData("project", "review", "texture", "get", "--unknown", "--json")]
+    [InlineData("project", "review", "texture", "get", "../LooseSprites/Cursors", "--json")]
+    [InlineData("project", "review", "texture", "get", "LooseSprites/Cursors.xnb", "--json")]
     public void SyntaxErrorsUseTheExactTextureUsage(params string[] arguments)
     {
         ProjectReviewTextureCommandRunner runner = (_, _) =>
@@ -174,6 +225,7 @@ public sealed class CliTextureCommandTests
         Assert.Contains("texture get <asset>", output, StringComparison.Ordinal);
         Assert.Contains("texture preview <asset>", output, StringComparison.Ordinal);
         Assert.Contains("active owned single review", output, StringComparison.Ordinal);
+        Assert.Contains("before '--'", output, StringComparison.Ordinal);
         Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
     }
 

@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using SdvKit.Cli.LiveLab;
 #if SDVKIT_GAME_AVAILABLE
 using Microsoft.Xna.Framework;
@@ -35,20 +34,25 @@ internal interface IReviewTextureSource
 
     IReadOnlyList<string> DiscoverCanonicalAssetNames();
 
-    bool TryClassifyTexture(string assetName, out bool isTexture);
+    bool TryClassifyTexture(
+        string assetName,
+        long maximumInputBytes,
+        out bool isTexture,
+        out long inputBytes);
 
     IReviewTextureAsset LoadTexture(string assetName);
 }
 
 internal static class ReviewTextureFileInventory
 {
-    private static readonly Regex LocaleSuffix = new(
-        @"\.[a-z]{2}-[A-Z]{2}$",
-        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    internal const int MaximumVisitedEntries =
+        ReviewTextureContract.MaximumDiscoveredAssets * 4;
 
     public static IReadOnlyList<string> Discover(
         string contentRoot,
-        int maximumCandidates = ReviewTextureContract.MaximumDiscoveredAssets)
+        Func<string, bool> isLocalizedAsset,
+        int maximumCandidates = ReviewTextureContract.MaximumDiscoveredAssets,
+        int maximumVisitedEntries = MaximumVisitedEntries)
     {
         if (string.IsNullOrEmpty(contentRoot))
         {
@@ -63,17 +67,34 @@ internal static class ReviewTextureFileInventory
                 nameof(maximumCandidates),
                 $"The discovery limit must be between 1 and {ReviewTextureContract.MaximumDiscoveredAssets}.");
         }
+        ArgumentNullException.ThrowIfNull(isLocalizedAsset);
+#if NET8_0_OR_GREATER
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumVisitedEntries, 1);
+#else
+        if (maximumVisitedEntries < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumVisitedEntries));
+        }
+#endif
+
         string absoluteContentRoot = Path.GetFullPath(contentRoot);
         RefuseReparseDirectory(absoluteContentRoot);
 
         var names = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<string>();
+        var visitedEntries = 0;
         pending.Push(absoluteContentRoot);
         while (pending.Count > 0)
         {
             string directory = pending.Pop();
             foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
             {
+                visitedEntries++;
+                if (visitedEntries > maximumVisitedEntries)
+                {
+                    throw new ReviewTextureInventoryTooLargeException();
+                }
+
                 FileAttributes attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {
@@ -99,7 +120,7 @@ internal static class ReviewTextureFileInventory
                     .GetRelativePath(absoluteContentRoot, entry)
                     .Replace('\\', '/');
                 string assetName = relative[..^Path.GetExtension(relative).Length];
-                if (!LocaleSuffix.IsMatch(assetName)
+                if (!isLocalizedAsset(assetName)
                     && names.Add(assetName)
                     && names.Count > maximumCandidates)
                 {
@@ -497,6 +518,7 @@ internal static class ReviewTextureOperation
             .GroupBy(StableIdentityNormalizer.Normalize, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var classified = new List<Candidate>(ordered.Length);
+        long remainingInputBytes = ReviewTextureXnbClassifier.MaximumTotalInputBytes;
         foreach (string assetName in ordered)
         {
             string normalized = StableIdentityNormalizer.Normalize(assetName);
@@ -507,17 +529,41 @@ internal static class ReviewTextureOperation
                 classified.Add(new Candidate(assetName, CandidateKind.Gap));
                 continue;
             }
+            if (remainingInputBytes == 0)
+            {
+                classified.Add(new Candidate(assetName, CandidateKind.Gap));
+                continue;
+            }
 
             bool probed;
             bool isTexture;
+            long inputBytes;
             try
             {
-                probed = source.TryClassifyTexture(assetName, out isTexture);
+                probed = source.TryClassifyTexture(
+                    assetName,
+                    remainingInputBytes,
+                    out isTexture,
+                    out inputBytes);
             }
             catch (Exception exception) when (IsControlledFailure(exception))
             {
                 probed = false;
                 isTexture = false;
+                inputBytes = remainingInputBytes;
+            }
+
+            if ((probed && inputBytes <= 0)
+                || inputBytes < 0
+                || inputBytes > remainingInputBytes)
+            {
+                probed = false;
+                isTexture = false;
+                remainingInputBytes = 0;
+            }
+            else
+            {
+                remainingInputBytes -= inputBytes;
             }
 
             classified.Add(new Candidate(
@@ -587,6 +633,14 @@ internal static class ReviewTextureOperation
         string requestId,
         out ReviewTextureProblem? problem)
     {
+        if (!string.Equals(texture.RuntimeFormat, "Color", StringComparison.Ordinal))
+        {
+            problem = Problem(
+                "texturePreviewFormatUnsupported",
+                "Preview is limited to final textures with the RGBA8 Color runtime format.");
+            return null;
+        }
+
         long sourcePixels = (long)texture.Width * texture.Height;
         if (texture.Width > ReviewTextureContract.MaximumSourceDimension
             || texture.Height > ReviewTextureContract.MaximumSourceDimension
@@ -743,13 +797,11 @@ internal static class ReviewTextureOperation
         bool needsAsset = query.Operation is ReviewTextureContract.GetOperation
             or ReviewTextureContract.PreviewOperation;
         if (needsAsset
-            && (string.IsNullOrWhiteSpace(query.Asset)
-                || query.Asset.Length > ReviewTextureContract.MaximumAssetLength
-                || query.Asset.Any(char.IsControl)))
+            && !ReviewTextureContract.IsCanonicalAssetName(query.Asset))
         {
             return Problem(
                 "textureAssetInvalid",
-                "A bounded non-empty texture asset name is required.");
+                "A canonical bounded texture asset name is required.");
         }
 
         if (!needsAsset && query.Asset is not null)
@@ -802,7 +854,7 @@ internal static class ReviewTextureOperation
     private static ReviewTextureProblem InventoryTooLargeProblem() =>
         Problem(
             "textureInventoryTooLarge",
-            $"The installed canonical content inventory exceeds the bounded maximum of {ReviewTextureContract.MaximumDiscoveredAssets} candidates.");
+            $"The installed canonical content inventory exceeds its bounded scan limits, including at most {ReviewTextureContract.MaximumDiscoveredAssets} candidates.");
 
     private static ReviewTextureProblem Problem(string code, string message) =>
         new(code, message);
@@ -825,6 +877,7 @@ internal sealed class StardewReviewTextureSource : IReviewTextureSource
 {
     private readonly IModHelper _helper;
     private readonly string _contentRoot;
+    private ReviewTextureXnbClassifier? _classifier;
 
     public StardewReviewTextureSource(IModHelper helper)
     {
@@ -842,22 +895,35 @@ internal sealed class StardewReviewTextureSource : IReviewTextureSource
         ?? string.Empty;
 
     public IReadOnlyList<string> DiscoverCanonicalAssetNames() =>
-        ReviewTextureFileInventory.Discover(_contentRoot);
+        ReviewTextureFileInventory.Discover(
+            _contentRoot,
+            assetName =>
+                _helper.GameContent.ParseAssetName(assetName).LocaleCode is not null);
 
-    public bool TryClassifyTexture(string assetName, out bool isTexture)
+    public bool TryClassifyTexture(
+        string assetName,
+        long maximumInputBytes,
+        out bool isTexture,
+        out long inputBytes)
     {
+        isTexture = false;
+        inputBytes = maximumInputBytes;
         try
         {
-            IAssetName parsed = _helper.GameContent.ParseAssetName(assetName);
-            isTexture = _helper.GameContent.DoesAssetExist<Texture2D>(parsed);
-            return true;
+            ReviewTextureXnbClassifier classifier = _classifier ??=
+                new ReviewTextureXnbClassifier(
+                    _contentRoot,
+                    new ReviewTextureLzxReflectionDecoder(typeof(Texture2D).Assembly));
+            return classifier.TryClassify(
+                assetName,
+                maximumInputBytes,
+                out isTexture,
+                out inputBytes);
         }
-        catch (Exception exception) when (exception is not (
-            OutOfMemoryException
-            or StackOverflowException
-            or AccessViolationException))
+        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
         {
             isTexture = false;
+            inputBytes = maximumInputBytes;
             return false;
         }
     }
@@ -871,10 +937,7 @@ internal sealed class StardewReviewTextureSource : IReviewTextureSource
                     "The selected final texture is unavailable.");
             return new StardewReviewTextureAsset(texture);
         }
-        catch (Exception exception) when (exception is not (
-            OutOfMemoryException
-            or StackOverflowException
-            or AccessViolationException))
+        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
         {
             throw new InvalidDataException(
                 "The selected final texture could not be loaded.",
@@ -899,6 +962,11 @@ internal sealed class StardewReviewTextureAsset(Texture2D texture) : IReviewText
     public void WriteNearestNeighborPng(Stream output, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(output);
+        if (_texture.Format != SurfaceFormat.Color)
+        {
+            throw new NotSupportedException(
+                "The diagnostic texture preview requires the RGBA8 Color runtime format.");
+        }
         if (width <= 0
             || height <= 0
             || width > ReviewTextureContract.MaximumPreviewDimension
@@ -1012,7 +1080,7 @@ internal static class ReviewTextureCommand
                     runtimePath,
                     requestId!);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
             {
                 report = ReviewTextureOperation.Failure(
                     query!.Operation,
@@ -1034,7 +1102,7 @@ internal static class ReviewTextureCommand
                 $"SDVKit review-texture completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
         {
             if (report.Preview is not null)
             {

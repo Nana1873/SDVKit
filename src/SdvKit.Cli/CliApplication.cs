@@ -1059,16 +1059,23 @@ public static class CliApplication
         int limit = operation == ReviewTextureContract.AssetsOperation
             ? ReviewTextureContract.DefaultPageLimit
             : 1;
+        var optionsEnded = false;
         for (var index = 4; index < arguments.Count; index++)
         {
             string argument = arguments[index];
-            if (string.Equals(argument, "--json", StringComparison.Ordinal))
+            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
+            {
+                optionsEnded = true;
+                continue;
+            }
+
+            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
             {
                 jsonOptionCount++;
                 continue;
             }
 
-            if (argument is "--topology" or "--offset" or "--limit")
+            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
             {
                 if (index + 1 >= arguments.Count
                     || arguments[index + 1].StartsWith('-'))
@@ -1110,6 +1117,11 @@ public static class CliApplication
                 continue;
             }
 
+            if (!optionsEnded && argument.StartsWith('-'))
+            {
+                return false;
+            }
+
             operands.Add(argument);
         }
 
@@ -1126,6 +1138,8 @@ public static class CliApplication
             || limit > ReviewTextureContract.MaximumPageLimit
             || operands.Count != expectedOperands
             || operands.Any(string.IsNullOrWhiteSpace)
+            || (operands.Count == 1
+                && !ReviewTextureContract.IsCanonicalAssetName(operands[0]))
             || (operation != ReviewTextureContract.AssetsOperation
                 && (offsetOptionCount > 0 || limitOptionCount > 0)))
         {
@@ -1676,6 +1690,8 @@ public static class CliApplication
         output.WriteLine(ReviewTexturePreviewUsage.TrimStart());
         output.WriteLine(
             "Queries require an active owned single review. Inventory is canonical and measured; exact metadata and one bounded diagnostic PNG reflect the final SMAPI content pipeline without claiming per-mod provenance.");
+        output.WriteLine(
+            "For an asset operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)

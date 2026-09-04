@@ -17,13 +17,20 @@ public sealed class ReviewTextureCommandTests
         File.WriteAllText(Path.Combine(maps, "Farm.xnb"), "candidate");
         File.WriteAllText(Path.Combine(maps, "Farm.de-DE.xnb"), "localized");
         File.WriteAllText(Path.Combine(maps, "Farm.FR-fr.XNB"), "localized");
+        File.WriteAllText(Path.Combine(maps, "Area.no.xnb"), "candidate");
         File.WriteAllText(Path.Combine(data, "Buildings.xnb"), "candidate");
         File.WriteAllText(Path.Combine(data, "notes.txt"), "ignored");
 
         IReadOnlyList<string> assets = ReviewTextureFileInventory.Discover(
-            temporary.Path);
+            temporary.Path,
+            assetName => assetName.EndsWith(
+                ".de-DE",
+                StringComparison.OrdinalIgnoreCase)
+                || assetName.EndsWith(
+                    ".fr-FR",
+                    StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(["Data/Buildings", "Maps/Farm"], assets);
+        Assert.Equal(["Data/Buildings", "Maps/Area.no", "Maps/Farm"], assets);
     }
 
     [Fact]
@@ -35,7 +42,26 @@ public sealed class ReviewTextureCommandTests
         File.WriteAllText(Path.Combine(temporary.Path, "Three.xnb"), "candidate");
 
         Assert.Throws<ReviewTextureInventoryTooLargeException>(() =>
-            ReviewTextureFileInventory.Discover(temporary.Path, maximumCandidates: 2));
+            ReviewTextureFileInventory.Discover(
+                temporary.Path,
+                _ => false,
+                maximumCandidates: 2));
+    }
+
+    [Fact]
+    public void FileInventoryBoundsDirectoriesAndNonXnbEntries()
+    {
+        using TemporaryDirectory temporary = new();
+        Directory.CreateDirectory(Path.Combine(temporary.Path, "One"));
+        File.WriteAllText(Path.Combine(temporary.Path, "one.txt"), "ignored");
+        File.WriteAllText(Path.Combine(temporary.Path, "two.json"), "ignored");
+        File.WriteAllText(Path.Combine(temporary.Path, "three.png"), "ignored");
+
+        Assert.Throws<ReviewTextureInventoryTooLargeException>(() =>
+            ReviewTextureFileInventory.Discover(
+                temporary.Path,
+                _ => false,
+                maximumVisitedEntries: 3));
     }
 
     [Fact]
@@ -397,6 +423,91 @@ public sealed class ReviewTextureCommandTests
     }
 
     [Fact]
+    public void AssetsClassificationHonorsTheTotalInputBudget()
+    {
+        using TemporaryDirectory temporary = new();
+        long perAssetInput = (ReviewTextureXnbClassifier.MaximumTotalInputBytes / 2) + 1;
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Alpha"] = new(16, 16, "Color", 1),
+                ["LooseSprites/Beta"] = new(16, 16, "Color", 1),
+            },
+            classificationInputBytes: perAssetInput);
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.AssetsOperation,
+                null,
+                0,
+                50));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(new ReviewTextureCoverageReport(2, 1, 1, 0, 1), report.Coverage);
+        Assert.Equal("LooseSprites/Alpha", Assert.Single(report.Assets!).AssetName);
+        Assert.Equal(2, source.ClassificationCount);
+    }
+
+    [Fact]
+    public void ClassificationFailureConservativelyConsumesTheRemainingInputBudget()
+    {
+        using TemporaryDirectory temporary = new();
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Alpha"] = new(16, 16, "Color", 1),
+                ["LooseSprites/Beta"] = new(16, 16, "Color", 1),
+            },
+            classificationFailures: new HashSet<string>(StringComparer.Ordinal)
+            {
+                "LooseSprites/Alpha",
+            });
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.AssetsOperation,
+                null,
+                0,
+                50));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(new ReviewTextureCoverageReport(2, 0, 0, 0, 2), report.Coverage);
+        Assert.Empty(report.Assets!);
+        Assert.Equal(1, source.ClassificationCount);
+    }
+
+    [Fact]
+    public void SuccessfulClassificationMustReportPositiveInputConsumption()
+    {
+        using TemporaryDirectory temporary = new();
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Alpha"] = new(16, 16, "Color", 1),
+                ["LooseSprites/Beta"] = new(16, 16, "Color", 1),
+            },
+            classificationInputBytes: 0);
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.AssetsOperation,
+                null,
+                0,
+                50));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(new ReviewTextureCoverageReport(2, 0, 0, 0, 2), report.Coverage);
+        Assert.Empty(report.Assets!);
+        Assert.Equal(1, source.ClassificationCount);
+    }
+
+    [Fact]
     public void NearestNeighborSamplingUsesTheExpectedSourcePixels()
     {
         int[] source = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -440,6 +551,58 @@ public sealed class ReviewTextureCommandTests
         Assert.Equal(expectedProblem, Assert.Single(report.Problems).Code);
     }
 
+    [Theory]
+    [InlineData("../LooseSprites/Cursors")]
+    [InlineData("LooseSprites/Cursors.xnb")]
+    [InlineData("---/Cursors")]
+    [InlineData("LooseSprites/Cursors ")]
+    public void UnsafeAssetShapeIsRejectedBeforeInventory(string asset)
+    {
+        using TemporaryDirectory temporary = new();
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Cursors"] = new(16, 16, "Color", 1),
+            });
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.GetOperation,
+                asset,
+                0,
+                1));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal("textureAssetInvalid", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, source.ClassificationCount);
+    }
+
+    [Fact]
+    public void MalformedUtf16AssetIsRejectedBeforeInventory()
+    {
+        using TemporaryDirectory temporary = new();
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Cursors"] = new(16, 16, "Color", 1),
+            });
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.GetOperation,
+                "LooseSprites/\uD800",
+                0,
+                1));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal("textureAssetInvalid", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, source.ClassificationCount);
+    }
+
     [Fact]
     public void InvalidMetadataFailsWithoutPreviewing()
     {
@@ -462,6 +625,33 @@ public sealed class ReviewTextureCommandTests
 
         Assert.Equal("blocked", report.State);
         Assert.Equal("textureMetadataInvalid", Assert.Single(report.Problems).Code);
+        Assert.Equal(0, texture.WriteCount);
+    }
+
+    [Fact]
+    public void PreviewFailsBeforeReadbackForAnUnsupportedRuntimeFormat()
+    {
+        using TemporaryDirectory temporary = new();
+        var texture = new FakeTexture(16, 16, "Dxt5", 1);
+        var source = new FakeReviewTextureSource(
+            new Dictionary<string, FakeTexture?>
+            {
+                ["LooseSprites/Compressed"] = texture,
+            });
+
+        ReviewTextureReport report = Execute(
+            source,
+            temporary.Path,
+            new ReviewTextureQuery(
+                ReviewTextureContract.PreviewOperation,
+                "LooseSprites/Compressed",
+                0,
+                1));
+
+        Assert.Equal("blocked", report.State);
+        Assert.Equal(
+            "texturePreviewFormatUnsupported",
+            Assert.Single(report.Problems).Code);
         Assert.Equal(0, texture.WriteCount);
     }
 
@@ -522,7 +712,9 @@ public sealed class ReviewTextureCommandTests
 
     private sealed class FakeReviewTextureSource(
         IReadOnlyDictionary<string, FakeTexture?> assets,
-        IReadOnlySet<string>? unclassified = null)
+        IReadOnlySet<string>? unclassified = null,
+        long classificationInputBytes = 1,
+        IReadOnlySet<string>? classificationFailures = null)
         : IReviewTextureSource
     {
         public string GameVersion => "1.6.15";
@@ -534,11 +726,22 @@ public sealed class ReviewTextureCommandTests
 
         public int ClassificationCount { get; private set; }
 
-        public bool TryClassifyTexture(string assetName, out bool isTexture)
+        public bool TryClassifyTexture(
+            string assetName,
+            long maximumInputBytes,
+            out bool isTexture,
+            out long inputBytes)
         {
             ClassificationCount++;
+            if (classificationFailures?.Contains(assetName) == true)
+            {
+                throw new IOException("Synthetic classification failure.");
+            }
+
+            inputBytes = classificationInputBytes;
             isTexture = assets[assetName] is not null;
-            return unclassified?.Contains(assetName) != true;
+            return classificationInputBytes <= maximumInputBytes
+                && unclassified?.Contains(assetName) != true;
         }
 
         public IReviewTextureAsset LoadTexture(string assetName) =>

@@ -11,7 +11,8 @@ internal static class PngTestData
     public static byte[] CreateRgba8(
         int width,
         int height,
-        byte[]? pixels = null)
+        byte[]? pixels = null,
+        byte[]? trailingCompressedBytes = null)
     {
         if (width <= 0 || height <= 0)
         {
@@ -52,7 +53,10 @@ internal static class PngTestData
         header[8] = 8;
         header[9] = 6;
         WriteChunk(png, "IHDR"u8, header);
-        WriteChunk(png, "IDAT"u8, compressed.ToArray());
+        byte[] imageData = trailingCompressedBytes is null
+            ? compressed.ToArray()
+            : [.. compressed.ToArray(), .. trailingCompressedBytes];
+        WriteChunk(png, "IDAT"u8, imageData);
         WriteChunk(png, "IEND"u8, []);
         return png.ToArray();
     }

@@ -1543,6 +1543,146 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
+    public void MapAndTextureQueriesShareTheExactReadyReviewTransport()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                var lines = new List<string>();
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        lines.Add(line);
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        if (tokens[1] == "map")
+                        {
+                            var mapReport = new ReviewMapReport(
+                                ReviewMapContract.SchemaVersion,
+                                "ready",
+                                ReviewMapContract.AssetsOperation,
+                                "1.6.15",
+                                "1.6.15.24356",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                [
+                                    new ReviewMapAssetReport(
+                                        "Maps/Town",
+                                        "xTile.Map",
+                                        "map",
+                                        new ReviewMapSummary(64, 64, 3, 2, 1, 4),
+                                        true,
+                                        null),
+                                ],
+                                null,
+                                null,
+                                null,
+                                new ReviewMapPage(0, 50, 1, 1, null),
+                                new ReviewMapCoverageReport(1, 1, 1, 0, 1, 0, 0, 0),
+                                []);
+                            File.WriteAllText(
+                                ReviewMapContract.ResponsePath(paths.RuntimePath, requestId),
+                                JsonSerializer.Serialize(
+                                    new ReviewMapResponseEnvelope(
+                                        ReviewMapContract.SchemaVersion,
+                                        requestId,
+                                        mapReport),
+                                    LiveLabJsonOptions.CamelCase));
+                            return;
+                        }
+
+                        Assert.Equal("texture", tokens[1]);
+                        var textureReport = new ReviewTextureReport(
+                            ReviewTextureContract.SchemaVersion,
+                            "ready",
+                            ReviewTextureContract.GetOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            "LooseSprites/Cursors",
+                            ReviewTextureContract.CanonicalGameContentSource,
+                            true,
+                            new ReviewTextureMetadataReport(64, 32, "Color", 1, false),
+                            new ReviewTextureProvenanceReport(
+                                ReviewTextureContract.FinalPipelineStage,
+                                false,
+                                ReviewTextureContract.ProvenanceUnavailableDetail),
+                            null,
+                            null,
+                            null,
+                            null,
+                            []);
+                        File.WriteAllText(
+                            ReviewTextureContract.ResponsePath(paths.RuntimePath, requestId),
+                            JsonSerializer.Serialize(
+                                new ReviewTextureResponseEnvelope(
+                                    ReviewTextureContract.SchemaVersion,
+                                    requestId,
+                                    textureReport),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult mapResult = ProjectReviewMapService.Execute(
+                    new ReviewMapQuery(
+                        ReviewMapContract.AssetsOperation,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        ReviewMapContract.DefaultPageLimit),
+                    temporary.Path,
+                    sender);
+                LiveLabCommandResult textureResult = ProjectReviewTextureService.Execute(
+                    new ReviewTextureQuery(
+                        ReviewTextureContract.GetOperation,
+                        "LooseSprites/Cursors",
+                        0,
+                        1),
+                    temporary.Path,
+                    sender);
+
+                Assert.Equal(0, mapResult.ExitCode);
+                Assert.Equal(0, textureResult.ExitCode);
+                Assert.Equal(2, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.Collection(
+                    lines,
+                    line => Assert.StartsWith("sdvkit map ", line, StringComparison.Ordinal),
+                    line => Assert.StartsWith("sdvkit texture ", line, StringComparison.Ordinal));
+                Assert.Empty(Directory.GetFiles(paths.RuntimePath, "review-*.json"));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
     public void TexturePreviewQueryUsesTheExactReviewAndRetainsValidatedEvidence()
     {
         if (!OperatingSystem.IsWindows())
