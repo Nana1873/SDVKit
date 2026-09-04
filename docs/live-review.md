@@ -123,9 +123,11 @@ placeholder when no useful text remains. This is a bounded diagnostic projection
 not complete sanitization of arbitrary mod-authored text. No raw-log/path input,
 automatic upload, or Content Patcher command execution is provided.
 
-To investigate omitted context locally, use review status's selected-role profile
-(`persistentSavesPath` for single, `roles[].stardewDataPath` for network-2), then
-open that profile's `ErrorLogs/SMAPI-latest.txt`. Keep that exact source and the
+To investigate omitted context locally, resolve review status's selected-role
+path against `labRoot`. For single, `persistentSavesPath` ends in `Saves`: take
+its parent directory, then append `ErrorLogs/SMAPI-latest.txt`. For network-2,
+append `ErrorLogs/SMAPI-latest.txt` directly to the resolved
+`roles[].stardewDataPath` for the selected role. Keep that exact source and the
 returned launch/role identity together; do not substitute a normal-player log.
 
 ## Finish or test persistence
