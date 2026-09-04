@@ -1860,6 +1860,127 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AudioQueryReusesTheExactReadyReviewBindingAndRejectsMismatchedResponses(
+        bool mismatchRequestId)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(paths, staging.TargetLaunchState, identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string stateBefore = FileSnapshot(paths.StatePath);
+                string stagingBefore = TreeSnapshot(paths.ModsPath);
+                string? responsePath = null;
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    line =>
+                    {
+                        string[] tokens = line.Split(' ');
+                        string requestId = tokens[2];
+                        responsePath = ReviewAudioContract.ResponsePath(
+                            paths.RuntimePath,
+                            requestId);
+                        var cue = new ReviewAudioCueReport(
+                            "MainTheme",
+                            [],
+                            false,
+                            true,
+                            true,
+                            3,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            []);
+                        var report = new ReviewAudioReport(
+                            ReviewAudioContract.SchemaVersion,
+                            "ready",
+                            ReviewAudioContract.CueOperation,
+                            "1.6.15",
+                            "1.6.15.24356",
+                            "MainTheme",
+                            [cue],
+                            null,
+                            new ReviewAudioCoverageReport(
+                                0,
+                                0,
+                                0,
+                                0,
+                                1,
+                                1,
+                                0,
+                                0,
+                                true,
+                                null,
+                                ReviewAudioContract.BuiltInInventoryStatus),
+                            []);
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(
+                                new ReviewAudioResponseEnvelope(
+                                    ReviewAudioContract.SchemaVersion,
+                                    mismatchRequestId
+                                        ? Guid.NewGuid().ToString("N")
+                                        : requestId,
+                                    report),
+                                LiveLabJsonOptions.CamelCase));
+                    });
+
+                LiveLabCommandResult result = ProjectReviewAudioService.Execute(
+                    new ReviewAudioQuery(
+                        ReviewAudioContract.CueOperation,
+                        "MainTheme",
+                        0,
+                        1),
+                    temporary.Path,
+                    sender);
+
+                ReviewAudioReport report = Assert.IsType<ReviewAudioReport>(result.Report);
+                Assert.Equal(mismatchRequestId ? 3 : 0, result.ExitCode);
+                Assert.Equal(mismatchRequestId ? "blocked" : "ready", report.State);
+                if (mismatchRequestId)
+                {
+                    Assert.Equal(
+                        "audioResponseInvalid",
+                        Assert.Single(report.Problems).Code);
+                }
+                else
+                {
+                    Assert.Equal("MainTheme", Assert.Single(report.Cues!).CueId);
+                }
+                Assert.Equal(1, sender.CallCount);
+                Assert.Equal(identity, sender.Identity);
+                Assert.StartsWith("sdvkit audio ", sender.Line, StringComparison.Ordinal);
+                Assert.DoesNotContain("MainTheme", sender.Line, StringComparison.Ordinal);
+                Assert.NotNull(responsePath);
+                Assert.False(File.Exists(responsePath));
+                Assert.Equal(stateBefore, FileSnapshot(paths.StatePath));
+                Assert.Equal(stagingBefore, TreeSnapshot(paths.ModsPath));
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(
         ProjectModContract.WaitingForGameLaunchPhase,
         false,

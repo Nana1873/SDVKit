@@ -29,6 +29,7 @@
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewScreenshotCommand.cs" Link="AlwaysOn\ReviewScreenshotCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewInputCommand.cs" Link="AlwaysOn\ReviewInputCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewFixtureCommand.cs" Link="AlwaysOn\ReviewFixtureCommand.cs" />
+    <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewAudioCommand.cs" Link="AlwaysOn\ReviewAudioCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewDataCommand.cs" Link="AlwaysOn\ReviewDataCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewMapCommand.cs" Link="AlwaysOn\ReviewMapCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewTextureCommand.cs" Link="AlwaysOn\ReviewTextureCommand.cs" />

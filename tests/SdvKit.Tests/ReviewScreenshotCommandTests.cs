@@ -227,6 +227,7 @@ public sealed class ReviewScreenshotCommandTests
         Assert.Contains("ReviewMapCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewTextureCommand.Handle(", source, StringComparison.Ordinal);
         Assert.Contains("_texture.Format != SurfaceFormat.Color", ReadSource("ReviewTextureCommand.cs"), StringComparison.Ordinal);
+        Assert.Contains("ReviewAudioCommand.Handle(arguments", source, StringComparison.Ordinal);
         Assert.Contains("ReviewCommand.Register(", modEntry, StringComparison.Ordinal);
         Assert.DoesNotContain("ReviewScreenshotCommand.Register(", modEntry, StringComparison.Ordinal);
     }

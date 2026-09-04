@@ -246,6 +246,21 @@ The physical inventory bounds total traversed entries as well as candidate count
 
 Every response and preview target is create-new, regular-file and reparse checked, request-bound, size bounded, and never reused. Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched, or unsafe requests fail closed. There is no bulk preview, raw-pixel/base64 response, crop API, source-XNB export, texture mutation, network-role variant, or texture MCP tool.
 
+### Inspect active audio metadata
+
+An exact active `single` review can inventory the bounded audio identities visible through the final `Data/AudioChanges` and `Data/JukeboxTracks` assets, or probe one exact cue through Stardew's public soundbank API. Both Data assets are reloaded through SMAPI's active content pipeline on every request, so the result reflects the currently loaded review mods without reading their audio files.
+
+```powershell
+sdvkit project review audio cues --offset 0 --limit 100 --topology single --json
+sdvkit project review audio cue "MainTheme" --topology single --json
+```
+
+`cues` returns stable ordinal pages from the union of current `AudioChanges` keys, jukebox track keys, and jukebox alternative-unlock IDs. Source categories and jukebox relationships remain distinct: an `alternativeUnlock` reference means only that hearing the old ID can unlock a jukebox entry, never that the ID is a playable soundbank alias. Each returned identity is probed without playback and reports only current soundbank existence, definition availability and variant counts, plus the bounded category, stream, loop, and reverb fields for a current `AudioChanges` entry. An omitted or empty category is reported as Stardew's effective `Default`; an unspecified file list and an explicitly empty file list remain distinct as `null` and `0` data-variant counts.
+
+The public soundbank API can check an exact cue but cannot enumerate the built-in XACT cue bank. Coverage therefore reports `builtInCueCount: null` and `builtInCueInventoryStatus: "unavailableByPublicApi"`; an exact built-in probe does not expand or imply a complete built-in inventory. `dataDefined` describes the current post-pipeline `AudioChanges` entry, while `sessionResident` describes the current soundbank. Those values intentionally remain independent because Stardew keeps an applied audio override resident for the game session after its Data entry is removed.
+
+Cue IDs are case-sensitive. Unknown, case-mismatched, colliding, malformed, oversized, mismatched key/ID, dummy-bank, disposed-bank, stale-response, and unsafe-response cases fail closed. Results never expose audio file paths, `CustomFields`, raw banks, PCM or wave data; they never play, record, mutate, or bulk-export audio. Pages default to 50 identities, accept limits of 1-100, and reuse the exact owned-review transport and cleanup boundary. Native MCP exposure is intentionally not part of this capability.
+
 AlwaysOn provides two visual review actions. `sdvkit screenshot <label>` requests a full-map PNG through Stardew's native map-screenshot path and remains gated on a loaded world plus Stardew's map-screenshot capability. `sdvkit screenshot viewport <label>` captures the current rendered game viewport, including title and loading screens before `Context.IsWorldReady`, menus, and HUD. For example, transport `sdvkit screenshot viewport menu-open` through `project review command` to inspect a menu without desktop automation. Labels are limited to 1-64 ASCII letters, digits, `-`, or `_`; the fixed result name is `SDVKit-<label>.png`, and an existing target is never overwritten. Success is proven only when the AlwaysOn log reports the full path and that exact PNG exists below the role's isolated `StardewValley/Screenshots` directory; `commandWritten=true` still proves console delivery only.
 
 Automated review mouse input is restricted to SDVKit's existing process-local virtual cursor after exact review ownership and topology-role verification. It fails closed and never uses global `SendInput`, moves the physical pointer, changes window focus, or delegates review mouse input to generic computer-use automation.
