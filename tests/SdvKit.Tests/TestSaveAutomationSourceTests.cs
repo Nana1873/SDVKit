@@ -105,6 +105,37 @@ public sealed class TestSaveAutomationSourceTests
         Assert.True(authorization > passedPhase);
     }
 
+    [Fact]
+    public void MultiplayerReviewSynchronizesFarmhandsBeforeSaveSerialization()
+    {
+        string source = ReadAutomationSource();
+        int durableSave = source.IndexOf(
+            "private void StartDurableSave()",
+            StringComparison.Ordinal);
+        int multiplayerGuard = source.IndexOf(
+            "if (_allowMultiplayer)",
+            durableSave,
+            StringComparison.Ordinal);
+        int activeHost = source.IndexOf(
+            "if (!Context.IsMultiplayer || !Game1.IsServer)",
+            multiplayerGuard,
+            StringComparison.Ordinal);
+        int farmhandSync = source.IndexOf(
+            "Game1.Multiplayer.saveFarmhands();",
+            activeHost,
+            StringComparison.Ordinal);
+        int serialization = source.IndexOf(
+            "_saveIterator = SaveGame.Save()",
+            farmhandSync,
+            StringComparison.Ordinal);
+
+        Assert.True(durableSave >= 0);
+        Assert.True(multiplayerGuard > durableSave);
+        Assert.True(activeHost > multiplayerGuard);
+        Assert.True(farmhandSync > activeHost);
+        Assert.True(serialization > farmhandSync);
+    }
+
     private static string ReadAutomationSource()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
