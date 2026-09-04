@@ -74,22 +74,42 @@ internal static class ProjectReviewConsoleLine
             return false;
         }
 
-        if (tokens.Count == 4
-            && string.Equals(tokens[2], "press", StringComparison.Ordinal))
+        var actionIndex = 2;
+        var transportRequest = false;
+        if (tokens.Count >= 6
+            && string.Equals(tokens[2], "request", StringComparison.Ordinal)
+            && Guid.TryParseExact(tokens[3], "N", out _))
         {
-            return IsAsciiAlphaNumeric(tokens[3], maximumLength: 64);
+            actionIndex = 4;
+            transportRequest = true;
         }
 
-        if (!string.Equals(tokens[2], "cursor", StringComparison.Ordinal))
+        if (tokens.Count == actionIndex + 2
+            && string.Equals(tokens[actionIndex], "press", StringComparison.Ordinal))
+        {
+            return IsAsciiAlphaNumeric(tokens[actionIndex + 1], maximumLength: 64)
+                && (!transportRequest
+                    || tokens[actionIndex + 1] is not (
+                        "MouseWheelUp" or "MouseWheelDown"));
+        }
+
+        if (transportRequest
+            && tokens.Count == actionIndex + 2
+            && string.Equals(tokens[actionIndex], "wheel", StringComparison.Ordinal))
+        {
+            return tokens[actionIndex + 1] is "up" or "down";
+        }
+
+        if (!string.Equals(tokens[actionIndex], "cursor", StringComparison.Ordinal))
         {
             return false;
         }
 
-        return tokens.Count == 4
-                && string.Equals(tokens[3], "clear", StringComparison.Ordinal)
-            || tokens.Count == 5
-                && TryParseUnsignedCoordinate(tokens[3])
-                && TryParseUnsignedCoordinate(tokens[4]);
+        return tokens.Count == actionIndex + 2
+                && string.Equals(tokens[actionIndex + 1], "clear", StringComparison.Ordinal)
+            || tokens.Count == actionIndex + 3
+                && TryParseUnsignedCoordinate(tokens[actionIndex + 1])
+                && TryParseUnsignedCoordinate(tokens[actionIndex + 2]);
     }
 
     private static bool IsViewportScreenshotCommand(IReadOnlyList<string> tokens) =>

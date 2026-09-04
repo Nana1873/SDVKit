@@ -11,7 +11,10 @@ internal sealed record ProjectReviewResponseTransportProblem(
 
 internal sealed record ProjectReviewResponseTransportResult<TResponse>(
     TResponse? Response,
-    IReadOnlyList<ProjectReviewResponseTransportProblem> Problems)
+    IReadOnlyList<ProjectReviewResponseTransportProblem> Problems,
+    bool CommandWritten = false,
+    bool CommandMayHaveBeenWritten = false,
+    bool CancellationRequested = false)
     where TResponse : class;
 
 internal static class ProjectReviewResponseTransport
@@ -33,6 +36,7 @@ internal static class ProjectReviewResponseTransport
         TimeSpan? responseTimeout = null,
         string topology = LiveLabState.SingleTopology,
         string? role = null,
+        bool drainAfterDispatchOnCancellation = false,
         CancellationToken cancellationToken = default)
         where TResponse : class
     {
@@ -50,14 +54,41 @@ internal static class ProjectReviewResponseTransport
             throw new ArgumentOutOfRangeException(nameof(responseTimeout));
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        if (!drainAfterDispatchOnCancellation)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        else if (cancellationToken.IsCancellationRequested)
+        {
+            return Failure<TResponse>(
+                commandWritten: false,
+                commandMayHaveBeenWritten: false,
+                cancellationRequested: true,
+                new ProjectReviewResponseTransportProblem(
+                    $"{problemPrefix}RequestCanceled",
+                    $"The bounded {displayName} request was canceled before it was written."));
+        }
+
+        if (File.Exists(responsePath))
+        {
+            return Failure<TResponse>(
+                new ProjectReviewResponseTransportProblem(
+                    $"{problemPrefix}ResponseExists",
+                    $"The unique {displayName} response target already exists; no request was written."));
+        }
+
         LiveLabCommandResult sent = ProjectReviewService.ExecuteCommand(
             command,
             topology,
             role,
             labRoot,
             inputSender);
-        cancellationToken.ThrowIfCancellationRequested();
+        if (!drainAfterDispatchOnCancellation)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        var cancellationRequested = drainAfterDispatchOnCancellation
+            && cancellationToken.IsCancellationRequested;
         (bool? commandWritten, IReadOnlyList<ProjectReviewProblem> commandProblems) =
             sent.Report switch
             {
@@ -71,6 +102,9 @@ internal static class ProjectReviewResponseTransport
         if (sent.ExitCode != Success || commandWritten != true)
         {
             return Failure<TResponse>(
+                commandWritten: commandWritten == true,
+                commandMayHaveBeenWritten: commandWritten != false,
+                cancellationRequested: cancellationRequested,
                 commandProblems.Count > 0
                     ? commandProblems
                         .Select(problem => new ProjectReviewResponseTransportProblem(
@@ -86,29 +120,40 @@ internal static class ProjectReviewResponseTransport
         Action<TimeSpan> wait = delay ?? Thread.Sleep;
         while (!File.Exists(responsePath) && stopwatch.Elapsed < timeout)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ObserveCancellation();
             wait(TimeSpan.FromMilliseconds(50));
-            cancellationToken.ThrowIfCancellationRequested();
+            ObserveCancellation();
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        ObserveCancellation();
+
         if (!File.Exists(responsePath))
         {
             return Failure<TResponse>(
+                commandWritten: true,
+                commandMayHaveBeenWritten: true,
+                cancellationRequested: cancellationRequested,
                 new ProjectReviewResponseTransportProblem(
-                    $"{problemPrefix}ResponseTimedOut",
-                    $"The exact owned review did not publish the bounded {displayName} response in time; the request was not retried."));
+                    cancellationRequested
+                        ? $"{problemPrefix}RequestCanceled"
+                        : $"{problemPrefix}ResponseTimedOut",
+                    cancellationRequested
+                        ? $"The bounded {displayName} request was canceled after it was written; it was not retried."
+                        : $"The exact owned review did not publish the bounded {displayName} response in time; the request was not retried."));
         }
 
         bool regularResponse = false;
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ObserveCancellation();
             FileAttributes attributes = File.GetAttributes(responsePath);
             if ((attributes & FileAttributes.ReparsePoint) != 0
                 || (attributes & FileAttributes.Directory) != 0)
             {
                 return Failure<TResponse>(
+                    commandWritten: true,
+                    commandMayHaveBeenWritten: true,
+                    cancellationRequested: cancellationRequested,
                     new ProjectReviewResponseTransportProblem(
                         $"{problemPrefix}ResponseInvalid",
                         $"The {displayName} response is not a regular file."));
@@ -116,7 +161,7 @@ internal static class ProjectReviewResponseTransport
             regularResponse = true;
 
             byte[] bytes = ReadBoundedResponse(responsePath, maximumResponseBytes, displayName);
-            cancellationToken.ThrowIfCancellationRequested();
+            ObserveCancellation();
             TResponse? response = deserialize(bytes);
             if (response is null || !matchesRequest(response))
             {
@@ -126,8 +171,17 @@ internal static class ProjectReviewResponseTransport
 
             File.Delete(responsePath);
             regularResponse = false;
-            cancellationToken.ThrowIfCancellationRequested();
-            return new ProjectReviewResponseTransportResult<TResponse>(response, []);
+            ObserveCancellation();
+            return new ProjectReviewResponseTransportResult<TResponse>(
+                response,
+                cancellationRequested
+                    ? [new ProjectReviewResponseTransportProblem(
+                        $"{problemPrefix}RequestCanceled",
+                        $"The bounded {displayName} request was canceled after it was written; its validated response was retained and the request was not retried.")]
+                    : [],
+                CommandWritten: true,
+                CommandMayHaveBeenWritten: true,
+                CancellationRequested: cancellationRequested);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {
@@ -144,9 +198,23 @@ internal static class ProjectReviewResponseTransport
             }
 
             return Failure<TResponse>(
+                commandWritten: true,
+                commandMayHaveBeenWritten: true,
+                cancellationRequested: cancellationRequested,
                 new ProjectReviewResponseTransportProblem(
                     $"{problemPrefix}ResponseInvalid",
                     $"The {displayName} response could not be validated ({exception.GetType().Name})."));
+        }
+
+        void ObserveCancellation()
+        {
+            if (drainAfterDispatchOnCancellation)
+            {
+                cancellationRequested |= cancellationToken.IsCancellationRequested;
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 
@@ -154,6 +222,19 @@ internal static class ProjectReviewResponseTransport
         params ProjectReviewResponseTransportProblem[] problems)
         where TResponse : class =>
         new(null, problems);
+
+    private static ProjectReviewResponseTransportResult<TResponse> Failure<TResponse>(
+        bool commandWritten,
+        bool commandMayHaveBeenWritten,
+        bool cancellationRequested,
+        params ProjectReviewResponseTransportProblem[] problems)
+        where TResponse : class =>
+        new(
+            null,
+            problems,
+            commandWritten,
+            commandMayHaveBeenWritten,
+            cancellationRequested);
 
     private static byte[] ReadBoundedResponse(
         string responsePath,

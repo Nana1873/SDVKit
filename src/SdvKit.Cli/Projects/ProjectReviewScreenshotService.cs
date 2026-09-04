@@ -127,7 +127,7 @@ internal static class ProjectReviewScreenshotService
                 responseTimeout,
                 topology,
                 role,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
         if (transported.Response is null)
         {

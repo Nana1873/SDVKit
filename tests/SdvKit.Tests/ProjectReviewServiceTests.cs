@@ -11,6 +11,77 @@ namespace SdvKit.Tests;
 public sealed class ProjectReviewServiceTests
 {
     [Fact]
+    public void SharedResponseTransportRetainsAValidatedAcknowledgementAfterCancellation()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        using (var canceled = new CancellationTokenSource())
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity);
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(paths, state, staging.TargetLaunchState);
+                string requestId = Guid.NewGuid().ToString("N");
+                string responsePath = Path.Combine(
+                    paths.RuntimePath,
+                    $"transport-test-{requestId}.json");
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written),
+                    _ =>
+                    {
+                        File.WriteAllText(
+                            responsePath,
+                            JsonSerializer.Serialize(new TransportTestResponse(requestId)));
+                        canceled.Cancel();
+                    });
+
+                ProjectReviewResponseTransportResult<TransportTestResponse> result =
+                    ProjectReviewResponseTransport.Execute(
+                        $"sdvkit input request {requestId} cursor clear",
+                        responsePath,
+                        1024,
+                        "input",
+                        "review-input",
+                        temporary.Path,
+                        bytes => JsonSerializer.Deserialize<TransportTestResponse>(bytes),
+                        response => string.Equals(
+                            response.RequestId,
+                            requestId,
+                            StringComparison.Ordinal),
+                        inputSender: sender,
+                        drainAfterDispatchOnCancellation: true,
+                        cancellationToken: canceled.Token);
+
+                Assert.Equal(requestId, result.Response?.RequestId);
+                Assert.True(result.CommandWritten);
+                Assert.True(result.CommandMayHaveBeenWritten);
+                Assert.True(result.CancellationRequested);
+                Assert.Equal("inputRequestCanceled", Assert.Single(result.Problems).Code);
+                Assert.False(File.Exists(responsePath));
+                Assert.Equal(1, sender.CallCount);
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
+    [Fact]
     public void ContentPackTargetNetworkTwoFailsBeforeLabMutationOrDiscovery()
     {
         using TemporaryDirectory temporary = new();
@@ -3167,4 +3238,6 @@ public sealed class ProjectReviewServiceTests
             return result;
         }
     }
+
+    private sealed record TransportTestResponse(string RequestId);
 }

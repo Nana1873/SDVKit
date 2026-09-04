@@ -1223,12 +1223,13 @@ public sealed class CliApplicationTests
     public void ProjectReviewMcpServeDispatchesOnlySingleWithoutJson(bool explicitTopology)
     {
         var called = false;
-        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, _) =>
+        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, allowInput, _) =>
         {
             called = true;
             Assert.Equal("single", topology);
             Assert.Null(role);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
+            Assert.False(allowInput);
             return 0;
         };
         string[] arguments = explicitTopology
@@ -1250,11 +1251,12 @@ public sealed class CliApplicationTests
     [InlineData(NetworkTwoContract.FarmhandRole)]
     public void ProjectReviewMcpServeDispatchesExactNetworkRole(string expectedRole)
     {
-        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, _) =>
+        ProjectReviewMcpCommandRunner mcpRunner = (topology, role, labRoot, allowInput, _) =>
         {
             Assert.Equal(NetworkTwoContract.Topology, topology);
             Assert.Equal(expectedRole, role);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
+            Assert.False(allowInput);
             return 0;
         };
 
@@ -1268,6 +1270,44 @@ public sealed class CliApplicationTests
             "network-2",
             "--role",
             expectedRole);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("single", null)]
+    [InlineData("network-2", "host")]
+    public void ProjectReviewMcpServeForwardsOnlyTheExplicitInputOptIn(
+        string topology,
+        string? role)
+    {
+        ProjectReviewMcpCommandRunner mcpRunner = (
+            actualTopology,
+            actualRole,
+            labRoot,
+            allowInput,
+            _) =>
+        {
+            Assert.Equal(topology, actualTopology);
+            Assert.Equal(role, actualRole);
+            Assert.Equal(Environment.CurrentDirectory, labRoot);
+            Assert.True(allowInput);
+            return 0;
+        };
+        var arguments = new List<string>
+        {
+            "project", "review", "mcp", "serve", "--allow-input",
+        };
+        if (role is not null)
+        {
+            arguments.AddRange(["--topology", topology, "--role", role]);
+        }
+
+        (int exitCode, string output, string error) = RunWithProjectReviewMcp(
+            mcpRunner,
+            [.. arguments]);
 
         Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, output);
@@ -1316,6 +1356,8 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host", "--role", "host")]
     [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--topology", "network-2", "--role", "host")]
     [InlineData("project", "review", "mcp", "serve", "--topology", "network-2", "--role")]
+    [InlineData("project", "review", "mcp", "serve", "--allow-input", "--allow-input")]
+    [InlineData("project", "review", "mcp", "serve", "--allow-actions")]
     public void ProjectReviewSyntaxErrorsUseTheExactUsage(params string[] arguments)
     {
         ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
@@ -1362,11 +1404,13 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit project review reset --topology <single|network-2> --json"
                 + Environment.NewLine
-                + "       sdvkit project review mcp serve [--topology single]"
+                + "       sdvkit project review mcp serve [--topology single] [--allow-input]"
                 + Environment.NewLine
-                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand>"
+                + "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input]"
                 + Environment.NewLine
                 + "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get"
+                + Environment.NewLine
+                + "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel"
                 + Environment.NewLine
                 + "Content-pack targets require --topology single and an explicit provider --companion."
                 + Environment.NewLine
