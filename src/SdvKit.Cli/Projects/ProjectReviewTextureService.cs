@@ -309,7 +309,8 @@ internal static class ProjectReviewTextureService
             return report.Preview is null;
         }
 
-        if (metadata.Width > ReviewTextureContract.MaximumSourceDimension
+        if (!string.Equals(metadata.RuntimeFormat, "Color", StringComparison.Ordinal)
+            || metadata.Width > ReviewTextureContract.MaximumSourceDimension
             || metadata.Height > ReviewTextureContract.MaximumSourceDimension
             || (long)metadata.Width * metadata.Height
                 > ReviewTextureContract.MaximumSourcePixels)

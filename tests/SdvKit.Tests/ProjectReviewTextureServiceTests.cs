@@ -225,6 +225,19 @@ public sealed class ProjectReviewTextureServiceTests
             requestId,
             temporary.Path));
 
+        ReviewTextureResponseEnvelope wrongFormat = envelope with
+        {
+            Report = envelope.Report with
+            {
+                Metadata = envelope.Report.Metadata! with { RuntimeFormat = "Dxt5" },
+            },
+        };
+        Assert.False(ProjectReviewTextureService.MatchesRequest(
+            wrongFormat,
+            query,
+            requestId,
+            temporary.Path));
+
         ReviewTextureResponseEnvelope wrongAsset = envelope with
         {
             Report = envelope.Report with { AssetName = "Portraits/Abigail" },
