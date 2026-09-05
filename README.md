@@ -48,7 +48,7 @@ Run from the directory where you want to create `ExampleMod`:
 & $sdvkit project package .\ExampleMod --json
 ```
 
-Build/package output stays under the mod project's ignored `.sdvkit/`. The package result identifies the ZIP to distribute. See the [toolkit guide](docs/toolkit.md) for Content Patcher packs and diagnostics.
+Build/package output stays under the mod project's ignored `.sdvkit/`. The package result identifies the ZIP to distribute. See the [toolkit guide](docs/toolkit.md) for Content Patcher packs and diagnostics, or follow the [CP authoring recipe](docs/cp-authoring.md).
 
 ## Test a mod in the isolated lab
 

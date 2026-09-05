@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Documentation
+
+- A complete Content Patcher authoring recipe connects creation and local checks to deliberate runtime diagnosis, selected JSON refresh, direct Data observations, a second authored change, cleanup and ZIP packaging, with focused version-aware agent references.
+
 ### Changed
 
 - Installation and two short quickstarts now lead the README; task guides, the capability matrix, and CLI/MCP references are separately navigable.

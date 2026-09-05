@@ -5,6 +5,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Task | Guide |
 | --- | --- |
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
+| Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
