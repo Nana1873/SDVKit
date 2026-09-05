@@ -102,8 +102,9 @@ public sealed class ModEntry : Mod
 ```
 
 The deliberate conditional fault compiles normally, but throws when the event runs
-with the configured nonnegative tile. The feature targets a known clear
-Farm tile in the disposable standard-farm baseline. Configuring another tile
+with the configured nonnegative tile. The feature targets Farm tile 64,15 in the disposable standard-farm baseline.
+Inspect an owned screenshot before describing that destination as visibly clear;
+fixture identity alone does not prove clearance. Configuring another tile
 requires checking that map's bounds, terrain and occupancy; this is not a general
 safe-spawn resolver. Leave normal saves and Mods outside this exercise.
 
@@ -198,8 +199,8 @@ isolated-option restoration warning is separate from blocked cleanup.
 Inspect the returned ZIP entries and SHA-256. Compare its manifest/DLL bytes with
 the retained corrected live staged artifact; packaging rebuilds through normal
 ModBuildConfig, so compilation alone is not artifact identity. If compiled bytes
-differ, explain the difference and verify the final artifact before claiming the
-ZIP carries the observed feature. Keep generated config/logs/evidence out of the
+differ, retain both hashes; do not infer a compiler cause or binary equivalence.
+Use the exact-package gate below before claiming the ZIP carries the observed feature. Keep generated config/logs/evidence out of the
 release unless explicitly selected; never include game binaries or saves.
 
 Record a small evidence table with start/end or elapsed time for select/create,
@@ -208,3 +209,43 @@ observation, packaging and cleanup. Include manual interventions, failed or
 inconclusive attempts, CLI/archive/mod hashes, source snapshots, runtime and
 fixture identities, actual values and log availability. Report measured friction,
 not command counts. No normal deployment or SDVKit release is part of this recipe.
+
+
+### Verify the exact packaged DLL when rebuilds differ
+
+A ready C# directory is currently supported as a **companion**, not a direct
+review target ([tracked limitation #138](https://github.com/Nana1873/SDVKit/issues/138)).
+Use an explicitly selected no-op C# project as the target. An already generated
+portable-verifier fixture with an empty Entry is suitable; otherwise create an
+ordinary no-op mod with the existing template. This is a local test fixture,
+not another runtime component or custom adapter.
+
+```powershell
+$zip = Join-Path $mod '.sdvkit\packages\MorningArrival 1.0.0.zip'
+$unpacked = Join-Path $evidence 'final-package'
+Get-FileHash -LiteralPath $zip -Algorithm SHA256
+Expand-Archive -LiteralPath $zip -DestinationPath $unpacked
+$ready = Join-Path $unpacked 'MorningArrival'
+$driver = Join-Path $lab '.sdvkit\PackageReviewDriver'
+& $sdvkit project create smapi-mod $driver --name 'Package Review Driver' --author ExampleAuthor --unique-id ExampleAuthor.PackageReviewDriver --description 'Empty target for exact packaged companion review.' --json
+& $sdvkit project review start $driver --game-path $gamePath --companion $ready --topology single --test-save --json | Tee-Object (Join-Path $evidence 'start-package.json')
+```
+
+Use a fresh extraction directory. If reusing an existing no-op target, omit create
+and select its actual root/project. Verify its source has no event handlers or
+world mutations. Require fixture readiness and both identities. In MCP,
+`stardew_review_get` supplies the companion build identity and
+`stardew_mods_list` must report `ExampleAuthor.MorningArrival` loaded as a companion.
+`stardew_runtime_get.target` now describes the no-op target; its observed world
+still must be Farm, tile 64,15. Select MorningArrival explicitly in
+`stardew_mod_diagnostics`, which must return its matching companion identity and
+no deliberate fault. Retain an optional uniquely labelled owned screenshot.
+
+Before stopping, compare SHA-256 for both `manifest.json` and `MorningArrival.dll`
+between `$ready` and the exact companion staging path returned by review status.
+Preserve the generated staged config separately. Require both files to match,
+then stop/reset and verify cleanup exactly as above. Compare `$ready` hashes
+before/after and recheck the original ZIP hash. Do not package again after this
+gate: retain the exact accepted ZIP, its identity and the companion observations.
+This completes distribution proof without replacing staged files or claiming
+that separate compilation outputs were identical.
