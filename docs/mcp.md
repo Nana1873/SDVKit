@@ -53,7 +53,10 @@ tool call. `role` is `null` for `single` and exactly the configured `host` or
   time, exact target `UniqueID`/version/build identity, optional verified
   review-fixture identity, and the selected role's runtime object. Before a
   world is ready, season/day/year/time/location/tile are explicitly `null`;
-  `worldReady` and `menuOpen` remain available.
+  `worldReady` and `menuOpen` remain available. The additive `localPlayer`
+  slice supplies bounded farmer identity, money, health/stamina and one selected
+  inventory item. See the [field and availability contract](runtime-state.md)
+  for sources, bounds, nulls, versions and transition semantics.
 - `stardew_review_get {}` returns the exact active ownership projection: the
   launch and topology, fixed role, verified running process and fresh status,
   target identity and load state, optional verified fixture/save identity, and

@@ -161,6 +161,10 @@ public sealed class ModEntry : Mod
             _backgroundRun.ResetAfterReturnToTitle();
             _testSave?.OnReturnedToTitle();
             _networkTwo?.OnReturnedToTitle();
+            if (!_exitPrepared)
+            {
+                WriteActiveStatus();
+            }
         };
 
         Monitor.Log(
@@ -491,7 +495,8 @@ public sealed class ModEntry : Mod
                 null,
                 null,
                 Game1.activeClickableMenu is not null,
-                observedAtUtc);
+                observedAtUtc,
+                LocalPlayerCapture.Capture(false));
         }
 
         return new RuntimeSnapshotMarker(
@@ -505,7 +510,8 @@ public sealed class ModEntry : Mod
             Game1.player.TilePoint.X,
             Game1.player.TilePoint.Y,
             Game1.activeClickableMenu is not null,
-            observedAtUtc);
+            observedAtUtc,
+            LocalPlayerCapture.Capture(true));
     }
 
     private void OnProcessExit(object? sender, EventArgs eventArgs)

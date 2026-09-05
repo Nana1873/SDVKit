@@ -54,6 +54,8 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal(64, snapshot.Runtime.TileX);
         Assert.Equal(15, snapshot.Runtime.TileY);
         Assert.False(snapshot.Runtime.MenuOpen);
+        Assert.Equal(12345, snapshot.Runtime.LocalPlayer?.Data?.Money);
+        Assert.Equal("(O)388", snapshot.Runtime.LocalPlayer?.Data?.SelectedItem?.QualifiedItemId);
     }
 
     [Theory]
@@ -81,6 +83,46 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal(NetworkFixtureId, snapshot.TestSave?.FixtureId);
         Assert.Equal(NetworkSaveId, snapshot.TestSave?.SaveId);
         Assert.Equal("Nana.Target", snapshot.Target.UniqueId);
+        Assert.Equal(role == "host" ? "101" : "202", snapshot.Runtime.LocalPlayer?.Data?.PlayerId);
+    }
+
+    [Fact]
+    public void RuntimeReadInvalidatesWorldAtTitleAndNeverReturnsStalePlayer()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyReview(temporary);
+        Assert.Equal(12345, reader.Read().Snapshot?.Runtime.LocalPlayer?.Data?.Money);
+        string path = LiveLabPaths.Resolve(temporary.Path).StatusPath;
+        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+            File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
+        RuntimeSnapshotMarker title = new(1, false, null, null, null, null, null, null, null, true, ObservedAt,
+            LocalPlayerSnapshotContract.WithoutData("worldNotReady"));
+        File.WriteAllText(path, JsonSerializer.Serialize(marker with { Runtime = title }, LiveLabJsonOptions.CamelCase));
+        ProjectReviewMcpRuntime runtime = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot).Runtime;
+        Assert.False(runtime.WorldReady);
+        Assert.Null(runtime.LocationId);
+        Assert.Equal("worldNotReady", runtime.LocalPlayer?.Availability);
+        Assert.Null(runtime.LocalPlayer?.Data);
+        File.WriteAllText(path, JsonSerializer.Serialize(marker with { ObservedAtUtc = ObservedAt.AddSeconds(-6) },
+            LiveLabJsonOptions.CamelCase));
+        Assert.Null(reader.Read().Snapshot);
+    }
+
+    [Fact]
+    public void NetworkPlayerSnapshotCannotClaimThePeerIdentity()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(temporary, "host");
+        string path = LiveLabPaths.ResolveNetworkRole(LiveLabPaths.Resolve(temporary.Path), "host").StatusPath;
+        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+            File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
+        File.WriteAllText(path, JsonSerializer.Serialize(marker with
+        {
+            Runtime = marker.Runtime! with { LocalPlayer = LocalPlayerSnapshotTests.Player("202") },
+        }, LiveLabJsonOptions.CamelCase));
+        ProjectReviewMcpReadResult result = reader.Read();
+        Assert.Null(result.Snapshot);
+        Assert.Equal("reviewRuntimeSnapshotUnavailable", result.ErrorCode);
     }
 
     [Fact]
@@ -267,6 +309,10 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal("Nana.Target", structured
             .GetProperty("target").GetProperty("uniqueId").GetString());
         Assert.False(structured.TryGetProperty("testSave", out _));
+        Assert.Equal(12345, structured.GetProperty("runtime").GetProperty("localPlayer")
+            .GetProperty("data").GetProperty("money").GetInt32());
+        Assert.True(Json.Schema.JsonSchema.FromText(outputSchema.GetRawText()).Evaluate(
+            System.Text.Json.Nodes.JsonNode.Parse(structured.GetRawText())).IsValid);
         Assert.DoesNotContain("Path", structured.GetRawText(), StringComparison.OrdinalIgnoreCase);
         TextContentBlock text = Assert.IsType<TextContentBlock>(Assert.Single(called.Content));
         Assert.True(JsonElement.DeepEquals(
@@ -634,7 +680,8 @@ public sealed class ProjectReviewMcpTests
                 64,
                 15,
                 false,
-                ObservedAt),
+                ObservedAt,
+                LocalPlayerSnapshotTests.Player("101")),
             enableServer: true,
             ipConnectionsEnabled: true,
             foregroundProcessId: 9001);
@@ -668,7 +715,8 @@ public sealed class ProjectReviewMcpTests
                 8,
                 9,
                 false,
-                ObservedAt),
+                ObservedAt,
+                LocalPlayerSnapshotTests.Player("202")),
             enableServer: null,
             ipConnectionsEnabled: null,
             foregroundProcessId: 9002);
@@ -824,7 +872,8 @@ public sealed class ProjectReviewMcpTests
                 64,
                 15,
                 false,
-                observedAt),
+                observedAt,
+                LocalPlayerSnapshotTests.Player()),
             LoadedMods: ReadyLoadedMods(observedAt));
         File.WriteAllText(
             paths.StatusPath,
