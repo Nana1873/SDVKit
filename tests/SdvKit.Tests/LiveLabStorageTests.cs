@@ -93,28 +93,17 @@ public sealed class LiveLabStorageTests
             paths.StatusPath);
         writer.Write("active", 0, isActive: false, pauseWhenOutOfFocus: false);
         using var start = new Barrier(2);
-        var successfulWrites = 0;
 
         Task writes = Task.Run(() =>
         {
             start.SignalAndWait();
             for (var tick = 1; tick <= 750; tick++)
             {
-                try
-                {
-                    writer.Write(
-                        "active",
-                        tick,
-                        isActive: false,
-                        pauseWhenOutOfFocus: false);
-                    Interlocked.Increment(ref successfulWrites);
-                }
-                catch (Exception exception) when (exception is IOException
-                    or UnauthorizedAccessException)
-                {
-                    // The real game loop also retries a transient status-write
-                    // failure. This regression targets the concurrent lab scan.
-                }
+                writer.Write(
+                    "active",
+                    tick,
+                    isActive: false,
+                    pauseWhenOutOfFocus: false);
             }
         });
 
@@ -134,7 +123,6 @@ public sealed class LiveLabStorageTests
 
         await writes;
         Assert.Null(scanFailure);
-        Assert.True(successfulWrites > 0);
         Assert.True(File.Exists(paths.StatusPath));
     }
 

@@ -38,6 +38,7 @@
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewTextureCommand.cs" Link="AlwaysOn\ReviewTextureCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewTextureXnbClassifier.cs" Link="AlwaysOn\ReviewTextureXnbClassifier.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\StatusWriter.cs" Link="AlwaysOn\StatusWriter.cs" />
+    <Compile Include="..\..\src\SdvKit.AlwaysOn\WindowsStatusFile.cs" Link="AlwaysOn\WindowsStatusFile.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\WindowsForegroundWindowProbe.cs" Link="AlwaysOn\WindowsForegroundWindowProbe.cs" />
   </ItemGroup>
 </Project>

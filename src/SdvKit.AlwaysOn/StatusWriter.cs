@@ -74,13 +74,13 @@ internal sealed class StatusWriter
         try
         {
             File.WriteAllText(temporaryPath, json, Utf8WithoutBom);
-            if (File.Exists(_statusPath))
+            if (OperatingSystem.IsWindows())
             {
-                File.Replace(temporaryPath, _statusPath, destinationBackupFileName: null);
+                WindowsStatusFile.Publish(temporaryPath, _statusPath);
             }
             else
             {
-                File.Move(temporaryPath, _statusPath);
+                File.Move(temporaryPath, _statusPath, overwrite: true);
             }
         }
         finally
