@@ -148,7 +148,7 @@ public sealed class StatusWriterTests
     }
 
     [Fact]
-    public async Task ConcurrentReaderSeesOnlyCompleteFreshExactSnapshots()
+    public async Task ConcurrentReaderSeesCompleteExactSnapshotsWithContractFreshness()
     {
         using TemporaryDirectory directory = new();
         string path = Path.Combine(directory.Path, "status.json");
@@ -171,8 +171,13 @@ public sealed class StatusWriterTests
             int previousTick = 0;
             for (int index = 0; index < 1_000; index++)
             {
-                AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(path, LaunchId, process, DateTimeOffset.UtcNow);
-                Assert.Equal("active", report.State);
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(path, LaunchId, process, now);
+                DateTimeOffset observed = Assert.IsType<DateTimeOffset>(report.ObservedAtUtc);
+                string expectedState = observed > now.AddSeconds(1) || now - observed > TimeSpan.FromSeconds(5)
+                    ? "stale"
+                    : "active";
+                Assert.Equal(expectedState, report.State);
                 Assert.InRange(report.Tick!.Value, previousTick, 500);
                 previousTick = report.Tick.Value;
             }
