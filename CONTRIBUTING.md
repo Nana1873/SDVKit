@@ -30,6 +30,8 @@ Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages.
 
 The existing CI runs restore, formatting, build, the complete tests, packaging, and portable verification. It does not launch Stardew. Offline checks may run independently; live work requires one known owner of the selected lab and verified teardown before handoff.
 
+The two concurrent status tests retain failure context and bounded post-failure snapshots under `.sdvkit/test-failures/`; failing CI uploads that directory. Writer and reader/scanner failures remain visible together. A retained file may be newer than the failed read or rename, so it is not proof of the bytes or competing access at failure time.
+
 ## Release
 
 Follow the [release procedure](docs/releasing.md). It defines artifact identity, focused live acceptance, retry rules, and publication verification. Do not substitute build success for actual in-game evidence.

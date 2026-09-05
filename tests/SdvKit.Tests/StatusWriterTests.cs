@@ -2,10 +2,11 @@ using System.Diagnostics;
 using System.Text.Json;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
-public sealed class StatusWriterTests
+public sealed class StatusWriterTests(ITestOutputHelper output)
 {
     private const string LaunchId = "11111111111111111111111111111111";
 
@@ -189,23 +190,29 @@ public sealed class StatusWriterTests
         writer.Write("active", 0, false, false);
         OwnedProcessIdentity process = CurrentProcess();
         using var start = new Barrier(2);
+        int writeTick = 1;
+        int readIndex = 0;
+        int previousTick = 0;
+        DateTimeOffset now = default;
+        AlwaysOnStatusReport? report = null;
         Task writes = Task.Run(() =>
         {
             start.SignalAndWait();
-            for (int tick = 1; tick <= 500; tick++)
+            for (; writeTick <= 500; writeTick++)
             {
-                writer.Write("active", tick, false, false);
+                writer.Write("active", writeTick, false, false);
             }
         });
 
         start.SignalAndWait();
+        Exception? readerFailure = null;
         try
         {
-            int previousTick = 0;
-            for (int index = 0; index < 1_000; index++)
+            for (; readIndex < 1_000; readIndex++)
             {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(path, LaunchId, process, now);
+                now = DateTimeOffset.UtcNow;
+                report = null;
+                report = AlwaysOnStatusReader.Read(path, LaunchId, process, now);
                 DateTimeOffset observed = Assert.IsType<DateTimeOffset>(report.ObservedAtUtc);
                 string expectedState = observed > now.AddSeconds(1) || now - observed > TimeSpan.FromSeconds(5)
                     ? "stale"
@@ -215,11 +222,27 @@ public sealed class StatusWriterTests
                 previousTick = report.Tick.Value;
             }
         }
-        finally
+        catch (Exception exception)
         {
-            await writes;
+            readerFailure = exception;
         }
 
+        Exception? writerFailure = await Record.ExceptionAsync(() => writes);
+        StatusConcurrencyFailure.ThrowIfAny(output, path,
+            new
+            {
+                Test = nameof(ConcurrentReaderSeesCompleteExactSnapshotsWithContractFreshness),
+                StatusPath = path,
+                LaunchId,
+                ExpectedProcess = process,
+                NextWriteTick = writeTick,
+                CompletedWrites = writeTick - 1,
+                ReadIndex = readIndex,
+                CompletedReads = readIndex,
+                PreviousTick = previousTick,
+                ReadTimeUtc = now,
+                Report = report,
+            }, writerFailure, readerFailure);
         Assert.Equal(500, Read(path).Tick);
         Assert.Equal([path], Directory.GetFiles(directory.Path));
     }
