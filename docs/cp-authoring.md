@@ -85,6 +85,13 @@ wait for their verified stop/reset before using this single lab. Follow
 [lab preparation](live-review.md#prepare-the-lab); normal Saves/Mods stay outside
 the workflow. Record selected CLI provenance, game/SMAPI/provider versions and
 protected-path fingerprints before launch when collecting acceptance evidence.
+Explicitly select the discovered game's normal `Mods` directory, any separately
+used mod-manager Mods directory, and `$env:APPDATA/StardewValley` (including normal
+Saves/preferences). Enumerate them read-only before/after, without following
+links; retain sorted relative path, entry type/attributes, file length,
+`LastWriteTimeUtc` and SHA-256 (`Get-FileHash`) in sibling evidence files. Compare
+every field with `Compare-Object`; record missing roots and entry/file counts.
+Any added, removed or changed entry needs explanation before claiming isolation.
 
 ## Create and check the deliberate failure
 
@@ -118,22 +125,29 @@ not a parser exception. Do not proceed after a failed local check.
 With all lab roles stopped, create the disposable baseline if absent:
 
 ```powershell
-& $sdvkit lab test-save --topology single --json
-& $sdvkit project review start $pack --topology single --companion $provider --test-save --json
-& $sdvkit project review status --topology single --json
+& $sdvkit lab test-save --topology single --json | Tee-Object (Join-Path $evidence 'baseline.json')
+& $sdvkit project review start $pack --topology single --companion $provider --test-save --json | Tee-Object (Join-Path $evidence 'start.json')
+& $sdvkit project review status --topology single --json | Tee-Object (Join-Path $evidence 'initial-status.json')
 ```
 
-Wait for fresh status: target and provider loaded, `testSave.state=ready`,
-`phase=passed`, `identityVerified=true`. Retain its exact launch ID, PID and process
-start time. Never stop a process by name. See the
-[disposable-world contract](live-review.md#use-the-disposable-world).
-
 CP may create or normalize config files on first launch. Before editing patches,
-compare selected source/staged files using status's owned staging paths. If
-config drift occurred, preserve the staged pack/provider config bytes below
+retain the **start result**, including its exact process/launch and
+`artifacts[].stagingPath` resolved against `labRoot`. Compare selected source/staged
+files using those start-owned paths. Config drift can make status return
+`reviewStagingOwnershipDrifted` with no artifacts; do not depend on that failed
+status to recover the paths. If config drift occurred, preserve staged config bytes below
 `$evidence` **before stop deletes staging**, stop/reset, deliberately adopt those
 bytes only in your generated pack/copied provider, and start again. This is setup,
 not a refresh attempt; see [config preparation](cp-refresh.md).
+
+After preparation, wait for fresh status: target and provider loaded,
+`testSave.state=ready`, `phase=passed`, `identityVerified=true`. Retain its exact
+launch ID, PID and process start time. Never stop a process by name. See the
+[disposable-world contract](live-review.md#use-the-disposable-world).
+
+```powershell
+& $sdvkit project review status --json | Tee-Object (Join-Path $evidence 'ready-before.json')
+```
 
 Keep the SMAPI console idle. Capture CP evidence **before** observing the asset:
 
@@ -161,8 +175,8 @@ $content.Changes[0].When.Season = 'spring'
 $content | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $contentPath -Encoding utf8
 & $sdvkit project check $pack --json
 & $sdvkit project review cp-refresh $pack --pack ExampleAuthor.SeasonalObjects --provider Pathoschild.ContentPatcher --file content.json --observe-data Data/Objects --key 390 --json | Tee-Object (Join-Path $evidence 'stone-refresh.json')
-& $sdvkit project review status --json
-& $sdvkit project review data get Data/Objects 390 --json
+& $sdvkit project review status --json | Tee-Object (Join-Path $evidence 'after-stone-status.json')
+& $sdvkit project review data get Data/Objects 390 --json | Tee-Object (Join-Path $evidence 'after-stone.json')
 ```
 
 Require refresh `state=observed`, an acknowledged reload and correlated diagnosis,
@@ -194,8 +208,8 @@ $content.Changes += [pscustomobject]@{
 $content | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $contentPath -Encoding utf8
 & $sdvkit project check $pack --json
 & $sdvkit project review cp-refresh $pack --pack ExampleAuthor.SeasonalObjects --provider Pathoschild.ContentPatcher --file content.json --observe-data Data/Objects --key 388 --json | Tee-Object (Join-Path $evidence 'wood-refresh.json')
-& $sdvkit project review data get Data/Objects 390 --json
-& $sdvkit project review status --json
+& $sdvkit project review data get Data/Objects 390 --json | Tee-Object (Join-Path $evidence 'stone-after-wood.json')
+& $sdvkit project review status --json | Tee-Object (Join-Path $evidence 'after-wood-status.json')
 ```
 
 Require Wood `Description=Wood for a fresh spring start.`, Stone still corrected,
@@ -210,9 +224,9 @@ Preserve the owned SMAPI log and final status before cleanup. Follow
 [finish/reset](live-review.md#finish-or-test-persistence):
 
 ```powershell
-& $sdvkit project review stop --topology single --json
-& $sdvkit project review reset --topology single --json
-& $sdvkit project review status --topology single --json
+& $sdvkit project review stop --topology single --json | Tee-Object (Join-Path $evidence 'stop.json')
+& $sdvkit project review reset --topology single --json | Tee-Object (Join-Path $evidence 'reset.json')
+& $sdvkit project review status --topology single --json | Tee-Object (Join-Path $evidence 'final-status.json')
 ```
 
 Verify exact process exit, removed owned staging/mount/mailbox, restored fixture,
@@ -226,7 +240,7 @@ successful command count. No normal save or mod deployment is part of this recip
 After verified cleanup, produce the final authored ZIP:
 
 ```powershell
-& $sdvkit project package $pack --json
+& $sdvkit project package $pack --json | Tee-Object (Join-Path $evidence 'package.json')
 ```
 
 Require exit `0` and a ZIP below `$pack/.sdvkit/packages`. Compare the returned
