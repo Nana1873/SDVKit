@@ -93,7 +93,7 @@ public sealed class ModEntry : Mod
         if (!Context.IsWorldReady || Context.IsMultiplayer || !Config.Enabled)
             return;
 
-        // Deliberate diagnosis exercise: remove this line after capturing the error.
+        // Deliberate diagnosis exercise: remove this condition and throw after capturing the error.
         if (Config.TileX >= 0)
             throw new InvalidOperationException("Morning Arrival deliberate fault before Farm warp.");
         Game1.warpFarmer("Farm", Config.TileX, Config.TileY, false);
@@ -101,8 +101,8 @@ public sealed class ModEntry : Mod
 }
 ```
 
-The intentionally unreachable warp can produce compiler warning CS0162; it is
-not the runtime exception being diagnosed. The feature targets a known clear
+The deliberate conditional fault compiles normally, but throws when the event runs
+with the configured nonnegative tile. The feature targets a known clear
 Farm tile in the disposable standard-farm baseline. Configuring another tile
 requires checking that map's bounds, terrain and occupancy; this is not a general
 safe-spawn resolver. Leave normal saves and Mods outside this exercise.
