@@ -13,6 +13,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
 | Inspect an explicitly selected saved world offline | [Save inspection](save-inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
+| Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
@@ -31,6 +32,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# target in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
+| World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Refresh selected CP patch JSON | `project review cp-refresh` | No | Owned single root CP 2.9.1 target; explicit source/files and Data observation |
