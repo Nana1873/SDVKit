@@ -56,7 +56,9 @@ internal static partial class ProjectModStager
                 && targetInspection.ProjectFiles.Count == 0
                     ? PrepareReadyDirectory(
                         ProjectReviewArtifactRole.Target,
-                        ProjectInspectionReport.ContentPack,
+                        targetInspection.Kind == ProjectInspectionReport.SmapiMod
+                            ? ProjectInspectionReport.SmapiMod
+                            : ProjectInspectionReport.ContentPack,
                         targetPath,
                         preparationRoot,
                         artifacts.Count,
@@ -616,7 +618,7 @@ internal static partial class ProjectModStager
                 sourceProblem.Path,
                 string.Equals(expectedKind, ProjectInspectionReport.ContentPack, StringComparison.Ordinal)
                     ? "A content-pack review source must be one ready root content-pack directory without a C# project."
-                    : "A ready companion must be one root code-mod directory without a C# project.");
+                    : "A ready code-mod review source must be one root directory with manifest.json and its EntryDll, without a C# project or bundled mods.");
             return null;
         }
 

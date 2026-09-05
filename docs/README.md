@@ -27,7 +27,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, direct i18n; no game/network |
 | Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
-| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# target in either topology; content-pack target single only, with explicit provider |
+| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
