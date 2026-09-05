@@ -13,20 +13,23 @@ internal static partial class ProjectModStager
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
         LiveLabPaths paths,
         Action<string, string>? copyTree = null,
-        Func<string, bool>? deleteTree = null) =>
+        Func<string, bool>? deleteTree = null,
+        string? gamePath = null) =>
         StageReview(
             artifacts,
             LiveLabState.SingleTopology,
             paths,
             copyTree,
-            deleteTree);
+            deleteTree,
+            gamePath);
 
     public static ProjectReviewStagingResult StageReview(
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
         string topology,
         LiveLabPaths singlePaths,
         Action<string, string>? copyTree = null,
-        Func<string, bool>? deleteTree = null)
+        Func<string, bool>? deleteTree = null,
+        string? gamePath = null)
     {
         ArgumentNullException.ThrowIfNull(artifacts);
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
@@ -168,7 +171,8 @@ internal static partial class ProjectModStager
                     ReviewOwnershipSchemaVersion,
                     topology,
                     ownershipPath,
-                    owned);
+                    owned)
+                { GamePath = gamePath };
                 WriteReviewOwnership(ownershipPath, staging);
                 return new ProjectReviewStagingResult(staging, null);
             }
@@ -653,6 +657,7 @@ internal static partial class ProjectModStager
         ReviewRolePaths[] expectedRoles = ResolveReviewRolePaths(singlePaths, topology);
         if (staging.SchemaVersion != ReviewOwnershipSchemaVersion
             || !string.Equals(staging.Topology, topology, StringComparison.Ordinal)
+            || staging.GamePath is not null && !Path.IsPathFullyQualified(staging.GamePath)
             || staging.Artifacts is null
             || staging.Artifacts.Count == 0
             || staging.Artifacts.Any(artifact => artifact is null)

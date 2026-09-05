@@ -95,6 +95,9 @@ internal sealed record ProjectReviewStaging(
     string OwnershipPath,
     IReadOnlyList<ProjectReviewOwnedArtifact> Artifacts)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GamePath { get; init; }
+
     [JsonIgnore]
     public ProjectReviewOwnedArtifact Target => Artifacts.Single(artifact =>
         string.Equals(

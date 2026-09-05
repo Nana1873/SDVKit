@@ -186,10 +186,14 @@ internal static class ProjectPackager
             }
         }
 
-        PackFileScan sourceScan = ScanContentPackFiles(projectFile is null ? root : Path.GetDirectoryName(resolution.Target.ProjectFile)!);
+        string sourceRoot = projectFile is null ? root : Path.GetDirectoryName(resolution.Target.ProjectFile)!;
+        PackFileScan sourceScan = ScanContentPackFiles(sourceRoot);
         if (sourceScan.Problem is not null)
         {
-            return Report(resolution.Inspection, null, [], null, [sourceScan.Problem]);
+            ProjectProblem problem = sourceScan.Problem;
+            if (problem.Path is not null)
+                problem = problem with { Path = RelativePath(root, Path.Combine(sourceRoot, FromSlashPath(problem.Path))) };
+            return Report(resolution.Inspection, null, [], null, [problem]);
         }
 
         string stateRoot = stateDirectory ?? Path.Combine(root, ".sdvkit");

@@ -98,6 +98,26 @@ public sealed class ProjectSelectionTests
         Assert.Equal("reviewProjectAmbiguous", review.Problem?.Code);
     }
 
+    [Fact]
+    public void SelectedPackageRejectsASiblingArchiveAndKeepsSourceProblemPathsRelativeToChosenRoot()
+    {
+        using TemporaryDirectory temporary = new();
+        string selected = CreateMod(temporary.Path, "Selected");
+        string sibling = CreateMod(temporary.Path, "Sibling");
+        ProjectPackageReport wrong = ProjectPackager.Package(temporary.Path, Ready, command =>
+        {
+            string[] arguments = command.Arguments.ToArray();
+            arguments[1] = Path.Combine(sibling, "Sibling.csproj");
+            return PackageRunner(command with { Arguments = arguments });
+        }, "Selected/Selected.csproj");
+        Assert.NotEmpty(wrong.Problems);
+        Assert.Null(wrong.Archive);
+        Directory.CreateDirectory(Path.Combine(selected, "Saves"));
+        ProjectPackageReport unsafeSource = ProjectPackager.Package(temporary.Path, Ready,
+            _ => throw new InvalidOperationException("Unsafe source must not be packaged."), "Selected/Selected.csproj");
+        Assert.Equal("Selected/Saves", Assert.Single(unsafeSource.Problems).Path);
+    }
+
     [Theory]
     [InlineData("single")]
     [InlineData("network-2")]
@@ -118,11 +138,12 @@ public sealed class ProjectSelectionTests
         Assert.Equal(["Selected.csproj", "Selected.csproj", "Companion.csproj", "Companion.csproj"], commands.Select(command => Path.GetFileName(command.Arguments[1])));
         Assert.All(commands, command => Assert.Contains("-p:GamePath=C:\\SelectedGame", command.Arguments));
         Assert.Equal(before, ModBuildIdentity.ComputeFileSet(root));
-        ProjectReviewStagingResult staged = ProjectModStager.StageReview(prepared.Artifacts, topology, paths);
+        ProjectReviewStagingResult staged = ProjectModStager.StageReview(prepared.Artifacts, topology, paths, gamePath: "C:\\SelectedGame");
         Assert.Null(staged.Problem);
         ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths, topology);
         Assert.Null(read.Problem);
-        Assert.Equal(Path.Combine(root, "Selected", "Selected.csproj"), read.Staging!.Target.ProjectFile);
+        Assert.Equal("C:\\SelectedGame", read.Staging!.GamePath);
+        Assert.Equal(Path.Combine(root, "Selected", "Selected.csproj"), read.Staging.Target.ProjectFile);
         Assert.Null(read.Staging.Artifacts.Single(artifact => artifact.Role == "companion").ProjectFile);
         foreach (ProjectReviewOwnedArtifact artifact in read.Staging.Artifacts)
             foreach (ProjectReviewRoleStagingPath rolePath in artifact.RoleStagingPaths)
