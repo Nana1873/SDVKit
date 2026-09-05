@@ -127,7 +127,7 @@ internal static class ProjectReviewCpRefresh
             }
             ValidateIncludes(target.StagingPath, candidates, files);
             string nextIdentity = ModBuildIdentity.ComputeFileSetWithReplacements(target.StagingPath, candidates);
-            if (nextIdentity != ModBuildIdentity.ComputeFileSet(target.SourceRoot))
+            if (nextIdentity != ProjectModStager.ComputeCpSourceIdentity(target.SourceRoot))
                 throw new InvalidDataException("cpRefreshUnselectedSourceChangeRestartRequired");
             if (nextIdentity == target.StagedBuildIdentity) return Result("rejected", "cpRefreshNoChanges");
 

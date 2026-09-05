@@ -66,6 +66,13 @@ internal static class ModBuildIdentity
         return fullIdentity;
     }
 
+    internal static string ComputeSelectedFiles(string rootPath, IReadOnlyList<string> paths)
+    {
+        var files = paths.Select(path => new FileSetEntry(path, NormalizeRelativePath(rootPath, path)))
+            .OrderBy(file => file.RelativePath, StringComparer.Ordinal).ToArray();
+        return ComputeFileSetIdentities(files, includeWithoutRuntimeConfig: false).Item1;
+    }
+
     internal static string ComputeFileSetWithReplacements(string rootPath, IReadOnlyDictionary<string, string> replacements)
     {
         FileSetEntry[] files = InspectFileSet(rootPath);

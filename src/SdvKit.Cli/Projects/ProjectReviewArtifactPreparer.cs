@@ -627,7 +627,14 @@ internal static partial class ProjectModStager
             index.ToString("D4", CultureInfo.InvariantCulture),
             "content",
             topLevel);
-        CopyReadyTree(inspection.Root, preparedPath);
+        bool cpSource = role == ProjectReviewArtifactRole.Target
+            && string.Equals(inspection.Manifests[0].ContentPackFor,
+                ProjectReviewCpDiagnosis.ProviderId, StringComparison.OrdinalIgnoreCase);
+        string[] sourceFiles = SelectReadySourceFiles(inspection.Root, cpSource);
+        string sourceIdentity = ModBuildIdentity.ComputeSelectedFiles(inspection.Root, sourceFiles);
+        CopySelectedReadyFiles(inspection.Root, preparedPath, sourceFiles);
+        if (sourceIdentity != ModBuildIdentity.ComputeFileSet(preparedPath))
+            throw new InvalidDataException("The ready source changed while it was copied.");
         ProjectReviewManifest? manifest = ReadReviewManifest(
             Path.Combine(preparedPath, "manifest.json"),
             allowVersionToken: false,
@@ -663,18 +670,37 @@ internal static partial class ProjectModStager
 
     internal static void CopyReadyTree(string source, string destination)
     {
-        if ((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0)
+        CopySelectedReadyFiles(source, destination, SelectReadySourceFiles(source, cpSource: false));
+    }
+
+    internal static string ComputeCpSourceIdentity(string source) =>
+        ModBuildIdentity.ComputeSelectedFiles(source, SelectReadySourceFiles(source, cpSource: true));
+
+    private static void CopySelectedReadyFiles(string source, string destination, IReadOnlyList<string> files)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (string file in files)
+        {
+            string target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: false);
+        }
+    }
+
+    private static string[] SelectReadySourceFiles(string source, bool cpSource)
+    {
+        if (ProjectChecker.HasLinkedAncestor(source))
         {
             throw new InvalidDataException(
                 "An explicit ready review directory cannot be a reparse point.");
         }
 
-        Directory.CreateDirectory(destination);
-        var pending = new Stack<(string Source, string Destination)>();
-        pending.Push((source, destination));
+        var files = new List<string>();
+        var pending = new Stack<(string Source, bool Output)>();
+        pending.Push((source, false));
         while (pending.Count > 0)
         {
-            (string currentSource, string currentDestination) = pending.Pop();
+            (string currentSource, bool output) = pending.Pop();
             foreach (string entry in Directory.EnumerateFileSystemEntries(currentSource))
             {
                 FileAttributes attributes = File.GetAttributes(entry);
@@ -685,19 +711,23 @@ internal static partial class ProjectModStager
                 }
 
                 string name = Path.GetFileName(entry);
-                string target = Path.Combine(currentDestination, name);
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
-                    if (ReviewForbiddenDirectories.Contains(name))
+                    bool excludedOutput = output || (cpSource && currentSource == source
+                        && name.Equals(".sdvkit", StringComparison.OrdinalIgnoreCase));
+                    if (!excludedOutput && ReviewForbiddenDirectories.Contains(name))
                     {
                         throw new InvalidDataException(
                             $"The explicit ready review directory contains an unsafe development or save path: {entry}");
                     }
 
-                    Directory.CreateDirectory(target);
-                    pending.Push((entry, target));
+                    pending.Push((entry, excludedOutput));
                     continue;
                 }
+
+                using (var stream = new FileStream(entry, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    OwnedReviewLogReader.RequireSingleLink(stream);
+                if (output) continue;
 
                 string extension = Path.GetExtension(name);
                 if (ReviewSaveMarkerFileNames.Contains(name)
@@ -710,9 +740,10 @@ internal static partial class ProjectModStager
                         $"The explicit ready review directory contains a source, secret, save, executable, archive, or game file: {entry}");
                 }
 
-                File.Copy(entry, target, overwrite: false);
+                files.Add(entry);
             }
         }
+        return files.ToArray();
     }
 
     private static string? OptionalVersion(

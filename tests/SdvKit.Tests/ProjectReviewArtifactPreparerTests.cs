@@ -9,6 +9,81 @@ namespace SdvKit.Tests;
 public sealed class ProjectReviewArtifactPreparerTests
 {
     [Fact]
+    public void GeneratedCpPackRemainsReviewableAfterCheckAndPackage()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = Path.Combine(temporary.Path, "Pack");
+        Assert.Empty(ProjectCreator.Create(new ProjectCreationRequest(ProjectCreator.ContentPack,
+            target, "Pack", "SDVKit", "SDVKit.Pack", "Original generated pack.")).Problems);
+        Assert.Empty(ProjectChecker.Check(target).Problems);
+        Assert.Empty(ProjectPackager.Package(target, DoctorMustNotRun).Problems);
+        string[] before = SnapshotTree(target);
+        string provider = WriteReadyCodeMod(temporary.Path, "Provider", "Pathoschild.ContentPatcher", "2.9.1");
+        LiveLabPaths paths = ResolveLab(temporary.Path);
+        var prepared = ProjectModStager.PrepareReview(target, [provider], [], paths, DoctorMustNotRun);
+        Assert.Null(prepared.Problem);
+        var artifact = prepared.Artifacts.Single(a => a.Role == ProjectReviewArtifactRole.Target);
+        Assert.False(Directory.Exists(Path.Combine(artifact.PreparedPath, ".sdvkit")));
+        Assert.Equal(artifact.BuildIdentity, ProjectModStager.ComputeCpSourceIdentity(target));
+        Assert.NotEqual(artifact.BuildIdentity, ModBuildIdentity.ComputeFileSet(target));
+        var staged = ProjectModStager.StageReview(prepared.Artifacts, paths);
+        Assert.Null(staged.Problem);
+        Assert.Equal(artifact.BuildIdentity, ModBuildIdentity.ComputeFileSet(staged.Staging!.Target.StagingPath));
+        Assert.True(ProjectModStager.RemoveReview(paths).Removed);
+        Assert.Equal(before, SnapshotTree(target));
+        Assert.True(ProjectModStager.RemoveReviewPreparation(prepared.PreparationRoot, paths));
+    }
+
+    [Theory]
+    [InlineData(".sdvkit/packages/Pack.zip", true)]
+    [InlineData(".SDVKIT/packages/Pack.zip", true)]
+    [InlineData("assets/.sdvkit/payload.json", false)]
+    [InlineData("assets/.SDVKIT/payload.json", false)]
+    [InlineData("assets/Saves/payload.json", false)]
+    [InlineData("assets/SaveGameInfo", false)]
+    [InlineData("assets/Stardew Valley.dll", false)]
+    [InlineData("assets/source.cs", false)]
+    [InlineData("assets/other.zip", false)]
+    [InlineData("obj/output.json", false)]
+    public void CpSourceOutputExceptionIsRootOnlyAndKeepsUnsafePayloadRejection(string payload, bool accepted)
+    {
+        using TemporaryDirectory temporary = new();
+        string target = WriteContentPack(temporary.Path, "Pack", "Test.Pack", "1.0.0", "Pathoschild.ContentPatcher");
+        string provider = WriteReadyCodeMod(temporary.Path, "Provider", "Pathoschild.ContentPatcher", "2.9.1");
+        temporary.WriteFile("Pack/" + payload, "payload");
+        string[] before = SnapshotTree(target);
+        LiveLabPaths paths = ResolveLab(temporary.Path);
+        var prepared = ProjectModStager.PrepareReview(target, [provider], [], paths, DoctorMustNotRun);
+        Assert.Equal(accepted, prepared.Problem is null);
+        if (accepted)
+        {
+            var artifact = prepared.Artifacts.Single(a => a.Role == ProjectReviewArtifactRole.Target);
+            Assert.Equal(artifact.BuildIdentity, ProjectModStager.ComputeCpSourceIdentity(target));
+            Assert.False(File.Exists(Path.Combine(artifact.PreparedPath, payload)));
+        }
+        else Assert.Throws<InvalidDataException>(() => ProjectModStager.ComputeCpSourceIdentity(target));
+        Assert.Equal(before, SnapshotTree(target));
+        Assert.True(ProjectModStager.RemoveReviewPreparation(prepared.PreparationRoot, paths));
+    }
+
+    [Theory]
+    [InlineData("provider")]
+    [InlineData("additionalPack")]
+    [InlineData("otherProvider")]
+    public void OutputExceptionDoesNotApplyToCompanionsOrOtherProviders(string context)
+    {
+        using TemporaryDirectory temporary = new();
+        string providerId = context == "otherProvider" ? "Test.Provider" : "Pathoschild.ContentPatcher";
+        string target = WriteContentPack(temporary.Path, "Pack", "Test.Pack", "1.0.0", providerId);
+        string provider = WriteReadyCodeMod(temporary.Path, "Provider", providerId, "2.9.1");
+        string additional = WriteContentPack(temporary.Path, "Additional", "Test.Additional", "1.0.0", providerId);
+        string outputRoot = context == "provider" ? provider : context == "additionalPack" ? additional : target;
+        Directory.CreateDirectory(Path.Combine(outputRoot, ".sdvkit", "packages"));
+        var prepared = ProjectModStager.PrepareReview(target, [provider], [additional], ResolveLab(temporary.Path), DoctorMustNotRun);
+        Assert.NotNull(prepared.Problem);
+    }
+
+    [Fact]
     public void CodeProjectPreparationKeepsExternalSourceReadOnlyAndOwnsAllBuildOutputs()
     {
         using TemporaryDirectory temporary = new();
