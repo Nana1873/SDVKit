@@ -32,6 +32,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- A failed final lab-status update is reported even when earlier active updates were already failing. The game still exits normally, and a missing final marker remains an unconfirmed stop.
 - Lab status publication avoids Windows replacement-intermediate failures while preserving complete snapshots for concurrent readers; denied writes remain visible and stale markers are still rejected.
 - Content Patcher targets remain reviewable and refreshable from their original source after packaging. Root `.sdvkit` output is retained without entering the game; unsafe paths, unselected edits, companion drift and exact staged identities remain guarded.
 
