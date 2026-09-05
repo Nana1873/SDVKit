@@ -59,7 +59,29 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         Assert.Equal("ready", result.State);
         Assert.DoesNotContain("private unrelated", string.Join('\n', result.Messages));
         string interrupted = CpSummary.Replace("   Current changes:", "[08:00:02 INFO  Other] interruption\n   Current changes:", StringComparison.Ordinal);
-        Assert.Equal("cpOutputUnsupported", CpInterpret(interrupted).ErrorCode);
+        Assert.Equal("cpResponseUncorrelatedOrOverlapping", CpInterpret(interrupted).ErrorCode);
+    }
+
+    [Fact]
+    public void CpEarlySummaryInterruptionCannotMasqueradeAsAnEmptySummary()
+    {
+        string interrupted = CpSummary.Replace("Test Pack:", "[08:00:02 INFO  Other] interruption\nTest Pack:", StringComparison.Ordinal);
+        var result = CpInterpret(interrupted);
+        Assert.Equal("cpResponseUncorrelatedOrOverlapping", result.ErrorCode);
+        Assert.Empty(result.Patches);
+        string empty = CpSummary[..CpSummary.IndexOf("Test Pack:", StringComparison.Ordinal)];
+        Assert.Equal("ready", CpInterpret(empty).State);
+        Assert.Empty(CpInterpret(empty).Patches);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CpParseRequiresItsActualResultAfterTheResultHeading(bool interrupted)
+    {
+        const string parse = "[08:00:02 DEBUG Content Patcher] \nMetadata\n   raw value:   {{Missing}}\nDiagnostic state\nResult\n";
+        string middle = parse + (interrupted ? "[08:00:02 INFO  Other] interruption\nThe token string is invalid or unready.\n" : "");
+        Assert.Equal(interrupted ? "cpResponseUncorrelatedOrOverlapping" : "cpOutputUnsupported", CpInterpret(middle, parse: true).ErrorCode);
     }
 
     [Fact]

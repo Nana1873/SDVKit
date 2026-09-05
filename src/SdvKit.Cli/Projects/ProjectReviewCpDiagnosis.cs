@@ -156,7 +156,7 @@ internal static class ProjectReviewCpDiagnosis
     }
 
     private static string Marker(string value) => $"The token string is valid and ready. Parsed value: \"{value}\"";
-    private sealed record Entry(string Time, string Level, string Text);
+    private sealed record Entry(string Time, string Level, string Text, bool Interrupted = false);
     private static List<Entry> Entries(string text, string provider)
     {
         var result = new List<Entry>();
@@ -179,6 +179,12 @@ internal static class ProjectReviewCpDiagnosis
                 lines.Add(header.Groups["message"].Value);
             }
             else if (time is not null) lines.Add(line);
+            else if (!string.IsNullOrWhiteSpace(line) && result.Count > 0)
+            {
+                // A foreign logger followed by continuation text can hide the
+                // remainder of a CP reply. Do not interpret that partial entry.
+                result[^1] = result[^1] with { Interrupted = true };
+            }
         }
         Finish();
         return result;
@@ -192,7 +198,7 @@ internal static class ProjectReviewCpDiagnosis
             DateTimeOffset.UtcNow, null, [], 0, false, []);
         var entries = Entries(text, provider);
         if (entries.Count != 3 || entries[0].Text.Trim() != Marker(begin) || entries[2].Text.Trim() != Marker(end)
-            || entries[0].Level != "DEBUG" || entries[2].Level != "DEBUG")
+            || entries[0].Level != "DEBUG" || entries[2].Level != "DEBUG" || entries.Take(2).Any(e => e.Interrupted))
             return Failure("cpResponseUncorrelatedOrOverlapping");
         Entry response = entries[1];
         string message = response.Text;
@@ -202,7 +208,10 @@ internal static class ProjectReviewCpDiagnosis
             known = response.Level == "ERROR" && message.TrimStart().StartsWith("Can't parse that token value:", StringComparison.Ordinal)
                 || response.Level == "DEBUG" && message.Contains("Metadata\n", StringComparison.Ordinal)
                 && message.Contains($"   raw value:   {parse}\n", StringComparison.Ordinal)
-                && message.Contains("Diagnostic state\n", StringComparison.Ordinal) && message.Contains("Result\n", StringComparison.Ordinal);
+                && message.Contains("Diagnostic state\n", StringComparison.Ordinal) && message.Contains("Result\n", StringComparison.Ordinal)
+                && (message.TrimEnd().EndsWith("The token string is invalid or unready.", StringComparison.Ordinal)
+                    || message.TrimEnd().Split('\n')[^1].TrimStart().StartsWith("The token string is valid and ready. Parsed value: \"", StringComparison.Ordinal)
+                        && message.TrimEnd().EndsWith('"'));
         }
         else
         {

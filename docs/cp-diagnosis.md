@@ -48,7 +48,10 @@ two matching markers, with launch/process/staging/freshness verification and
 same-file append continuity. Extra provider entries, overlapping commands, missing
 markers, log replacement, an unknown output shape, or a ten-second response-window
 timeout return an explicit incomplete result. No command is automatically retried.
-Unrelated entries from other loggers are omitted. This is bounded correlation of
+Single-line unrelated entries from other loggers are omitted. Foreign multiline
+output inside the window is conservatively rejected: it can hide the remainder
+of an interrupted CP reply. A parse reply must include its actual final result.
+This is bounded correlation of
 ordinary provider output, not authenticated provenance of arbitrary mod text.
 
 Each filter is passed as one double-quoted console argument. Pack IDs must be selected staged IDs;
