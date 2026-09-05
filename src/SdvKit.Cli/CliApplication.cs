@@ -24,7 +24,8 @@ internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
     IReadOnlyList<string> contentPackPaths,
     bool useTestSave,
     string topology,
-    string labRoot);
+    string labRoot,
+    string? projectFile);
 
 internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
     string command,
@@ -68,12 +69,12 @@ public static partial class CliApplication
     private const string InspectUsage = "Usage: sdvkit project inspect [path] --json";
     private const string CheckUsage = "Usage: sdvkit project check [path] [--json]";
     private const string CreateUsage = "Usage: sdvkit project create <smapi-mod|content-pack> <path> --name <name> --author <author> --unique-id <id> --description <text> --json";
-    private const string BuildUsage = "Usage: sdvkit project build [path] --json";
-    private const string PackageUsage = "Usage: sdvkit project package [path] --json";
+    private const string BuildUsage = "Usage: sdvkit project build [path] [--project <relative.csproj>] [--game-path <directory>] --json";
+    private const string PackageUsage = "Usage: sdvkit project package [path] [--project <relative.csproj>] [--game-path <directory>] --json";
     private const string SmokeUsage =
-        "Usage: sdvkit project smoke [path] --topology <single|network-2> --json";
+        "Usage: sdvkit project smoke [path] [--game-path <directory>] --topology <single|network-2> --json";
     private const string ReviewStartUsage =
-        "Usage: sdvkit project review start [code-project-or-content-pack] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json";
+        "Usage: sdvkit project review start [code-project-or-content-pack] [--project <relative.csproj>] [--game-path <directory>] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
         "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
@@ -139,7 +140,7 @@ public static partial class CliApplication
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
-        "       sdvkit lab smoke --topology network-2 --json";
+        "       sdvkit lab smoke [--game-path <directory>] --topology network-2 --json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -175,6 +176,26 @@ public static partial class CliApplication
         ArgumentNullException.ThrowIfNull(error);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
 
+        string? selectedGamePath = null;
+        bool acceptsGamePath = arguments.Count > 0 && (arguments[0] == "doctor"
+            || arguments.Count > 1 && arguments[0] == "lab" && arguments[1] is "start" or "test-save" or "smoke"
+            || arguments.Count > 1 && arguments[0] == "project" && arguments[1] is "build" or "package" or "smoke"
+            || arguments.Count > 2 && arguments[0] == "project" && arguments[1] == "review" && arguments[2] == "start");
+        if (acceptsGamePath)
+        {
+            if (!TryExtractOption(arguments, "--game-path", out arguments, out string? gamePath))
+            {
+                error.WriteLine("Supply --game-path <directory> at most once.");
+                return UsageError;
+            }
+            selectedGamePath = gamePath;
+            Func<DoctorReport> originalDiscovery = discoverInstallations;
+            var frozen = new Lazy<DoctorReport>(() => gamePath is null
+                ? originalDiscovery()
+                : GameInstallationDiscovery.Inspect([gamePath], includeMissingPaths: true));
+            discoverInstallations = () => frozen.Value;
+        }
+
         if (runLiveLab is null)
         {
             runLiveLab = (action, topology, projectRoot) =>
@@ -203,7 +224,8 @@ public static partial class CliApplication
                 contentPackPaths,
                 useTestSave,
                 topology,
-                labRoot) => ProjectReviewService.Execute(
+                labRoot,
+                projectFile) => ProjectReviewService.Execute(
                     action,
                     sourcePath,
                     companionPaths,
@@ -211,7 +233,9 @@ public static partial class CliApplication
                     topology,
                     labRoot,
                     discoverInstallations,
-                    useTestSave);
+                    useTestSave,
+                    projectFile,
+                    selectedGamePath);
         }
 
         runProjectReviewConsole ??= (command, topology, role, labRoot) =>
@@ -322,14 +346,14 @@ public static partial class CliApplication
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
-            output.WriteLine("Usage: sdvkit doctor --json");
+            output.WriteLine("Usage: sdvkit doctor [--game-path <directory>] --json");
             return Success;
         }
 
         if (arguments.Count != 2
             || !string.Equals(arguments[1], "--json", StringComparison.Ordinal))
         {
-            error.WriteLine("Usage: sdvkit doctor --json");
+            error.WriteLine("Usage: sdvkit doctor [--game-path <directory>] --json");
             return UsageError;
         }
 
@@ -488,13 +512,14 @@ public static partial class CliApplication
             return Success;
         }
 
-        if (!TryParseOptionalPath(arguments, out string? path))
+        if (!TryExtractOption(arguments, "--project", out arguments, out string? projectFile)
+            || !TryParseOptionalPath(arguments, out string? path))
         {
             error.WriteLine(BuildUsage);
             return UsageError;
         }
 
-        ProjectBuildReport report = ProjectBuilder.Build(path!, discoverInstallations);
+        ProjectBuildReport report = ProjectBuilder.Build(path!, discoverInstallations, projectFile: projectFile);
         WriteJson(output, report);
         return report.Problems.Count == 0 ? Success : InspectionFailed;
     }
@@ -511,13 +536,14 @@ public static partial class CliApplication
             return Success;
         }
 
-        if (!TryParseOptionalPath(arguments, out string? path))
+        if (!TryExtractOption(arguments, "--project", out arguments, out string? projectFile)
+            || !TryParseOptionalPath(arguments, out string? path))
         {
             error.WriteLine(PackageUsage);
             return UsageError;
         }
 
-        ProjectPackageReport report = ProjectPackager.Package(path!, discoverInstallations);
+        ProjectPackageReport report = ProjectPackager.Package(path!, discoverInstallations, projectFile: projectFile);
         WriteJson(output, report);
         return report.Problems.Count == 0 ? Success : InspectionFailed;
     }
@@ -670,6 +696,13 @@ public static partial class CliApplication
             return Success;
         }
 
+        if (!TryExtractOption(arguments, "--project", out arguments, out string? projectFile)
+            || (projectFile is not null && (arguments.Count < 3 || arguments[2] != "start")))
+        {
+            WriteProjectReviewUsage(error);
+            return UsageError;
+        }
+
         if (!TryParseProjectReview(
                 arguments,
                 out string? action,
@@ -701,7 +734,8 @@ public static partial class CliApplication
                     contentPackPaths!,
                     useTestSave,
                     topology!,
-                    Environment.CurrentDirectory);
+                    Environment.CurrentDirectory,
+                    projectFile);
         WriteJson(output, result.Report);
         return result.ExitCode;
     }
@@ -1416,6 +1450,25 @@ public static partial class CliApplication
         return true;
     }
 
+    private static bool TryExtractOption(
+        IReadOnlyList<string> arguments,
+        string option,
+        out IReadOnlyList<string> remaining,
+        out string? value)
+    {
+        var result = new List<string>();
+        value = null;
+        remaining = arguments;
+        for (int index = 0; index < arguments.Count; index++)
+        {
+            if (arguments[index] != option) { result.Add(arguments[index]); continue; }
+            if (value is not null || index + 1 >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index + 1]) || arguments[index + 1].StartsWith('-')) return false;
+            value = arguments[++index];
+        }
+        remaining = result;
+        return true;
+    }
+
     private static bool TryParseProjectReview(
         IReadOnlyList<string> arguments,
         out string? action,
@@ -1696,6 +1749,7 @@ public static partial class CliApplication
     {
         output.WriteLine(LabSingleUsage);
         output.WriteLine(LabNetworkTwoUsage);
+        output.WriteLine("--game-path <directory> selects a complete installation for start, test-save, or smoke only.");
     }
 
     private static void WriteProjectHelp(TextWriter output)

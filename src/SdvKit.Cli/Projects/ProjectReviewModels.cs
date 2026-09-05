@@ -37,7 +37,11 @@ internal sealed record ProjectReviewPreparedArtifact(
     ProjectReviewManifest Manifest,
     string BuildIdentity,
     string? BuildLog,
-    string? PackageLog);
+    string? PackageLog)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
+}
 
 internal sealed record ProjectReviewPreparationResult(
     IReadOnlyList<ProjectReviewPreparedArtifact> Artifacts,
@@ -73,6 +77,9 @@ internal sealed record ProjectReviewOwnedArtifact(
             StringComparison.Ordinal)).StagingPath;
     }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
+
     public CpRefreshReceipt? CpRefresh { get; init; }
 
     [JsonIgnore]
@@ -88,6 +95,9 @@ internal sealed record ProjectReviewStaging(
     string OwnershipPath,
     IReadOnlyList<ProjectReviewOwnedArtifact> Artifacts)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GamePath { get; init; }
+
     [JsonIgnore]
     public ProjectReviewOwnedArtifact Target => Artifacts.Single(artifact =>
         string.Equals(
@@ -122,6 +132,9 @@ internal sealed record ProjectReviewArtifactReport(
     string? BuildLog,
     string? PackageLog)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
+
     public CpRefreshReceipt? CpRefresh { get; init; }
 }
 

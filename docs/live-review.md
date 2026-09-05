@@ -13,7 +13,7 @@ Complete [installation](../README.md#install), retaining `$sdvkit` as the absolu
 & $sdvkit project review status --topology network-2 --json
 ```
 
-Continue only with one ready installation and a supported target. Identify the owner of any active lab/review; wait for another task's verified teardown instead of stopping its game. Only one task should operate a lab context at a time.
+Continue only with one complete installation and a supported target. If discovery is ambiguous or the installation is outside discovery, validate `doctor --game-path <directory> --json`, then pass the same `--game-path <directory>` to each `lab start`, `lab test-save`, `lab smoke`, `project smoke`, or `project review start` that launches/builds against it. Status, stop and reset use retained ownership and do not accept a new installation selection. Identify the owner of any active lab/review; wait for another task's verified teardown instead of stopping its game. Only one task should operate a lab context at a time.
 
 ## Automated smoke
 
@@ -31,6 +31,16 @@ Accept exit `0`, `state=passed`, exact target ID/version/build identity and suff
 & $sdvkit project review start .\ExampleMod --topology single --json
 & $sdvkit project review status --topology single --json
 ```
+
+To review one code project within an existing repository:
+
+```powershell
+& $sdvkit project review start .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --topology single --json
+```
+
+The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Review accepts one standalone code mod per source; hybrid/bundled-pack build/package support does not make a multi-manifest bundle reviewable. Supply separately supported ready packs through `--content-pack`. Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
+
+A retained review cannot switch explicit projects within the same root. Its ownership marker also retains `gamePath`, so both explicit and automatically discovered installations must match on network-2 restart after stop. Older retained staging without installation binding remains readable for status/stop/reset, but must be reset and rebuilt before restart. Stop/reset the exact owned review before changing its selection. Network-2 restart must repeat the exact target/project/companions/content-pack selection.
 
 Review stays running until stopped. It starts windowed at 1280x720, keeps the SMAPI terminal available, and permits subsequent resize/UI-scale testing. Confirm the expected target is loaded; a built/staged artifact is not load confirmation.
 

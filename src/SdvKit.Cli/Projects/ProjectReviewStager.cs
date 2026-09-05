@@ -13,20 +13,23 @@ internal static partial class ProjectModStager
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
         LiveLabPaths paths,
         Action<string, string>? copyTree = null,
-        Func<string, bool>? deleteTree = null) =>
+        Func<string, bool>? deleteTree = null,
+        string? gamePath = null) =>
         StageReview(
             artifacts,
             LiveLabState.SingleTopology,
             paths,
             copyTree,
-            deleteTree);
+            deleteTree,
+            gamePath);
 
     public static ProjectReviewStagingResult StageReview(
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts,
         string topology,
         LiveLabPaths singlePaths,
         Action<string, string>? copyTree = null,
-        Func<string, bool>? deleteTree = null)
+        Func<string, bool>? deleteTree = null,
+        string? gamePath = null)
     {
         ArgumentNullException.ThrowIfNull(artifacts);
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
@@ -124,7 +127,8 @@ internal static partial class ProjectModStager
                     artifact.Manifest,
                     artifact.BuildIdentity,
                     artifact.BuildLog,
-                    artifact.PackageLog);
+                    artifact.PackageLog)
+                { ProjectFile = artifact.ProjectFile };
             }).ToArray();
 
             ProjectReviewRoleStagingPath? collision = owned
@@ -167,7 +171,8 @@ internal static partial class ProjectModStager
                     ReviewOwnershipSchemaVersion,
                     topology,
                     ownershipPath,
-                    owned);
+                    owned)
+                { GamePath = gamePath };
                 WriteReviewOwnership(ownershipPath, staging);
                 return new ProjectReviewStagingResult(staging, null);
             }
@@ -652,6 +657,7 @@ internal static partial class ProjectModStager
         ReviewRolePaths[] expectedRoles = ResolveReviewRolePaths(singlePaths, topology);
         if (staging.SchemaVersion != ReviewOwnershipSchemaVersion
             || !string.Equals(staging.Topology, topology, StringComparison.Ordinal)
+            || staging.GamePath is not null && !Path.IsPathFullyQualified(staging.GamePath)
             || staging.Artifacts is null
             || staging.Artifacts.Count == 0
             || staging.Artifacts.Any(artifact => artifact is null)
@@ -673,6 +679,10 @@ internal static partial class ProjectModStager
                     || !Guid.TryParseExact(artifact.CpRefresh.LaunchId, "N", out _)
                     || !Guid.TryParseExact(artifact.CpRefresh.RefreshId, "N", out _)
                     || !ProjectReviewCpRefresh.ValidFiles(artifact.CpRefresh.Files))
+                || artifact.ProjectFile is not null && (artifact.Manifest.Kind != ProjectInspectionReport.SmapiMod
+                    || !Path.IsPathFullyQualified(artifact.ProjectFile)
+                    || !IsBelow(artifact.SourceRoot, artifact.ProjectFile)
+                    || !string.Equals(Path.GetExtension(artifact.ProjectFile), ".csproj", StringComparison.OrdinalIgnoreCase))
                 || !IsValidOwnedReviewArtifact(artifact)))
         {
             return ReviewProblem(

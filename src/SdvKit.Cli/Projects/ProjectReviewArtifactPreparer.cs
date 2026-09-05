@@ -26,7 +26,8 @@ internal static partial class ProjectModStager
         IReadOnlyList<string> contentPackPaths,
         LiveLabPaths paths,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner? runner = null)
+        DotNetBuildRunner? runner = null,
+        string? projectFile = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
         ArgumentNullException.ThrowIfNull(companionPaths);
@@ -51,7 +52,7 @@ internal static partial class ProjectModStager
             var artifacts = new List<ProjectReviewPreparedArtifact>();
             ProjectReviewProblem? problem;
             ProjectInspectionReport targetInspection = ProjectInspector.Inspect(targetPath);
-            ProjectReviewPreparedArtifact? target = Directory.Exists(targetPath)
+            ProjectReviewPreparedArtifact? target = projectFile is null && Directory.Exists(targetPath)
                 && targetInspection.ProjectFiles.Count == 0
                     ? PrepareReadyDirectory(
                         ProjectReviewArtifactRole.Target,
@@ -67,7 +68,8 @@ internal static partial class ProjectModStager
                         artifacts.Count,
                         frozenDoctor,
                         runner,
-                        out problem);
+                        out problem,
+                        projectFile);
             if (target is null)
             {
                 return PreparationFailure(preparationRoot, paths, problem!);
@@ -294,9 +296,10 @@ internal static partial class ProjectModStager
         int index,
         Func<DoctorReport> discoverInstallations,
         DotNetBuildRunner? runner,
-        out ProjectReviewProblem? problem)
+        out ProjectReviewProblem? problem,
+        string? projectFile = null)
     {
-        ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(sourcePath);
+        ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(sourcePath, projectFile);
         if (resolution.Target is null
             || !string.Equals(
                 resolution.Inspection.Kind,
@@ -322,7 +325,8 @@ internal static partial class ProjectModStager
             resolution.Inspection.Root,
             stateRoot,
             discoverInstallations,
-            runner);
+            runner,
+            projectFile);
         if (build.Problems.Count > 0)
         {
             ProjectProblem sourceProblem = build.Problems[0];
@@ -337,7 +341,8 @@ internal static partial class ProjectModStager
             resolution.Inspection.Root,
             stateRoot,
             discoverInstallations,
-            runner);
+            runner,
+            projectFile);
         if (package.Problems.Count > 0)
         {
             ProjectProblem sourceProblem = package.Problems[0];
@@ -355,7 +360,8 @@ internal static partial class ProjectModStager
             build.Log,
             preparationRoot,
             index,
-            out problem);
+            out problem,
+            projectFile is null ? null : resolution.Target.ProjectFile);
     }
 
     private static ProjectReviewPreparedArtifact? PreparePackage(
@@ -365,7 +371,8 @@ internal static partial class ProjectModStager
         string? buildLog,
         string preparationRoot,
         int index,
-        out ProjectReviewProblem? problem)
+        out ProjectReviewProblem? problem,
+        string? projectFile)
     {
         if (string.IsNullOrWhiteSpace(package.Archive)
             || package.Entries.Count == 0)
@@ -579,7 +586,8 @@ internal static partial class ProjectModStager
             manifest,
             ModBuildIdentity.ComputeFileSet(preparedPath),
             buildLog,
-            package.Log);
+            package.Log)
+        { ProjectFile = projectFile };
     }
 
     private static ProjectReviewPreparedArtifact? PrepareReadyDirectory(

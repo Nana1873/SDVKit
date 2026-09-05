@@ -156,6 +156,55 @@ try {
         throw "The extracted CLI returned an unexpected project inspection: $inspectOutput"
     }
 
+    # Exercise selection in the extracted toolkit without needing a game on CI.
+    $selectionRoot = Join-Path $packageRoot '.sdvkit\selection-fixture'
+    foreach ($name in @('Selected', 'Sibling')) {
+        $created = (& $cli project create smapi-mod (Join-Path $selectionRoot $name) `
+            --name $name --author SDVKit --unique-id "SDVKit.Portable.$name" `
+            --description 'Original existing-project selection example.' --json | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Selection fixture creation failed: $created" }
+    }
+    $ambiguous = (& $cli project build $selectionRoot --json | Out-String).Trim()
+    if ($LASTEXITCODE -ne 3 -or ($ambiguous | ConvertFrom-Json).problems[0].code -ne 'projectFileAmbiguous') {
+        throw "Omitted ambiguous project selection was not controlled: $ambiguous"
+    }
+    $invalid = (& $cli project package $selectionRoot --project '..\outside.csproj' --json | Out-String).Trim()
+    if ($LASTEXITCODE -ne 3 -or ($invalid | ConvertFrom-Json).problems[0].code -ne 'projectSelectionInvalid') {
+        throw "Invalid explicit project selection was not rejected: $invalid"
+    }
+    $incompleteGame = Join-Path $selectionRoot '.sdvkit\incomplete-game'
+    New-Item -ItemType Directory -Path $incompleteGame -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $incompleteGame 'Stardew Valley.exe') -Value 'incomplete candidate, never executed'
+    $incomplete = (& $cli doctor --game-path $incompleteGame --json | Out-String).Trim()
+    $incompleteExit = $LASTEXITCODE
+    $incompleteReport = $incomplete | ConvertFrom-Json
+    if ($incompleteExit -ne 3 -or $incompleteReport.status -ne 'notFound' `
+        -or @($incompleteReport.installations).Count -ne 0 `
+        -or @($incompleteReport.incompleteCandidates[0].missingRequirements).Count -ne 3 `
+        -or @($incompleteReport.incompleteCandidates[0].actions).Count -ne 2) {
+        throw "Incomplete explicit installation was not explained: $incomplete"
+    }
+    foreach ($action in @('build', 'package')) {
+        $blocked = (& $cli project $action $selectionRoot --project 'Selected\Selected.csproj' --game-path $incompleteGame --json | Out-String).Trim()
+        if ($LASTEXITCODE -ne 3 -or ($blocked | ConvertFrom-Json).problems[0].code -ne 'gameInstallationNotFound') {
+            throw "Selected $action did not reach the validated installation gate: $blocked"
+        }
+    }
+    if ($ExpectedDoctorStatus -eq 'ready') {
+        $selectedGame = $doctor.installations[0].gamePath
+        foreach ($action in @('build', 'package')) {
+            $selectedOutput = (& $cli project $action $selectionRoot --project 'Selected\Selected.csproj' --game-path $selectedGame --json | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "Extracted selected $action failed: $selectedOutput" }
+            $selectedReport = $selectedOutput | ConvertFrom-Json
+            if ($action -eq 'build' -and $selectedReport.projectFile -ne 'Selected/Selected.csproj') {
+                throw "Extracted build selected a different project: $selectedOutput"
+            }
+            if ($action -eq 'package' -and @($selectedReport.entries | Where-Object { -not $_.StartsWith('Selected/') }).Count -gt 0) {
+                throw "Extracted package included a sibling mod: $selectedOutput"
+            }
+        }
+    }
+
     $checkOutput = (& $cli project check $fixtureRoot --json | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or ($checkOutput | ConvertFrom-Json).status -ne 'passed') {
         throw "The extracted C# manifest check failed: $checkOutput"

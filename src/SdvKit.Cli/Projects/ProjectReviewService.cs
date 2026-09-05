@@ -56,7 +56,9 @@ internal static class ProjectReviewService
         string topology,
         string labRoot,
         Func<DoctorReport> discoverInstallations,
-        bool useTestSave = false)
+        bool useTestSave = false,
+        string? projectFile = null,
+        string? gamePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(action);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
@@ -65,6 +67,10 @@ internal static class ProjectReviewService
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
         ArgumentException.ThrowIfNullOrWhiteSpace(labRoot);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
+
+        Func<DoctorReport> originalDiscovery = discoverInstallations;
+        var frozenDoctor = new Lazy<DoctorReport>(originalDiscovery);
+        discoverInstallations = () => frozenDoctor.Value;
 
         if (topology is not (LiveLabState.SingleTopology or NetworkTwoContract.Topology))
         {
@@ -97,6 +103,7 @@ internal static class ProjectReviewService
 
         if (string.Equals(action, "start", StringComparison.Ordinal)
             && string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
+            && projectFile is null
             && IsContentPackTargetCandidate(sourcePath))
         {
             return NetworkFailure(
@@ -149,6 +156,24 @@ internal static class ProjectReviewService
                         paths);
             }
 
+            if (action == "start" && gamePath is not null)
+            {
+                ProjectProblem? selectionProblem = ProjectBuilder.GetGamePath(discoverInstallations(), out string? selectedGame);
+                LiveLabState?[] states = topology == NetworkTwoContract.Topology
+                    ? [new JsonLiveLabStateStore(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatePath).Read(),
+                       new JsonLiveLabStateStore(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatePath).Read()]
+                    : [new JsonLiveLabStateStore(paths.StatePath).Read()];
+                if (selectionProblem is not null || states.Any(state => state is not null && !string.Equals(
+                    Path.GetDirectoryName(state.OwnedProcessIdentity.ExecutablePath), selectedGame, PathComparison())))
+                {
+                    ProjectReviewProblem problem = Problem(selectionProblem?.Code ?? "reviewGameSelectionMismatch", gamePath,
+                        "Select a complete installation matching the retained review roles; stop/reset before changing installations. Run doctor --game-path <directory> --json for missing requirements.");
+                    return topology == NetworkTwoContract.Topology
+                        ? NetworkFailure(SafeFullPath(sourcePath), paths.ProjectRoot, [problem])
+                        : Failure(SafeFullPath(sourcePath), paths.ProjectRoot, "blocked", [problem], paths, stagingRemoved: false);
+                }
+            }
+
             if (string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal))
             {
                 return action switch
@@ -158,7 +183,8 @@ internal static class ProjectReviewService
                         companionPaths,
                         contentPackPaths,
                         paths,
-                        discoverInstallations),
+                        discoverInstallations,
+                        projectFile),
                     "status" => StatusNetwork(paths),
                     "stop" => StopNetwork(paths),
                     "reset" => ResetNetwork(paths),
@@ -188,7 +214,8 @@ internal static class ProjectReviewService
                     stateStore,
                     service,
                     discoverInstallations,
-                    useTestSave),
+                    useTestSave,
+                    projectFile),
                 "status" => Status(paths, stateStore, service),
                 "stop" => Stop(paths, stateStore, service),
                 _ => throw new ArgumentOutOfRangeException(nameof(action)),
@@ -442,7 +469,8 @@ internal static class ProjectReviewService
         IReadOnlyList<string> companionPaths,
         IReadOnlyList<string> contentPackPaths,
         LiveLabPaths paths,
-        Func<DoctorReport> discoverInstallations)
+        Func<DoctorReport> discoverInstallations,
+        string? projectFile)
     {
         ProjectReviewStagingResult retained = ProjectModStager.ReadReview(
             paths,
@@ -488,7 +516,8 @@ internal static class ProjectReviewService
                 sourcePath,
                 companionPaths,
                 contentPackPaths,
-                retained.Staging);
+                retained.Staging,
+                projectFile);
             if (requestProblem is not null)
             {
                 return NetworkResult(
@@ -499,6 +528,13 @@ internal static class ProjectReviewService
                     fixtureReset: false,
                     stagingRemoved: false,
                     [requestProblem]);
+            }
+
+            if (retained.Staging.GamePath is not null)
+            {
+                ProjectReviewProblem? gameProblem = RetainedReviewGameProblem(retained.Staging, discoverInstallations());
+                if (gameProblem is not null)
+                    return NetworkResult(paths, retained.Staging, "blocked", null, fixtureReset: false, stagingRemoved: false, [gameProblem]);
             }
 
             LiveLabCommandResult existing = NetworkTwoSmokeService.StatusReviewWithinLock(
@@ -528,7 +564,8 @@ internal static class ProjectReviewService
                 sourcePath,
                 companionPaths,
                 contentPackPaths,
-                retained.Staging);
+                retained.Staging,
+                projectFile);
             if (requestProblem is not null)
             {
                 return NetworkResult(
@@ -541,17 +578,27 @@ internal static class ProjectReviewService
                     [requestProblem]);
             }
 
+            ProjectReviewProblem? gameProblem = RetainedReviewGameProblem(retained.Staging, discoverInstallations());
+            if (gameProblem is not null)
+                return NetworkResult(paths, retained.Staging, "blocked", null, fixtureReset: false, stagingRemoved: false, [gameProblem]);
+
             staging = retained.Staging;
             resetFromBaseline = false;
         }
         else
         {
+            ProjectProblem? gameProblem = ProjectBuilder.GetGamePath(discoverInstallations(), out string? selectedGame);
+            if (gameProblem is not null)
+                return NetworkResult(paths, null, "blocked", null, fixtureReset: false, stagingRemoved: true,
+                    [Problem(gameProblem.Code, null, "Select one complete game/SMAPI installation; run doctor --json for candidates and corrective actions.")]);
+
             ProjectReviewPreparationResult preparation = ProjectModStager.PrepareReview(
                 sourcePath,
                 companionPaths,
                 contentPackPaths,
                 paths,
-                discoverInstallations);
+                discoverInstallations,
+                projectFile: projectFile);
             if (preparation.Problem is not null)
             {
                 return NetworkResult(
@@ -571,7 +618,8 @@ internal static class ProjectReviewService
             ProjectReviewStagingResult staged = ProjectModStager.StageReview(
                 preparation.Artifacts,
                 NetworkTwoContract.Topology,
-                paths);
+                paths,
+                gamePath: selectedGame);
             if (staged.Staging is null)
             {
                 bool preparationRemoved = ProjectModStager.RemoveReviewPreparation(
@@ -1073,7 +1121,8 @@ internal static class ProjectReviewService
         JsonLiveLabStateStore stateStore,
         LiveLabService service,
         Func<DoctorReport> discoverInstallations,
-        bool useTestSave)
+        bool useTestSave,
+        string? projectFile)
     {
         ProjectReviewStagingResult retained = ProjectModStager.ReadReview(paths);
         if (retained.Problem is not null)
@@ -1101,6 +1150,13 @@ internal static class ProjectReviewService
                     "reviewTestSaveSelectionMismatch",
                     null,
                     "The retained single review does not match the requested --test-save selection; nothing was changed.")]);
+        }
+
+        if (retained.Staging is not null && (projectFile is not null || retained.Staging.Target.ProjectFile is not null))
+        {
+            ProjectReviewProblem? requestProblem = ReviewSetRequestProblem(sourcePath, companionPaths, contentPackPaths, retained.Staging, projectFile);
+            if (requestProblem is not null)
+                return ReviewResult(paths, retained.Staging, "blocked", null, stagingRemoved: false, [requestProblem]);
         }
 
         if (existing is not null || retained.Staging is not null)
@@ -1154,12 +1210,18 @@ internal static class ProjectReviewService
             }
         }
 
+        ProjectProblem? gameProblem = ProjectBuilder.GetGamePath(discoverInstallations(), out string? selectedGame);
+        if (gameProblem is not null)
+            return Failure(SafeFullPath(sourcePath), paths.ProjectRoot, "blocked",
+                [Problem(gameProblem.Code, null, "Select one complete game/SMAPI installation; run doctor --json for candidates and corrective actions.")], paths);
+
         ProjectReviewPreparationResult preparation = ProjectModStager.PrepareReview(
             sourcePath,
             companionPaths,
             contentPackPaths,
             paths,
-            discoverInstallations);
+            discoverInstallations,
+            projectFile: projectFile);
         if (preparation.Problem is not null)
         {
             return Failure(
@@ -1177,7 +1239,8 @@ internal static class ProjectReviewService
 
         ProjectReviewStagingResult staged = ProjectModStager.StageReview(
             preparation.Artifacts,
-            paths);
+            paths,
+            gamePath: selectedGame);
         if (staged.Staging is null)
         {
             bool preparationRemoved = ProjectModStager.RemoveReviewPreparation(
@@ -1560,12 +1623,29 @@ internal static class ProjectReviewService
         return null;
     }
 
+    internal static ProjectReviewProblem? RetainedReviewGameProblem(ProjectReviewStaging staging, DoctorReport doctor)
+    {
+        if (staging.GamePath is null)
+            return Problem("reviewGameSelectionUnknown", null,
+                "This retained review predates installation binding. Stop/reset the owned review and start again to rebuild it against one validated installation.");
+        ProjectProblem? gameProblem = ProjectBuilder.GetGamePath(doctor, out string? gamePath);
+        if (gameProblem is not null)
+            return Problem(gameProblem.Code, null, "Select the retained review installation with --game-path; run doctor --json for candidates and corrective actions.");
+        return string.Equals(staging.GamePath, gamePath, PathComparison()) ? null
+            : Problem("reviewGameSelectionMismatch", gamePath,
+                "The retained artifacts were prepared for another game installation. Restart with that installation, or reset before rebuilding for a different one.");
+    }
+
     private static ProjectReviewProblem? ReviewSetRequestProblem(
         string sourcePath,
         IReadOnlyList<string> companionPaths,
         IReadOnlyList<string> contentPackPaths,
-        ProjectReviewStaging staging)
+        ProjectReviewStaging staging,
+        string? projectFile)
     {
+        string? selected = projectFile is null ? null : Path.GetFullPath(projectFile, Path.GetFullPath(sourcePath));
+        if (!string.Equals(selected, staging.Target.ProjectFile, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            return Problem("reviewSetMismatch", projectFile, "The retained review uses a different explicit project selection; reset before changing it.");
         var requested = new List<(string Role, string Path)>
         {
             (ProjectReviewArtifactRole.Target, SafeFullPath(sourcePath)),
@@ -1857,7 +1937,7 @@ internal static class ProjectReviewService
                 RelativePath(paths.ProjectRoot, artifact.StagingPathFor(role)),
                 artifact.BuildLog,
                 artifact.PackageLog)
-            { CpRefresh = artifact.CpRefresh }).ToArray();
+            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile }).ToArray();
         return new ProjectNetworkReviewRoleReport(
             role,
             RelativePath(paths.ProjectRoot, rolePaths.StardewDataPath),
@@ -1974,7 +2054,7 @@ internal static class ProjectReviewService
                 RelativePath(paths.ProjectRoot, artifact.StagingPath),
                 artifact.BuildLog,
                 artifact.PackageLog)
-            { CpRefresh = artifact.CpRefresh }).ToArray();
+            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile }).ToArray();
         var report = new ProjectReviewReport(
             1,
             staging?.Target.SourceRoot,
