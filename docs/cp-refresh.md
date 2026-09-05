@@ -98,7 +98,7 @@ use the existing exact recovery path:
 
 ```powershell
 & $sdvkit project review stop --json
-& $sdvkit project review reset --json
+& $sdvkit project review reset --topology single --json
 & $sdvkit project review start .\ExamplePack --topology single --companion .\ContentPatcher --test-save --json
 ```
 
