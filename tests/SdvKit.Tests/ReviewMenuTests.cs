@@ -65,6 +65,22 @@ public sealed class ReviewMenuTests
     }
 
     [Fact]
+    public void MenuNotificationPreservesAlreadyObservedRootButClosureChangesScope()
+    {
+        var source = new Source();
+        source.Root = source.Add("Menu", "publicBase", [Component(new object())]);
+        var capture = new ReviewMenuCapture();
+        ReviewMenuReport beforeNotification = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        capture.ObserveRoot(source.Root);
+        ReviewMenuReport afterNotification = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.Equal(beforeNotification.IdentityScope, afterNotification.IdentityScope);
+        Assert.Equal(beforeNotification.Menus[0].Components[0].Id, afterNotification.Menus[0].Components[0].Id);
+        capture.ObserveRoot(null);
+        capture.ObserveRoot(source.Root);
+        Assert.NotEqual(beforeNotification.IdentityScope, capture.Capture(source, Launch, DateTimeOffset.UtcNow).IdentityScope);
+    }
+
+    [Fact]
     public void NestedPagesAndCustomBaseCoverageRemainExplicit()
     {
         var source = new Source();

@@ -336,7 +336,7 @@ internal static class ReviewCommand
         var inputRuntime = new StardewReviewInputRuntime(helper);
         var dataSource = new StardewReviewDataSource(helper);
         var menuCommand = new ReviewMenuCommand();
-        helper.Events.Display.MenuChanged += (_, _) => menuCommand.Reset();
+        helper.Events.Display.MenuChanged += (_, e) => menuCommand.ObserveRoot(e.NewMenu);
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);
         var audioSource = new StardewReviewAudioSource(helper);

@@ -33,15 +33,20 @@ internal sealed class ReviewMenuCapture
         _scope = Guid.NewGuid().ToString("N");
     }
 
-    internal ReviewMenuReport Capture(IReviewMenuSource source, string launchId, DateTimeOffset now,
-        string topology = "single", string? role = null)
+    internal void ObserveRoot(object? root)
     {
-        object? root = source.Root;
         if (!ReferenceEquals(root, _root))
         {
             Reset();
             _root = root;
         }
+    }
+
+    internal ReviewMenuReport Capture(IReviewMenuSource source, string launchId, DateTimeOffset now,
+        string topology = "single", string? role = null)
+    {
+        object? root = source.Root;
+        ObserveRoot(root);
         ReviewMenuRectangle viewport = source.Viewport;
         var nodes = new List<ReviewMenuNode>();
         var limitations = new SortedSet<string>(StringComparer.Ordinal);

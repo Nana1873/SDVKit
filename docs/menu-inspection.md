@@ -64,7 +64,8 @@ IDs. Repeated references within one node are deduplicated. Duplicate controller
 IDs remain distinct objects. A component shared by two nodes has the same ID.
 Components are ordered by assigned ID; newly observed objects get IDs in the
 adapter's fixed field/list traversal order. Root replacement/closure or a
-`MenuChanged` event resets the scope. IDs are observations, not action handles,
+`MenuChanged` notification of a different root resets the scope; a notification
+for an already captured root preserves it. IDs are observations, not action handles,
 save identities or a promise across launches.
 
 The report contains at most four menu levels, 16 nodes and 128 component entries

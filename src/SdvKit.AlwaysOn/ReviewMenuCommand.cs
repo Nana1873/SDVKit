@@ -116,7 +116,7 @@ internal sealed class ReviewMenuCommand
     private readonly StardewReviewMenuSource _source = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    internal void Reset() => _capture.Reset();
+    internal void ObserveRoot(IClickableMenu? menu) => _capture.ObserveRoot(menu);
 
     internal void Handle(string[] args, string runtimePath, IMonitor monitor)
     {
