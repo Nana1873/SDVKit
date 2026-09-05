@@ -287,125 +287,22 @@ internal static class ReviewScreenshotResponseFile
     {
         if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new ArgumentException(
-                "The review runtime path is required.",
-                nameof(runtimePath));
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
         ArgumentNullException.ThrowIfNull(envelope);
 
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        EnsureRegularDirectory(absoluteRuntimePath);
         string responsePath = ReviewScreenshotContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (EntryExists(responsePath) || EntryExists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-screenshot response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
         if (bytes.Length is < 1 or > ReviewScreenshotContract.MaximumResponseBytes)
         {
             throw new InvalidDataException(
                 "The review-screenshot response exceeds its bounded maximum.");
         }
-
-        var ownsTemporary = false;
-        var ownsResponse = false;
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                ownsTemporary = true;
-                EnsureRegularFile(temporaryPath);
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            EnsureRegularFile(temporaryPath);
-            File.Move(temporaryPath, responsePath);
-            ownsTemporary = false;
-            ownsResponse = true;
-            EnsureRegularFile(responsePath);
-            ownsResponse = false;
-        }
-        finally
-        {
-            if (ownsTemporary)
-            {
-                TryDeleteOwnedRegularFile(temporaryPath);
-            }
-            if (ownsResponse)
-            {
-                TryDeleteOwnedRegularFile(responsePath);
-            }
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 
-    private static bool EntryExists(string path)
-    {
-        try
-        {
-            _ = File.GetAttributes(path);
-            return true;
-        }
-        catch (FileNotFoundException)
-        {
-            return false;
-        }
-        catch (DirectoryNotFoundException)
-        {
-            return false;
-        }
-    }
-
-    private static void EnsureRegularDirectory(string path)
-    {
-        FileAttributes attributes = File.GetAttributes(path);
-        if ((attributes & FileAttributes.ReparsePoint) != 0
-            || (attributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-    }
-
-    private static void EnsureRegularFile(string path)
-    {
-        FileAttributes attributes = File.GetAttributes(path);
-        if ((attributes & FileAttributes.ReparsePoint) != 0
-            || (attributes & FileAttributes.Directory) != 0)
-        {
-            throw new InvalidDataException(
-                "The review-screenshot response is not a regular file.");
-        }
-    }
-
-    private static void TryDeleteOwnedRegularFile(string path)
-    {
-        try
-        {
-            FileAttributes attributes = File.GetAttributes(path);
-            if ((attributes & FileAttributes.ReparsePoint) == 0
-                && (attributes & FileAttributes.Directory) == 0)
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception exception) when (exception is
-            FileNotFoundException or DirectoryNotFoundException)
-        {
-            // The unique owned path is already absent.
-        }
-    }
 }
 
 #if SDVKIT_GAME_AVAILABLE

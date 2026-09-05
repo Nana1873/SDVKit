@@ -7,6 +7,8 @@ namespace SdvKit.Cli;
 
 internal static class ProjectReviewModAssetService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-mod-assets");
+
     private const int Success = 0;
     private const int OperationFailed = 3;
     private const int MaximumJsonDepth = 12;
@@ -172,7 +174,7 @@ internal static class ProjectReviewModAssetService
         ReviewModAssetQuery query)
     {
         ArgumentNullException.ThrowIfNull(query);
-        if (!ReviewModAssetContract.IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             throw new ArgumentException(
                 "The review-mod-assets request ID is invalid.",
@@ -238,7 +240,7 @@ internal static class ProjectReviewModAssetService
         if (envelope is null
             || query is null
             || Validate(query) is not null
-            || !ReviewModAssetContract.IsRequestId(requestId)
+            || !ReviewTransportToken.IsRequestId(requestId)
             || envelope.SchemaVersion != ReviewModAssetContract.SchemaVersion
             || !string.Equals(envelope.RequestId, requestId, StringComparison.Ordinal)
             || envelope.Report is null
@@ -666,7 +668,7 @@ internal static class ProjectReviewModAssetService
     }
 
     private static string EncodeOptional(string? value) =>
-        value is null ? MissingToken : ReviewModAssetContract.Encode(value);
+        value is null ? MissingToken : ReviewTransportToken.Encode(value);
 
     private static bool IsSafeKey(string? value) =>
         ReviewModAssetContract.IsBoundedText(
@@ -794,13 +796,13 @@ internal static class ProjectReviewModAssetService
 
     private static void ValidateEnvelopeShape(JsonElement root)
     {
-        RequireExactObject(root, EnvelopeProperties);
-        RequiredInt32(root, "schemaVersion");
+        ResponseJson.RequireExactObject(root, EnvelopeProperties);
+        ResponseJson.RequiredInt32(root, "schemaVersion");
         RequiredString(root, "requestId");
 
         JsonElement report = root.GetProperty("report");
-        RequireExactObject(report, ReportProperties);
-        RequiredInt32(report, "schemaVersion");
+        ResponseJson.RequireExactObject(report, ReportProperties);
+        ResponseJson.RequiredInt32(report, "schemaVersion");
         RequiredString(report, "state");
         RequiredString(report, "operation");
         OptionalString(report, "gameVersion");
@@ -808,23 +810,23 @@ internal static class ProjectReviewModAssetService
         RequiredString(report, "coverageScope");
         ValidateOptionalAsset(report.GetProperty("asset"));
         OptionalString(report, "key");
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("assets"),
             ReviewModAssetContract.MaximumPageLimit,
             ValidateAsset);
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("keys"),
             ReviewModAssetContract.MaximumPageLimit,
             value => RequireKind(value, JsonValueKind.String));
         ValidateOptionalPage(report.GetProperty("page"));
         ValidateOptionalCoverage(report.GetProperty("coverage"));
         ValidateOptionalRecord(report.GetProperty("record"));
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             report.GetProperty("problems"),
             ReviewModAssetContract.MaximumProblemCount,
             problem =>
             {
-                RequireExactObject(problem, ProblemProperties);
+                ResponseJson.RequireExactObject(problem, ProblemProperties);
                 RequiredString(problem, "code");
                 RequiredString(problem, "message");
             });
@@ -842,7 +844,7 @@ internal static class ProjectReviewModAssetService
 
     private static void ValidateAsset(JsonElement asset)
     {
-        RequireExactObject(asset, AssetProperties);
+        ResponseJson.RequireExactObject(asset, AssetProperties);
         RequiredString(asset, "assetName");
         OptionalString(asset, "namespaceOwnerId");
         RequiredString(asset, "namespaceOwnerStatus");
@@ -851,13 +853,13 @@ internal static class ProjectReviewModAssetService
         RequiredString(asset, "dataType");
         OptionalString(asset, "shape");
         RequiredString(asset, "lifecycle");
-        RequiredInt32(asset, "generation");
-        RequiredInt32(asset, "requestCount");
-        RequiredInt32(asset, "readyCount");
-        RequiredBoolean(asset, "available");
-        RequiredBoolean(asset, "adapterSupported");
-        RequiredBoolean(asset, "nameCollision");
-        RequiredBoolean(asset, "typeCollision");
+        ResponseJson.RequiredInt32(asset, "generation");
+        ResponseJson.RequiredInt32(asset, "requestCount");
+        ResponseJson.RequiredInt32(asset, "readyCount");
+        ResponseJson.RequiredBoolean(asset, "available");
+        ResponseJson.RequiredBoolean(asset, "adapterSupported");
+        ResponseJson.RequiredBoolean(asset, "nameCollision");
+        ResponseJson.RequiredBoolean(asset, "typeCollision");
         OptionalString(asset, "problemCode");
     }
 
@@ -868,11 +870,11 @@ internal static class ProjectReviewModAssetService
             return;
         }
 
-        RequireExactObject(page, PageProperties);
-        RequiredInt32(page, "offset");
-        RequiredInt32(page, "limit");
-        RequiredInt32(page, "returned");
-        RequiredInt32(page, "total");
+        ResponseJson.RequireExactObject(page, PageProperties);
+        ResponseJson.RequiredInt32(page, "offset");
+        ResponseJson.RequiredInt32(page, "limit");
+        ResponseJson.RequiredInt32(page, "returned");
+        ResponseJson.RequiredInt32(page, "total");
         OptionalInt32(page, "nextOffset");
     }
 
@@ -883,7 +885,7 @@ internal static class ProjectReviewModAssetService
             return;
         }
 
-        RequireExactObject(coverage, CoverageProperties);
+        ResponseJson.RequireExactObject(coverage, CoverageProperties);
         RequiredString(coverage, "scope");
         JsonElement startedAt = coverage.GetProperty("observationStartedAtUtc");
         if (startedAt.ValueKind != JsonValueKind.String
@@ -893,17 +895,17 @@ internal static class ProjectReviewModAssetService
                 "The review-mod-assets response has an invalid observation timestamp.");
         }
 
-        int observed = RequiredInt32(coverage, "observed");
-        int catalogued = RequiredInt32(coverage, "catalogued");
-        RequiredInt32(coverage, "adapterSupported");
-        RequiredInt32(coverage, "adapterUnavailable");
-        RequiredInt32(coverage, "ready");
-        RequiredInt32(coverage, "invalidated");
-        RequiredInt32(coverage, "unavailable");
-        RequiredInt32(coverage, "nameCollisions");
-        RequiredInt32(coverage, "typeCollisions");
-        int dropped = RequiredInt32(coverage, "dropped");
-        bool complete = RequiredBoolean(coverage, "complete");
+        int observed = ResponseJson.RequiredInt32(coverage, "observed");
+        int catalogued = ResponseJson.RequiredInt32(coverage, "catalogued");
+        ResponseJson.RequiredInt32(coverage, "adapterSupported");
+        ResponseJson.RequiredInt32(coverage, "adapterUnavailable");
+        ResponseJson.RequiredInt32(coverage, "ready");
+        ResponseJson.RequiredInt32(coverage, "invalidated");
+        ResponseJson.RequiredInt32(coverage, "unavailable");
+        ResponseJson.RequiredInt32(coverage, "nameCollisions");
+        ResponseJson.RequiredInt32(coverage, "typeCollisions");
+        int dropped = ResponseJson.RequiredInt32(coverage, "dropped");
+        bool complete = ResponseJson.RequiredBoolean(coverage, "complete");
         if (complete != (observed == catalogued && dropped == 0))
         {
             throw new InvalidDataException(
@@ -953,19 +955,6 @@ internal static class ProjectReviewModAssetService
         return RequiredString(value, propertyName);
     }
 
-    private static int RequiredInt32(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind != JsonValueKind.Number
-            || !property.TryGetInt32(out int result))
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response has an invalid bounded integer member.");
-        }
-
-        return result;
-    }
-
     private static int? OptionalInt32(JsonElement value, string propertyName)
     {
         JsonElement property = value.GetProperty(propertyName);
@@ -974,50 +963,7 @@ internal static class ProjectReviewModAssetService
             return null;
         }
 
-        return RequiredInt32(value, propertyName);
-    }
-
-    private static bool RequiredBoolean(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response has an invalid Boolean member.");
-        }
-
-        return property.GetBoolean();
-    }
-
-    private static void ValidateOptionalArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            return;
-        }
-
-        ValidateRequiredArray(value, maximumCount, validateItem);
-    }
-
-    private static void ValidateRequiredArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind != JsonValueKind.Array
-            || value.GetArrayLength() > maximumCount)
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response has an invalid bounded array shape.");
-        }
-
-        foreach (JsonElement item in value.EnumerateArray())
-        {
-            validateItem(item);
-        }
+        return ResponseJson.RequiredInt32(value, propertyName);
     }
 
     private static void RequireKind(JsonElement value, JsonValueKind kind)
@@ -1026,34 +972,6 @@ internal static class ProjectReviewModAssetService
         {
             throw new InvalidDataException(
                 "The review-mod-assets response has an invalid JSON value kind.");
-        }
-    }
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> requiredProperties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response has an invalid JSON object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!requiredProperties.Contains(property.Name)
-                || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-mod-assets response has an unknown or duplicate JSON member.");
-            }
-        }
-
-        if (observed.Count != requiredProperties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response is missing a required JSON member.");
         }
     }
 

@@ -180,58 +180,20 @@ internal static class ReviewInputResponseFile
     {
         if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new ArgumentException(
-                "The review runtime path is required.",
-                nameof(runtimePath));
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
         ArgumentNullException.ThrowIfNull(envelope);
 
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes attributes = File.GetAttributes(absoluteRuntimePath);
-        if ((attributes & FileAttributes.ReparsePoint) != 0
-            || (attributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-
         string responsePath = ReviewInputContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath) || File.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-input response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
         if (bytes.Length == 0 || bytes.Length > ReviewInputContract.MaximumResponseBytes)
         {
             throw new InvalidDataException(
                 "The bounded review-input response exceeds its maximum size.");
         }
-
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-        }
-        finally
-        {
-            File.Delete(temporaryPath);
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 }
 

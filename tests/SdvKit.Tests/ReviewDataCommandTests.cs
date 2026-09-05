@@ -346,18 +346,18 @@ public sealed class ReviewDataCommandTests
     public void TransportEncodingIsCanonicalBoundedAndStrictUtf8()
     {
         const string value = "Data/Events/Farm key_1";
-        string token = ReviewDataContract.Encode(value);
+        string token = ReviewTransportToken.Encode(value);
 
-        Assert.True(ReviewDataContract.TryDecode(
+        Assert.True(ReviewTransportToken.TryDecode(
             token,
             ReviewDataContract.MaximumKeyLength,
             out string decoded));
         Assert.Equal(value, decoded);
-        Assert.False(ReviewDataContract.TryDecode(
+        Assert.False(ReviewTransportToken.TryDecode(
             token + "=",
             ReviewDataContract.MaximumKeyLength,
             out _));
-        Assert.False(ReviewDataContract.TryDecode(
+        Assert.False(ReviewTransportToken.TryDecode(
             "A",
             ReviewDataContract.MaximumKeyLength,
             out _));

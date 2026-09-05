@@ -25,7 +25,7 @@ internal static class ReviewDataContract
                 "The review-data runtime path is required.",
                 nameof(runtimePath));
         }
-        if (!IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             throw new ArgumentException("The review-data request ID is invalid.", nameof(requestId));
         }
@@ -33,13 +33,6 @@ internal static class ReviewDataContract
         return Path.Combine(runtimePath, $"review-data-{requestId}.json");
     }
 
-    public static bool IsRequestId(string? value) =>
-        ReviewTransportToken.IsRequestId(value);
-
-    public static string Encode(string value) => ReviewTransportToken.Encode(value);
-
-    public static bool TryDecode(string token, int maximumLength, out string value) =>
-        ReviewTransportToken.TryDecode(token, maximumLength, out value);
 }
 
 internal static class StableIdentityNormalizer

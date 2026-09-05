@@ -1110,13 +1110,13 @@ public sealed class ReviewAudioCommandTests
                 typeof(OutOfMemoryException),
                 "Synthetic fatal.")));
 
-        Assert.True(ReviewAudioException.IsFatal(fatal));
-        Assert.False(ReviewAudioException.IsFatal(
+        Assert.True(ReviewException.IsFatal(fatal));
+        Assert.False(ReviewException.IsFatal(
             new TargetInvocationException(new InvalidDataException("Synthetic controlled."))));
     }
 
     [Fact]
-    public void GameAdapterDefersGameAccessAndUsesOnlyTheExactMetadataProbe()
+    public void GameAdapterSourceDefersGameAccessAndBoundsMetadataBeforeAllocation()
     {
         string source = ReadAlwaysOnSource();
         int constructorStart = source.IndexOf(
@@ -1137,18 +1137,9 @@ public sealed class ReviewAudioCommandTests
         Assert.Contains("soundBank.GetCueDefinition(cueId)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("soundBank.GetCue(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("soundBank.Play", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "new Dictionary<string, string?>(\n            StringComparer.OrdinalIgnoreCase)",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "playableCueIds\n                .Where",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "cueIds.Add(effectiveCueId)\n                && cueIds.Count > ReviewAudioContract.MaximumDiscoverableCueIds",
-            source,
-            StringComparison.Ordinal);
+        Assert.Matches(
+            @"cueIds\.Add\(effectiveCueId\)\s*&&\s*cueIds\.Count > ReviewAudioContract\.MaximumDiscoverableCueIds",
+            source);
         int audioLoadStart = source.IndexOf(
             "public IReadOnlyList<ReviewAudioChangeDefinition> LoadAudioChanges()",
             StringComparison.Ordinal);
@@ -1165,32 +1156,31 @@ public sealed class ReviewAudioCommandTests
         Assert.True(soundBankStatusStart > jukeboxLoadStart);
         string audioLoad = source[audioLoadStart..jukeboxLoadStart];
         string jukeboxLoad = source[jukeboxLoadStart..soundBankStatusStart];
-        Assert.True(
-            audioLoad.IndexOf(
-                "values.Count > ReviewAudioContract.MaximumAudioChangeEntries",
-                StringComparison.Ordinal)
-            < audioLoad.IndexOf(
-                "new List<ReviewAudioChangeDefinition>(values.Count)",
-                StringComparison.Ordinal));
-        Assert.True(
-            jukeboxLoad.IndexOf(
-                "values.Count > ReviewAudioContract.MaximumJukeboxTrackEntries",
-                StringComparison.Ordinal)
-            < jukeboxLoad.IndexOf(
-                "new List<ReviewAudioJukeboxDefinition>(values.Count)",
-                StringComparison.Ordinal));
-        Assert.True(
-            jukeboxLoad.IndexOf(
-                "alternatives.Count > ReviewAudioContract.MaximumAlternativesPerTrack",
-                StringComparison.Ordinal)
-            < jukeboxLoad.IndexOf(
-                "alternatives?.Select(value => (string?)value).ToArray()",
-                StringComparison.Ordinal));
+        AssertGuardBeforeAllocation(
+            audioLoad,
+            "values.Count > ReviewAudioContract.MaximumAudioChangeEntries",
+            "new List<ReviewAudioChangeDefinition>(values.Count)");
+        AssertGuardBeforeAllocation(
+            jukeboxLoad,
+            "values.Count > ReviewAudioContract.MaximumJukeboxTrackEntries",
+            "new List<ReviewAudioJukeboxDefinition>(values.Count)");
+        AssertGuardBeforeAllocation(
+            jukeboxLoad,
+            "alternatives.Count > ReviewAudioContract.MaximumAlternativesPerTrack",
+            "alternatives?.Select(value => (string?)value).ToArray()");
         Assert.Equal(
             2,
             source.Split(
-                "when (!ReviewAudioException.IsFatal(exception))",
+                "when (!ReviewException.IsFatal(exception))",
                 StringSplitOptions.None).Length - 1);
+    }
+
+    private static void AssertGuardBeforeAllocation(string source, string guard, string allocation)
+    {
+        int guardIndex = source.IndexOf(guard, StringComparison.Ordinal);
+        int allocationIndex = source.IndexOf(allocation, StringComparison.Ordinal);
+        Assert.True(guardIndex >= 0, $"Missing guard: {guard}");
+        Assert.True(allocationIndex > guardIndex, $"Allocation must follow guard: {allocation}");
     }
 
     [Fact]

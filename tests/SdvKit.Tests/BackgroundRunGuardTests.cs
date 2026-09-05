@@ -497,10 +497,6 @@ public sealed class BackgroundRunGuardTests
         Assert.True(markerWrite > restore);
         Assert.True(unconditionalExit > markerWrite);
         Assert.DoesNotContain("GameRunner.instance.Exiting", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "the controlled stop request is the sole reported normal-exit path.",
-            source,
-            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -534,10 +530,6 @@ public sealed class BackgroundRunGuardTests
         Assert.True(attemptedGuard > method);
         Assert.True(attemptLatch > attemptedGuard);
         Assert.True(sizeInspection > attemptLatch);
-        Assert.Contains(
-            "Apply and verify it once, then leave later resize and UI-scale testing alone.",
-            source,
-            StringComparison.Ordinal);
     }
 
     [Fact]

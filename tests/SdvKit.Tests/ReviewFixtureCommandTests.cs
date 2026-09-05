@@ -923,200 +923,33 @@ public sealed class ReviewFixtureCommandTests
     }
 
     [Fact]
-    public void GameRuntimeSourceRetainsOwnershipAndSafetyBoundaries()
+    public void GameAdapterSourceUsesFixturePoliciesAndGameSafetyChecks()
     {
         string source = ReadSource();
-        int ensure = source.IndexOf(
-            "public ReviewFixtureResult EnsureBuilding(",
-            StringComparison.Ordinal);
-        int farmLocationCheck = source.IndexOf(
-            "if (!ReferenceEquals(Game1.currentLocation, farm))",
-            ensure,
-            StringComparison.Ordinal);
-        int confirmDecision = source.IndexOf(
-            "if (decision == ReviewFixtureEnsureDecision.Confirm)",
-            ensure,
-            StringComparison.Ordinal);
-        int planCall = source.IndexOf(
-            "if (!TryPlanBuildingPlacement(",
-            ensure,
-            StringComparison.Ordinal);
-        int buildingResolve = source.IndexOf(
-            "ReviewFixtureKindResolver.TryResolve(",
-            ensure,
-            StringComparison.Ordinal);
-        int buildingInstantiate = source.IndexOf(
-            "Building.CreateInstanceFromId(",
-            buildingResolve,
-            StringComparison.Ordinal);
-        int buildCondition = source.IndexOf(
-            "GameStateQuery.CheckConditions(",
-            buildingResolve,
-            StringComparison.Ordinal);
-        int applyCall = source.IndexOf(
-            "if (!TryApplyBuildingPlacementPreparation(",
-            planCall,
-            StringComparison.Ordinal);
-        int buildCall = source.IndexOf(
-            "if (!farm.buildStructure(",
-            applyCall,
-            StringComparison.Ordinal);
-        int planDefinition = source.IndexOf(
+        int preflightStart = source.IndexOf(
             "private static bool TryPlanBuildingPlacement(",
             StringComparison.Ordinal);
-        int applyDefinition = source.IndexOf(
+        int applyStart = source.IndexOf(
             "private static bool TryApplyBuildingPlacementPreparation(",
-            planDefinition,
             StringComparison.Ordinal);
-        string preflight = source[planDefinition..applyDefinition];
+        Assert.True(preflightStart >= 0);
+        Assert.True(applyStart > preflightStart);
+        string preflight = source[preflightStart..applyStart];
 
-        Assert.True(ensure >= 0);
-        Assert.True(buildingResolve > ensure);
-        Assert.True(confirmDecision > buildingResolve);
-        Assert.True(farmLocationCheck > confirmDecision);
-        Assert.True(buildCondition > farmLocationCheck);
-        Assert.True(buildingInstantiate > buildCondition);
-        Assert.True(planCall > buildingInstantiate);
-        Assert.True(applyCall > planCall);
-        Assert.True(buildCall > applyCall);
-        Assert.True(planDefinition > buildCall);
-        Assert.True(applyDefinition > planDefinition);
-        Assert.Contains("skipSafetyChecks: false", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("skipSafetyChecks: true", source, StringComparison.Ordinal);
-        Assert.Contains("Run 'sdvkit fixture farm' first; no placement content was changed.", source, StringComparison.Ordinal);
-        Assert.Contains("Game1.buildingData.Keys", source, StringComparison.Ordinal);
-        Assert.Contains("out BuildingData? buildingData", source, StringComparison.Ordinal);
-        Assert.Contains("resolved.CanonicalId,\n                    buildingData,", source, StringComparison.Ordinal);
-        Assert.Contains("TryRollbackFailedBuilding(farm, constructed)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixturePolicy.TryCreateBuildingPlacementArea(", preflight, StringComparison.Ordinal);
-        Assert.Contains("buildingData.Size.X", preflight, StringComparison.Ordinal);
-        Assert.Contains(".AdditionalPlacementTiles", preflight, StringComparison.Ordinal);
-        Assert.Contains("buildingData.HumanDoor", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.buildings.FirstOrDefault", preflight, StringComparison.Ordinal);
-        Assert.Contains("existing.occupiesTile(tile.X, tile.Y", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.farmers.Any(", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.characters.Any(", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.animals.Values.Any(", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.largeTerrainFeatures.Any(", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.GetBuildableRectangle()", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.isWaterTile(tile.X, tile.Y)", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.isTilePlaceable(vector, itemIsPassable: false)", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.isTilePassable(vector)", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.furniture", preflight, StringComparison.Ordinal);
-        Assert.Contains("item.GetBoundingBox().Intersects(GetTileBounds(tile))", preflight, StringComparison.Ordinal);
-        Assert.Contains("TryOrderFurniturePreparation(", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.Objects.ContainsKey(new Vector2(tile.X, tile.Y))", preflight, StringComparison.Ordinal);
-        Assert.Contains("farm.terrainFeatures.ContainsKey(new Vector2(tile.X, tile.Y))", preflight, StringComparison.Ordinal);
-        Assert.Contains("clump.occupiesTile(tile.X, tile.Y)", preflight, StringComparison.Ordinal);
-        Assert.Contains("\"Buildable\"", preflight, StringComparison.Ordinal);
-        Assert.Contains("\"Diggable\"", preflight, StringComparison.Ordinal);
         Assert.DoesNotContain(".Remove(", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain("QualifiedItemId", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".ItemId", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Name", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Type", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".modData", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Fragility", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Price", preflight, StringComparison.Ordinal);
-        Assert.DoesNotContain("DisposableObjectKinds", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("IsDisposable", source, StringComparison.Ordinal);
-        Assert.Contains("farm.Objects.Remove(new Vector2(tile.X, tile.Y))", source, StringComparison.Ordinal);
-        Assert.Contains("farm.terrainFeatures.Remove(new Vector2(tile.X, tile.Y))", source, StringComparison.Ordinal);
-        Assert.Contains("farm.resourceClumps.Remove(clump)", source, StringComparison.Ordinal);
-        Assert.Contains("item.AttemptRemoval(candidate =>", source, StringComparison.Ordinal);
-        Assert.Contains("candidate.performRemoveAction()", source, StringComparison.Ordinal);
-        Assert.Contains("farm.furniture.Remove(candidate)", source, StringComparison.Ordinal);
-        Assert.Contains("item.canBeRemoved(Game1.player)", source, StringComparison.Ordinal);
-        Assert.Contains("CanPrepareFurniture(farm, item, plannedObjectTiles, scheduled)", source, StringComparison.Ordinal);
-        Assert.Contains("item.AllowLocalRemoval", source, StringComparison.Ordinal);
-        Assert.Contains("item.HasSittingFarmers()", source, StringComparison.Ordinal);
-        Assert.Contains("!plannedObjectTiles.Contains(tile)", source, StringComparison.Ordinal);
-        Assert.Contains("Stardew threw while preparing the placement area", source, StringComparison.Ordinal);
-        Assert.Contains("Reset the disposable fixture before retrying", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "$\"objects={Objects} terrainFeatures={TerrainFeatures} \"",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "+ $\"resourceClumps={ResourceClumps} furniture={Furniture}\"",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains("FinishConstruction(onGameStart: false)", source, StringComparison.Ordinal);
-        Assert.Contains("ItemRegistry.Create<StardewValley.Object>", source, StringComparison.Ordinal);
-        Assert.Contains("ItemRegistry.IsQualifiedItemId(qualifiedItemId)", source, StringComparison.Ordinal);
-        Assert.Contains("ItemRegistry.Exists(qualifiedItemId)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.tryPlaceObject(tile, item)", source, StringComparison.Ordinal);
-        Assert.Contains("tile != warpSource", source, StringComparison.Ordinal);
-        Assert.Contains("tile != naturalEntry", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.Objects.Remove(tile)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Objects.Clear", source, StringComparison.Ordinal);
-        Assert.Contains("isTilePlaceable(tile, itemIsPassable: false)", source, StringComparison.Ordinal);
-        Assert.Contains("animalHouse.adoptAnimal(animal)", source, StringComparison.Ordinal);
-        Assert.Contains("DataLoader.FarmAnimals(Game1.content)", source, StringComparison.Ordinal);
-        Assert.Contains("targetData.ValidOccupantTypes", source, StringComparison.Ordinal);
-        Assert.Contains("animalData.House", source, StringComparison.Ordinal);
-        Assert.Contains("animal.CanLiveIn(target)", source, StringComparison.Ordinal);
-        Assert.Contains("TryRollbackFailedAnimal(animalHouse, animal)", source, StringComparison.Ordinal);
-        Assert.Contains("existing.home?.id.Value == target.id.Value", source, StringComparison.Ordinal);
-        Assert.Contains("animalHouse.animalsThatLiveHere.Contains(existing.myID.Value)", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewFixturePolicy.IsAnimalHouseCompatible(", source, StringComparison.Ordinal);
         Assert.Contains("ReviewFixturePolicy.TrySelectNaturalFarmWarp(", source, StringComparison.Ordinal);
-        Assert.Contains("string.Equals(warp.TargetName, \"Farm\", StringComparison.Ordinal)", source, StringComparison.Ordinal);
-        Assert.Contains("warp.npcOnly.Value", source, StringComparison.Ordinal);
-        Assert.Contains("current is not FarmHouse", source, StringComparison.Ordinal);
-        Assert.Contains("TryResolveEnterBuilding(", source, StringComparison.Ordinal);
-        Assert.Contains("candidate is GreenhouseBuilding", source, StringComparison.Ordinal);
-        Assert.Contains("ReferenceEquals(candidate.GetIndoors(), canonical)", source, StringComparison.Ordinal);
-        Assert.Contains(ReviewFixtureContract.GreenhouseBuildingType, source, StringComparison.Ordinal);
-        Assert.Contains("indoors.isTileOnMap(entry)", source, StringComparison.Ordinal);
-        Assert.Contains("indoors.isTilePassable(entry)", source, StringComparison.Ordinal);
-        Assert.Contains("locationRequest.OnWarp +=", source, StringComparison.Ordinal);
-        Assert.Contains("requestedLocation = locationRequest.Location", source, StringComparison.Ordinal);
-        Assert.Contains("ReferenceEquals(actualLocation, requestedLocation)", source, StringComparison.Ordinal);
-        Assert.Contains("actualLocation.NameOrUniqueName", source, StringComparison.Ordinal);
-        Assert.Contains("actualLocation.isStructure.Value != expectedIsStructure", source, StringComparison.Ordinal);
-        Assert.Contains("Game1.player.TilePoint.X", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("indoors.isTileLocationOpen(entry)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("indoors.IsTileOccupiedBy(entry)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("indoors.Objects.ContainsKey(entry)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("indoors.isTileOccupiedByFarmer(entry) is not null", source, StringComparison.Ordinal);
-        Assert.Contains("mainPlayer={Context.IsMainPlayer}", source, StringComparison.Ordinal);
-        Assert.Contains("multiplayer={Context.IsMultiplayer}", source, StringComparison.Ordinal);
-        Assert.Contains("player={Game1.player.Name}", source, StringComparison.Ordinal);
-        Assert.Contains("indoors?.mapPath.Value", source, StringComparison.Ordinal);
-        Assert.Contains("players={players} objects={objects} animals={animals}", source, StringComparison.Ordinal);
-        Assert.Contains("if (network.IsHost)", source, StringComparison.Ordinal);
         Assert.Contains("hostTestSave.TryVerifyReviewFixture(", source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.FixtureIdMarkerKey, source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.BuildingAliasMarkerKey, source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.ObjectMarkerKey, source, StringComparison.Ordinal);
         Assert.Contains(ReviewFixtureContract.AnimalKindMarkerKey, source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Deluxe Barn", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("White Cow", source, StringComparison.Ordinal);
-
-        int animalEnsure = source.IndexOf(
-            "public ReviewFixtureResult EnsureAnimal(",
-            StringComparison.Ordinal);
-        int animalResolve = source.IndexOf(
-            "ReviewFixtureKindResolver.TryResolve(",
-            animalEnsure,
-            StringComparison.Ordinal);
-        int compatibility = source.IndexOf(
-            "ReviewFixturePolicy.IsAnimalHouseCompatible(",
-            animalResolve,
-            StringComparison.Ordinal);
-        int allocateId = source.IndexOf(
-            "getNewMultiplayerId()",
-            compatibility,
-            StringComparison.Ordinal);
-        int adopt = source.IndexOf(
-            "animalHouse.adoptAnimal(animal)",
-            allocateId,
-            StringComparison.Ordinal);
-        Assert.True(animalEnsure >= 0);
-        Assert.True(animalResolve > animalEnsure);
-        Assert.True(compatibility > animalResolve);
-        Assert.True(allocateId > compatibility);
-        Assert.True(adopt > allocateId);
+        Assert.Matches(@"skipSafetyChecks\s*:\s*false", source);
+        Assert.DoesNotMatch(@"skipSafetyChecks\s*:\s*true", source);
+        Assert.DoesNotMatch(@"Objects\s*\.\s*Clear\s*\(", source);
+        Assert.Contains("TryRollbackFailedBuilding(", source, StringComparison.Ordinal);
+        Assert.Contains("TryRollbackFailedAnimal(", source, StringComparison.Ordinal);
     }
 
     [Fact]

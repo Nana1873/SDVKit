@@ -8,6 +8,8 @@ namespace SdvKit.Cli;
 
 internal static class ProjectReviewTextureService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-texture");
+
     private const int Success = 0;
     private const int OperationFailed = 3;
     private const int MaximumJsonDepth = 16;
@@ -612,27 +614,27 @@ internal static class ProjectReviewTextureService
 
     private static void ValidateEnvelopeShape(JsonElement root)
     {
-        RequireExactObject(root, EnvelopeProperties);
+        ResponseJson.RequireExactObject(root, EnvelopeProperties);
         JsonElement report = root.GetProperty("report");
-        RequireExactObject(report, ReportProperties);
+        ResponseJson.RequireExactObject(report, ReportProperties);
 
         ValidateOptionalMetadata(report.GetProperty("metadata"));
         ValidateOptionalProvenance(report.GetProperty("provenance"));
         ValidateOptionalPreview(report.GetProperty("preview"));
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("assets"),
             ReviewTextureContract.MaximumPageLimit,
             asset =>
             {
-                RequireExactObject(asset, AssetProperties);
-                RequiredBoolean(asset, "available");
+                ResponseJson.RequireExactObject(asset, AssetProperties);
+                ResponseJson.RequiredBoolean(asset, "available");
             });
         ValidateOptionalPage(report.GetProperty("page"));
         ValidateOptionalCoverage(report.GetProperty("coverage"));
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             report.GetProperty("problems"),
             ReviewTextureContract.MaximumProblemCount,
-            problem => RequireExactObject(problem, ProblemProperties));
+            problem => ResponseJson.RequireExactObject(problem, ProblemProperties));
     }
 
     private static void ValidateOptionalMetadata(JsonElement metadata)
@@ -642,11 +644,11 @@ internal static class ProjectReviewTextureService
             return;
         }
 
-        RequireExactObject(metadata, MetadataProperties);
-        RequiredInt32(metadata, "width");
-        RequiredInt32(metadata, "height");
-        RequiredInt32(metadata, "levelCount");
-        RequiredBoolean(metadata, "hasMipMaps");
+        ResponseJson.RequireExactObject(metadata, MetadataProperties);
+        ResponseJson.RequiredInt32(metadata, "width");
+        ResponseJson.RequiredInt32(metadata, "height");
+        ResponseJson.RequiredInt32(metadata, "levelCount");
+        ResponseJson.RequiredBoolean(metadata, "hasMipMaps");
     }
 
     private static void ValidateOptionalProvenance(JsonElement provenance)
@@ -656,8 +658,8 @@ internal static class ProjectReviewTextureService
             return;
         }
 
-        RequireExactObject(provenance, ProvenanceProperties);
-        RequiredBoolean(provenance, "detailedProviderAvailable");
+        ResponseJson.RequireExactObject(provenance, ProvenanceProperties);
+        ResponseJson.RequiredBoolean(provenance, "detailedProviderAvailable");
     }
 
     private static void ValidateOptionalPreview(JsonElement preview)
@@ -667,9 +669,9 @@ internal static class ProjectReviewTextureService
             return;
         }
 
-        RequireExactObject(preview, PreviewProperties);
-        RequiredInt32(preview, "width");
-        RequiredInt32(preview, "height");
+        ResponseJson.RequireExactObject(preview, PreviewProperties);
+        ResponseJson.RequiredInt32(preview, "width");
+        ResponseJson.RequiredInt32(preview, "height");
         RequiredInt64(preview, "encodedBytes");
     }
 
@@ -680,11 +682,11 @@ internal static class ProjectReviewTextureService
             return;
         }
 
-        RequireExactObject(page, PageProperties);
-        RequiredInt32(page, "offset");
-        RequiredInt32(page, "limit");
-        RequiredInt32(page, "returned");
-        RequiredInt32(page, "total");
+        ResponseJson.RequireExactObject(page, PageProperties);
+        ResponseJson.RequiredInt32(page, "offset");
+        ResponseJson.RequiredInt32(page, "limit");
+        ResponseJson.RequiredInt32(page, "returned");
+        ResponseJson.RequiredInt32(page, "total");
         JsonElement nextOffset = page.GetProperty("nextOffset");
         if (nextOffset.ValueKind != JsonValueKind.Null
             && (nextOffset.ValueKind != JsonValueKind.Number
@@ -702,13 +704,13 @@ internal static class ProjectReviewTextureService
             return;
         }
 
-        RequireExactObject(coverage, CoverageProperties);
-        int candidates = RequiredInt32(coverage, "candidates");
-        int classified = RequiredInt32(coverage, "classified");
-        int textures = RequiredInt32(coverage, "textures");
-        int nonTextures = RequiredInt32(coverage, "nonTextures");
-        int gaps = RequiredInt32(coverage, "gaps");
-        bool complete = RequiredBoolean(coverage, "complete");
+        ResponseJson.RequireExactObject(coverage, CoverageProperties);
+        int candidates = ResponseJson.RequiredInt32(coverage, "candidates");
+        int classified = ResponseJson.RequiredInt32(coverage, "classified");
+        int textures = ResponseJson.RequiredInt32(coverage, "textures");
+        int nonTextures = ResponseJson.RequiredInt32(coverage, "nonTextures");
+        int gaps = ResponseJson.RequiredInt32(coverage, "gaps");
+        bool complete = ResponseJson.RequiredBoolean(coverage, "complete");
         bool calculatedComplete = (long)candidates == (long)classified + gaps
             && (long)classified == (long)textures + nonTextures
             && gaps == 0;
@@ -717,19 +719,6 @@ internal static class ProjectReviewTextureService
             throw new InvalidDataException(
                 "The review-texture coverage completion flag is inconsistent.");
         }
-    }
-
-    private static int RequiredInt32(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind != JsonValueKind.Number
-            || !property.TryGetInt32(out int result))
-        {
-            throw new InvalidDataException(
-                "The review-texture response has an invalid bounded integer member.");
-        }
-
-        return result;
     }
 
     private static long RequiredInt64(JsonElement value, string propertyName)
@@ -743,77 +732,6 @@ internal static class ProjectReviewTextureService
         }
 
         return result;
-    }
-
-    private static bool RequiredBoolean(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
-        {
-            throw new InvalidDataException(
-                "The review-texture response has an invalid Boolean member.");
-        }
-
-        return property.GetBoolean();
-    }
-
-    private static void ValidateOptionalArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            return;
-        }
-
-        ValidateRequiredArray(value, maximumCount, validateItem);
-    }
-
-    private static void ValidateRequiredArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind != JsonValueKind.Array
-            || value.GetArrayLength() > maximumCount)
-        {
-            throw new InvalidDataException(
-                "The review-texture response has an invalid bounded array shape.");
-        }
-
-        foreach (JsonElement item in value.EnumerateArray())
-        {
-            validateItem(item);
-        }
-    }
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> requiredProperties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-texture response has an invalid JSON object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!requiredProperties.Contains(property.Name)
-                || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-texture response has an unknown or duplicate JSON member.");
-            }
-        }
-
-        if (observed.Count != requiredProperties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-texture response is missing a required JSON member.");
-        }
     }
 
     private static HashSet<string> PropertySet(params string[] names) =>
