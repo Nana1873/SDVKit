@@ -101,6 +101,21 @@ public sealed class ReviewMenuTests
     }
 
     [Fact]
+    public void WorldCameraOffsetDoesNotExcludeVisibleScreenLocalControls()
+    {
+        var source = new Source { Viewport = new(-256, 48, 1280, 720) };
+        source.Root = source.Add("InventoryPage", "inventoryPage",
+        [
+            Component(new object()) with { Bounds = new(1044, 12, 48, 48), Kind = "close" },
+            Component(new object()) with { Bounds = new(1101, 412, 64, 104), Kind = "trashCan" },
+            Component(new object()) with { Bounds = new(1280, 10, 20, 20) },
+        ]);
+        ReviewMenuReport report = new ReviewMenuCapture().Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.Equal(new ReviewMenuRectangle(0, 0, 1280, 720), report.Viewport);
+        Assert.Equal([true, true, false], report.Menus[0].Components.Select(c => c.IntersectsViewport));
+    }
+
+    [Fact]
     public void DepthComponentsScanAndTextAreBoundedWithoutClaimingComplete()
     {
         var source = new Source();

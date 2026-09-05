@@ -47,7 +47,9 @@ controller ID, bounds, `visibleFlag`, `intersectsViewport` and
 `currentlySnappedComponent`; it is not selection or hover. The visibility flag
 is the public field, and viewport intersection is geometric: neither establishes
 that the component is drawn, enabled, unobscured or clickable. No such inferred
-states are returned. Bounds use the game's UI viewport coordinate system, which
+states are returned. The viewport rectangle starts at screen-local `(0,0)` and
+uses the game's UI viewport dimensions, excluding world-camera offsets. Bounds
+use this UI coordinate system, which
 may differ from screenshot pixel coordinates when UI scaling is active.
 
 No component names, labels, text, item/player data, paths or arbitrary custom

@@ -47,7 +47,9 @@ internal sealed class ReviewMenuCapture
     {
         object? root = source.Root;
         ObserveRoot(root);
-        ReviewMenuRectangle viewport = source.Viewport;
+        // The game's UI viewport origin follows the world camera; menu bounds are screen-local.
+        ReviewMenuRectangle measuredViewport = source.Viewport;
+        var viewport = new ReviewMenuRectangle(0, 0, measuredViewport.Width, measuredViewport.Height);
         var nodes = new List<ReviewMenuNode>();
         var limitations = new SortedSet<string>(StringComparer.Ordinal);
         var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
