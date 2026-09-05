@@ -12,6 +12,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
+- Stale or ended review status no longer retains an inner ready runtime payload; return to title immediately invalidates world/player values.
 - Installation and two short quickstarts now lead the README; task guides, the capability matrix, and CLI/MCP references are separately navigable.
 - CLI help now shows a short overview, with console grammar and MCP tool details in their own subcommand help.
 - Agent reviews require a real restart when testing persistence or lifecycle behavior; unrelated inspections no longer require one. Final stop and applicable reset remain mandatory.
@@ -19,6 +20,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Review status and `stardew_runtime_get` expose the local farmer's stable save-local ID, money, health/stamina and one selected inventory item, with explicit availability and bounded typed values.
 - Build, package, and review start accept `--project` to select one root-relative C# project and its colocated manifest. `--game-path` validates and selects one complete game/SMAPI directory for toolkit and live launch commands, preserving unique automatic defaults. Doctor reports incomplete candidates separately with missing requirements and corrective actions.
 - `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
 - `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
