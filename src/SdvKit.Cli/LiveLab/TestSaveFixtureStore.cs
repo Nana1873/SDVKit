@@ -129,6 +129,22 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
             _paths.TestSaveWorkPath);
     }
 
+    internal string SelectInspectionSource(string selection, out TestSaveIdentity identity)
+    {
+        string payload = selection switch
+        {
+            "baseline" => _paths.TestSaveBaselinePath,
+            "work" => _paths.TestSaveWorkPath,
+            _ => throw new InvalidDataException("Select baseline or work."),
+        };
+        SaveInspector.RequirePlainAncestors(_paths.TestSaveManifestPath);
+        SaveInspector.RequirePlainAncestors(payload);
+        identity = ReadIdentity(_paths.TestSaveManifestPath);
+        VerifyOwnedPayload(payload, identity);
+        VerifyRequiredStardewFiles(payload, identity);
+        return Path.Combine(payload, identity.SaveId);
+    }
+
     private TestSaveIdentity PrepareFixtureAccess(bool allowCreateIdentity)
     {
         _paths.EnsureDirectories();

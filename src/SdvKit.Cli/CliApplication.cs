@@ -282,6 +282,11 @@ public static partial class CliApplication
             return RunDoctor(arguments, output, error, discoverInstallations);
         }
 
+        if (string.Equals(arguments[0], "save", StringComparison.Ordinal))
+        {
+            return RunSave(arguments, output, error);
+        }
+
         if (string.Equals(arguments[0], "project", StringComparison.Ordinal))
         {
             return RunProject(
@@ -1739,6 +1744,7 @@ public static partial class CliApplication
         output.WriteLine("  version [--json]  Show the installed version.");
         output.WriteLine("  doctor --json     Discover a ready game and SMAPI installation.");
         output.WriteLine("  project --help    Create, inspect, check, build, package, smoke-test, or review a mod.");
+        output.WriteLine("  save --help       Inspect an explicitly selected isolated save copy.");
         output.WriteLine("  lab --help        Control the isolated live lab and disposable world.");
         output.WriteLine();
         output.WriteLine("Use each subcommand's --help for syntax and supported options.");

@@ -11,6 +11,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
+| Inspect an explicitly selected saved world offline | [Save inspection](save-inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
@@ -25,6 +26,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Capability | CLI | Native MCP | Topology / prerequisites |
 | --- | --- | --- | --- |
 | Create, inspect, package | `project` | No | C# mods or content packs; no live review |
+| Offline save inspection | `save sections/inspect` | Deliberately deferred | Explicit local file or registered single fixture; isolated copy, Stardew 1.6 |
 | Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, direct i18n; no game/network |
 | Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
