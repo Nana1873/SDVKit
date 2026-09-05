@@ -106,6 +106,9 @@ from the same source root. Review excludes that target's root `.sdvkit` output
 from staging and source identity, while preserving link checks and exact runtime
 identities. Other ready sources and nested development directories remain strict.
 
+For a complete event/config implementation, deliberate runtime exception, corrected
+world effect and ZIP, follow the [SMAPI authoring recipe](smapi-authoring.md).
+
 ## Next: test in game
 
 Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or [interactive review](live-review.md#start-a-review) for functional checks and content packs. Build and packaging success alone do not prove game behavior.

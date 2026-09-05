@@ -6,6 +6,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Documentation
 
+- A SMAPI authoring recipe connects explicit project selection, an original event/config feature, actual runtime-exception diagnosis, corrected in-game observation, cleanup and ZIP identity, with focused lifecycle references.
+
 - A complete Content Patcher authoring recipe connects creation and local checks to deliberate runtime diagnosis, selected JSON refresh, direct Data observations, a second authored change, cleanup and ZIP packaging, with focused version-aware agent references.
 
 ### Changed
