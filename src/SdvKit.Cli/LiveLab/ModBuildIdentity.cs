@@ -66,6 +66,16 @@ internal static class ModBuildIdentity
         return fullIdentity;
     }
 
+    internal static string ComputeFileSetWithReplacements(string rootPath, IReadOnlyDictionary<string, string> replacements)
+    {
+        FileSetEntry[] files = InspectFileSet(rootPath);
+        if (replacements.Keys.Any(key => !files.Any(file => file.RelativePath == key)))
+            throw new InvalidDataException("Refresh replacements must name existing staged files exactly.");
+        files = files.Select(file => replacements.TryGetValue(file.RelativePath, out string? replacement)
+            ? new FileSetEntry(replacement, file.RelativePath) : file).ToArray();
+        return ComputeFileSetIdentities(files, includeWithoutRuntimeConfig: false).Item1;
+    }
+
     public static bool MatchesFileSet(
         string rootPath,
         string expectedIdentity,

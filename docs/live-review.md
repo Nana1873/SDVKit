@@ -103,7 +103,10 @@ in that log is accepted. Missing, stale, linked, replaced/unbound or rotated-awa
 logs return `state=unavailable` with a bounded `errorCode`; old logs are never searched.
 
 `diagnostics` contains the latest matching WARN/ERROR/ALERT entries in file order,
-including recognized exception/stack continuation lines. `attribution=logger`
+including historical entries before a [CP refresh](cp-refresh.md). Its staged
+build hash describes the currently owned files, not the generation which emitted
+each older message or successful reload; status's refresh receipt reports pending recovery.
+The entries include recognized exception/stack continuation lines. `attribution=logger`
 means the SMAPI logger name matches one staged manifest name; `ambiguousLogger`
 means that name is shared/reserved, and `sharedMention` means SMAPI or the pack's
 selected provider mentioned the mod. None proves that the selected mod caused

@@ -13,6 +13,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
 - `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
 - `project check [path] [--json]` checks one mod root's manifest, Content Patcher 2.9.x content, and direct i18n files offline, with relative file/field errors and bundled official SMAPI schemas. It accepts comments and trailing commas without changing source files; runtime patch behavior and referenced assets still need separate checks.
 - Selected-mod warnings and multiline exceptions are available through `project review diagnostics` and read-only `stardew_mod_diagnostics`, with exact review/role binding, visible attribution uncertainty, withheld private context, and bounded counts/truncation.

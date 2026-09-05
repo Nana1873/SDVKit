@@ -54,6 +54,14 @@ internal sealed class LiveLabOperationLock : IDisposable
         _stream.Dispose();
     }
 
+    internal void RequireHeldFor(string projectRoot)
+    {
+        string expected = Path.Combine(LiveLabPaths.Resolve(projectRoot).RuntimePath, "operation.lock");
+        if (_stream.SafeFileHandle.IsClosed || _stream.SafeFileHandle.IsInvalid
+            || !string.Equals(_stream.Name, expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The caller must hold the exact lab operation lock.");
+    }
+
     private static void RefuseReparsePoint(string path)
     {
         if (File.Exists(path)

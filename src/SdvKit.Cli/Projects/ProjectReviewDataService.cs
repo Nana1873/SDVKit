@@ -18,7 +18,8 @@ internal static class ProjectReviewDataService
         string labRoot,
         IProjectReviewConsoleInputSender? inputSender = null,
         Action<TimeSpan>? delay = null,
-        TimeSpan? responseTimeout = null)
+        TimeSpan? responseTimeout = null,
+        Func<string, LiveLabCommandResult>? send = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentException.ThrowIfNullOrWhiteSpace(labRoot);
@@ -71,7 +72,8 @@ internal static class ProjectReviewDataService
                         StringComparison.Ordinal),
                 inputSender,
                 delay,
-                responseTimeout);
+                responseTimeout,
+                send: send);
         if (transported.Response is null)
         {
             return Failure(

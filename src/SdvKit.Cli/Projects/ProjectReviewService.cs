@@ -233,7 +233,8 @@ internal static class ProjectReviewService
         string topology,
         string? role,
         string labRoot,
-        IProjectReviewConsoleInputSender? inputSender = null)
+        IProjectReviewConsoleInputSender? inputSender = null,
+        LiveLabOperationLock? heldOperationLock = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
@@ -295,6 +296,8 @@ internal static class ProjectReviewService
 
         if (networkTwo)
         {
+            if (heldOperationLock is not null)
+                throw new InvalidOperationException("Held-operation console dispatch supports single only.");
             return ExecuteNetworkCommand(
                 command,
                 role!,
@@ -305,9 +308,10 @@ internal static class ProjectReviewService
 
         try
         {
+            heldOperationLock?.RequireHeldFor(paths.ProjectRoot);
             using LiveLabOperationLock? operationLock =
-                LiveLabOperationLock.TryAcquire(paths.ProjectRoot);
-            if (operationLock is null)
+                heldOperationLock is null ? LiveLabOperationLock.TryAcquire(paths.ProjectRoot) : null;
+            if (operationLock is null && heldOperationLock is null)
             {
                 return CommandResult(
                     paths,
@@ -1494,6 +1498,7 @@ internal static class ProjectReviewService
                     Path.Combine(paths.SavesPath, testSave.Identity.SaveId),
                     PathComparison()));
         if (!string.Equals(state.Topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+            || staging.Target.CpRefresh is { } refresh && refresh.LaunchId != state.LaunchId
             || !testSaveBindingValid
             || state.NetworkTwo is not null
             || state.ProjectMod is null
@@ -1851,7 +1856,8 @@ internal static class ProjectReviewService
                 artifact.BuildIdentity,
                 RelativePath(paths.ProjectRoot, artifact.StagingPathFor(role)),
                 artifact.BuildLog,
-                artifact.PackageLog)).ToArray();
+                artifact.PackageLog)
+            { CpRefresh = artifact.CpRefresh }).ToArray();
         return new ProjectNetworkReviewRoleReport(
             role,
             RelativePath(paths.ProjectRoot, rolePaths.StardewDataPath),
@@ -1967,7 +1973,8 @@ internal static class ProjectReviewService
                 artifact.BuildIdentity,
                 RelativePath(paths.ProjectRoot, artifact.StagingPath),
                 artifact.BuildLog,
-                artifact.PackageLog)).ToArray();
+                artifact.PackageLog)
+            { CpRefresh = artifact.CpRefresh }).ToArray();
         var report = new ProjectReviewReport(
             1,
             staging?.Target.SourceRoot,

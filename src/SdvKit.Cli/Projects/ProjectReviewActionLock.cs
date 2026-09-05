@@ -59,6 +59,13 @@ internal sealed class ProjectReviewActionLock : IDisposable
         _stream.Dispose();
     }
 
+    internal void RequireHeldFor(string runtimePath)
+    {
+        if (_stream.SafeFileHandle.IsClosed || _stream.SafeFileHandle.IsInvalid
+            || !string.Equals(_stream.Name, Path.Combine(Path.GetFullPath(runtimePath), "mcp-action.lock"), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The caller must hold the exact review action lock.");
+    }
+
     private static void RefuseReparsePoint(string path)
     {
         if (File.Exists(path)

@@ -95,12 +95,23 @@ internal static class OwnedReviewLogReader
             throw new InvalidDataException("reviewLogChanged");
         }
         ProjectReviewMcpContextResult after = reader.ReadContext();
-        if (!after.Succeeded || after.Context!.State != context.State)
+        if (!after.Succeeded || after.Context!.State != context.State
+            || !SameStagedContent(context.Staging, after.Context.Staging))
         {
             throw new InvalidDataException("reviewLogBindingChanged");
         }
         return new OwnedReviewLog(text, totalBytes, bytes.Length, start > 0, incomplete, written,
             $"{info.Volume:x8}:{info.IndexHigh:x8}:{info.IndexLow:x8}");
+    }
+
+    internal static bool SameStagedContent(ProjectReviewStaging before, ProjectReviewStaging after) =>
+        before.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId))
+            .SequenceEqual(after.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId)));
+
+    internal static void RequireSingleLink(FileStream stream)
+    {
+        if (!GetFileInformationByHandle(stream.SafeFileHandle, out FileInformation info) || info.Links != 1)
+            throw new InvalidDataException("Refresh files must have exactly one filesystem link.");
     }
 
     [StructLayout(LayoutKind.Sequential)]
