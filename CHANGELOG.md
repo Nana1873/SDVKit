@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Documentation
 
+- Document an optional `workspaces/<ModName>/` layout and agent guidance for separate mod sources sharing one lab, while preserving explicit user-selected paths.
 - A complete Content Patcher authoring recipe connects creation and local checks to deliberate runtime diagnosis, selected JSON refresh, direct Data observations, a second authored change, cleanup and ZIP packaging, with focused version-aware agent references.
 
 ### Changed
