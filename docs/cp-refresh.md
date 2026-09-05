@@ -25,6 +25,14 @@ documented shape is `{ "Changes": [...] }`. Selected Include patches are checked
 against the bundled official CP schema with a temporary Format wrapper; this
 does not extend `project check` to recursive Include validation.
 
+Packaging before or during review does not change this selection. For the selected
+CP target only, root `.sdvkit` output is omitted consistently from initial copying
+and source comparisons. It is never copied into the game or deleted. Links and
+hardlinks remain rejected, including inside that output; refresh size bounds still
+cover the source tree. Nested `.sdvkit`, other development/save/game payloads,
+unselected authored changes and provider/companion drift remain rejected. Staged
+runtime identities include every file, including any unexpected `.sdvkit` payload.
+
 The command prepares candidates and originals under ignored `.sdvkit/`, replaces
 only the selected staged files, sends `patch reload "Example.Pack"`, captures
 the provider's reload reply and [CP diagnosis](cp-diagnosis.md), then executes the

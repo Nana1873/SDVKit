@@ -40,10 +40,16 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     [InlineData("timeout")]
     [InlineData("observationFailure")]
     [InlineData("variedCase")]
+    [InlineData("packaged")]
     public void RefreshChangesOnlyOwnedFilesPreservesLaunchAndNeverRetriesReload(string mode)
     {
         using TemporaryDirectory temporary = new();
         var review = RefreshReview(temporary, mode == "variedCase");
+        if (mode == "packaged")
+        {
+            Assert.Empty(ProjectPackager.Package(review.Staging.Target.SourceRoot, () => throw new InvalidOperationException()).Problems);
+            Assert.Empty(ProjectPackager.Package(review.Staging.Target.SourceRoot, () => throw new InvalidOperationException()).Problems);
+        }
         var paths = LiveLabPaths.Resolve(temporary.Path);
         var stateBefore = new JsonLiveLabStateStore(paths.StatePath).Read();
         string sourceBefore = ModBuildIdentity.ComputeFileSet(review.Staging.Target.SourceRoot);
@@ -91,7 +97,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var result = mode == "variedCase" ? ProjectReviewCpRefresh.Execute(temporary.Path, review.Staging.Target.SourceRoot, "test.pack",
             "pathoschild.contentpatcher", ["patches/item.json"], "Data/Objects", "388", review.ProcessHost, () => ObservedAt.AddSeconds(1), Send)
             : Refresh(temporary, review, Send);
-        bool succeeded = mode is "success" or "variedCase";
+        bool succeeded = mode is "success" or "variedCase" or "packaged";
         Assert.Equal(succeeded ? "observed" : "incomplete", result.State);
         Assert.Equal(1, reloads);
         Assert.Equal("after", valueInRuntime);
@@ -154,6 +160,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     [InlineData("pack")]
     [InlineData("drift")]
     [InlineData("code")]
+    [InlineData("stagedOutput")]
+    [InlineData("providerOutput")]
+    [InlineData("nestedOutput")]
+    [InlineData("packagedUnselected")]
     public void RefreshRejectsUnsupportedOrMismatchedChangesBeforeMutation(string change)
     {
         using TemporaryDirectory temporary = new();
@@ -162,6 +172,13 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         string[] files = ["patches/item.json"];
         switch (change)
         {
+            case "stagedOutput": temporary.WriteFile(Path.GetRelativePath(temporary.Path, review.Staging.Target.StagingPath) + "/.sdvkit/payload.json", "changed"); break;
+            case "providerOutput": temporary.WriteFile(Path.GetRelativePath(temporary.Path, review.Staging.Artifacts[1].SourceRoot) + "/.sdvkit/payload.json", "changed"); break;
+            case "nestedOutput": temporary.WriteFile(Path.GetRelativePath(temporary.Path, root) + "/patches/.sdvkit/payload.json", "changed"); break;
+            case "packagedUnselected":
+                Assert.Empty(ProjectPackager.Package(root, () => throw new InvalidOperationException()).Problems);
+                File.WriteAllText(Path.Combine(root, "unselected.json"), "{}");
+                break;
             case "invalid": File.WriteAllText(Path.Combine(root, files[0]), "{ invalid"); break;
             case "manifest": File.AppendAllText(Path.Combine(root, "manifest.json"), " "); break;
             case "provider": File.AppendAllText(Path.Combine(review.Staging.Artifacts[1].SourceRoot, "ContentPatcher.dll"), "changed"); break;
@@ -235,6 +252,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     [InlineData("sourceJunction")]
     [InlineData("stagedHardLink")]
     [InlineData("preparationLink")]
+    [InlineData("outputHardLink")]
+    [InlineData("outputJunction")]
     public void RefreshRejectsLinksWithoutChangingTheLinkedFile(string kind)
     {
         using TemporaryDirectory temporary = new();
@@ -243,6 +262,17 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         string staged = Path.Combine(review.Staging.Target.StagingPath, "patches/item.json");
         string foreign = Path.Combine(temporary.Path, "foreign.json");
         File.WriteAllText(foreign, RefreshPatch("protected"));
+        if (kind is "outputHardLink" or "outputJunction")
+        {
+            string output = Path.Combine(review.Staging.Target.SourceRoot, ".sdvkit");
+            if (kind == "outputJunction") new Win32DirectChildJunctionPlatform().CreateDirectoryJunction(output, temporary.Path);
+            else
+            {
+                Directory.CreateDirectory(output);
+                Assert.True(CreateHardLink(Path.Combine(output, "linked.json"), foreign, IntPtr.Zero));
+            }
+            Assert.Throws<InvalidDataException>(() => ProjectModStager.ComputeCpSourceIdentity(review.Staging.Target.SourceRoot));
+        }
         if (kind == "sourceHardLink") Assert.True(CreateHardLink(source + ".link", source, IntPtr.Zero));
         if (kind == "stagedHardLink") Assert.True(CreateHardLink(staged + ".link", staged, IntPtr.Zero));
         if (kind == "sourceJunction")
@@ -261,9 +291,30 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         }
         finally
         {
+            if (kind == "outputJunction") new Win32DirectChildJunctionPlatform().DeleteExactDirectoryJunction(Path.Combine(review.Staging.Target.SourceRoot, ".sdvkit"), temporary.Path);
             if (kind == "preparationLink") new Win32DirectChildJunctionPlatform().DeleteExactDirectoryJunction(Path.Combine(temporary.Path, ".sdvkit/lab/single/review-prepared"), temporary.Path);
             if (kind == "sourceJunction") new Win32DirectChildJunctionPlatform().DeleteExactDirectoryJunction(Path.GetDirectoryName(source)!, temporary.Path);
         }
+    }
+
+    [Fact]
+    public void RefreshCountsExcludedPackageOutputTowardSourceSizeLimitBeforeMutation()
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        string output = Path.Combine(review.Staging.Target.SourceRoot, ".sdvkit", "packages");
+        Directory.CreateDirectory(output);
+        string archive = Path.Combine(output, "large.zip");
+        const long length = 256L * 1024 * 1024 + 1;
+        using (var stream = File.Create(archive)) stream.SetLength(length);
+        string stagedBefore = ModBuildIdentity.ComputeFileSet(review.Staging.Target.StagingPath);
+        var result = Refresh(temporary, review, _ => throw new InvalidOperationException("Oversized source must not dispatch"));
+        Assert.Equal("rejected", result.State);
+        Assert.Equal("cpRefreshPackTooLarge", result.ErrorCode);
+        Assert.Equal(0, result.FilesReplaced);
+        Assert.Null(result.Refresh);
+        Assert.Equal(stagedBefore, ModBuildIdentity.ComputeFileSet(review.Staging.Target.StagingPath));
+        Assert.Equal(length, new FileInfo(archive).Length);
     }
 
     [Fact]

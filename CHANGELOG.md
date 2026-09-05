@@ -28,6 +28,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Fixed
 
 - Lab status publication avoids Windows replacement-intermediate failures while preserving complete snapshots for concurrent readers; denied writes remain visible and stale markers are still rejected.
+- Content Patcher targets remain reviewable and refreshable from their original source after packaging. Root `.sdvkit` output is retained without entering the game; unsafe paths, unselected edits, companion drift and exact staged identities remain guarded.
+
 - Inspection commands consistently reject unknown CLI options as usage errors before checking review ownership. Data operands beginning with '-' can be escaped after '--', like the other inspection commands.
 - Review response publication uses the same file ownership checks for every command and never cleans up a temporary path when its creation failed.
 - The installation example now uses an explicit extraction directory and the matching executable path.

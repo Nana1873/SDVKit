@@ -92,6 +92,11 @@ For C# mods, `project package` lets ModBuildConfig select the declared release o
 
 All toolkit JSON uses relative paths for project-owned files and archives. Exit code `0` means success, `2` is a CLI usage error, and `3` is a controlled create, build, or package outcome; build diagnostics are kept in the reported `.sdvkit/logs` file.
 
+A packaged Content Patcher target can be edited and [reviewed/refreshed](cp-refresh.md)
+from the same source root. Review excludes that target's root `.sdvkit` output
+from staging and source identity, while preserving link checks and exact runtime
+identities. Other ready sources and nested development directories remain strict.
+
 ## Next: test in game
 
 Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or [interactive review](live-review.md#start-a-review) for functional checks and content packs. Build and packaging success alone do not prove game behavior.
