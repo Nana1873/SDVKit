@@ -13,7 +13,7 @@ Before starting, record the release's previous tag, candidate commit, changed ca
 | Game adapter, lifecycle, or MCP | Game-backed AlwaysOn build, live baseline, and affected features/roles. |
 | Save, join, resume, or persistence | Actual save completion, exact host/farmhand stop and restart, retained identities/state, role restrictions, final reset. |
 | Input | Actual UI effect and pressed/released cleanup while unfocused; virtual-cursor/foreground boundaries and MCP EOF cleanup when affected. |
-| Isolation, ownership, or shared cleanup | Both supported topologies, verified exact exits, final staging/mount/reset checks, and unchanged protected-path evidence. |
+| Isolation, ownership, or shared cleanup | Both supported topologies, verified exact exits, final staging/mount/reset checks, and protected-path comparison with attributable external changes recorded separately. |
 
 Existing CI remains complete for every PR/main run: restore, format, build, all tests, packaging, and portable verification. Do not shard or omit the inexpensive suite just to reduce test counts. Full asset catalogues are also cheap; retain them when their adapter is covered.
 
