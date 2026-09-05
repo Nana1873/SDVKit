@@ -298,6 +298,26 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     [Fact]
+    public void RefreshCountsExcludedPackageOutputTowardSourceSizeLimitBeforeMutation()
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        string output = Path.Combine(review.Staging.Target.SourceRoot, ".sdvkit", "packages");
+        Directory.CreateDirectory(output);
+        string archive = Path.Combine(output, "large.zip");
+        const long length = 256L * 1024 * 1024 + 1;
+        using (var stream = File.Create(archive)) stream.SetLength(length);
+        string stagedBefore = ModBuildIdentity.ComputeFileSet(review.Staging.Target.StagingPath);
+        var result = Refresh(temporary, review, _ => throw new InvalidOperationException("Oversized source must not dispatch"));
+        Assert.Equal("rejected", result.State);
+        Assert.Equal("cpRefreshPackTooLarge", result.ErrorCode);
+        Assert.Equal(0, result.FilesReplaced);
+        Assert.Null(result.Refresh);
+        Assert.Equal(stagedBefore, ModBuildIdentity.ComputeFileSet(review.Staging.Target.StagingPath));
+        Assert.Equal(length, new FileInfo(archive).Length);
+    }
+
+    [Fact]
     public void RefreshSelectedIncludeUsesTheActualSchemaAndRejectsUnreachableJson()
     {
         using TemporaryDirectory temporary = new();
