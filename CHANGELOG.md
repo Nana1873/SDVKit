@@ -19,6 +19,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `save inspect` copies one explicitly selected save or registered disposable fixture below the consuming project’s `.sdvkit/` before reading bounded Stardew 1.6 player, calendar and Farm facts, with byte identity, missing-field availability and actionable format/path limits.
+
 - Build, package, and review start accept `--project` to select one root-relative C# project and its colocated manifest. `--game-path` validates and selects one complete game/SMAPI directory for toolkit and live launch commands, preserving unique automatic defaults. Doctor reports incomplete candidates separately with missing requirements and corrective actions.
 - `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
 - `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
