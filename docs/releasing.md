@@ -65,7 +65,9 @@ Use the existing [live-review sequence](live-review.md#prepare-the-lab), [inspec
 
 For a persistence gate, save through the supported interface, confirm completion, stop, restart the same exact selection, and verify retained identities and values. For network-2, check host and farmhand separately. Preserve work state between those halves; reset only at the end. For input, observe actual UI effects, role binding, physical pointer and foreground stability, and relevant EOF cleanup.
 
-Final cleanup is mandatory: exact process exits, owned staging/mailbox/mount state, and applicable fixture reset. Compare protected-path evidence for gates that require it. Report an isolated-option restoration warning separately from a blocked exit or cleanup. Do not publish with unknown ownership, uncertain action completion, or an unresolved protected-path change.
+Final cleanup is mandatory: exact process exits, owned staging/mailbox/mount state, and applicable fixture reset. Compare protected-path evidence for gates that require it. Report an isolated-option restoration warning separately from a blocked exit or cleanup. Do not publish with unknown ownership, uncertain action completion, or an unexplained or SDVKit-caused protected-path change.
+
+Intentional external changes by the user or Vortex in normal `Mods` do not stop isolated checks, require another approval, invalidate isolated proof, or require repetition solely because that inventory differs. Record attributable external changes separately and continue; never claim the whole inventory was unchanged when it differed. Investigate unexplained or SDVKit-caused protected changes and any disturbance to owned-lab bindings.
 
 ## Keep valid evidence and retry narrowly
 
