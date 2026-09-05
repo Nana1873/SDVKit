@@ -25,7 +25,7 @@ internal static class ProjectReviewMenuService
 
     internal static ReviewMenuReport Execute(ProjectReviewMcpRuntimeReader reader,
         Func<string, LiveLabCommandResult>? send = null, TimeSpan? responseTimeout = null,
-        CancellationToken cancellationToken = default, Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null, CancellationToken cancellationToken = default)
     {
         Func<DateTimeOffset> clock = utcNow ?? (() => DateTimeOffset.UtcNow);
         ReviewMenuReport Failure(string code) => new(1, "unavailable", code, null,
