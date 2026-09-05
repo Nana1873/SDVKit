@@ -136,6 +136,7 @@ $linkedFiles = @(
     "ReviewTransportModels.cs",
     "RuntimeVersionCompatibility.cs",
     "RuntimeSnapshotModels.cs",
+    "LocalPlayerSnapshotModels.cs",
     "TestSaveModels.cs"
 )
 foreach ($fileName in $linkedFiles) {

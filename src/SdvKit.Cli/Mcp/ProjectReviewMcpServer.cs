@@ -73,9 +73,53 @@ internal static class ProjectReviewMcpServer
                 "locationId": { "type": ["string", "null"] },
                 "tileX": { "type": ["integer", "null"] },
                 "tileY": { "type": ["integer", "null"] },
-                "menuOpen": { "type": "boolean" }
+                "menuOpen": { "type": "boolean" },
+                "localPlayer": { "$ref": "#/$defs/localPlayer" }
               }
             }
+          },
+          "$defs": {
+            "localPlayer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["schemaVersion", "availability", "reason", "data"],
+              "properties": {
+                "schemaVersion": { "const": 1 },
+                "availability": { "enum": ["available", "worldNotReady", "unavailable", "unsupportedVersion", "error"] },
+                "reason": { "enum": [null, "notPublished", "selectionUnavailable", "unsupportedSchema", "captureFailed", "invalidValues"] },
+                "data": { "$ref": "#/$defs/playerValues" }
+              },
+              "allOf": [{
+                "if": { "properties": { "availability": { "const": "available" } } },
+                "then": { "properties": { "reason": { "type": "null" }, "data": { "type": "object" } } },
+                "else": { "properties": { "data": { "type": "null" } } }
+              }]
+            },
+            "playerValues": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["playerId", "money", "health", "maxHealth", "stamina", "maxStamina", "selectedSlot", "selectedItem"],
+              "properties": {
+                "playerId": { "type": "string", "minLength": 1, "maxLength": 20, "pattern": "^-?[1-9][0-9]*$" },
+                "money": { "$ref": "#/$defs/int32" },
+                "health": { "$ref": "#/$defs/int32" },
+                "maxHealth": { "$ref": "#/$defs/int32" },
+                "stamina": { "type": "number", "description": "Finite single-precision game value." },
+                "maxStamina": { "type": "number", "description": "Finite single-precision game value." },
+                "selectedSlot": { "type": ["integer", "null"], "minimum": 0, "maximum": 2147483647 },
+                "selectedItem": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["qualifiedItemId", "stack", "quality"],
+                  "properties": {
+                    "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 256 },
+                    "stack": { "$ref": "#/$defs/int32" },
+                    "quality": { "type": ["integer", "null"], "minimum": -2147483648, "maximum": 2147483647 }
+                  }
+                }
+              }
+            },
+            "int32": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
           }
         }
         """).RootElement.Clone();

@@ -30,6 +30,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTransportModels.cs" Link="LiveLab\ReviewTransportModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeVersionCompatibility.cs" Link="LiveLab\RuntimeVersionCompatibility.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeSnapshotModels.cs" Link="LiveLab\RuntimeSnapshotModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\LocalPlayerSnapshotModels.cs" Link="LiveLab\LocalPlayerSnapshotModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\TestSaveModels.cs" Link="LiveLab\TestSaveModels.cs" />
     <Reference Include="StardewModdingAPI">
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>
