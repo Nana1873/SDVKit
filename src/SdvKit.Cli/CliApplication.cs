@@ -74,7 +74,7 @@ public static partial class CliApplication
     private const string SmokeUsage =
         "Usage: sdvkit project smoke [path] [--game-path <directory>] --topology <single|network-2> --json";
     private const string ReviewStartUsage =
-        "Usage: sdvkit project review start [code-project-or-content-pack] [--project <relative.csproj>] [--game-path <directory>] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json";
+        "Usage: sdvkit project review start [source-project-or-ready-mod] [--project <relative.csproj>] [--game-path <directory>] [--topology <single|network-2>] [--test-save] [--companion <path>]... [--content-pack <path>]... --json";
     private const string ReviewStatusUsage =
         "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
