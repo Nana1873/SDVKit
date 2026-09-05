@@ -107,8 +107,15 @@ internal static class ProjectChecker
         }
     }
 
+    internal static IReadOnlyList<ProjectCheckProblem> CheckPatchFile(string root, string relative, bool include)
+    {
+        var problems = new List<ProjectCheckProblem>();
+        CheckFile(root, relative, "content-patcher", [], problems, include);
+        return problems;
+    }
+
     private static JsonNode? CheckFile(string root, string relative, string schemaName,
-        List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems)
+        List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems, bool include = false)
     {
         string path = Path.Combine(root, relative);
         JsonNode? instance;
@@ -141,6 +148,18 @@ internal static class ProjectChecker
             problems.Add(new(exception is FileNotFoundException or DirectoryNotFoundException ? "fileNotFound" : "fileUnreadable",
                 relative, "", "The required authoring file could not be read."));
             return null;
+        }
+
+        if (include)
+        {
+            // Official Include files contain only Changes. Validate those patches
+            // with the same bundled schema under its required root Format wrapper.
+            if (instance is not JsonObject included || included.Count != 1 || included["Changes"] is not JsonArray)
+            {
+                problems.Add(new("includeShapeInvalid", relative, "", "An Include JSON file must contain only a Changes array."));
+                return instance;
+            }
+            included["Format"] = "2.9.0";
         }
 
         string schemaId = $"https://smapi.io/schemas/{schemaName}.json";
@@ -241,7 +260,7 @@ internal static class ProjectChecker
         }
     }
 
-    private static bool HasLinkedAncestor(string path)
+    internal static bool HasLinkedAncestor(string path)
     {
         for (DirectoryInfo? directory = new(path); directory is not null; directory = directory.Parent)
         {

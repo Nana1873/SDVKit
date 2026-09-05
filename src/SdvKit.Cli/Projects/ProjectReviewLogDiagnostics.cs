@@ -57,7 +57,7 @@ internal static class ProjectReviewLogDiagnostics
             (ReviewLogDiagnostic[] diagnostics, int total, int matching) = Parse(log.Text,
                 selected.Manifest, context.Staging.Artifacts.Select(a => a.Manifest).ToArray(), limit);
             return new(1, "ready", null, context.State.LaunchId, reader.Topology, reader.Role,
-                selected.Manifest.UniqueId, selected.BuildIdentity,
+                selected.Manifest.UniqueId, selected.StagedBuildIdentity,
                 new ReviewLogSource("isolatedSmapiLatest", log.TotalBytes, log.ScannedBytes,
                     log.ScanTruncated, log.IncompleteLineWithheld, log.LastWrittenAtUtc),
                 new ReviewLogCounts(total, matching, diagnostics.Length,

@@ -13,7 +13,10 @@ internal sealed record CpResponse(string State, string? ErrorCode, bool CommandW
 internal sealed record CpDiagnosisResult(string State, string? ErrorCode, string? LaunchId,
     string PackId, string ProviderId, string? ProviderVersion, string? PackBuildIdentity, string? ProviderBuildIdentity,
     bool PackLoaded, bool ProviderLoaded, CpResponse? Summary, CpResponse? Parse,
-    string AssetObservation = "notRequested; inspect separately after diagnosis; inspection may load the asset");
+    string AssetObservation = "notRequested; inspect separately after diagnosis; inspection may load the asset")
+{
+    public CpResponse? Reload { get; init; }
+}
 
 internal static class ProjectReviewCpDiagnosis
 {
@@ -42,15 +45,17 @@ internal static class ProjectReviewCpDiagnosis
 
     internal static CpDiagnosisResult Execute(ProjectReviewMcpRuntimeReader reader, string packId,
         string providerId, string? asset, string? parse,
-        Func<string, LiveLabCommandResult>? send = null, TimeSpan? timeout = null)
+        Func<string, LiveLabCommandResult>? send = null, TimeSpan? timeout = null,
+        ProjectReviewActionLock? heldActionLock = null, bool reload = false)
     {
         ProjectReviewMcpVerifiedContext? context = null;
         ProjectReviewOwnedArtifact? pack = null, provider = null;
         bool packLoaded = false, providerLoaded = false;
-        CpResponse? summary = null, parsed = null;
+        CpResponse? summary = null, parsed = null, reloaded = null;
         CpDiagnosisResult Result(string state, string? code) => new(state, code, context?.State.LaunchId,
             pack?.Manifest.UniqueId ?? packId, provider?.Manifest.UniqueId ?? providerId,
-            provider?.Manifest.Version, pack?.BuildIdentity, provider?.BuildIdentity, packLoaded, providerLoaded, summary, parsed);
+            provider?.Manifest.Version, pack?.StagedBuildIdentity, provider?.StagedBuildIdentity, packLoaded, providerLoaded, summary, parsed)
+        { Reload = reloaded };
         if (reader.Topology != LiveLabState.SingleTopology || !ValidArguments(packId, providerId, asset, parse))
             return Result("unavailable", "cpArgumentsInvalid");
         try
@@ -75,10 +80,19 @@ internal static class ProjectReviewCpDiagnosis
                 return Result("unavailable", "cpSelectedModsNotLoaded");
             // Only the installed version whose official source and live output were verified.
             if (provider.Manifest.Version != "2.9.1") return Result("unsupported", "cpVersionUnsupported");
-            using var actionLock = ProjectReviewActionLock.TryAcquire(LiveLabPaths.Resolve(reader.ProjectRoot).RuntimePath);
-            if (actionLock is null) return Result("unavailable", "reviewBusy");
+            string runtimePath = LiveLabPaths.Resolve(reader.ProjectRoot).RuntimePath;
+            heldActionLock?.RequireHeldFor(runtimePath);
+            using var actionLock = heldActionLock is null ? ProjectReviewActionLock.TryAcquire(runtimePath) : null;
+            if (actionLock is null && heldActionLock is null) return Result("unavailable", "reviewBusy");
             send ??= command => ProjectReviewService.ExecuteCommand(command, reader.Topology, null, reader.ProjectRoot);
             string selectedId = pack.Manifest.UniqueId;
+            if (reload)
+            {
+                if (heldActionLock is null || reader.HeldOperationLock is null)
+                    return Result("unavailable", "cpRefreshLockRequired");
+                reloaded = Capture($"patch reload \"{selectedId}\"", false, isReload: true);
+                if (reloaded.State != "ready") return Result("incomplete", reloaded.ErrorCode);
+            }
             summary = Capture($"patch summary \"{selectedId}\"" + (asset is null ? "" : $" asset \"{asset}\""), false);
             if (summary.State != "ready") return Result("incomplete", summary.ErrorCode);
             if (parse is not null)
@@ -88,7 +102,7 @@ internal static class ProjectReviewCpDiagnosis
             }
             return Result("ready", null);
 
-            CpResponse Capture(string command, bool isParse)
+            CpResponse Capture(string command, bool isParse, bool isReload = false)
             {
                 DateTimeOffset started = DateTimeOffset.UtcNow;
                 bool written = false, mayHaveWritten = false;
@@ -133,7 +147,7 @@ internal static class ProjectReviewCpDiagnosis
                     if (!Dispatch($"patch parse \"{end}\" \"{selectedId}\" compact", false)) return Failure("cpMarkerDeliveryFailed");
                     if (!WaitFor(t => Entries(t, provider.Manifest.Name).Any(e => e.Text.Trim() == Marker(end)))) return Failure("cpResponseTimedOut");
                     return InterpretWindow(Delta(), provider.Manifest.Name, selectedId, asset, parse,
-                        begin, end, isParse, context.Staging.Artifacts.Select(a => a.Manifest).ToArray(), started);
+                        begin, end, isParse, context.Staging.Artifacts.Select(a => a.Manifest).ToArray(), started, isReload);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Security.SecurityException or RegexMatchTimeoutException)
                 {
@@ -192,7 +206,7 @@ internal static class ProjectReviewCpDiagnosis
 
     internal static CpResponse InterpretWindow(string text, string provider, string packId,
         string? asset, string? parse, string begin, string end, bool isParse,
-        IReadOnlyList<ProjectReviewManifest> staged, DateTimeOffset started)
+        IReadOnlyList<ProjectReviewManifest> staged, DateTimeOffset started, bool isReload = false)
     {
         CpResponse Failure(string code) => new("incomplete", code, true, true, started,
             DateTimeOffset.UtcNow, null, [], 0, false, []);
@@ -203,7 +217,11 @@ internal static class ProjectReviewCpDiagnosis
         Entry response = entries[1];
         string message = response.Text;
         bool known;
-        if (isParse)
+        if (isReload)
+        {
+            known = response.Level == "INFO" && message.Trim() == "Content pack reloaded.";
+        }
+        else if (isParse)
         {
             known = response.Level == "ERROR" && message.TrimStart().StartsWith("Can't parse that token value:", StringComparison.Ordinal)
                 || response.Level == "DEBUG" && message.Contains("Metadata\n", StringComparison.Ordinal)

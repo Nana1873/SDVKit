@@ -31,7 +31,8 @@ unclosed or unavailable tokens retain CP's own errors. Correct your source,
 stop/reset the exact review, and start it again with the same selected provider.
 Capture a new diagnosis, then inspect the affected record and compare its expected
 field. Finish with the [required stop/reset](live-review.md#finish-or-test-persistence).
-This recipe does not refresh a staged pack while running.
+For supported patch-only edits, [refresh selected JSON](cp-refresh.md) can replace
+that restart while preserving the exact running process.
 
 ## Boundaries and interpretation
 
@@ -78,5 +79,5 @@ complete sanitization of arbitrary text or indirect custom-token values. Local
 owned logs remain available through the existing guide; no log is uploaded.
 
 The CLI is the first surface. The shared read-only diagnostic MCP tool remains
-available for warnings/errors; a dedicated CP MCP command and live JSON refresh
-are deferred. This workflow does not establish general conflict detection.
+available for warnings/errors; a dedicated CP MCP command is deferred.
+[Selected JSON refresh](cp-refresh.md) is CLI-only. This workflow does not establish general conflict detection.

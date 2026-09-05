@@ -6,6 +6,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | --- | --- |
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
+| Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
@@ -28,6 +29,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
+| Refresh selected CP patch JSON | `project review cp-refresh` | No | Owned single root CP 2.9.1 target; explicit source/files and Data observation |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |
 | Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |

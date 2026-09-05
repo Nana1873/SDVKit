@@ -665,6 +665,14 @@ internal static partial class ProjectModStager
                 || artifact.RoleStagingPaths.Any(path => path is null)
                 || !IsSafeSegment(artifact.TopLevelDirectory)
                 || !ModBuildIdentity.IsValid(artifact.BuildIdentity)
+                || artifact.CpRefresh is not null && (topology != LiveLabState.SingleTopology
+                    || artifact.Role != ProjectReviewArtifactRole.Target
+                    || !string.Equals(artifact.Manifest.ContentPackFor, ProjectReviewCpDiagnosis.ProviderId, StringComparison.OrdinalIgnoreCase)
+                    || !ModBuildIdentity.IsValid(artifact.CpRefresh.StagedBuildIdentity)
+                    || !ModBuildIdentity.IsValid(artifact.CpRefresh.PreviousBuildIdentity)
+                    || !Guid.TryParseExact(artifact.CpRefresh.LaunchId, "N", out _)
+                    || !Guid.TryParseExact(artifact.CpRefresh.RefreshId, "N", out _)
+                    || !ProjectReviewCpRefresh.ValidFiles(artifact.CpRefresh.Files))
                 || !IsValidOwnedReviewArtifact(artifact)))
         {
             return ReviewProblem(
@@ -782,7 +790,7 @@ internal static partial class ProjectModStager
                         || !OwnedManifestMatchesFresh(artifact.Manifest, manifest)
                         || !ModBuildIdentity.MatchesFileSet(
                             stagingPath,
-                            artifact.BuildIdentity,
+                            artifact.StagedBuildIdentity,
                             allowNewRootConfigJson: string.Equals(
                                 artifact.Manifest.Kind,
                                 ProjectInspectionReport.SmapiMod,
@@ -791,7 +799,8 @@ internal static partial class ProjectModStager
                         return ReviewProblem(
                             "reviewStagingOwnershipDrifted",
                             null,
-                            $"The retained {expectedRole.Role} project-review staging differs from its ownership marker and was left untouched.");
+                            $"The retained {expectedRole.Role} project-review staging differs from its ownership marker and was left untouched."
+                            + (artifact.CpRefresh?.RequiresRestart == true ? " An incomplete CP refresh requires exact project review stop, reset, and start; do not retry reload." : ""));
                     }
                 }
             }
@@ -880,9 +889,10 @@ internal static partial class ProjectModStager
             fresh.ContentPackForMinimumVersion,
             StringComparison.Ordinal);
 
-    private static void WriteReviewOwnership(
+    internal static void WriteReviewOwnership(
         string path,
-        ProjectReviewStaging staging)
+        ProjectReviewStaging staging,
+        bool replace = false)
     {
         string directory = Path.GetDirectoryName(path)
             ?? throw new InvalidDataException(
@@ -903,7 +913,8 @@ internal static partial class ProjectModStager
                 stream.Flush(flushToDisk: true);
             }
 
-            File.Move(temporary, path, overwrite: false);
+            if (File.Exists(path)) RefuseReparsePoint(path);
+            File.Move(temporary, path, overwrite: replace);
         }
         finally
         {

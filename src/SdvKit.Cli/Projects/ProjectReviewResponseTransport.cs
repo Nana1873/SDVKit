@@ -37,6 +37,7 @@ internal static class ProjectReviewResponseTransport
         string topology = LiveLabState.SingleTopology,
         string? role = null,
         bool drainAfterDispatchOnCancellation = false,
+        Func<string, LiveLabCommandResult>? send = null,
         CancellationToken cancellationToken = default)
         where TResponse : class
     {
@@ -77,7 +78,7 @@ internal static class ProjectReviewResponseTransport
                     $"The unique {displayName} response target already exists; no request was written."));
         }
 
-        LiveLabCommandResult sent = ProjectReviewService.ExecuteCommand(
+        LiveLabCommandResult sent = send is not null ? send(command) : ProjectReviewService.ExecuteCommand(
             command,
             topology,
             role,

@@ -74,6 +74,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
     private readonly string? _role;
     private readonly ILabProcessHost _processHost;
     private readonly Func<DateTimeOffset> _utcNow;
+    internal LiveLabOperationLock? HeldOperationLock { get; init; }
 
     internal string ProjectRoot => _projectRoot;
 
@@ -128,8 +129,9 @@ internal sealed class ProjectReviewMcpRuntimeReader
         try
         {
             using LiveLabOperationLock? operationLock =
-                LiveLabOperationLock.TryAcquire(_projectRoot);
-            if (operationLock is null)
+                HeldOperationLock is null ? LiveLabOperationLock.TryAcquire(_projectRoot) : null;
+            HeldOperationLock?.RequireHeldFor(_projectRoot);
+            if (operationLock is null && HeldOperationLock is null)
             {
                 return ContextFailure(
                     "reviewBusy",
@@ -388,6 +390,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
             || !string.Equals(state.Topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
             || state.NetworkTwo is not null
             || state.ProjectMod is null
+            || staging.Target.CpRefresh is { } refresh && refresh.LaunchId != state.LaunchId
             || !StatePathsMatch(state, paths))
         {
             return false;

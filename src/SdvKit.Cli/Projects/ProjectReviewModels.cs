@@ -72,7 +72,15 @@ internal sealed record ProjectReviewOwnedArtifact(
             role,
             StringComparison.Ordinal)).StagingPath;
     }
+
+    public CpRefreshReceipt? CpRefresh { get; init; }
+
+    [JsonIgnore]
+    public string StagedBuildIdentity => CpRefresh?.StagedBuildIdentity ?? BuildIdentity;
 }
+
+internal sealed record CpRefreshReceipt(string RefreshId, string LaunchId, string PreviousBuildIdentity,
+    string StagedBuildIdentity, IReadOnlyList<string> Files, bool? CommandWritten, bool RequiresRestart);
 
 internal sealed record ProjectReviewStaging(
     int SchemaVersion,
@@ -112,7 +120,10 @@ internal sealed record ProjectReviewArtifactReport(
     string BuildIdentity,
     string StagingPath,
     string? BuildLog,
-    string? PackageLog);
+    string? PackageLog)
+{
+    public CpRefreshReceipt? CpRefresh { get; init; }
+}
 
 internal sealed record ProjectReviewReport(
     int SchemaVersion,
