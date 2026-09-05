@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- `project review menu` and read-only `stardew_menu_get` describe active inventory/shop menus, nested pages and bounded public mod-menu components in each existing review role, with observed-object IDs, fresh geometry and explicit partial coverage.
+
 ### Documentation
 
 - A SMAPI authoring recipe connects explicit project selection, an original event/config feature, actual runtime-exception diagnosis, corrected in-game observation, cleanup and ZIP identity, with focused lifecycle references.
