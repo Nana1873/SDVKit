@@ -84,6 +84,9 @@ Choose the detailed surface for the task:
 
 ## Diagnose selected-mod warnings and exceptions
 
+For a selected Content Patcher change, use the [CP diagnosis recipe](cp-diagnosis.md)
+to correlate its informational command replies before inspecting an asset.
+
 Use the staged `UniqueID` from review status. This read-only query works even when
 that target is reported as not loaded; it does not replace load/version diagnostics.
 

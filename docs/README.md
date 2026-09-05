@@ -6,6 +6,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | --- | --- |
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
+| Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
@@ -25,6 +26,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Review lifecycle | `project review start/status/stop/reset` | No | C# target in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
+| Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |

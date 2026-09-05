@@ -99,7 +99,8 @@ internal static class OwnedReviewLogReader
         {
             throw new InvalidDataException("reviewLogBindingChanged");
         }
-        return new OwnedReviewLog(text, totalBytes, bytes.Length, start > 0, incomplete, written);
+        return new OwnedReviewLog(text, totalBytes, bytes.Length, start > 0, incomplete, written,
+            $"{info.Volume:x8}:{info.IndexHigh:x8}:{info.IndexLow:x8}");
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -125,4 +126,4 @@ internal static class OwnedReviewLogReader
 }
 
 internal sealed record OwnedReviewLog(string Text, long TotalBytes, int ScannedBytes,
-    bool ScanTruncated, bool IncompleteLineWithheld, DateTimeOffset LastWrittenAtUtc);
+    bool ScanTruncated, bool IncompleteLineWithheld, DateTimeOffset LastWrittenAtUtc, string FileIdentity);
