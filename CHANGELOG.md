@@ -17,6 +17,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Build, package, and review start accept `--project` to select one root-relative C# project and its colocated manifest. `--game-path` validates and selects one complete game/SMAPI directory for toolkit and live launch commands, preserving unique automatic defaults. Doctor reports incomplete candidates separately with missing requirements and corrective actions.
 - `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
 - `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
 - `project check [path] [--json]` checks one mod root's manifest, Content Patcher 2.9.x content, and direct i18n files offline, with relative file/field errors and bundled official SMAPI schemas. It accepts comments and trailing commas without changing source files; runtime patch behavior and referenced assets still need separate checks.

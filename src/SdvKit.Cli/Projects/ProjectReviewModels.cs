@@ -37,7 +37,11 @@ internal sealed record ProjectReviewPreparedArtifact(
     ProjectReviewManifest Manifest,
     string BuildIdentity,
     string? BuildLog,
-    string? PackageLog);
+    string? PackageLog)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
+}
 
 internal sealed record ProjectReviewPreparationResult(
     IReadOnlyList<ProjectReviewPreparedArtifact> Artifacts,
@@ -72,6 +76,9 @@ internal sealed record ProjectReviewOwnedArtifact(
             role,
             StringComparison.Ordinal)).StagingPath;
     }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
 
     public CpRefreshReceipt? CpRefresh { get; init; }
 
@@ -122,6 +129,9 @@ internal sealed record ProjectReviewArtifactReport(
     string? BuildLog,
     string? PackageLog)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFile { get; init; }
+
     public CpRefreshReceipt? CpRefresh { get; init; }
 }
 

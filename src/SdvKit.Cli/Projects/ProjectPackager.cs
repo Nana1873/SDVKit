@@ -87,12 +87,13 @@ internal static class ProjectPackager
     public static ProjectPackageReport Package(
         string path,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner? runner = null)
+        DotNetBuildRunner? runner = null,
+        string? projectFile = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
 
-        ProjectInspectionReport inspection = ProjectInspector.Inspect(path);
+        ProjectInspectionReport inspection = ProjectBuilder.InspectTarget(path, projectFile);
         if (inspection.Problems.Count > 0)
         {
             return Report(inspection, null, [], null, inspection.Problems);
@@ -104,7 +105,8 @@ internal static class ProjectPackager
                 path,
                 discoverInstallations,
                 runner ?? ProjectBuilder.RunDotNet,
-                stateDirectory: null),
+                stateDirectory: null,
+                projectFile),
             ProjectInspectionReport.ContentPack => PackageContentPack(inspection),
             _ => Report(
                 inspection,
@@ -119,13 +121,14 @@ internal static class ProjectPackager
         string path,
         string stateDirectory,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner? runner = null)
+        DotNetBuildRunner? runner = null,
+        string? projectFile = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
 
-        ProjectInspectionReport inspection = ProjectInspector.Inspect(path);
+        ProjectInspectionReport inspection = ProjectBuilder.InspectTarget(path, projectFile);
         if (inspection.Problems.Count > 0)
         {
             return Report(inspection, null, [], null, inspection.Problems);
@@ -137,7 +140,8 @@ internal static class ProjectPackager
                 path,
                 discoverInstallations,
                 runner ?? ProjectBuilder.RunDotNet,
-                Path.GetFullPath(stateDirectory))
+                Path.GetFullPath(stateDirectory),
+                projectFile)
             : Report(
                 inspection,
                 null,
@@ -150,9 +154,10 @@ internal static class ProjectPackager
         string path,
         Func<DoctorReport> discoverInstallations,
         DotNetBuildRunner runner,
-        string? stateDirectory)
+        string? stateDirectory,
+        string? projectFile)
     {
-        ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(path);
+        ModBuildTargetResolution resolution = ProjectBuilder.ResolveTarget(path, projectFile);
         if (resolution.Target is null)
         {
             return Report(
@@ -181,7 +186,7 @@ internal static class ProjectPackager
             }
         }
 
-        PackFileScan sourceScan = ScanContentPackFiles(root);
+        PackFileScan sourceScan = ScanContentPackFiles(projectFile is null ? root : Path.GetDirectoryName(resolution.Target.ProjectFile)!);
         if (sourceScan.Problem is not null)
         {
             return Report(resolution.Inspection, null, [], null, [sourceScan.Problem]);

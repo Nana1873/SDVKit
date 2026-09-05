@@ -2,7 +2,7 @@
 
 Create and package a mod without deploying it into normal Mods. Complete [installation](../README.md#install) first; examples use its `$sdvkit` variable.
 
-Success is an empty `problems` array and exit `0`; a package result identifies the archive below the selected project's `.sdvkit/packages`. Building code requires `doctor` to report exactly one ready installation. Creating, inspecting, and checking authoring files do not require a game.
+Success is an empty `problems` array and exit `0`; a package result identifies the archive below the selected project's `.sdvkit/packages`. Building code requires one complete game/SMAPI installation, selected explicitly or discovered uniquely. Creating, inspecting, and checking authoring files do not require a game.
 
 ## Inspect an installation or project
 
@@ -11,7 +11,7 @@ Success is an empty `problems` array and exit `0`; a package result identifies t
 & $sdvkit project inspect [path] --json
 ```
 
-`doctor` checks the supported Windows custom-targets, Steam (including additional libraries), GOG, and Xbox locations. An installation is ready only when the Stardew Valley and SMAPI executables and assemblies are present together. Its versioned JSON reports `ready`, `ambiguous`, or `notFound` and lists only complete installations.
+`doctor` checks the supported Windows custom-targets, Steam (including additional libraries), GOG, and Xbox locations. An installation is ready only when the Stardew Valley and SMAPI executables and assemblies are present together. Its versioned JSON reports `ready`, `ambiguous`, or `notFound` and lists only complete installations in `installations`. When supported candidate directories are incomplete, additive `incompleteCandidates` entries name their `missingRequirements` (filenames) and concrete `actions`. They never count toward readiness or ambiguity. Omitted-selection status and exit codes keep their existing meaning. Use `doctor --game-path <directory> --json` to validate one explicit installation, including a path outside automatic discovery; missing game files require store repair/installation, while missing SMAPI files require installing/repairing SMAPI in that same directory.
 
 `project inspect` reads the selected directory, or the current directory when no path is given. It classifies manifests as `smapiMod` through `EntryDll`, or `contentPack` through `ContentPackFor.UniqueID`; a tree containing separate manifests of both kinds is `hybrid`. Required identity fields and the classification fields are checked, but this is not a replacement for SMAPI's complete manifest schema validation. Project and manifest paths within the result are relative and sorted. `bin`, `obj`, `.git`, and `.sdvkit` directories are ignored, and child directory links are not followed.
 
@@ -86,7 +86,16 @@ Build and package an inspected project:
 & $sdvkit project package .\ExamplePack --json
 ```
 
-`project build` requires exactly one classified SMAPI code manifest, one C# project, and one ready Stardew Valley + SMAPI installation from `doctor`. It runs the normal `dotnet build` and official ModBuildConfig path in `Release`, while forcing `EnableModDeploy=false` and keeping build output and logs below the project's ignored `.sdvkit/` directory.
+`project build` defaults to exactly one classified SMAPI code manifest, one C# project, and one complete Stardew Valley + SMAPI installation from `doctor`. It runs the normal `dotnet build` and official ModBuildConfig path in `Release`, while forcing `EnableModDeploy=false` and keeping build output and logs below the project's ignored `.sdvkit/` directory.
+
+For an existing repository with multiple projects or installations, select one target without restructuring it:
+
+```powershell
+& $sdvkit project build .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --json
+& $sdvkit project package .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --json
+```
+
+Set `$gamePath` to the intended installation directory validated by doctor. `--project` is a root-relative `.csproj` path; absolute paths, paths outside the chosen root, ignored build/state directories, and links/linked ancestors are rejected. Its code manifest must be colocated with that project. Unselected sibling manifests do not determine its identity. Output and logs remain under the chosen root's `.sdvkit/`; selection never changes the source layout. Omitted selectors retain the unique defaults and return controlled ambiguity when needed. Build/package use the same selected project and manifest, including existing valid hybrid/bundled-pack layouts supported by ModBuildConfig. SDVKit does not orchestrate solution builds or rewrite project references; the selected project still controls its normal .NET references and declared package content. A reference can require another project to compile; selection does not disable declared dependencies.
 
 For C# mods, `project package` lets ModBuildConfig select the declared release output. For Content Patcher packs, it archives the selected manifest root while excluding source projects, build and repository state, game binaries, executables, and XNB files; a save marker or `Saves` directory rejects the package instead of producing a partial archive. Release ZIPs are written below `.sdvkit/packages` and validated to contain one relative top-level mod directory without traversal paths. Neither command writes to a normal or mod-manager-owned `Mods` directory, reads save contents, or launches the game.
 
@@ -105,7 +114,8 @@ Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or 
 
 | Result | Next step |
 | --- | --- |
-| `doctor` reports `notFound` or `ambiguous` | Check the supported installation/SMAPI setup; do not guess an installation or treat discovery failure as a build failure. |
-| Project is `hybrid` or ambiguous | Select the actual supported mod root; do not automatically reshape the project. |
+| `doctor` reports `notFound` or `ambiguous` | Read `incompleteCandidates` missing files/actions, or explicitly validate/select one complete directory with `--game-path`. |
+| Project is `hybrid` or ambiguous | Build/package support a valid ModBuildConfig hybrid. Use `--project` for one colocated code project/manifest; review still requires a standalone mod artifact. |
+| `projectSelectionInvalid` / `projectManifestMismatch` | Select an existing root-relative `.csproj` beside its own code `manifest.json`, outside ignored directories and links. |
 | C# build fails | Open the build log named by the result below the project's `.sdvkit/`. |
 | A content pack needs a provider | Select the installed provider explicitly for review; SDVKit does not fetch dependencies. |

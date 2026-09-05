@@ -102,7 +102,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
-        Assert.Equal($"Usage: sdvkit doctor --json{Environment.NewLine}", error);
+        Assert.Equal($"Usage: sdvkit doctor [--game-path <directory>] --json{Environment.NewLine}", error);
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
-        Assert.Equal($"Usage: sdvkit project build [path] --json{Environment.NewLine}", error);
+        Assert.Equal($"Usage: sdvkit project build [path] [--project <relative.csproj>] [--game-path <directory>] --json{Environment.NewLine}", error);
     }
 
     [Theory]
@@ -311,7 +311,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
-        Assert.Equal($"Usage: sdvkit project package [path] --json{Environment.NewLine}", error);
+        Assert.Equal($"Usage: sdvkit project package [path] [--project <relative.csproj>] [--game-path <directory>] --json{Environment.NewLine}", error);
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public sealed class CliApplicationTests
         (int exitCode, string output, string error) = Run("project", "--help");
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("Usage: sdvkit project smoke [path] --topology <single|network-2> --json", output, StringComparison.Ordinal);
+        Assert.Contains("Usage: sdvkit project smoke [path] [--game-path <directory>] --topology <single|network-2> --json", output, StringComparison.Ordinal);
         Assert.Contains("sdvkit project review --help", output, StringComparison.Ordinal);
         Assert.DoesNotContain("stardew_", output, StringComparison.Ordinal);
         Assert.DoesNotContain("sdvkit fixture", output, StringComparison.Ordinal);
@@ -347,7 +347,7 @@ public sealed class CliApplicationTests
             contentPackPaths,
             useTestSave,
             topology,
-            labRoot) =>
+            labRoot, _) =>
         {
             receivedAction = action;
             receivedTarget = sourcePath;
@@ -402,7 +402,7 @@ public sealed class CliApplicationTests
             contentPackPaths,
             useTestSave,
             topology,
-            labRoot) =>
+            labRoot, _) =>
         {
             receivedTarget = sourcePath;
             Assert.Empty(companionPaths);
@@ -436,7 +436,7 @@ public sealed class CliApplicationTests
             _,
             useTestSave,
             topology,
-            _) =>
+            _, _) =>
         {
             receivedUseTestSave = useTestSave;
             Assert.Equal("single", topology);
@@ -470,7 +470,7 @@ public sealed class CliApplicationTests
             contentPackPaths,
             useTestSave,
             topology,
-            labRoot) =>
+            labRoot, _) =>
         {
             Assert.Equal(action, receivedAction);
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
@@ -505,7 +505,7 @@ public sealed class CliApplicationTests
             contentPackPaths,
             useTestSave,
             topology,
-            labRoot) =>
+            labRoot, _) =>
         {
             Assert.Equal(action, receivedAction);
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
@@ -538,7 +538,7 @@ public sealed class CliApplicationTests
         string? receivedTopology = null;
         string? receivedRole = "unexpected";
         string? receivedLabRoot = null;
-        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _) =>
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
             candidate,
@@ -583,7 +583,7 @@ public sealed class CliApplicationTests
     public void ProjectReviewNetworkCommandDispatchesOneExactRole(string expectedRole)
     {
         const string command = "sdvkit fixture status";
-        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _) =>
+        ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
             candidate,
@@ -627,7 +627,7 @@ public sealed class CliApplicationTests
             contentPackPaths,
             useTestSave,
             topology,
-            labRoot) =>
+            labRoot, _) =>
         {
             Assert.Equal("reset", action);
             Assert.Equal(Environment.CurrentDirectory, sourcePath);
@@ -1386,7 +1386,7 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "mcp", "serve", "--allow-fixture-actions", "--allow-fixture-actions")]
     public void ProjectReviewSyntaxErrorsReturnReviewHelpWithoutRunning(params string[] arguments)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -1403,7 +1403,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewCommandRejectsALineOverTheBoundedMaximum()
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReview(
@@ -1428,7 +1428,7 @@ public sealed class CliApplicationTests
     [InlineData("reset", "--help")]
     public void ProjectReviewHelpListsTheTopologyAddressedSurface(params string[] suffix)
     {
-        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _) =>
+        ProjectReviewCommandRunner runner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Project review should not run.");
         string[] arguments = ["project", "review", .. suffix];
 
@@ -1460,7 +1460,7 @@ public sealed class CliApplicationTests
         ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
             throw new InvalidOperationException("Console input should not run.");
         (int exitCode, string output, string error) = RunWithProjectReview(
-            (_, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
             runner,
             "project", "review", "command", "--help");
 
@@ -1526,7 +1526,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(
-            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json"
+            "Usage: sdvkit project smoke [path] [--game-path <directory>] --topology <single|network-2> --json"
                 + Environment.NewLine,
             output);
         Assert.Equal(string.Empty, error);
@@ -1677,7 +1677,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Equal(
-            "Usage: sdvkit project smoke [path] --topology <single|network-2> --json"
+            "Usage: sdvkit project smoke [path] [--game-path <directory>] --topology <single|network-2> --json"
                 + Environment.NewLine,
             error);
     }
@@ -1746,7 +1746,9 @@ public sealed class CliApplicationTests
         Assert.Equal(
             "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json"
                 + Environment.NewLine
-                + "       sdvkit lab smoke --topology network-2 --json"
+                + "       sdvkit lab smoke [--game-path <directory>] --topology network-2 --json"
+                + Environment.NewLine
+                + "--game-path <directory> selects a complete installation for start, test-save, or smoke only."
                 + Environment.NewLine,
             output);
         Assert.Equal(string.Empty, error);
@@ -1809,7 +1811,9 @@ public sealed class CliApplicationTests
         Assert.Equal(
             "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json"
                 + Environment.NewLine
-                + "       sdvkit lab smoke --topology network-2 --json"
+                + "       sdvkit lab smoke [--game-path <directory>] --topology network-2 --json"
+                + Environment.NewLine
+                + "--game-path <directory> selects a complete installation for start, test-save, or smoke only."
                 + Environment.NewLine,
             error);
     }
@@ -1968,7 +1972,7 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReview: (_, _, _, _, _, _, _) =>
+            runProjectReview: (_, _, _, _, _, _, _, _) =>
                 throw new InvalidOperationException("Project review should not run."),
             runProjectReviewConsole: (_, _, _, _) =>
                 throw new InvalidOperationException("Project-review console should not run."),

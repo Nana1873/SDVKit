@@ -124,7 +124,8 @@ internal static partial class ProjectModStager
                     artifact.Manifest,
                     artifact.BuildIdentity,
                     artifact.BuildLog,
-                    artifact.PackageLog);
+                    artifact.PackageLog)
+                { ProjectFile = artifact.ProjectFile };
             }).ToArray();
 
             ProjectReviewRoleStagingPath? collision = owned
@@ -673,6 +674,10 @@ internal static partial class ProjectModStager
                     || !Guid.TryParseExact(artifact.CpRefresh.LaunchId, "N", out _)
                     || !Guid.TryParseExact(artifact.CpRefresh.RefreshId, "N", out _)
                     || !ProjectReviewCpRefresh.ValidFiles(artifact.CpRefresh.Files))
+                || artifact.ProjectFile is not null && (artifact.Manifest.Kind != ProjectInspectionReport.SmapiMod
+                    || !Path.IsPathFullyQualified(artifact.ProjectFile)
+                    || !IsBelow(artifact.SourceRoot, artifact.ProjectFile)
+                    || !string.Equals(Path.GetExtension(artifact.ProjectFile), ".csproj", StringComparison.OrdinalIgnoreCase))
                 || !IsValidOwnedReviewArtifact(artifact)))
         {
             return ReviewProblem(
