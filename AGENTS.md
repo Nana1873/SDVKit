@@ -12,6 +12,7 @@
 10. Implementation and offline checks may run in parallel. Before live tests, identify the intended lab context and its owner; if another task owns it, wait for that task's verified stop/reset before taking over. Use existing task/status and ownership checks, and never stop another task's game or modify its worktree.
 11. Capture deferred user ideas in this repository's GitHub issues after checking for an existing match, and return the issue link. Capture does not authorize implementation; do not create a parallel local roadmap.
 12. Continue already authorized steps without repeated confirmation. Ask only if authorization for a changed scope or target is unclear; explain actual tool/policy blocks without bypassing them.
+13. When creating a new user mod without a chosen destination, use the recommended `workspaces/<ModName>/` under the user's lab root, alongside `.sdvkit/`. Respect explicit paths and existing project locations. Keep each mod's source/repository boundary separate and run live commands from the shared lab root with an explicit mod path; see [mod workspaces](docs/toolkit.md#choose-a-mod-workspace).
 
 The public product has two equal pillars: a modding toolkit and an isolated live test lab. Keep both understandable from the root README and CLI help.
 

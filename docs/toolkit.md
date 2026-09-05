@@ -4,6 +4,39 @@ Create and package a mod without deploying it into normal Mods. Complete [instal
 
 Success is an empty `problems` array and exit `0`; a package result identifies the archive below the selected project's `.sdvkit/packages`. Building code requires `doctor` to report exactly one ready installation. Creating, inspecting, and checking authoring files do not require a game.
 
+## Choose a mod workspace
+
+For new mods sharing one lab, we recommend a `workspaces/<ModName>/` source folder alongside the lab's `.sdvkit/`. This is an optional directory convention: `project create` still requires an explicit destination, and existing projects or user-selected paths can stay where they are. The lab root is a user-chosen directory and does not require an SDVKit source checkout.
+
+```text
+StardewDevLab/
+|-- workspaces/
+|   |-- ExampleMod/
+|   |   |-- manifest.json
+|   |   |-- ModEntry.cs
+|   |   |-- ExampleMod.csproj
+|   |   `-- .sdvkit/          # project build/package output
+|   `-- ExamplePack/
+|       `-- pack/            # clean content-pack root for review
+|           |-- manifest.json
+|           `-- content.json
+`-- .sdvkit/
+    `-- lab/                 # shared live state and staged test copies
+```
+
+Keep durable mod source, including agent-authored source, in its own workspace; each workspace may have its own Git repository and focused agent session. Git setup is separate from `project create`. Reserve ignored `.sdvkit/` directories for generated output and lab state. The disposable examples below and in the [CP authoring recipe](cp-authoring.md) explicitly choose `.sdvkit/` for their sample projects; that is not a default for a user's lasting mod project.
+
+For a content-pack review, select the clean pack subdirectory (such as `workspaces/ExamplePack/pack/`) with workspace Git metadata outside it. Follow the [CP authoring recipe](cp-authoring.md) for provider selection and review/package order.
+
+Run these commands from the chosen lab root, using `$sdvkit` from [installation](../README.md#install):
+
+```powershell
+& $sdvkit project create smapi-mod .\workspaces\ExampleMod --name 'Example Mod' --author 'ExampleAuthor' --unique-id 'ExampleAuthor.ExampleMod' --description 'My first mod.' --json
+& $sdvkit project inspect .\workspaces\ExampleMod --json
+```
+
+For live work, keep the current directory at that same lab root and pass the explicit mod path, for example `& $sdvkit project smoke .\workspaces\ExampleMod --topology single --json`. Run review lifecycle and MCP commands from the same lab root too, even when the agent edits source in a mod workspace. This reuses one lab without creating a complete lab per mod. Ordinary `project build` and `project package` output belongs to the selected mod's `.sdvkit/`; review preparation and runtime state belong to the lab's `.sdvkit/`. Follow the [live review guide](live-review.md) for prerequisites and ownership checks before testing.
+
 ## Inspect an installation or project
 
 ```powershell
