@@ -10,6 +10,39 @@ public sealed class StatusWriterTests
     private const string LaunchId = "11111111111111111111111111111111";
 
     [Fact]
+    public void ProductionWriterPreservesRequiredPlayerNullsThroughWorldAndTitleTransitions()
+    {
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        var writer = new StatusWriter(LaunchId, path);
+        LocalPlayerSnapshot player = LocalPlayerSnapshotTests.Player();
+        LocalPlayerSnapshot[] snapshots =
+        [
+            player,
+            player with { Data = player.Data! with { SelectedItem = null } },
+            player with { Data = player.Data! with { SelectedSlot = null, SelectedItem = null } },
+            player with { Data = player.Data! with { SelectedItem = new SelectedItemValues("(T)Axe", 1, null) } },
+            LocalPlayerSnapshotContract.WithoutData("worldNotReady"),
+        ];
+        foreach (LocalPlayerSnapshot snapshot in snapshots)
+        {
+            bool ready = snapshot.Availability == "available";
+            var runtime = new RuntimeSnapshotMarker(1, ready,
+                ready ? "spring" : null, ready ? 1 : null, ready ? 1 : null,
+                ready ? 600 : null, ready ? "Farm" : null, ready ? 10 : null,
+                ready ? 20 : null, !ready, DateTimeOffset.UtcNow, snapshot);
+            writer.Write("active", 600, false, false, runtime: runtime);
+            AlwaysOnStatusReport result = Read(path);
+            Assert.Equal("ready", result.Runtime?.State);
+            Assert.Equal(snapshot, result.Runtime?.LocalPlayer);
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            JsonElement published = document.RootElement.GetProperty("runtime").GetProperty("localPlayer");
+            Assert.True(published.TryGetProperty("reason", out _));
+            Assert.True(published.TryGetProperty("data", out _));
+        }
+    }
+
+    [Fact]
     public void LongNestedStatusPathSupportsCreationReplacementAndHeldReaders()
     {
         using TemporaryDirectory directory = new();
