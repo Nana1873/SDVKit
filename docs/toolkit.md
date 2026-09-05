@@ -65,7 +65,7 @@ New-Item -ItemType Directory -Path (Join-Path $pack 'i18n') | Out-Null
 & $sdvkit project check $pack --json
 ```
 
-Expected: exit `0`, `status: "passed"`, three evaluated files, and no problems. Changing `greeting` to the number `42` produces exit `3` with `i18n/default.json`, `/greeting`, and `schemaViolation`; restore the string and check again. This example proves offline authoring checks only. The [complete CP authoring recipe tracked in #119](https://github.com/Nana1873/SDVKit/issues/119) will consume this command and own its actual in-game acceptance.
+Expected: exit `0`, `status: "passed"`, three evaluated files, and no problems. Changing `greeting` to the number `42` produces exit `3` with `i18n/default.json`, `/greeting`, and `schemaViolation`; restore the string and check again. This example proves offline authoring checks only. Continue with the [complete CP authoring recipe](cp-authoring.md) to diagnose a deliberate condition failure, refresh selected JSON, observe final Data records and package the authored result.
 
 ## Create, build, and package
 
