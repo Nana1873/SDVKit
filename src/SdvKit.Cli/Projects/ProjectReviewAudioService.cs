@@ -7,6 +7,8 @@ namespace SdvKit.Cli;
 
 internal static class ProjectReviewAudioService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-audio");
+
     private const int Success = 0;
     private const int OperationFailed = 3;
     private const int MaximumJsonDepth = 16;
@@ -191,30 +193,30 @@ internal static class ProjectReviewAudioService
 
     private static void ValidateEnvelopeShape(JsonElement root)
     {
-        RequireExactObject(root, EnvelopeProperties);
-        RequiredInt32(root, "schemaVersion");
+        ResponseJson.RequireExactObject(root, EnvelopeProperties);
+        ResponseJson.RequiredInt32(root, "schemaVersion");
         RequiredString(root, "requestId");
 
         JsonElement report = root.GetProperty("report");
-        RequireExactObject(report, ReportProperties);
-        RequiredInt32(report, "schemaVersion");
+        ResponseJson.RequireExactObject(report, ReportProperties);
+        ResponseJson.RequiredInt32(report, "schemaVersion");
         RequiredString(report, "state");
         RequiredString(report, "operation");
         ValidateOptionalString(report.GetProperty("gameVersion"));
         ValidateOptionalString(report.GetProperty("gameFileVersion"));
         ValidateOptionalString(report.GetProperty("cueId"));
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("cues"),
             ReviewAudioContract.MaximumPageLimit,
             ValidateCueShape);
         ValidateOptionalPageShape(report.GetProperty("page"));
         ValidateOptionalCoverageShape(report.GetProperty("coverage"));
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             report.GetProperty("problems"),
             MaximumProblemCount,
             problem =>
             {
-                RequireExactObject(problem, ProblemProperties);
+                ResponseJson.RequireExactObject(problem, ProblemProperties);
                 RequiredString(problem, "code");
                 RequiredString(problem, "message");
             });
@@ -222,27 +224,27 @@ internal static class ProjectReviewAudioService
 
     private static void ValidateCueShape(JsonElement cue)
     {
-        RequireExactObject(cue, CueProperties);
+        ResponseJson.RequireExactObject(cue, CueProperties);
         RequiredString(cue, "cueId");
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             cue.GetProperty("sources"),
             3,
             source => _ = RequiredString(source));
-        RequiredBoolean(cue, "dataDefined");
-        RequiredBoolean(cue, "sessionResident");
-        RequiredBoolean(cue, "definitionAvailable");
+        ResponseJson.RequiredBoolean(cue, "dataDefined");
+        ResponseJson.RequiredBoolean(cue, "sessionResident");
+        ResponseJson.RequiredBoolean(cue, "definitionAvailable");
         ValidateOptionalInt32(cue.GetProperty("definitionVariantCount"));
         ValidateOptionalInt32(cue.GetProperty("dataVariantCount"));
         ValidateOptionalString(cue.GetProperty("category"));
         ValidateOptionalBoolean(cue.GetProperty("streamedVorbis"));
         ValidateOptionalBoolean(cue.GetProperty("looped"));
         ValidateOptionalBoolean(cue.GetProperty("useReverb"));
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             cue.GetProperty("jukeboxReferences"),
             2,
             reference =>
             {
-                RequireExactObject(reference, JukeboxReferenceProperties);
+                ResponseJson.RequireExactObject(reference, JukeboxReferenceProperties);
                 RequiredString(reference, "trackCueId");
                 RequiredString(reference, "relation");
             });
@@ -255,11 +257,11 @@ internal static class ProjectReviewAudioService
             return;
         }
 
-        RequireExactObject(page, PageProperties);
-        RequiredInt32(page, "offset");
-        RequiredInt32(page, "limit");
-        RequiredInt32(page, "returned");
-        RequiredInt32(page, "total");
+        ResponseJson.RequireExactObject(page, PageProperties);
+        ResponseJson.RequiredInt32(page, "offset");
+        ResponseJson.RequiredInt32(page, "limit");
+        ResponseJson.RequiredInt32(page, "returned");
+        ResponseJson.RequiredInt32(page, "total");
         ValidateOptionalInt32(page.GetProperty("nextOffset"));
     }
 
@@ -270,62 +272,18 @@ internal static class ProjectReviewAudioService
             return;
         }
 
-        RequireExactObject(coverage, CoverageProperties);
-        RequiredInt32(coverage, "audioChangeEntries");
-        RequiredInt32(coverage, "jukeboxTrackEntries");
-        RequiredInt32(coverage, "jukeboxAlternativeReferences");
-        RequiredInt32(coverage, "discoverableCueIds");
-        RequiredInt32(coverage, "probedCueIds");
-        RequiredInt32(coverage, "sessionResidentCueIds");
-        RequiredInt32(coverage, "unavailableCueIds");
-        RequiredInt32(coverage, "identityCollisionGroups");
-        RequiredBoolean(coverage, "dataDrivenPopulationComplete");
+        ResponseJson.RequireExactObject(coverage, CoverageProperties);
+        ResponseJson.RequiredInt32(coverage, "audioChangeEntries");
+        ResponseJson.RequiredInt32(coverage, "jukeboxTrackEntries");
+        ResponseJson.RequiredInt32(coverage, "jukeboxAlternativeReferences");
+        ResponseJson.RequiredInt32(coverage, "discoverableCueIds");
+        ResponseJson.RequiredInt32(coverage, "probedCueIds");
+        ResponseJson.RequiredInt32(coverage, "sessionResidentCueIds");
+        ResponseJson.RequiredInt32(coverage, "unavailableCueIds");
+        ResponseJson.RequiredInt32(coverage, "identityCollisionGroups");
+        ResponseJson.RequiredBoolean(coverage, "dataDrivenPopulationComplete");
         ValidateOptionalInt32(coverage.GetProperty("builtInCueCount"));
         RequiredString(coverage, "builtInCueInventoryStatus");
-    }
-
-    private static void ValidateOptionalArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            return;
-        }
-
-        ValidateRequiredArray(value, maximumCount, validateItem);
-    }
-
-    private static void ValidateRequiredArray(
-        JsonElement value,
-        int maximumCount,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind != JsonValueKind.Array
-            || value.GetArrayLength() > maximumCount)
-        {
-            throw new InvalidDataException(
-                "The review-audio response has an invalid bounded array shape.");
-        }
-
-        foreach (JsonElement item in value.EnumerateArray())
-        {
-            validateItem(item);
-        }
-    }
-
-    private static int RequiredInt32(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind != JsonValueKind.Number
-            || !property.TryGetInt32(out int result))
-        {
-            throw new InvalidDataException(
-                "The review-audio response has an invalid integer member.");
-        }
-
-        return result;
     }
 
     private static void ValidateOptionalInt32(JsonElement value)
@@ -336,18 +294,6 @@ internal static class ProjectReviewAudioService
             throw new InvalidDataException(
                 "The review-audio response has an invalid optional integer member.");
         }
-    }
-
-    private static bool RequiredBoolean(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
-        {
-            throw new InvalidDataException(
-                "The review-audio response has an invalid Boolean member.");
-        }
-
-        return property.GetBoolean();
     }
 
     private static void ValidateOptionalBoolean(JsonElement value)
@@ -405,34 +351,6 @@ internal static class ProjectReviewAudioService
         if (value.ValueKind == JsonValueKind.String)
         {
             _ = RequiredString(value);
-        }
-    }
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> requiredProperties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-audio response has an invalid JSON object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!requiredProperties.Contains(property.Name)
-                || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-audio response has an unknown or duplicate JSON member.");
-            }
-        }
-
-        if (observed.Count != requiredProperties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-audio response is missing a required JSON member.");
         }
     }
 

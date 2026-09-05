@@ -8,6 +8,8 @@ namespace SdvKit.Cli;
 
 internal static class ProjectReviewMapService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-map");
+
     private const int OperationFailed = 3;
     private const string MissingToken = "-";
     private const int MaximumVersionLength = 128;
@@ -919,7 +921,7 @@ internal static class ProjectReviewMapService
                 string? text = property.Value.GetString();
                 if (text is null
                     || text.Any(char.IsControl)
-                    || !ReviewMapText.IsWellFormedUtf16(text))
+                    || !ReviewTransportText.IsWellFormedUtf16(text))
                 {
                     return false;
                 }
@@ -1083,7 +1085,7 @@ internal static class ProjectReviewMapService
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
         && !value.Any(char.IsControl)
-        && ReviewMapText.IsWellFormedUtf16(value);
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     private static bool IsStableIdentity(string? value, int maximumLength) =>
         IsSafeText(value, maximumLength)
@@ -1091,35 +1093,40 @@ internal static class ProjectReviewMapService
 
     private static void ValidateEnvelopeShape(JsonElement root)
     {
-        RequireExactObject(root, EnvelopeProperties);
+        ResponseJson.RequireExactObject(root, EnvelopeProperties);
         JsonElement report = root.GetProperty("report");
-        RequireExactObject(report, ReportProperties);
+        ResponseJson.RequireExactObject(report, ReportProperties);
 
         ValidateOptionalObject(report.GetProperty("map"), SummaryProperties);
         ValidateOptionalObject(report.GetProperty("layer"), LayerProperties);
         ValidateOptionalTile(report.GetProperty("tile"));
         ValidateOptionalObject(report.GetProperty("property"), PropertyProperties);
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("assets"),
+            int.MaxValue,
             asset =>
             {
-                RequireExactObject(asset, AssetProperties);
+                ResponseJson.RequireExactObject(asset, AssetProperties);
                 ValidateOptionalObject(asset.GetProperty("map"), SummaryProperties);
             });
-        ValidateOptionalArray(
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("layers"),
-            layer => RequireExactObject(layer, LayerProperties));
-        ValidateOptionalArray(
+            int.MaxValue,
+            layer => ResponseJson.RequireExactObject(layer, LayerProperties));
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("tileSheets"),
-            tileSheet => RequireExactObject(tileSheet, TileSheetProperties));
-        ValidateOptionalArray(
+            int.MaxValue,
+            tileSheet => ResponseJson.RequireExactObject(tileSheet, TileSheetProperties));
+        ResponseJson.ValidateOptionalArray(
             report.GetProperty("warps"),
-            warp => RequireExactObject(warp, WarpProperties));
+            int.MaxValue,
+            warp => ResponseJson.RequireExactObject(warp, WarpProperties));
         ValidateOptionalObject(report.GetProperty("page"), PageProperties);
         ValidateOptionalCoverage(report.GetProperty("coverage"));
-        ValidateRequiredArray(
+        ResponseJson.ValidateRequiredArray(
             report.GetProperty("problems"),
-            problem => RequireExactObject(problem, ProblemProperties));
+            int.MaxValue,
+            problem => ResponseJson.RequireExactObject(problem, ProblemProperties));
     }
 
     private static void ValidateOptionalTile(JsonElement tile)
@@ -1129,10 +1136,11 @@ internal static class ProjectReviewMapService
             return;
         }
 
-        RequireExactObject(tile, TileProperties);
-        ValidateOptionalArray(
+        ResponseJson.RequireExactObject(tile, TileProperties);
+        ResponseJson.ValidateOptionalArray(
             tile.GetProperty("frames"),
-            frame => RequireExactObject(frame, TileFrameProperties));
+            int.MaxValue,
+            frame => ResponseJson.RequireExactObject(frame, TileFrameProperties));
     }
 
     private static void ValidateOptionalCoverage(JsonElement coverage)
@@ -1142,15 +1150,15 @@ internal static class ProjectReviewMapService
             return;
         }
 
-        RequireExactObject(coverage, CoverageProperties);
-        int discovered = RequiredInt32(coverage, "discovered");
-        int classified = RequiredInt32(coverage, "classified");
-        int mapAssets = RequiredInt32(coverage, "mapAssets");
-        int nonMapAssets = RequiredInt32(coverage, "nonMapAssets");
-        int supported = RequiredInt32(coverage, "supported");
-        int unknown = RequiredInt32(coverage, "unknown");
-        int unclassified = RequiredInt32(coverage, "unclassified");
-        int unsupported = RequiredInt32(coverage, "unsupported");
+        ResponseJson.RequireExactObject(coverage, CoverageProperties);
+        int discovered = ResponseJson.RequiredInt32(coverage, "discovered");
+        int classified = ResponseJson.RequiredInt32(coverage, "classified");
+        int mapAssets = ResponseJson.RequiredInt32(coverage, "mapAssets");
+        int nonMapAssets = ResponseJson.RequiredInt32(coverage, "nonMapAssets");
+        int supported = ResponseJson.RequiredInt32(coverage, "supported");
+        int unknown = ResponseJson.RequiredInt32(coverage, "unknown");
+        int unclassified = ResponseJson.RequiredInt32(coverage, "unclassified");
+        int unsupported = ResponseJson.RequiredInt32(coverage, "unsupported");
         JsonElement completeValue = coverage.GetProperty("complete");
         if (completeValue.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
         {
@@ -1172,82 +1180,13 @@ internal static class ProjectReviewMapService
         }
     }
 
-    private static int RequiredInt32(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind != JsonValueKind.Number
-            || !property.TryGetInt32(out int result))
-        {
-            throw new InvalidDataException(
-                "The review-map response has an invalid bounded integer member.");
-        }
-
-        return result;
-    }
-
     private static void ValidateOptionalObject(
         JsonElement value,
         HashSet<string> properties)
     {
         if (value.ValueKind != JsonValueKind.Null)
         {
-            RequireExactObject(value, properties);
-        }
-    }
-
-    private static void ValidateOptionalArray(
-        JsonElement value,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            return;
-        }
-
-        ValidateRequiredArray(value, validateItem);
-    }
-
-    private static void ValidateRequiredArray(
-        JsonElement value,
-        Action<JsonElement> validateItem)
-    {
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidDataException(
-                "The review-map response has an invalid JSON payload shape.");
-        }
-
-        foreach (JsonElement item in value.EnumerateArray())
-        {
-            validateItem(item);
-        }
-    }
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> requiredProperties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-map response has an invalid JSON object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!requiredProperties.Contains(property.Name)
-                || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-map response has an unknown or duplicate JSON member.");
-            }
-        }
-
-        if (observed.Count != requiredProperties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-map response is missing a required JSON member.");
+            ResponseJson.RequireExactObject(value, properties);
         }
     }
 

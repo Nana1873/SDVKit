@@ -36,7 +36,7 @@ internal static class ReviewModAssetContract
                 "The review-mod-assets runtime path is required.",
                 nameof(runtimePath));
         }
-        if (!IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             throw new ArgumentException(
                 "The review-mod-assets request ID is invalid.",
@@ -45,14 +45,6 @@ internal static class ReviewModAssetContract
 
         return Path.Combine(runtimePath, $"review-mod-assets-{requestId}.json");
     }
-
-    public static bool IsRequestId(string? value) =>
-        ReviewTransportToken.IsRequestId(value);
-
-    public static string Encode(string value) => ReviewTransportToken.Encode(value);
-
-    public static bool TryDecode(string token, int maximumLength, out string value) =>
-        ReviewTransportToken.TryDecode(token, maximumLength, out value);
 
     public static bool IsCanonicalAssetName(string? value)
     {

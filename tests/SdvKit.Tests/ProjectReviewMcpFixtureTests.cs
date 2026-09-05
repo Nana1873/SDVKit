@@ -1,8 +1,6 @@
-using System.IO.Pipelines;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
@@ -22,7 +20,8 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(
             temporary,
             withTestSave: true);
-        await using (ClientHarness defaults = await ClientHarness.StartAsync(reader))
+        await using (McpTestClient defaults = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            reader)))
         {
             ListToolsResult listed = await defaults.Client.ListToolsAsync(
                 new ListToolsRequestParams(),
@@ -34,9 +33,9 @@ public sealed class ProjectReviewMcpFixtureTests
 
         ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
             reader.Read().Snapshot);
-        await using ClientHarness optedIn = await ClientHarness.StartAsync(
+        await using McpTestClient optedIn = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
-            (query, _, _) => Ready(query, expected));
+            runFixture: (query, _, _) => Ready(query, expected)));
         ListToolsResult enabled = await optedIn.Client.ListToolsAsync(
             new ListToolsRequestParams(),
             optedIn.Token);
@@ -154,13 +153,13 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
             reader.Read().Snapshot);
         var queries = new List<ReviewFixtureQuery>();
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
-            (query, _, _) =>
+            runFixture: (query, _, _) =>
             {
                 queries.Add(query);
                 return Ready(query, expected);
-            });
+            }));
 
         JsonElement status = await Call(harness, ProjectReviewMcpFixtureTools.StatusToolName);
         JsonElement enter = await Call(
@@ -195,8 +194,15 @@ public sealed class ProjectReviewMcpFixtureTests
                 Assert.Equal(expected.LaunchId, result.GetProperty("launchId").GetString());
                 Assert.Equal(expected.TestSave.FixtureId, result.GetProperty("fixtureId").GetString());
                 Assert.Equal(0, result.GetProperty("problems").GetArrayLength());
+                Assert.DoesNotContain(result.EnumerateObject(), property => property.Name == "path");
             });
         Assert.Equal(6, queries.Count);
+        Assert.Equal(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.BuildingEnsureOperation, Alias: "barn-a", Kind: "Deluxe Barn", X: 16, Y: 20),
+            queries[3]);
+        Assert.Equal(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.AnimalEnsureOperation, Building: "barn-a", Kind: "White Cow"),
+            queries[4]);
     }
 
     [Fact]
@@ -206,13 +212,13 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeReader normalSaveReader =
             ProjectReviewMcpTests.CreateReadyReview(withoutFixture);
         var dispatches = 0;
-        await using (ClientHarness normalSave = await ClientHarness.StartAsync(
+        await using (McpTestClient normalSave = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             normalSaveReader,
-            (_, _, _) =>
+            runFixture: (_, _, _) =>
             {
                 dispatches++;
                 throw new InvalidOperationException("Must not dispatch.");
-            }))
+            })))
         {
             CallToolResult result = await normalSave.Client.CallToolAsync(
                 ProjectReviewMcpFixtureTools.StatusToolName,
@@ -226,13 +232,13 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(
             changedFixture,
             withTestSave: true);
-        await using (ClientHarness changed = await ClientHarness.StartAsync(
+        await using (McpTestClient changed = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
-            (_, _, _) =>
+            runFixture: (_, _, _) =>
             {
                 dispatches++;
                 throw new InvalidOperationException("Must not dispatch.");
-            }))
+            })))
         {
             LiveLabPaths paths = LiveLabPaths.Resolve(changedFixture.Path);
             LiveLabState state = Assert.IsType<LiveLabState>(
@@ -266,15 +272,15 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
             reader.Read().Snapshot);
         var queries = new List<ReviewFixtureQuery>();
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
-            (query, _, _) =>
+            runFixture: (query, _, _) =>
             {
                 queries.Add(query);
                 return Ready(query, expected);
             },
-            NetworkTwoContract.Topology,
-            NetworkTwoContract.FarmhandRole);
+            topology: NetworkTwoContract.Topology,
+            role: NetworkTwoContract.FarmhandRole));
 
         ListToolsResult listed = await harness.Client.ListToolsAsync(
             new ListToolsRequestParams(),
@@ -300,60 +306,6 @@ public sealed class ProjectReviewMcpFixtureTests
     }
 
     [Fact]
-    public async Task BuildingAndAnimalEnsureRemainDeterministicAcrossIdempotentCalls()
-    {
-        using TemporaryDirectory temporary = new();
-        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(
-            temporary,
-            withTestSave: true);
-        ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
-            reader.Read().Snapshot);
-        var queries = new List<ReviewFixtureQuery>();
-        await using ClientHarness harness = await ClientHarness.StartAsync(
-            reader,
-            (query, _, _) =>
-            {
-                queries.Add(query);
-                return Ready(query, expected);
-            });
-
-        string firstBuilding = (await Call(
-            harness,
-            ProjectReviewMcpFixtureTools.BuildingToolName,
-            ("alias", "barn-a"),
-            ("kind", "Deluxe Barn"),
-            ("x", 16),
-            ("y", 20))).GetRawText();
-        string secondBuilding = (await Call(
-            harness,
-            ProjectReviewMcpFixtureTools.BuildingToolName,
-            ("alias", "barn-a"),
-            ("kind", "Deluxe Barn"),
-            ("x", 16),
-            ("y", 20))).GetRawText();
-        string firstAnimal = (await Call(
-            harness,
-            ProjectReviewMcpFixtureTools.AnimalToolName,
-            ("building", "barn-a"),
-            ("kind", "White Cow"))).GetRawText();
-        string secondAnimal = (await Call(
-            harness,
-            ProjectReviewMcpFixtureTools.AnimalToolName,
-            ("building", "barn-a"),
-            ("kind", "White Cow"))).GetRawText();
-
-        Assert.Equal(firstBuilding, secondBuilding);
-        Assert.Equal(firstAnimal, secondAnimal);
-        Assert.Equal(queries[0], queries[1]);
-        Assert.Equal(queries[2], queries[3]);
-        Assert.All(
-            new[] { firstBuilding, firstAnimal },
-            json => Assert.DoesNotContain(
-                JsonDocument.Parse(json).RootElement.EnumerateObject(),
-                property => property.Name == "path"));
-    }
-
-    [Fact]
     public async Task AmbiguousPostDispatchFailureIsMachineReadableAndNotRetried()
     {
         using TemporaryDirectory temporary = new();
@@ -363,9 +315,9 @@ public sealed class ProjectReviewMcpFixtureTests
         ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
             reader.Read().Snapshot);
         var calls = 0;
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
-            (query, _, _) =>
+            runFixture: (query, _, _) =>
             {
                 calls++;
                 return new LiveLabCommandResult(
@@ -387,7 +339,7 @@ public sealed class ProjectReviewMcpFixtureTests
                         CommandWritten: true,
                         MayHaveRun: true,
                         CancellationRequested: true));
-            });
+            }));
 
         CallToolResult result = await harness.Client.CallToolAsync(
             ProjectReviewMcpFixtureTools.StatusToolName,
@@ -511,9 +463,6 @@ public sealed class ProjectReviewMcpFixtureTests
         using ProjectReviewActionLock first = Assert.IsType<ProjectReviewActionLock>(
             ProjectReviewActionLock.TryAcquire(paths.RuntimePath));
         Assert.Null(ProjectReviewActionLock.TryAcquire(paths.RuntimePath));
-        string sentinel = Path.Combine(paths.RuntimePath, "foreign-state.txt");
-        File.WriteAllText(sentinel, "untouched");
-        Assert.Equal("untouched", File.ReadAllText(sentinel));
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -626,7 +575,7 @@ public sealed class ProjectReviewMcpFixtureTests
     }
 
     private static async Task<JsonElement> Call(
-        ClientHarness harness,
+        McpTestClient harness,
         string tool,
         params (string Name, object? Value)[] values)
     {
@@ -644,79 +593,4 @@ public sealed class ProjectReviewMcpFixtureTests
     private static string Text(CallToolResult result) =>
         Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
 
-    private sealed class ClientHarness : IAsyncDisposable
-    {
-        private readonly Pipe _clientToServer;
-        private readonly StreamServerTransport _transport;
-        private readonly McpServer _server;
-        private readonly CancellationTokenSource _timeout;
-        private readonly Task _serverTask;
-
-        private ClientHarness(
-            Pipe clientToServer,
-            StreamServerTransport transport,
-            McpServer server,
-            CancellationTokenSource timeout,
-            Task serverTask,
-            McpClient client)
-        {
-            _clientToServer = clientToServer;
-            _transport = transport;
-            _server = server;
-            _timeout = timeout;
-            _serverTask = serverTask;
-            Client = client;
-        }
-
-        public McpClient Client { get; }
-
-        public CancellationToken Token => _timeout.Token;
-
-        public static async Task<ClientHarness> StartAsync(
-            ProjectReviewMcpRuntimeReader reader,
-            ProjectReviewMcpFixtureQueryRunner? runFixture = null,
-            string topology = LiveLabState.SingleTopology,
-            string? role = null)
-        {
-            var clientToServer = new Pipe();
-            var serverToClient = new Pipe();
-            var transport = new StreamServerTransport(
-                clientToServer.Reader.AsStream(),
-                serverToClient.Writer.AsStream(),
-                "sdvkit-fixture-test");
-            McpServer server = McpServer.Create(
-                transport,
-                ProjectReviewMcpServer.CreateOptions(
-                    reader,
-                    runData: null,
-                    runFixture: runFixture,
-                    topology: topology,
-                    role: role));
-            var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            Task serverTask = server.RunAsync(timeout.Token);
-            var clientTransport = new StreamClientTransport(
-                clientToServer.Writer.AsStream(),
-                serverToClient.Reader.AsStream());
-            McpClient client = await McpClient.CreateAsync(
-                clientTransport,
-                cancellationToken: timeout.Token);
-            return new ClientHarness(
-                clientToServer,
-                transport,
-                server,
-                timeout,
-                serverTask,
-                client);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Client.DisposeAsync();
-            await _clientToServer.Writer.CompleteAsync();
-            await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
-            await _server.DisposeAsync();
-            await _transport.DisposeAsync();
-            _timeout.Dispose();
-        }
-    }
 }

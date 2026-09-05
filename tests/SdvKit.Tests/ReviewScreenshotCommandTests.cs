@@ -346,7 +346,7 @@ public sealed class ReviewScreenshotCommandTests
         Assert.True(classifierConstruction > classifyMethod);
         Assert.True(
             source.Split(
-                "when (!ReviewTextureException.IsFatal(exception))",
+                "when (!ReviewException.IsFatal(exception))",
                 StringSplitOptions.None).Length - 1 >= 4);
     }
 

@@ -202,8 +202,8 @@ public sealed class ReviewTextureXnbClassifierTests
                 out _));
 
         Assert.Same(fatal, thrown);
-        Assert.True(ReviewTextureException.IsFatal(thrown));
-        Assert.False(ReviewTextureException.IsFatal(
+        Assert.True(ReviewException.IsFatal(thrown));
+        Assert.False(ReviewException.IsFatal(
             new TargetInvocationException(new InvalidDataException())));
     }
 

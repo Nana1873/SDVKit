@@ -1,8 +1,6 @@
-using System.IO.Pipelines;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
@@ -19,13 +17,13 @@ public sealed class ProjectReviewMcpDataTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         var queries = new List<ReviewDataQuery>();
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
                 queries.Add(query);
                 return Ready(query);
-            });
+            }));
 
         ListToolsResult listed = await harness.Client.ListToolsAsync(
             new ListToolsRequestParams(),
@@ -141,13 +139,13 @@ public sealed class ProjectReviewMcpDataTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         var queries = new List<ReviewDataQuery>();
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
                 queries.Add(query);
                 return Ready(query);
-            });
+            }));
 
         CallToolResult firstAssets = await harness.Client.CallToolAsync(
             ProjectReviewMcpDataTools.AssetsToolName,
@@ -190,7 +188,7 @@ public sealed class ProjectReviewMcpDataTests
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
@@ -202,7 +200,7 @@ public sealed class ProjectReviewMcpDataTests
                         AssetName = "Data/Dictionary",
                         Key = "Barn",
                     });
-            });
+            }));
 
         CallToolResult result = await harness.Client.CallToolAsync(
             ProjectReviewMcpDataTools.RecordToolName,
@@ -224,7 +222,7 @@ public sealed class ProjectReviewMcpDataTests
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
@@ -241,7 +239,7 @@ public sealed class ProjectReviewMcpDataTests
                             Total: 125,
                             NextOffset: null),
                     });
-            });
+            }));
 
         CallToolResult result = await harness.Client.CallToolAsync(
             ProjectReviewMcpDataTools.AssetsToolName,
@@ -266,13 +264,13 @@ public sealed class ProjectReviewMcpDataTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         var dispatchCount = 0;
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
                 dispatchCount++;
                 return Ready(query);
-            });
+            }));
         (string Tool, IReadOnlyDictionary<string, object?> Arguments)[] cases =
         [
             (ProjectReviewMcpDataTools.AssetsToolName, Args(("extra", true))),
@@ -316,13 +314,13 @@ public sealed class ProjectReviewMcpDataTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         var dispatchCount = 0;
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
                 dispatchCount++;
                 return Ready(query);
-            });
+            }));
 
         CallToolResult ready = await harness.Client.CallToolAsync(
             ProjectReviewMcpDataTools.AssetsToolName,
@@ -351,11 +349,11 @@ public sealed class ProjectReviewMcpDataTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         string secret = $"secret-at-{temporary.Path}";
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query => new LiveLabCommandResult(
                 3,
-                Failure(query.Operation, "dataKeyUnknown", secret)));
+                Failure(query.Operation, "dataKeyUnknown", secret))));
 
         CallToolResult result = await harness.Client.CallToolAsync(
             ProjectReviewMcpDataTools.RecordToolName,
@@ -386,7 +384,7 @@ public sealed class ProjectReviewMcpDataTests
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             reader,
             query =>
             {
@@ -411,7 +409,7 @@ public sealed class ProjectReviewMcpDataTests
                     _ => throw new InvalidOperationException("Unknown mismatch case."),
                 };
                 return new LiveLabCommandResult(0, mismatched);
-            });
+            }));
 
         string tool = mismatch switch
         {
@@ -588,72 +586,4 @@ public sealed class ProjectReviewMcpDataTests
             null,
             [new ReviewDataProblem(code, message)]);
 
-    private sealed class ClientHarness : IAsyncDisposable
-    {
-        private readonly Pipe _clientToServer;
-        private readonly StreamServerTransport _transport;
-        private readonly McpServer _server;
-        private readonly CancellationTokenSource _timeout;
-        private readonly Task _serverTask;
-
-        private ClientHarness(
-            Pipe clientToServer,
-            StreamServerTransport transport,
-            McpServer server,
-            CancellationTokenSource timeout,
-            Task serverTask,
-            McpClient client)
-        {
-            _clientToServer = clientToServer;
-            _transport = transport;
-            _server = server;
-            _timeout = timeout;
-            _serverTask = serverTask;
-            Client = client;
-        }
-
-        public McpClient Client { get; }
-
-        public CancellationToken Token => _timeout.Token;
-
-        public static async Task<ClientHarness> StartAsync(
-            ProjectReviewMcpRuntimeReader reader,
-            ProjectReviewMcpDataQueryRunner runQuery)
-        {
-            var clientToServer = new Pipe();
-            var serverToClient = new Pipe();
-            var transport = new StreamServerTransport(
-                clientToServer.Reader.AsStream(),
-                serverToClient.Writer.AsStream(),
-                "sdvkit-data-test");
-            McpServer server = McpServer.Create(
-                transport,
-                ProjectReviewMcpServer.CreateOptions(reader, runQuery));
-            var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            Task serverTask = server.RunAsync(timeout.Token);
-            var clientTransport = new StreamClientTransport(
-                clientToServer.Writer.AsStream(),
-                serverToClient.Reader.AsStream());
-            McpClient client = await McpClient.CreateAsync(
-                clientTransport,
-                cancellationToken: timeout.Token);
-            return new ClientHarness(
-                clientToServer,
-                transport,
-                server,
-                timeout,
-                serverTask,
-                client);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Client.DisposeAsync();
-            await _clientToServer.Writer.CompleteAsync();
-            await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
-            await _server.DisposeAsync();
-            await _transport.DisposeAsync();
-            _timeout.Dispose();
-        }
-    }
 }

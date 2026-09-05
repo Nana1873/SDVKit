@@ -35,7 +35,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         Assert.Equal(3, result.Diagnostics[1].WithheldLines);
         Assert.Equal("sharedMention", result.Diagnostics[2].Attribution);
         Assert.Equal("[message context withheld]", Assert.Single(result.Diagnostics[2].Lines));
-        await using ClientHarness harness = await ClientHarness.StartAsync(review.Reader, false);
+        await using McpTestClient harness = await McpTestClient.StartAsync(
+            ProjectReviewMcpServer.CreateOptions(review.Reader));
         JsonElement actual = AssertSuccessfulJson(await harness.Client.CallToolAsync(
             ProjectReviewMcpLogTools.ToolName, Args(("modId", "Zulu.Target")), cancellationToken: harness.Token));
         Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(result, LiveLabJsonOptions.CamelCase), actual));
@@ -136,7 +137,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         WriteLog(network.HostReader, "[08:00:04 WARN  Target] host-only warning");
         WriteLog(network.FarmhandReader, "[08:00:04 WARN  Target] farmhand-only warning");
         ProjectReviewMcpRuntimeReader reader = role == "host" ? network.HostReader : network.FarmhandReader;
-        await using ClientHarness harness = await ClientHarness.StartAsync(reader, false);
+        await using McpTestClient harness = await McpTestClient.StartAsync(
+            ProjectReviewMcpServer.CreateOptions(reader));
         JsonElement result = AssertSuccessfulJson(await harness.Client.CallToolAsync(ProjectReviewMcpLogTools.ToolName,
             Args(("modId", "Nana.Target")), cancellationToken: harness.Token));
         Assert.Equal(role, result.GetProperty("role").GetString());

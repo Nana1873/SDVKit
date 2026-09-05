@@ -30,6 +30,8 @@ internal sealed record ProjectReviewScreenshotResult(
 
 internal static class ProjectReviewScreenshotService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-screenshot");
+
     private const int MaximumJsonDepth = 8;
     private static readonly TimeSpan PngSettleTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FileTimestampTolerance = TimeSpan.FromSeconds(2);
@@ -512,13 +514,13 @@ internal static class ProjectReviewScreenshotService
 
     private static void ValidateEnvelopeShape(JsonElement root)
     {
-        RequireExactObject(root, EnvelopeProperties);
-        RequiredInt32(root, "schemaVersion");
+        ResponseJson.RequireExactObject(root, EnvelopeProperties);
+        ResponseJson.RequiredInt32(root, "schemaVersion");
         RequiredString(root, "requestId");
 
         JsonElement report = root.GetProperty("report");
-        RequireExactObject(report, ReportProperties);
-        RequiredInt32(report, "schemaVersion");
+        ResponseJson.RequireExactObject(report, ReportProperties);
+        ResponseJson.RequiredInt32(report, "schemaVersion");
         RequiredString(report, "state");
         RequiredString(report, "mode");
         RequiredString(report, "label");
@@ -543,50 +545,10 @@ internal static class ProjectReviewScreenshotService
         }
         foreach (JsonElement problem in problems.EnumerateArray())
         {
-            RequireExactObject(problem, ProblemProperties);
+            ResponseJson.RequireExactObject(problem, ProblemProperties);
             RequiredString(problem, "code");
             RequiredString(problem, "message");
         }
-    }
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> requiredProperties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-screenshot response has an invalid JSON object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!requiredProperties.Contains(property.Name)
-                || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-screenshot response has an unknown or duplicate JSON member.");
-            }
-        }
-        if (observed.Count != requiredProperties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-screenshot response is missing a required JSON member.");
-        }
-    }
-
-    private static int RequiredInt32(JsonElement value, string propertyName)
-    {
-        JsonElement property = value.GetProperty(propertyName);
-        if (property.ValueKind != JsonValueKind.Number
-            || !property.TryGetInt32(out int result))
-        {
-            throw new InvalidDataException(
-                "The review-screenshot response has an invalid integer member.");
-        }
-
-        return result;
     }
 
     private static string RequiredString(JsonElement value, string propertyName) =>

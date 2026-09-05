@@ -1011,7 +1011,7 @@ internal static class ReviewDataCommand
         ArgumentNullException.ThrowIfNull(monitor);
 
         string? requestId = arguments.Length > 1 ? arguments[1] : null;
-        if (!ReviewDataContract.IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             monitor.Log(
                 "SDVKit review-data rejected an invalid request ID.",
@@ -1093,7 +1093,7 @@ internal static class ReviewDataCommand
         problem = null;
         if (arguments.Count < 3
             || !string.Equals(arguments[0], "data", StringComparison.Ordinal)
-            || !ReviewDataContract.IsRequestId(arguments[1]))
+            || !ReviewTransportToken.IsRequestId(arguments[1]))
         {
             problem = new ReviewDataProblem(
                 "dataTransportInvalid",
@@ -1133,7 +1133,7 @@ internal static class ReviewDataCommand
         bool needsAsset = operation is ReviewDataContract.KeysOperation
             or ReviewDataContract.GetOperation;
         if (needsAsset
-            && !ReviewDataContract.TryDecode(
+            && !ReviewTransportToken.TryDecode(
                 arguments[5],
                 ReviewDataContract.MaximumAssetLength,
                 out asset))
@@ -1145,7 +1145,7 @@ internal static class ReviewDataCommand
         }
 
         if (operation == ReviewDataContract.GetOperation
-            && !ReviewDataContract.TryDecode(
+            && !ReviewTransportToken.TryDecode(
                 arguments[6],
                 ReviewDataContract.MaximumKeyLength,
                 out key))
@@ -1164,25 +1164,15 @@ internal static class ReviewDataCommand
         string runtimePath,
         ReviewDataResponseEnvelope envelope)
     {
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
+        ArgumentNullException.ThrowIfNull(envelope);
 
         string responsePath = ReviewDataContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath) || File.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-data response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
             envelope,
             ResponseJsonOptions);
@@ -1191,27 +1181,7 @@ internal static class ReviewDataCommand
             throw new InvalidDataException(
                 "The bounded review-data response exceeds its maximum size.");
         }
-
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-        }
-        finally
-        {
-            File.Delete(temporaryPath);
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 }
 #endif

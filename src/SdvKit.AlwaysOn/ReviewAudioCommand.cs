@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 #if SDVKIT_GAME_AVAILABLE
@@ -11,30 +10,6 @@ using StardewValley.GameData;
 #endif
 
 namespace SdvKit.AlwaysOn;
-
-internal static class ReviewAudioException
-{
-    public static bool IsFatal(Exception exception)
-    {
-        ArgumentNullException.ThrowIfNull(exception);
-        while (true)
-        {
-            if (exception is OutOfMemoryException
-                or StackOverflowException
-                or AccessViolationException)
-            {
-                return true;
-            }
-
-            if (exception is not TargetInvocationException { InnerException: not null } invocation)
-            {
-                return false;
-            }
-
-            exception = invocation.InnerException!;
-        }
-    }
-}
 
 internal enum ReviewAudioSoundBankStatus
 {
@@ -973,115 +948,20 @@ internal static class ReviewAudioResponseFile
     {
         if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new ArgumentException(
-                "The review runtime path is required.",
-                nameof(runtimePath));
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
         ArgumentNullException.ThrowIfNull(envelope);
 
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-
         string responsePath = ReviewAudioContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (EntryExists(responsePath) || EntryExists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-audio response target already exists.");
-        }
-
         byte[] bytes = ReviewAudioResponseSerializer.SerializeBounded(
             envelope,
             out ReviewAudioReport serializedReport);
-
-        var ownsTemporary = false;
-        var ownsResponse = false;
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                ownsTemporary = true;
-                EnsureRegularFile(temporaryPath);
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            EnsureRegularFile(temporaryPath);
-            File.Move(temporaryPath, responsePath);
-            ownsTemporary = false;
-            ownsResponse = true;
-            EnsureRegularFile(responsePath);
-            ownsResponse = false;
-            return serializedReport;
-        }
-        finally
-        {
-            if (ownsTemporary)
-            {
-                TryDeleteOwnedRegularFile(temporaryPath);
-            }
-            if (ownsResponse)
-            {
-                TryDeleteOwnedRegularFile(responsePath);
-            }
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
+        return serializedReport;
     }
 
-    private static bool EntryExists(string path)
-    {
-        try
-        {
-            _ = File.GetAttributes(path);
-            return true;
-        }
-        catch (FileNotFoundException)
-        {
-            return false;
-        }
-    }
-
-    private static void EnsureRegularFile(string path)
-    {
-        FileAttributes attributes = File.GetAttributes(path);
-        if ((attributes & FileAttributes.ReparsePoint) != 0
-            || (attributes & FileAttributes.Directory) != 0)
-        {
-            throw new InvalidDataException(
-                "The review-audio response is not a regular file.");
-        }
-    }
-
-    private static void TryDeleteOwnedRegularFile(string path)
-    {
-        try
-        {
-            FileAttributes attributes = File.GetAttributes(path);
-            if ((attributes & FileAttributes.ReparsePoint) == 0
-                && (attributes & FileAttributes.Directory) == 0)
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception exception) when (exception is
-            FileNotFoundException or DirectoryNotFoundException)
-        {
-            // The unique owned path is already absent.
-        }
-    }
 }
 
 #if SDVKIT_GAME_AVAILABLE
@@ -1286,7 +1166,7 @@ internal static class ReviewAudioCommand
             {
                 report = ReviewAudioOperation.Execute(query!, source);
             }
-            catch (Exception exception) when (!ReviewAudioException.IsFatal(exception))
+            catch (Exception exception) when (!ReviewException.IsFatal(exception))
             {
                 report = ReviewAudioOperation.Failure(
                     query!.Operation,
@@ -1308,7 +1188,7 @@ internal static class ReviewAudioCommand
                 $"SDVKit review-audio completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception) when (!ReviewAudioException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             monitor.Log(
                 $"SDVKit review-audio could not publish its bounded response ({exception.GetType().Name}).",

@@ -41,11 +41,11 @@ public sealed class ProjectReviewModAssetServiceTests
         Assert.Equal("sdvkit", tokens[0]);
         Assert.Equal("mod-assets", tokens[1]);
         Assert.Equal(requestId, tokens[2]);
-        Assert.True(ReviewModAssetContract.TryDecode(
+        Assert.True(ReviewTransportToken.TryDecode(
             tokens[6],
             ReviewModAssetContract.MaximumAssetLength,
             out string decodedAsset));
-        Assert.True(ReviewModAssetContract.TryDecode(
+        Assert.True(ReviewTransportToken.TryDecode(
             tokens[7],
             ReviewModAssetContract.MaximumKeyLength,
             out string decodedKey));

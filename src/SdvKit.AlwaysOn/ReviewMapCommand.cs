@@ -1179,7 +1179,7 @@ internal static class ReviewMapOperation
 
     private static bool IsCanonicalAssetName(string assetName) =>
         assetName.Length <= ReviewMapContract.MaximumAssetLength
-        && ReviewMapText.IsWellFormedUtf16(assetName)
+        && ReviewTransportText.IsWellFormedUtf16(assetName)
         && IsMapAssetRequest(assetName);
 
     private static bool IsMapAssetRequest(string input)
@@ -1199,7 +1199,7 @@ internal static class ReviewMapOperation
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
         && !value.Any(char.IsControl)
-        && ReviewMapText.IsWellFormedUtf16(value);
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     private static bool IsStableIdentity(string? value, int maximumLength) =>
         IsInput(value, maximumLength)
@@ -1766,7 +1766,7 @@ internal sealed class StardewReviewMapSource : IReviewMapSource
         if (!IsSafeInput(name, ReviewMapContract.MaximumPropertyNameLength)
             || (typedValue is string text
                 && (text.Any(char.IsControl)
-                    || !ReviewMapText.IsWellFormedUtf16(text))))
+                    || !ReviewTransportText.IsWellFormedUtf16(text))))
         {
             throw new InvalidDataException("A map property has an unsafe identity or value.");
         }
@@ -1795,7 +1795,7 @@ internal sealed class StardewReviewMapSource : IReviewMapSource
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
         && !value.Any(char.IsControl)
-        && ReviewMapText.IsWellFormedUtf16(value);
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     private static void EnsureOwnedTileSheet(Map map, TileSheet tileSheet)
     {
@@ -1983,58 +1983,22 @@ internal static class ReviewMapCommand
 
     private static void WriteResponse(string runtimePath, ReviewMapResponseEnvelope envelope)
     {
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
+        ArgumentNullException.ThrowIfNull(envelope);
 
         string responsePath = ReviewMapContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath) || File.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-map response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, ResponseJsonOptions);
         if (bytes.Length > ReviewMapContract.MaximumResponseBytes)
         {
             throw new InvalidDataException(
                 "The bounded review-map response exceeds its maximum size.");
         }
-
-        var ownsTemporary = false;
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                ownsTemporary = true;
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-            ownsTemporary = false;
-        }
-        finally
-        {
-            if (ownsTemporary)
-            {
-                File.Delete(temporaryPath);
-            }
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 }
 #endif

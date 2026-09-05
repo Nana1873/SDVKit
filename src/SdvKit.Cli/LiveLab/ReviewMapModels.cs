@@ -180,15 +180,9 @@ internal static class ReviewMapQueryValidation
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= maximumLength
         && !value.Any(char.IsControl)
-        && ReviewMapText.IsWellFormedUtf16(value);
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     private static ReviewMapProblem Problem(string code, string message) => new(code, message);
-}
-
-internal static class ReviewMapText
-{
-    public static bool IsWellFormedUtf16(string? value) =>
-        ReviewTransportText.IsWellFormedUtf16(value);
 }
 
 internal sealed record ReviewMapPropertyValue(

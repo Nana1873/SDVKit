@@ -471,14 +471,14 @@ public sealed class ReviewModAssetCommandTests
     public void TransportTokensRoundTripStrictUtf8()
     {
         const string value = "Mods/Example.Mod/Wörter";
-        string token = ReviewModAssetContract.Encode(value);
+        string token = ReviewTransportToken.Encode(value);
 
-        Assert.True(ReviewModAssetContract.TryDecode(
+        Assert.True(ReviewTransportToken.TryDecode(
             token,
             ReviewModAssetContract.MaximumAssetLength,
             out string decoded));
         Assert.Equal(value, decoded);
-        Assert.False(ReviewModAssetContract.TryDecode(
+        Assert.False(ReviewTransportToken.TryDecode(
             token + "=",
             ReviewModAssetContract.MaximumAssetLength,
             out _));

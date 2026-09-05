@@ -95,7 +95,7 @@ internal static class ProjectReviewDataService
         ReviewDataQuery query)
     {
         ArgumentNullException.ThrowIfNull(query);
-        if (!ReviewDataContract.IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             throw new ArgumentException(
                 "The review-data request ID is invalid.",
@@ -113,12 +113,12 @@ internal static class ProjectReviewDataService
         };
         if (query.Asset is not null)
         {
-            tokens.Add(ReviewDataContract.Encode(query.Asset));
+            tokens.Add(ReviewTransportToken.Encode(query.Asset));
         }
 
         if (query.Key is not null)
         {
-            tokens.Add(ReviewDataContract.Encode(query.Key));
+            tokens.Add(ReviewTransportToken.Encode(query.Key));
         }
 
         string command = string.Join(" ", tokens);

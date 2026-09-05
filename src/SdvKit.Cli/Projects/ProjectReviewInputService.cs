@@ -16,6 +16,8 @@ internal sealed record ProjectReviewInputExecutionResult(
 
 internal static class ProjectReviewInputService
 {
+    private static readonly ReviewResponseJson ResponseJson = new("review-input");
+
     private const int MaximumJsonDepth = 4;
     private static readonly TimeSpan MaximumClockSkew = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaximumResponseAge = TimeSpan.FromSeconds(20);
@@ -240,7 +242,7 @@ internal static class ProjectReviewInputService
         using (JsonDocument document = JsonDocument.Parse(bytes, ResponseDocumentOptions))
         {
             JsonElement root = document.RootElement;
-            RequireExactObject(root, EnvelopeProperties);
+            ResponseJson.RequireExactObject(root, EnvelopeProperties);
             RequireKind(root, "schemaVersion", JsonValueKind.Number);
             RequireKind(root, "requestId", JsonValueKind.String);
             RequireKind(root, "observedAtUtc", JsonValueKind.String);
@@ -256,7 +258,7 @@ internal static class ProjectReviewInputService
             JsonElement problem = root.GetProperty("problem");
             if (problem.ValueKind != JsonValueKind.Null)
             {
-                RequireExactObject(problem, ProblemProperties);
+                ResponseJson.RequireExactObject(problem, ProblemProperties);
                 RequireKind(problem, "code", JsonValueKind.String);
                 RequireKind(problem, "message", JsonValueKind.String);
             }
@@ -363,32 +365,6 @@ internal static class ProjectReviewInputService
             character is >= 'a' and <= 'z'
                 or >= 'A' and <= 'Z'
                 or >= '0' and <= '9');
-
-    private static void RequireExactObject(
-        JsonElement value,
-        HashSet<string> properties)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException(
-                "The review-input response has an invalid object shape.");
-        }
-
-        var observed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in value.EnumerateObject())
-        {
-            if (!properties.Contains(property.Name) || !observed.Add(property.Name))
-            {
-                throw new InvalidDataException(
-                    "The review-input response has an unknown or duplicate member.");
-            }
-        }
-        if (observed.Count != properties.Count)
-        {
-            throw new InvalidDataException(
-                "The review-input response is missing a required member.");
-        }
-    }
 
     private static void RequireKind(
         JsonElement value,
