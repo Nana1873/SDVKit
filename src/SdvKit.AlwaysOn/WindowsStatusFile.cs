@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace SdvKit.AlwaysOn;
 
-internal static class WindowsStatusFile
+internal static partial class WindowsStatusFile
 {
     private const uint DeleteAccess = 0x00010000;
     private const int FileRenameInfoEx = 22;
@@ -53,7 +53,9 @@ internal static class WindowsStatusFile
             Marshal.WriteInt16(buffer, nameOffset + name.Length, 0);
             if (!SetFileInformationByHandle(handle, FileRenameInfoEx, buffer, checked((uint)size)))
             {
-                throw PublicationError("rename the completed status snapshot", Marshal.GetLastWin32Error());
+                int error = Marshal.GetLastWin32Error();
+                RecordFailure(error, temporaryPath, statusPath);
+                throw PublicationError("rename the completed status snapshot", error);
             }
         }
         finally
@@ -61,6 +63,8 @@ internal static class WindowsStatusFile
             Marshal.FreeHGlobal(buffer);
         }
     }
+
+    static partial void RecordFailure(int error, string temporaryPath, string statusPath);
 
     private static string ExtendedPath(string path)
     {

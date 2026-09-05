@@ -30,6 +30,15 @@ jobs:
       - name: Test
         run: dotnet test SDVKit.sln -c Release --no-build
 
+      - name: Retain status concurrency failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-concurrency-failures
+          path: .sdvkit/test-failures/
+          if-no-files-found: ignore
+          include-hidden-files: true
+
       - name: CLI smoke
         run: .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe --version
 
