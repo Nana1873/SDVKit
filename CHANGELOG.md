@@ -22,6 +22,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- Inspection commands consistently reject unknown CLI options as usage errors before checking review ownership. Data operands beginning with '-' can be escaped after '--', like the other inspection commands.
+- Review response publication uses the same file ownership checks for every command and never cleans up a temporary path when its creation failed.
 - The installation example now uses an explicit extraction directory and the matching executable path.
 - The smoke skill now reports an unconfirmed isolated-option restore as a warning when exact process exit and cleanup succeeded.
 

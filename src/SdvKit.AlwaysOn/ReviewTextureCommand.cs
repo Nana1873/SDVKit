@@ -920,7 +920,7 @@ internal sealed class StardewReviewTextureSource : IReviewTextureSource
                 out isTexture,
                 out inputBytes);
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             isTexture = false;
             inputBytes = maximumInputBytes;
@@ -937,7 +937,7 @@ internal sealed class StardewReviewTextureSource : IReviewTextureSource
                     "The selected final texture is unavailable.");
             return new StardewReviewTextureAsset(texture);
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             throw new InvalidDataException(
                 "The selected final texture could not be loaded.",
@@ -1080,7 +1080,7 @@ internal static class ReviewTextureCommand
                     runtimePath,
                     requestId!);
             }
-            catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+            catch (Exception exception) when (!ReviewException.IsFatal(exception))
             {
                 report = ReviewTextureOperation.Failure(
                     query!.Operation,
@@ -1102,7 +1102,7 @@ internal static class ReviewTextureCommand
                 $"SDVKit review-texture completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             if (report.Preview is not null)
             {
@@ -1181,28 +1181,15 @@ internal static class ReviewTextureCommand
         string runtimePath,
         ReviewTextureResponseEnvelope envelope)
     {
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
+        if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
+        ArgumentNullException.ThrowIfNull(envelope);
 
         string responsePath = ReviewTextureContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath)
-            || Directory.Exists(responsePath)
-            || File.Exists(temporaryPath)
-            || Directory.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-texture response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
             envelope,
             ResponseJsonOptions);
@@ -1211,33 +1198,7 @@ internal static class ReviewTextureCommand
             throw new InvalidDataException(
                 "The bounded review-texture response exceeds its maximum size.");
         }
-
-        var ownsTemporary = false;
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                ownsTemporary = true;
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporaryPath, responsePath);
-            ownsTemporary = false;
-        }
-        finally
-        {
-            if (ownsTemporary)
-            {
-                File.Delete(temporaryPath);
-            }
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 }
 #endif

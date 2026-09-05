@@ -1,8 +1,6 @@
-using System.IO.Pipelines;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
@@ -40,9 +38,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Gamma.Pack", "3.0.0", true),
                 new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)));
-        await using ClientHarness singleHarness = await ClientHarness.StartAsync(
+        await using McpTestClient singleHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             single.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         ListToolsResult singleTools = await singleHarness.Client.ListToolsAsync(
             new ListToolsRequestParams(),
@@ -78,9 +77,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Nana.Pack", "1.0.0", true),
                 new LoadedModEntry("Nana.Target", "1.0.0", false),
                 new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false)));
-        await using ClientHarness networkHarness = await ClientHarness.StartAsync(
+        await using McpTestClient networkHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             network.HostReader,
-            includeDataTools: false);
+            runData: false ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         ListToolsResult networkTools = await networkHarness.Client.ListToolsAsync(
             new ListToolsRequestParams(),
@@ -118,9 +118,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)),
             secret);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         JsonElement review = AssertSuccessfulJson(await harness.Client.CallToolAsync(
             ProjectReviewMcpDiagnosticsTools.ReviewToolName,
@@ -246,9 +247,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 "0.6.1",
                 IsContentPack: false)),
             targetLoaded: false);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         JsonElement review = AssertSuccessfulJson(await harness.Client.CallToolAsync(
             ProjectReviewMcpDiagnosticsTools.ReviewToolName,
@@ -288,9 +290,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Gamma.Pack", "3.0.0", true),
                 new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)));
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         JsonElement defaultPage = await CallMods(harness, Args());
         JsonElement middle = await CallMods(
@@ -332,9 +335,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)),
             processHost: processHost);
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         (string Tool, IReadOnlyDictionary<string, object?> Arguments)[] cases =
         [
@@ -405,9 +409,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 "Nana.Target")],
             inventory,
             $"free-form::{sentinel}::{temporary.Path}");
-        await using ClientHarness harness = await ClientHarness.StartAsync(
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
-            includeDataTools: true);
+            runData: true ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null));
 
         foreach (string tool in new[]
                  {
@@ -462,9 +467,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
         JsonElement hostReview;
         JsonElement hostMods;
-        await using (ClientHarness hostHarness = await ClientHarness.StartAsync(
-                         prepared.HostReader,
-                         includeDataTools: false))
+        await using (McpTestClient hostHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            prepared.HostReader,
+            runData: false ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null)))
         {
             hostReview = AssertSuccessfulJson(await hostHarness.Client.CallToolAsync(
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
@@ -478,9 +484,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
         JsonElement farmhandReview;
         JsonElement farmhandMods;
-        await using (ClientHarness farmhandHarness = await ClientHarness.StartAsync(
-                         prepared.FarmhandReader,
-                         includeDataTools: false))
+        await using (McpTestClient farmhandHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            prepared.FarmhandReader,
+            runData: false ? _ => throw new InvalidOperationException(
+                "Diagnostics tests do not dispatch canonical Data tools.") : null)))
         {
             farmhandReview = AssertSuccessfulJson(await farmhandHarness.Client.CallToolAsync(
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
@@ -684,7 +691,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     private static async Task<JsonElement> CallMods(
-        ClientHarness harness,
+        McpTestClient harness,
         IReadOnlyDictionary<string, object?> arguments) =>
         AssertSuccessfulJson(await harness.Client.CallToolAsync(
             ProjectReviewMcpDiagnosticsTools.ModsToolName,
@@ -1086,76 +1093,4 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             throw new InvalidOperationException("The read-only MCP must not close a process.");
     }
 
-    private sealed class ClientHarness : IAsyncDisposable
-    {
-        private readonly Pipe _clientToServer;
-        private readonly StreamServerTransport _transport;
-        private readonly McpServer _server;
-        private readonly CancellationTokenSource _timeout;
-        private readonly Task _serverTask;
-
-        private ClientHarness(
-            Pipe clientToServer,
-            StreamServerTransport transport,
-            McpServer server,
-            CancellationTokenSource timeout,
-            Task serverTask,
-            McpClient client)
-        {
-            _clientToServer = clientToServer;
-            _transport = transport;
-            _server = server;
-            _timeout = timeout;
-            _serverTask = serverTask;
-            Client = client;
-        }
-
-        public McpClient Client { get; }
-
-        public CancellationToken Token => _timeout.Token;
-
-        public static async Task<ClientHarness> StartAsync(
-            ProjectReviewMcpRuntimeReader reader,
-            bool includeDataTools)
-        {
-            var clientToServer = new Pipe();
-            var serverToClient = new Pipe();
-            var transport = new StreamServerTransport(
-                clientToServer.Reader.AsStream(),
-                serverToClient.Writer.AsStream(),
-                "sdvkit-diagnostics-test");
-            ProjectReviewMcpDataQueryRunner? runData = includeDataTools
-                ? _ => throw new InvalidOperationException(
-                    "Diagnostics tests do not dispatch canonical Data tools.")
-                : null;
-            McpServer server = McpServer.Create(
-                transport,
-                ProjectReviewMcpServer.CreateOptions(reader, runData));
-            var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            Task serverTask = server.RunAsync(timeout.Token);
-            var clientTransport = new StreamClientTransport(
-                clientToServer.Writer.AsStream(),
-                serverToClient.Reader.AsStream());
-            McpClient client = await McpClient.CreateAsync(
-                clientTransport,
-                cancellationToken: timeout.Token);
-            return new ClientHarness(
-                clientToServer,
-                transport,
-                server,
-                timeout,
-                serverTask,
-                client);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Client.DisposeAsync();
-            await _clientToServer.Writer.CompleteAsync();
-            await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
-            await _server.DisposeAsync();
-            await _transport.DisposeAsync();
-            _timeout.Dispose();
-        }
-    }
 }

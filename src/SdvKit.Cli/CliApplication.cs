@@ -749,69 +749,21 @@ public static partial class CliApplication
             return false;
         }
 
-        var operands = new List<string>();
-        var jsonOptionCount = 0;
-        var topologyOptionCount = 0;
-        var offsetOptionCount = 0;
-        var limitOptionCount = 0;
-        string topology = LiveLabState.SingleTopology;
-        var offset = 0;
-        int limit = operation == ReviewDataContract.GetOperation
-            ? 1
-            : ReviewDataContract.DefaultPageLimit;
-        for (var index = 4; index < arguments.Count; index++)
+        bool listOperation = operation != ReviewDataContract.GetOperation;
+        if (!TryParseReviewQueryOptions(
+                arguments,
+                listOperation,
+                allowFrame: false,
+                ReviewDataContract.DefaultPageLimit,
+                ReviewDataContract.MaximumPageLimit,
+                out ReviewQueryOptions options))
         {
-            string argument = arguments[index];
-            if (string.Equals(argument, "--json", StringComparison.Ordinal))
-            {
-                jsonOptionCount++;
-                continue;
-            }
-
-            if (argument is "--topology" or "--offset" or "--limit")
-            {
-                if (index + 1 >= arguments.Count
-                    || arguments[index + 1].StartsWith('-'))
-                {
-                    return false;
-                }
-
-                string value = arguments[++index];
-                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
-                {
-                    topologyOptionCount++;
-                    topology = value;
-                }
-                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
-                {
-                    offsetOptionCount++;
-                    if (!int.TryParse(
-                            value,
-                            NumberStyles.None,
-                            CultureInfo.InvariantCulture,
-                            out offset))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    limitOptionCount++;
-                    if (!int.TryParse(
-                            value,
-                            NumberStyles.None,
-                            CultureInfo.InvariantCulture,
-                            out limit))
-                    {
-                        return false;
-                    }
-                }
-
-                continue;
-            }
-
-            operands.Add(argument);
+            return false;
         }
+
+        IReadOnlyList<string> operands = options.Operands;
+        int offset = options.Offset;
+        int limit = options.Limit;
 
         int expectedOperands = operation switch
         {
@@ -820,18 +772,7 @@ public static partial class CliApplication
             ReviewDataContract.GetOperation => 2,
             _ => throw new InvalidOperationException(),
         };
-        if (jsonOptionCount != 1
-            || topologyOptionCount > 1
-            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || offsetOptionCount > 1
-            || limitOptionCount > 1
-            || offset < 0
-            || limit < 1
-            || limit > ReviewDataContract.MaximumPageLimit
-            || operands.Count != expectedOperands
-            || operands.Any(string.IsNullOrWhiteSpace)
-            || (operation == ReviewDataContract.GetOperation
-                && (offsetOptionCount > 0 || limitOptionCount > 0)))
+        if (operands.Count != expectedOperands)
         {
             return false;
         }
@@ -892,87 +833,24 @@ public static partial class CliApplication
             return false;
         }
 
-        var operands = new List<string>();
-        var jsonOptionCount = 0;
-        var topologyOptionCount = 0;
-        var offsetOptionCount = 0;
-        var limitOptionCount = 0;
-        string topology = LiveLabState.SingleTopology;
-        var offset = 0;
-        int limit = operation == ReviewAudioContract.CueOperation
-            ? 1
-            : ReviewAudioContract.DefaultPageLimit;
-        var optionsEnded = false;
-        for (var index = 4; index < arguments.Count; index++)
+        bool listOperation = operation != ReviewAudioContract.CueOperation;
+        if (!TryParseReviewQueryOptions(
+                arguments,
+                listOperation,
+                allowFrame: false,
+                ReviewAudioContract.DefaultPageLimit,
+                ReviewAudioContract.MaximumPageLimit,
+                out ReviewQueryOptions options))
         {
-            string argument = arguments[index];
-            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
-            {
-                optionsEnded = true;
-                continue;
-            }
-
-            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
-            {
-                jsonOptionCount++;
-                continue;
-            }
-
-            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
-            {
-                if (index + 1 >= arguments.Count
-                    || arguments[index + 1].StartsWith('-'))
-                {
-                    return false;
-                }
-
-                string value = arguments[++index];
-                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
-                {
-                    topologyOptionCount++;
-                    topology = value;
-                }
-                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
-                {
-                    offsetOptionCount++;
-                    if (!TryParseNonNegative(value, out offset))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    limitOptionCount++;
-                    if (!TryParseNonNegative(value, out limit))
-                    {
-                        return false;
-                    }
-                }
-
-                continue;
-            }
-
-            if (!optionsEnded && argument.StartsWith('-'))
-            {
-                return false;
-            }
-
-            operands.Add(argument);
+            return false;
         }
 
+        IReadOnlyList<string> operands = options.Operands;
+        int offset = options.Offset;
+        int limit = options.Limit;
+
         int expectedOperands = operation == ReviewAudioContract.CueOperation ? 1 : 0;
-        if (jsonOptionCount != 1
-            || topologyOptionCount > 1
-            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || offsetOptionCount > 1
-            || limitOptionCount > 1
-            || offset < 0
-            || limit < 1
-            || limit > ReviewAudioContract.MaximumPageLimit
-            || operands.Count != expectedOperands
-            || operands.Any(string.IsNullOrWhiteSpace)
-            || (operation == ReviewAudioContract.CueOperation
-                && (offsetOptionCount > 0 || limitOptionCount > 0))
+        if (operands.Count != expectedOperands
             || (operation == ReviewAudioContract.CueOperation
                 && !ReviewAudioValidation.IsSafeCueId(operands[0])))
         {
@@ -1040,108 +918,25 @@ public static partial class CliApplication
             return false;
         }
 
-        var operands = new List<string>();
-        var jsonOptionCount = 0;
-        var topologyOptionCount = 0;
-        var offsetOptionCount = 0;
-        var limitOptionCount = 0;
-        var frameOptionCount = 0;
-        string topology = LiveLabState.SingleTopology;
-        var offset = 0;
-        int limit = operation is ReviewMapContract.AssetsOperation
-            or ReviewMapContract.LayersOperation
-            or ReviewMapContract.TileSheetsOperation
-            or ReviewMapContract.WarpsOperation
-                ? ReviewMapContract.DefaultPageLimit
-                : 1;
-        int? frameIndex = null;
-        var optionsEnded = false;
-        for (var index = 4; index < arguments.Count; index++)
-        {
-            string argument = arguments[index];
-            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
-            {
-                optionsEnded = true;
-                continue;
-            }
-
-            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
-            {
-                jsonOptionCount++;
-                continue;
-            }
-
-            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit" or "--frame")
-            {
-                if (index + 1 >= arguments.Count
-                    || arguments[index + 1].StartsWith('-'))
-                {
-                    return false;
-                }
-
-                string value = arguments[++index];
-                if (argument == "--topology")
-                {
-                    topologyOptionCount++;
-                    topology = value;
-                }
-                else if (argument == "--offset")
-                {
-                    offsetOptionCount++;
-                    if (!TryParseNonNegative(value, out offset))
-                    {
-                        return false;
-                    }
-                }
-                else if (argument == "--limit")
-                {
-                    limitOptionCount++;
-                    if (!TryParseNonNegative(value, out limit))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    frameOptionCount++;
-                    if (!TryParseNonNegative(value, out int parsedFrame))
-                    {
-                        return false;
-                    }
-
-                    frameIndex = parsedFrame;
-                }
-
-                continue;
-            }
-
-            if (!optionsEnded && argument.StartsWith('-'))
-            {
-                return false;
-            }
-
-            operands.Add(argument);
-        }
-
         bool listOperation = operation is ReviewMapContract.AssetsOperation
             or ReviewMapContract.LayersOperation
             or ReviewMapContract.TileSheetsOperation
             or ReviewMapContract.WarpsOperation;
-        if (jsonOptionCount != 1
-            || topologyOptionCount > 1
-            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || offsetOptionCount > 1
-            || limitOptionCount > 1
-            || frameOptionCount > 1
-            || offset < 0
-            || limit < 1
-            || limit > ReviewMapContract.MaximumPageLimit
-            || (!listOperation && (offsetOptionCount > 0 || limitOptionCount > 0))
-            || (operation != ReviewMapContract.PropertyOperation && frameOptionCount > 0)
-            || operands.Any(string.IsNullOrWhiteSpace))
+        if (!TryParseReviewQueryOptions(
+                arguments,
+                listOperation,
+                allowFrame: operation == ReviewMapContract.PropertyOperation,
+                ReviewMapContract.DefaultPageLimit,
+                ReviewMapContract.MaximumPageLimit,
+                out ReviewQueryOptions options))
         {
             return false;
         }
+
+        IReadOnlyList<string> operands = options.Operands;
+        int offset = options.Offset;
+        int limit = options.Limit;
+        int? frameIndex = options.FrameIndex;
 
         string? asset = null;
         string? layer = null;
@@ -1327,99 +1122,28 @@ public static partial class CliApplication
             return false;
         }
 
-        var operands = new List<string>();
-        var jsonOptionCount = 0;
-        var topologyOptionCount = 0;
-        var offsetOptionCount = 0;
-        var limitOptionCount = 0;
-        string topology = LiveLabState.SingleTopology;
-        var offset = 0;
-        int limit = operation == ReviewTextureContract.AssetsOperation
-            ? ReviewTextureContract.DefaultPageLimit
-            : 1;
-        var optionsEnded = false;
-        for (var index = 4; index < arguments.Count; index++)
+        bool listOperation = operation == ReviewTextureContract.AssetsOperation;
+        if (!TryParseReviewQueryOptions(
+                arguments,
+                listOperation,
+                allowFrame: false,
+                ReviewTextureContract.DefaultPageLimit,
+                ReviewTextureContract.MaximumPageLimit,
+                out ReviewQueryOptions options))
         {
-            string argument = arguments[index];
-            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
-            {
-                optionsEnded = true;
-                continue;
-            }
-
-            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
-            {
-                jsonOptionCount++;
-                continue;
-            }
-
-            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
-            {
-                if (index + 1 >= arguments.Count
-                    || arguments[index + 1].StartsWith('-'))
-                {
-                    return false;
-                }
-
-                string value = arguments[++index];
-                if (string.Equals(argument, "--topology", StringComparison.Ordinal))
-                {
-                    topologyOptionCount++;
-                    topology = value;
-                }
-                else if (string.Equals(argument, "--offset", StringComparison.Ordinal))
-                {
-                    offsetOptionCount++;
-                    if (!int.TryParse(
-                            value,
-                            NumberStyles.None,
-                            CultureInfo.InvariantCulture,
-                            out offset))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    limitOptionCount++;
-                    if (!int.TryParse(
-                            value,
-                            NumberStyles.None,
-                            CultureInfo.InvariantCulture,
-                            out limit))
-                    {
-                        return false;
-                    }
-                }
-
-                continue;
-            }
-
-            if (!optionsEnded && argument.StartsWith('-'))
-            {
-                return false;
-            }
-
-            operands.Add(argument);
+            return false;
         }
+
+        IReadOnlyList<string> operands = options.Operands;
+        int offset = options.Offset;
+        int limit = options.Limit;
 
         int expectedOperands = operation == ReviewTextureContract.AssetsOperation
             ? 0
             : 1;
-        if (jsonOptionCount != 1
-            || topologyOptionCount > 1
-            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || offsetOptionCount > 1
-            || limitOptionCount > 1
-            || offset < 0
-            || limit < 1
-            || limit > ReviewTextureContract.MaximumPageLimit
-            || operands.Count != expectedOperands
-            || operands.Any(string.IsNullOrWhiteSpace)
+        if (operands.Count != expectedOperands
             || (operands.Count == 1
-                && !ReviewTextureContract.IsCanonicalAssetName(operands[0]))
-            || (operation != ReviewTextureContract.AssetsOperation
-                && (offsetOptionCount > 0 || limitOptionCount > 0)))
+                && !ReviewTextureContract.IsCanonicalAssetName(operands[0])))
         {
             return false;
         }
@@ -1482,75 +1206,21 @@ public static partial class CliApplication
             return false;
         }
 
-        var operands = new List<string>();
-        var jsonOptionCount = 0;
-        var topologyOptionCount = 0;
-        var offsetOptionCount = 0;
-        var limitOptionCount = 0;
-        string topology = LiveLabState.SingleTopology;
-        var offset = 0;
-        int limit = operation == ReviewModAssetContract.GetOperation
-            ? 1
-            : ReviewModAssetContract.DefaultPageLimit;
-        var optionsEnded = false;
-        var operandsBeforeEndMarker = -1;
-        for (var index = 4; index < arguments.Count; index++)
+        bool listOperation = operation != ReviewModAssetContract.GetOperation;
+        if (!TryParseReviewQueryOptions(
+                arguments,
+                listOperation,
+                allowFrame: false,
+                ReviewModAssetContract.DefaultPageLimit,
+                ReviewModAssetContract.MaximumPageLimit,
+                out ReviewQueryOptions options))
         {
-            string argument = arguments[index];
-            if (!optionsEnded && string.Equals(argument, "--", StringComparison.Ordinal))
-            {
-                optionsEnded = true;
-                operandsBeforeEndMarker = operands.Count;
-                continue;
-            }
-
-            if (!optionsEnded && string.Equals(argument, "--json", StringComparison.Ordinal))
-            {
-                jsonOptionCount++;
-                continue;
-            }
-
-            if (!optionsEnded && argument is "--topology" or "--offset" or "--limit")
-            {
-                if (index + 1 >= arguments.Count
-                    || arguments[index + 1].StartsWith('-'))
-                {
-                    return false;
-                }
-
-                string value = arguments[++index];
-                if (argument == "--topology")
-                {
-                    topologyOptionCount++;
-                    topology = value;
-                }
-                else if (argument == "--offset")
-                {
-                    offsetOptionCount++;
-                    if (!TryParseNonNegative(value, out offset))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    limitOptionCount++;
-                    if (!TryParseNonNegative(value, out limit))
-                    {
-                        return false;
-                    }
-                }
-
-                continue;
-            }
-
-            if (!optionsEnded && argument.StartsWith('-'))
-            {
-                return false;
-            }
-
-            operands.Add(argument);
+            return false;
         }
+
+        IReadOnlyList<string> operands = options.Operands;
+        int offset = options.Offset;
+        int limit = options.Limit;
 
         int expectedOperands = operation switch
         {
@@ -1559,25 +1229,13 @@ public static partial class CliApplication
             ReviewModAssetContract.GetOperation => 2,
             _ => throw new InvalidOperationException(),
         };
-        bool exactOperation = operation == ReviewModAssetContract.GetOperation;
-        if (jsonOptionCount != 1
-            || topologyOptionCount > 1
-            || !string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            || offsetOptionCount > 1
-            || limitOptionCount > 1
-            || offset < 0
-            || limit < 1
-            || limit > ReviewModAssetContract.MaximumPageLimit
-            || (exactOperation && (offsetOptionCount > 0 || limitOptionCount > 0))
-            || operands.Count != expectedOperands
+        if (operands.Count != expectedOperands
             || (operands.Count > 0
                 && !ReviewModAssetContract.IsCanonicalAssetName(operands[0]))
             || (operands.Count > 1
-                && (!ReviewModAssetContract.IsBoundedText(
-                        operands[1],
-                        ReviewModAssetContract.MaximumKeyLength)
-                    || string.IsNullOrWhiteSpace(operands[1])))
-            || (optionsEnded && operands.Count == operandsBeforeEndMarker))
+                && !ReviewModAssetContract.IsBoundedText(
+                    operands[1],
+                    ReviewModAssetContract.MaximumKeyLength)))
         {
             return false;
         }
@@ -2092,6 +1750,8 @@ public static partial class CliApplication
         output.WriteLine(ReviewDataGetUsage.TrimStart());
         output.WriteLine(
             "Queries require an active owned single review and return only canonical installed Data assets after the active SMAPI content pipeline.");
+        output.WriteLine(
+            "For an operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
     private static void WriteProjectReviewMapUsage(TextWriter output)

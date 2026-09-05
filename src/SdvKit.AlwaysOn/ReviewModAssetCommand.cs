@@ -55,7 +55,7 @@ internal static class ReviewModAssetRegistryReader
         {
             return readModIds().ToArray();
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             return [];
         }
@@ -211,22 +211,15 @@ internal sealed class ReviewModAssetCatalog
                 return;
             }
 
-            string[] ownerMatches = _loadedModIds
-                .Where(id => string.Equals(id, ownerSegment, StringComparison.OrdinalIgnoreCase))
-                .Take(2)
-                .ToArray();
+            string? owner = _loadedModIds.FirstOrDefault(
+                id => string.Equals(id, ownerSegment, StringComparison.OrdinalIgnoreCase));
             int generation = matchingName.Length == 0
                 ? 0
                 : matchingName.Max(entry => entry.Generation);
             var added = new Entry(
                 canonicalName,
-                ownerMatches.Length == 1 ? ownerMatches[0] : null,
-                ownerMatches.Length switch
-                {
-                    1 => "resolved",
-                    > 1 => "ambiguous",
-                    _ => "unknown",
-                },
+                owner,
+                owner is null ? "unknown" : "resolved",
                 dataType,
                 FriendlyTypeName(dataType),
                 generation);
@@ -1485,34 +1478,13 @@ internal static class ReviewModAssetResponseWriter
     {
         if (string.IsNullOrWhiteSpace(runtimePath))
         {
-            throw new ArgumentException(
-                "The review-mod-assets runtime path is required.",
-                nameof(runtimePath));
+            throw new ArgumentException("The review runtime path is required.", nameof(runtimePath));
         }
         ArgumentNullException.ThrowIfNull(envelope);
 
-        string absoluteRuntimePath = Path.GetFullPath(runtimePath);
-        FileAttributes runtimeAttributes = File.GetAttributes(absoluteRuntimePath);
-        if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
-            || (runtimeAttributes & FileAttributes.Directory) == 0)
-        {
-            throw new InvalidDataException(
-                "The review runtime response root is not a regular directory.");
-        }
-
         string responsePath = ReviewModAssetContract.ResponsePath(
-            absoluteRuntimePath,
+            Path.GetFullPath(runtimePath),
             envelope.RequestId);
-        string temporaryPath = responsePath + ".tmp";
-        if (File.Exists(responsePath)
-            || Directory.Exists(responsePath)
-            || File.Exists(temporaryPath)
-            || Directory.Exists(temporaryPath))
-        {
-            throw new InvalidDataException(
-                "The review-mod-assets response target already exists.");
-        }
-
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
             envelope,
             ResponseJsonOptions);
@@ -1521,46 +1493,7 @@ internal static class ReviewModAssetResponseWriter
             throw new InvalidDataException(
                 "The bounded review-mod-assets response exceeds its maximum size.");
         }
-
-        var ownsTemporary = false;
-        try
-        {
-            using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough))
-            {
-                ownsTemporary = true;
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            FileAttributes temporaryAttributes = File.GetAttributes(temporaryPath);
-            if ((temporaryAttributes & FileAttributes.ReparsePoint) != 0
-                || (temporaryAttributes & FileAttributes.Directory) != 0)
-            {
-                throw new InvalidDataException(
-                    "The owned review-mod-assets temporary response is not a regular file.");
-            }
-
-            File.Move(temporaryPath, responsePath);
-            ownsTemporary = false;
-        }
-        finally
-        {
-            if (ownsTemporary && File.Exists(temporaryPath))
-            {
-                FileAttributes attributes = File.GetAttributes(temporaryPath);
-                if ((attributes & FileAttributes.ReparsePoint) == 0
-                    && (attributes & FileAttributes.Directory) == 0)
-                {
-                    File.Delete(temporaryPath);
-                }
-            }
-        }
+        ReviewResponseFile.Write(responsePath, bytes);
     }
 }
 
@@ -1707,7 +1640,7 @@ internal static class ReviewModAssetCommand
         ArgumentNullException.ThrowIfNull(monitor);
 
         string? requestId = arguments.Length > 1 ? arguments[1] : null;
-        if (!ReviewModAssetContract.IsRequestId(requestId))
+        if (!ReviewTransportToken.IsRequestId(requestId))
         {
             monitor.Log(
                 "SDVKit review-mod-assets rejected an invalid request ID.",
@@ -1746,7 +1679,7 @@ internal static class ReviewModAssetCommand
             {
                 report = ReviewModAssetOperation.Execute(query!, source);
             }
-            catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+            catch (Exception exception) when (!ReviewException.IsFatal(exception))
             {
                 report = ReviewModAssetOperation.Failure(
                     query!.Operation,
@@ -1768,7 +1701,7 @@ internal static class ReviewModAssetCommand
                 $"SDVKit review-mod-assets completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             monitor.Log(
                 $"SDVKit review-mod-assets could not publish its bounded response ({exception.GetType().Name}).",
@@ -1785,7 +1718,7 @@ internal static class ReviewModAssetCommand
         problem = null;
         if (arguments.Count != 7
             || !string.Equals(arguments[0], "mod-assets", StringComparison.Ordinal)
-            || !ReviewModAssetContract.IsRequestId(arguments[1])
+            || !ReviewTransportToken.IsRequestId(arguments[1])
             || !int.TryParse(
                 arguments[3],
                 NumberStyles.None,
@@ -1831,7 +1764,7 @@ internal static class ReviewModAssetCommand
             return true;
         }
 
-        if (ReviewModAssetContract.TryDecode(token, maximumLength, out string decoded))
+        if (ReviewTransportToken.TryDecode(token, maximumLength, out string decoded))
         {
             value = decoded;
             return true;

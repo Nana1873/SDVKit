@@ -754,7 +754,7 @@ internal static class ProjectPackager
         return ExcludedExtensions.Contains(extension);
     }
 
-    private static bool IsForbiddenGameAssembly(string fileName)
+    internal static bool IsForbiddenGameAssembly(string fileName)
     {
         string extension = Path.GetExtension(fileName);
         return (string.Equals(extension, ".dll", StringComparison.OrdinalIgnoreCase)

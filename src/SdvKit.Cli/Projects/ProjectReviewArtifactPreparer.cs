@@ -20,18 +20,6 @@ internal static partial class ProjectModStager
         [".cs", ".csproj", ".sln", ".exe", ".zip"],
         StringComparer.OrdinalIgnoreCase);
 
-    private static readonly HashSet<string> ReviewForbiddenGameAssemblyNames = new(
-        [
-            "0Harmony", "BmFont", "FAudio-CS", "GalaxyCSharp",
-            "GalaxyCSharpGlue", "Lidgren.Network", "Mono.Cecil",
-            "Mono.Cecil.Mdb", "Mono.Cecil.Pdb", "MonoGame.Framework",
-            "MonoMod.Common", "Newtonsoft.Json", "SkiaSharp", "SMAPI.Toolkit",
-            "SMAPI.Toolkit.CoreInterfaces", "Stardew Valley", "StardewModdingAPI",
-            "StardewValley.GameData", "Steamworks.NET", "TextCopy", "TMXTile",
-            "xTile",
-        ],
-        StringComparer.OrdinalIgnoreCase);
-
     public static ProjectReviewPreparationResult PrepareReview(
         string targetPath,
         IReadOnlyList<string> companionPaths,
@@ -280,7 +268,7 @@ internal static partial class ProjectModStager
                 required
                     .DistinctBy(
                         dependency => (dependency.UniqueId, dependency.MinimumVersion),
-                        ReviewDependencyComparer.Instance)
+                        DependencyComparer.Instance)
                     .OrderBy(
                         dependency => dependency.UniqueId,
                         StringComparer.OrdinalIgnoreCase)
@@ -713,7 +701,7 @@ internal static partial class ProjectModStager
 
                 string extension = Path.GetExtension(name);
                 if (ReviewSaveMarkerFileNames.Contains(name)
-                    || IsReviewForbiddenGameAssembly(name)
+                    || ProjectPackager.IsForbiddenGameAssembly(name)
                     || string.Equals(name, ".env", StringComparison.OrdinalIgnoreCase)
                     || name.StartsWith(".env.", StringComparison.OrdinalIgnoreCase)
                     || ReviewForbiddenReadyExtensions.Contains(extension))
@@ -744,16 +732,6 @@ internal static partial class ProjectModStager
             : null;
         valid = value is not null && IsSemanticVersion(value, allowToken: false);
         return value;
-    }
-
-    private static bool IsReviewForbiddenGameAssembly(string fileName)
-    {
-        string extension = Path.GetExtension(fileName);
-        return (string.Equals(extension, ".dll", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(extension, ".pdb", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(extension, ".xml", StringComparison.OrdinalIgnoreCase))
-            && ReviewForbiddenGameAssemblyNames.Contains(
-                Path.GetFileNameWithoutExtension(fileName));
     }
 
     private static ProjectReviewPreparationResult PreparationFailure(
@@ -848,25 +826,4 @@ internal static partial class ProjectModStager
         }
     }
 
-    private sealed class ReviewDependencyComparer
-        : IEqualityComparer<(string UniqueId, string? MinimumVersion)>
-    {
-        public static ReviewDependencyComparer Instance { get; } = new();
-
-        public bool Equals(
-            (string UniqueId, string? MinimumVersion) left,
-            (string UniqueId, string? MinimumVersion) right) =>
-            string.Equals(left.UniqueId, right.UniqueId, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(
-                left.MinimumVersion,
-                right.MinimumVersion,
-                StringComparison.Ordinal);
-
-        public int GetHashCode((string UniqueId, string? MinimumVersion) value) =>
-            HashCode.Combine(
-                StringComparer.OrdinalIgnoreCase.GetHashCode(value.UniqueId),
-                value.MinimumVersion is null
-                    ? 0
-                    : StringComparer.Ordinal.GetHashCode(value.MinimumVersion));
-    }
 }

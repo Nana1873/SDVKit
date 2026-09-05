@@ -5,30 +5,6 @@ using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.AlwaysOn;
 
-internal static class ReviewTextureException
-{
-    public static bool IsFatal(Exception exception)
-    {
-        ArgumentNullException.ThrowIfNull(exception);
-        while (true)
-        {
-            if (exception is OutOfMemoryException
-                or StackOverflowException
-                or AccessViolationException)
-            {
-                return true;
-            }
-
-            if (exception is not TargetInvocationException { InnerException: not null } invocation)
-            {
-                return false;
-            }
-
-            exception = invocation.InnerException!;
-        }
-    }
-}
-
 internal interface IReviewTextureLzxDecoder
 {
     bool TryDecode(
@@ -108,7 +84,7 @@ internal sealed class ReviewTextureLzxReflectionDecoder : IReviewTextureLzxDecod
                 return decoder.ReadByte() == -1;
             }
         }
-        catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+        catch (Exception exception) when (!ReviewException.IsFatal(exception))
         {
             return false;
         }
@@ -294,7 +270,7 @@ internal sealed class ReviewTextureXnbClassifier
                     frame.Length,
                     prefix);
             }
-            catch (Exception exception) when (!ReviewTextureException.IsFatal(exception))
+            catch (Exception exception) when (!ReviewException.IsFatal(exception))
             {
                 decoded = false;
             }

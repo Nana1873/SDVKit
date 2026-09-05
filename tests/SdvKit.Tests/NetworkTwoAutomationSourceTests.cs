@@ -3,7 +3,7 @@ namespace SdvKit.Tests;
 public sealed class NetworkTwoAutomationSourceTests
 {
     [Fact]
-    public void PassedProofFreezesBeforeAnotherForegroundObservation()
+    public void GameAdapterSourceReturnsOnTerminalProofBeforeForegroundObservation()
     {
         string source = ReadAutomationSource();
         int update = source.IndexOf(
@@ -21,6 +21,9 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.True(update >= 0);
         Assert.True(terminalGuard > update);
         Assert.True(foregroundObservation > terminalGuard);
+        Assert.Matches(
+            @"if\s*\(IsTerminal\)\s*\{\s*return;\s*\}",
+            source[terminalGuard..foregroundObservation]);
     }
 
     [Fact]
