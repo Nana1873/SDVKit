@@ -67,7 +67,9 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 valueInRuntime = json.RootElement.GetProperty("Changes")[0].GetProperty("Fields").GetProperty("388").GetProperty("DisplayName").GetString()!;
                 if (mode is "uncertain" or "timeout") return new(mode == "uncertain" ? 3 : 0,
                     new ProjectReviewCommandReport(1, null, temporary.Path, "running", null, mode == "uncertain" ? null : true, [], []));
-                message = "[08:00:02 INFO  ContentPatcher] Content pack reloaded.\n";
+                message = "[08:00:02 TRACE ContentPatcher] Requested cache invalidation for all assets matching a predicate.\n"
+                    + "[08:00:02 TRACE SMAPI] Invalidated 1 asset names (Data/Objects).\nPropagated 1 core assets (Data/Objects).\n"
+                    + "[08:00:02 INFO  ContentPatcher] Content pack reloaded.\n";
             }
             else if (command.StartsWith("patch summary", StringComparison.Ordinal))
                 message = CpSummary.Replace("Content Patcher", "ContentPatcher", StringComparison.Ordinal).Replace("Patcher]\n", "Patcher] \n", StringComparison.Ordinal) + "\n";
@@ -308,5 +310,28 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         Assert.False(CliApplication.TryParseCpRefresh(args.Concat(["--pack", "Other.Pack"]).ToArray(), out _, out _, out _, out _, out _, out _));
         Assert.False(CliApplication.TryParseCpRefresh(args.Concat(["--file", "content.json"]).ToArray(), out _, out _, out _, out _, out _, out _));
         Assert.False(CliApplication.TryParseCpRefresh(args.Where(s => s is not ("--key" or "388")).ToArray(), out _, out _, out _, out _, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("normal", "ready")]
+    [InlineData("error", "incomplete")]
+    [InlineData("duplicateTrace", "incomplete")]
+    [InlineData("unknownTrace", "incomplete")]
+    [InlineData("interruptedReply", "incomplete")]
+    [InlineData("missingReply", "incomplete")]
+    public void ReloadRecognizesOnlyTheKnownInvalidationPreludeAndCompleteReply(string mode, string expected)
+    {
+        string trace = "[08:00:02 TRACE Content Patcher] Requested cache invalidation for all assets matching a predicate.\n";
+        string foreign = "[08:00:02 TRACE SMAPI] Invalidated 1 asset names (Data/Objects).\nPropagated 1 core assets (Data/Objects).\n";
+        string reply = "[08:00:02 INFO  Content Patcher] Content pack reloaded.\n";
+        string middle = trace + foreign + reply;
+        if (mode == "error") middle = trace + "[08:00:02 ERROR Content Patcher] Invalid patch\n" + reply;
+        if (mode == "duplicateTrace") middle = trace + trace + reply;
+        if (mode == "unknownTrace") middle = trace.Replace("predicate", "unknown", StringComparison.Ordinal) + reply;
+        if (mode == "interruptedReply") middle += foreign;
+        if (mode == "missingReply") middle = trace + foreign;
+        var result = ProjectReviewCpDiagnosis.InterpretWindow(CpMarker("begin") + middle + CpMarker("end"),
+            "Content Patcher", "Test.Pack", null, null, "begin", "end", false, [], DateTimeOffset.UtcNow, isReload: true);
+        Assert.Equal(expected, result.State);
     }
 }

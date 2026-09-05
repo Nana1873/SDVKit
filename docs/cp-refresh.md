@@ -59,6 +59,8 @@ Otherwise stop/reset, rebuild when needed, and start again.
 - Existing diagnosis limits still apply: bounded owned log, exact CP 2.9.1 output,
   and no concurrent manual console typing. Unknown output or additional provider
   errors return incomplete, even if CP also printed its success line.
+  Reload permits CP 2.9.1's single known cache-invalidation trace before the
+  complete INFO acknowledgment, including SMAPI's intervening propagation log.
 
 There is no watcher, arbitrary filesystem synchronization, asset/code hot reload,
 network-2 refresh or native MCP mutation command.

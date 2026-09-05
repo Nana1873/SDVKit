@@ -211,6 +211,12 @@ internal static class ProjectReviewCpDiagnosis
         CpResponse Failure(string code) => new("incomplete", code, true, true, started,
             DateTimeOffset.UtcNow, null, [], 0, false, []);
         var entries = Entries(text, provider);
+        // CP 2.9.1 invalidates affected assets during reload. Its one known trace
+        // can precede SMAPI's multiline propagation log; neither is the reply.
+        // Only the subsequent complete INFO acknowledgment establishes reload.
+        if (isReload && entries.Count == 4 && entries[1].Level == "TRACE"
+            && entries[1].Text.Trim() == "Requested cache invalidation for all assets matching a predicate.")
+            entries.RemoveAt(1);
         if (entries.Count != 3 || entries[0].Text.Trim() != Marker(begin) || entries[2].Text.Trim() != Marker(end)
             || entries[0].Level != "DEBUG" || entries[2].Level != "DEBUG" || entries.Take(2).Any(e => e.Interrupted))
             return Failure("cpResponseUncorrelatedOrOverlapping");
