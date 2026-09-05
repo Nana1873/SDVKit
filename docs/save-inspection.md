@@ -15,7 +15,7 @@ There is no automatic discovery or import of normal Saves. Selection authorizes 
 
 ## Supported fields
 
-Only Stardew `gameVersion` 1.6.x and the `SaveGame` root are supported. `schema` names the fixed known-field adapter; it does not mean whole-save or modded-schema validation. Missing numeric fields are `null`. Missing Farm and collection availability is explicit; an available empty collection has count zero. Invalid known numeric values fail instead of becoming zero.
+Only Stardew `gameVersion` 1.6.x and the `SaveGame` root are supported. `schema` names the fixed known-field adapter; it does not mean whole-save or modded-schema validation. Missing numeric fields are `null`. Missing Farm and collection availability is explicit; an available empty collection has count zero. Invalid known numeric values fail instead of becoming zero. `stamina` uses finite XML Single values (including scientific notation and the full finite Single range); all other player fields and world numbers use XML Int32. NaN and infinities are rejected. Object dictionary coordinates use XML Single with an additional integral Int32 tile requirement. No vanilla gameplay caps are imposed.
 
 | Section | Fields |
 | --- | --- |

@@ -47,7 +47,7 @@ public static partial class CliApplication
             WriteJson(output, new { status = "inspected", inspection });
             return Success;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException
             or InvalidOperationException or ArgumentException or XmlException or System.Security.SecurityException)
         {
             string problem = exception is XmlException ? "malformedXml: Use valid XML without DTDs or external entities."

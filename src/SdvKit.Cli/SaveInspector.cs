@@ -7,13 +7,15 @@ using SdvKit.Cli.LiveLab;
 namespace SdvKit.Cli;
 
 internal sealed record SaveInspection(string Sha256, long Bytes, string Copy, string GameVersion,
-    string Schema, IReadOnlyDictionary<string, decimal?> Player, IReadOnlyDictionary<string, int?> World,
+    string Schema, SavePlayer Player, IReadOnlyDictionary<string, int?> World,
     string? Season, bool FarmAvailable, bool BuildingsAvailable, bool ObjectsAvailable, int BuildingCount, IReadOnlyList<SaveBuilding> Buildings,
     int ObjectCount, IReadOnlyList<SaveObject> Objects, IReadOnlyList<string> Limitations)
 {
     public bool BuildingsTruncated => BuildingCount > Buildings.Count;
     public bool ObjectsTruncated => ObjectCount > Objects.Count;
 }
+internal sealed record SavePlayer(int? Money, int? Health, int? MaxHealth, float? Stamina,
+    int? MaxStamina, int? FarmingLevel, int? MiningLevel, int? CombatLevel, int? ForagingLevel, int? FishingLevel);
 internal sealed record SaveBuilding(int X, int Y, string Type);
 internal sealed record SaveObject(int X, int Y, string ItemId, int Stack);
 
@@ -80,9 +82,10 @@ internal static class SaveInspector
                 || Marker(TestSaveContract.FixtureMarkerKey) != fixture.FixtureId)
                 throw new InvalidDataException("fixtureMismatch: Copied save does not match the registered fixture.");
         }
-        var players = new SortedDictionary<string, decimal?>(StringComparer.Ordinal);
-        foreach (string field in PlayerFields)
-            players[field] = Number(player, field);
+        var players = new SavePlayer(Integer(player, "money"), Integer(player, "health"),
+            Integer(player, "maxHealth"), Single(player, "stamina"), Integer(player, "maxStamina"),
+            Integer(player, "farmingLevel"), Integer(player, "miningLevel"), Integer(player, "combatLevel"),
+            Integer(player, "foragingLevel"), Integer(player, "fishingLevel"));
         var world = new SortedDictionary<string, int?>(StringComparer.Ordinal);
         foreach (string field in WorldFields)
             world[field] = Integer(save, field);
@@ -103,7 +106,7 @@ internal static class SaveInspector
         {
             XElement? tile = One(One(item, "key"), "Vector2");
             XElement? value = One(One(item, "value"), "Object");
-            return new SaveObject(RequiredInt(tile, "X"), RequiredInt(tile, "Y"),
+            return new SaveObject(RequiredTile(tile, "X"), RequiredTile(tile, "Y"),
                 RequiredText(value, "itemId"), RequiredInt(value, "stack"));
         }).OrderBy(o => o.X).ThenBy(o => o.Y).ToArray();
         if (buildings.Select(b => (b.X, b.Y)).Distinct().Count() != buildings.Length
@@ -170,22 +173,42 @@ internal static class SaveInspector
         Text(parent, name) is { Length: > 0 } value ? value
             : throw new InvalidDataException("schemaUnavailable: A known Farm record is incomplete.");
 
-    private static decimal? Number(XElement? parent, string name)
+    private static float? Single(XElement? parent, string name)
     {
         string? value = Text(parent, name);
         if (value is null) return null;
-        if (!decimal.TryParse(value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-            CultureInfo.InvariantCulture, out decimal number))
-            throw new InvalidDataException("invalidNumber: A known numeric field is malformed.");
-        return number;
+        try
+        {
+            float number = XmlConvert.ToSingle(value);
+            if (float.IsFinite(number)) return number;
+        }
+        catch (Exception exception) when (exception is FormatException or OverflowException)
+        {
+            throw new InvalidDataException("invalidNumber: A known Single field must contain a finite XML number.", exception);
+        }
+        throw new InvalidDataException("invalidNumber: A known Single field must contain a finite XML number.");
     }
 
     private static int? Integer(XElement? parent, string name)
     {
-        decimal? value = Number(parent, name);
+        string? value = Text(parent, name);
         if (value is null) return null;
-        if (value < int.MinValue || value > int.MaxValue || decimal.Truncate(value.Value) != value)
-            throw new InvalidDataException("invalidInteger: A known integer field is out of range.");
+        try
+        {
+            return XmlConvert.ToInt32(value);
+        }
+        catch (Exception exception) when (exception is FormatException or OverflowException)
+        {
+            throw new InvalidDataException("invalidInteger: A known Int32 field is malformed or out of range.", exception);
+        }
+    }
+
+    private static int RequiredTile(XElement? parent, string name)
+    {
+        float? value = Single(parent, name);
+        if (value is null || (double)value < int.MinValue || (double)value > int.MaxValue
+            || MathF.Truncate(value.Value) != value.Value)
+            throw new InvalidDataException("invalidInteger: A Farm tile coordinate must be an integral Int32 value.");
         return (int)value.Value;
     }
 
