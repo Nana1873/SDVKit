@@ -132,7 +132,7 @@ public static partial class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string ReviewMcpFixtureDescription =
@@ -595,6 +595,11 @@ public static partial class CliApplication
         if (arguments.Count > 2 && arguments[2] == "cp-diagnose")
         {
             return RunProjectReviewCpDiagnosis(arguments, output, error);
+        }
+
+        if (arguments.Count > 2 && arguments[2] == "menu")
+        {
+            return RunProjectReviewMenu(arguments, output, error);
         }
 
         if (arguments.Count > 2 && arguments[2] == "diagnostics")
@@ -1779,6 +1784,7 @@ public static partial class CliApplication
         output.WriteLine("Reference help:");
         output.WriteLine("  sdvkit project review command --help     Console input, screenshots, and fixtures.");
         output.WriteLine("  sdvkit project review data --help        Canonical structured Data.");
+        output.WriteLine("  sdvkit project review menu --help        Read-only active menus for the selected role.");
         output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
@@ -1789,7 +1795,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
-        output.WriteLine("Inspection subcommands require single; network console commands require an explicit role.");
+        output.WriteLine("Asset inspection requires single; menu inspection and network console commands support explicit roles.");
     }
 
     private static void WriteProjectReviewMcpUsage(TextWriter output)

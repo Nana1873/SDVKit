@@ -310,9 +310,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded data/map/texture/audio/mod-assets transports";
+        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded menu/data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
+        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
@@ -335,6 +335,8 @@ internal static class ReviewCommand
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
         var inputRuntime = new StardewReviewInputRuntime(helper);
         var dataSource = new StardewReviewDataSource(helper);
+        var menuCommand = new ReviewMenuCommand();
+        helper.Events.Display.MenuChanged += (_, _) => menuCommand.Reset();
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);
         var audioSource = new StardewReviewAudioSource(helper);
@@ -378,6 +380,10 @@ internal static class ReviewCommand
                         monitor,
                         runtimePath,
                         testSave);
+                }
+                else if (arguments.Length > 0 && arguments[0] == "menu")
+                {
+                    menuCommand.Handle(arguments, runtimePath, monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "data", StringComparison.Ordinal))
