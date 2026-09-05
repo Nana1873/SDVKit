@@ -32,6 +32,8 @@ The existing CI runs restore, formatting, build, the complete tests, packaging, 
 
 The two concurrent status tests retain failure context and bounded post-failure snapshots under `.sdvkit/test-failures/`; failing CI uploads that directory. Writer and reader/scanner failures remain visible together. A retained file may be newer than the failed read or rename, so it is not proof of the bytes or competing access at failure time.
 
+The concurrent reader test also retains up to four original first-chance exceptions from its last synchronous read, restricted to that managed thread and the reader's caught exception families. On failure, it describes their HRESULTs and bounded messages/stacks after unsubscribing. An exception need not reach the reader's outer catch; an empty capture does not exclude pending, invalid-length, or mismatch reports. This test-only observation changes scheduling and cannot identify an external actor or explain a nonreproducing historical failure.
+
 For native rename error 5 in those tests, test-only code also records the immediate thread-local native-status observation and old/new snapshots before publisher cleanup. The optional partial-method implementation exists only in the test assembly and is compiled out of AlwaysOn; this is not a syscall trace or a recovery policy.
 
 ## Release

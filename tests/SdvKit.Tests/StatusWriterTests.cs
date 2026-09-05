@@ -195,6 +195,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         int previousTick = 0;
         DateTimeOffset now = default;
         AlwaysOnStatusReport? report = null;
+        var readExceptions = new StatusReaderExceptionCapture();
         Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(path, () =>
         {
             start.SignalAndWait();
@@ -212,7 +213,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
             {
                 now = DateTimeOffset.UtcNow;
                 report = null;
-                report = AlwaysOnStatusReader.Read(path, LaunchId, process, now);
+                report = readExceptions.Read(() => AlwaysOnStatusReader.Read(path, LaunchId, process, now));
                 DateTimeOffset observed = Assert.IsType<DateTimeOffset>(report.ObservedAtUtc);
                 string expectedState = observed > now.AddSeconds(1) || now - observed > TimeSpan.FromSeconds(5)
                     ? "stale"
@@ -242,6 +243,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
                 PreviousTick = previousTick,
                 ReadTimeUtc = now,
                 Report = report,
+                ReadExceptions = readerFailure is not null ? readExceptions.Describe() : [],
             }, writerFailure, readerFailure);
         Assert.Equal(500, Read(path).Tick);
         Assert.Equal([path], Directory.GetFiles(directory.Path));
