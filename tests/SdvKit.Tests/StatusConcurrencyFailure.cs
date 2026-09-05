@@ -25,9 +25,7 @@ internal static class StatusConcurrencyFailure
             output.WriteLine(details);
             output.WriteLine($"Writer failure: {writerFailure}");
             output.WriteLine($"Observer failure: {observerFailure}");
-            string destination = Path.Combine(
-                FindRepositoryRoot(), ".sdvkit", "test-failures", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(destination);
+            string destination = CreateEvidenceDirectory();
             File.WriteAllText(Path.Combine(destination, "context.json"), details);
             File.WriteAllText(Path.Combine(destination, "failures.txt"),
                 $"Writer: {writerFailure}{Environment.NewLine}Observer: {observerFailure}");
@@ -59,20 +57,42 @@ internal static class StatusConcurrencyFailure
         ExceptionDispatchInfo.Capture(writerFailure ?? observerFailure!).Throw();
     }
 
+    public static void CaptureNativeFailure(string temporaryPath, string statusPath, object context)
+    {
+        string destination = CreateEvidenceDirectory();
+        File.WriteAllText(Path.Combine(destination, "native-error.json"), JsonSerializer.Serialize(context));
+        File.WriteAllText(Path.Combine(destination, "observation.txt"),
+            "Native status is a thread-local observation, not an independently traced syscall result. "
+            + "Files and path attributes are captured after the rename failure, before publisher cleanup; "
+            + "they do not identify a competing process.");
+        CaptureFile(temporaryPath, Path.Combine(destination, "temporary.json"));
+        CaptureFile(statusPath, Path.Combine(destination, "status.json"));
+    }
+
+    private static string CreateEvidenceDirectory()
+    {
+        string destination = Path.Combine(
+            FindRepositoryRoot(), ".sdvkit", "test-failures", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(destination);
+        return destination;
+    }
+
     private static void CaptureFile(string source, string destination)
     {
         try
         {
             using FileStream stream = new(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            if (stream.Length is < 0 or > AlwaysOnStatusReader.MaximumStatusBytes)
+            long length = stream.Length;
+            if (length is < 0 or > AlwaysOnStatusReader.MaximumStatusBytes)
             {
-                File.WriteAllText(destination + ".txt", $"Snapshot exceeds the capture limit: {stream.Length} bytes.");
+                File.WriteAllText(destination + ".txt", $"Snapshot exceeds the capture limit: {length} bytes.");
                 return;
             }
 
-            byte[] bytes = new byte[checked((int)stream.Length)];
+            byte[] bytes = new byte[checked((int)length)];
             stream.ReadExactly(bytes);
             File.WriteAllBytes(destination, bytes);
+            File.WriteAllText(destination + ".attributes.txt", File.GetAttributes(source).ToString());
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

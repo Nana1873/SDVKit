@@ -97,7 +97,7 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
         int writeTick = 1;
         int scanIndex = 0;
 
-        Task writes = Task.Run(() =>
+        Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(paths.StatusPath, () =>
         {
             start.SignalAndWait();
             for (; writeTick <= 750; writeTick++)
@@ -108,7 +108,7 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
                     isActive: false,
                     pauseWhenOutOfFocus: false);
             }
-        });
+        }));
 
         start.SignalAndWait();
         Exception? scanFailure = null;

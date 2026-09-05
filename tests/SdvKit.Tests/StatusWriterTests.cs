@@ -195,14 +195,14 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         int previousTick = 0;
         DateTimeOffset now = default;
         AlwaysOnStatusReport? report = null;
-        Task writes = Task.Run(() =>
+        Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(path, () =>
         {
             start.SignalAndWait();
             for (; writeTick <= 500; writeTick++)
             {
                 writer.Write("active", writeTick, false, false);
             }
-        });
+        }));
 
         start.SignalAndWait();
         Exception? readerFailure = null;
