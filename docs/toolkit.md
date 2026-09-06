@@ -151,7 +151,8 @@ Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or 
 | Result | Next step |
 | --- | --- |
 | `doctor` reports `notFound` or `ambiguous` | Read `incompleteCandidates` missing files/actions, or explicitly validate/select one complete directory with `--game-path`. |
-| Project is `hybrid` or ambiguous | Build/package support a valid ModBuildConfig hybrid. Use `--project` for one colocated code project/manifest; review still requires a standalone mod artifact. |
+| Project is `hybrid` | Build/package accept a tree with exactly one C# project and one code manifest beside it, plus content-pack manifests. No `--project` is needed for this unique target; ModBuildConfig controls the declared bundled-pack output. See [build and package](#create-build-and-package); smoke/review still require a standalone target. |
+| `projectFileAmbiguous` / `modManifestAmbiguous` | Multiple C# projects or code manifests need an explicit target. Use `--project` with the root-relative `.csproj` beside its own code `manifest.json`, as in the [selection example](#create-build-and-package). |
 | `projectSelectionInvalid` / `projectManifestMismatch` | Select an existing root-relative `.csproj` beside its own code `manifest.json`, outside ignored directories and links. |
 | C# build fails | Open the build log named by the result below the project's `.sdvkit/`. |
 | A content pack needs a provider | Select the installed provider explicitly for review; SDVKit does not fetch dependencies. |

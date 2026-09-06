@@ -22,6 +22,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Documentation
 
+- Clarify that a hybrid tree with one C# project and its code manifest supports build/package without a selector; distinguish it from ambiguous targets requiring `--project`.
 - Document an optional `workspaces/<ModName>/` layout and agent guidance for separate mod sources sharing one lab, while preserving explicit user-selected paths.
 - A SMAPI authoring recipe connects explicit project selection, an original event/config feature, actual runtime-exception diagnosis, corrected in-game observation, cleanup and ZIP identity, with focused lifecycle references.
 
