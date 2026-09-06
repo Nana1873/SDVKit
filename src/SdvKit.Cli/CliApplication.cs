@@ -1884,6 +1884,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit screenshot <label>");
         output.WriteLine("  sdvkit screenshot viewport <label>");
         output.WriteLine("  sdvkit input press <SButton>");
+        output.WriteLine("  sdvkit input chord <1-120 ticks> <menu uiRevision> <1-8 SButton names>");
         output.WriteLine("  sdvkit input cursor <ui-x> <ui-y>");
         output.WriteLine("  sdvkit input cursor clear");
         output.WriteLine("  sdvkit fixture status");

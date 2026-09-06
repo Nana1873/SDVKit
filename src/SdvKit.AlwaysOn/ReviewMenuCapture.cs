@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.AlwaysOn;
@@ -14,6 +16,8 @@ internal interface IReviewMenuSource
 {
     object? Root { get; }
     ReviewMenuRectangle Viewport { get; }
+    float UiScale => 1f;
+    float Zoom => 1f;
     MenuObservation Read(object menu);
 }
 
@@ -59,9 +63,26 @@ internal sealed class ReviewMenuCapture
         {
             Visit(root, null, "root", 1);
         }
-        return new(1, "ready", null, launchId, topology, role, now, root is null ? null : _scope,
+        var report = new ReviewMenuReport(1, "ready", null, launchId, topology, role, now, root is null ? null : _scope,
             viewport, root is not null, limitations.Count == 0, truncated,
             Array.AsReadOnly(limitations.ToArray()), Array.AsReadOnly(nodes.ToArray()));
+        // Bind the same bounded screen-local observation, including a no-menu lifetime.
+        byte[] revision = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Scope = _scope,
+            launchId,
+            topology,
+            role,
+            source.UiScale,
+            source.Zoom,
+            report.Viewport,
+            report.MenuOpen,
+            report.Complete,
+            report.Truncated,
+            report.Limitations,
+            report.Menus,
+        });
+        return report with { UiRevision = Convert.ToHexString(SHA256.HashData(revision)).ToLowerInvariant() };
 
         void Visit(object instance, long? parentId, string relationship, int depth)
         {

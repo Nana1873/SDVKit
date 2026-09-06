@@ -16,6 +16,46 @@ public sealed class ReviewMenuTests
     private static readonly ReviewMenuRectangle Bounds = new(0, 0, 100, 100);
 
     [Fact]
+    public void UiRevisionBindsNoMenuLifetimeAndIgnoresTimeAndCameraOrigin()
+    {
+        var source = new Source();
+        var capture = new ReviewMenuCapture();
+        ReviewMenuReport first = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.True(ReviewInputContract.IsUiRevision(first.UiRevision));
+        source.Viewport = source.Viewport with { X = 200, Y = -100 };
+        Assert.Equal(first.UiRevision, capture.Capture(source, Launch, DateTimeOffset.UtcNow.AddSeconds(5)).UiRevision);
+        source.Root = source.Add("GameMenu", "gameMenu");
+        capture.ObserveRoot(source.Root);
+        source.Root = null;
+        capture.ObserveRoot(null);
+        Assert.NotEqual(first.UiRevision, capture.Capture(source, Launch, DateTimeOffset.UtcNow).UiRevision);
+    }
+
+    [Fact]
+    public void UiRevisionChangesForPageGeometryViewportAndScale()
+    {
+        var source = new Source();
+        source.Root = source.Add("GameMenu", "gameMenu", [Component(new object())]);
+        var capture = new ReviewMenuCapture();
+        string? Revision() => capture.Capture(source, Launch, DateTimeOffset.UtcNow).UiRevision;
+        string? prior = Revision();
+        source.Nodes[source.Root] = source.Nodes[source.Root] with { CurrentTab = 1 };
+        Assert.NotEqual(prior, Revision());
+        prior = Revision();
+        source.Viewport = source.Viewport with { Width = 800 };
+        Assert.NotEqual(prior, Revision());
+        prior = Revision();
+        source.UiScale = 1.5f;
+        Assert.NotEqual(prior, Revision());
+        prior = Revision();
+        source.Zoom = 0.75f;
+        Assert.NotEqual(prior, Revision());
+        prior = Revision();
+        source.Nodes[source.Root] = source.Nodes[source.Root] with { Children = [new(source.Add("InventoryPage", "inventoryPage"), "activePage")] };
+        Assert.NotEqual(prior, Revision());
+    }
+
+    [Fact]
     public void NoMenuResetsIdentityLifetime()
     {
         var source = new Source();
@@ -285,6 +325,8 @@ public sealed class ReviewMenuTests
     private static MenuComponentObservation Component(object instance) => new(instance, "publicComponent", 7, Bounds, true, false);
     private sealed class Source : IReviewMenuSource
     {
+        public float UiScale { get; set; } = 1f;
+        public float Zoom { get; set; } = 1f;
         public object? Root { get; set; }
         public ReviewMenuRectangle Viewport { get; set; } = Bounds;
         public Dictionary<object, MenuObservation> Nodes { get; } = new();

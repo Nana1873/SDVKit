@@ -333,9 +333,9 @@ internal static class ReviewCommand
         ArgumentNullException.ThrowIfNull(networkTwo);
 
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
-        var inputRuntime = new StardewReviewInputRuntime(helper);
         var dataSource = new StardewReviewDataSource(helper);
         var menuCommand = new ReviewMenuCommand();
+        var inputRuntime = new StardewReviewInputRuntime(helper, menuCommand.CurrentRevision);
         helper.Events.Display.MenuChanged += (_, e) => menuCommand.ObserveRoot(e.NewMenu);
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);

@@ -10,7 +10,7 @@ internal static class ProjectReviewMenuService
     private static readonly ReviewResponseJson ResponseJson = new("review-menu");
     private static readonly HashSet<string> EnvelopeFields = ["schemaVersion", "requestId", "report"];
     private static readonly HashSet<string> ReportFields = ["schemaVersion", "state", "errorCode", "launchId",
-        "topology", "role", "capturedAtUtc", "identityScope", "viewport", "menuOpen", "complete", "truncated", "limitations", "menus"];
+        "topology", "role", "capturedAtUtc", "identityScope", "viewport", "menuOpen", "complete", "truncated", "limitations", "menus", "uiRevision"];
     private static readonly HashSet<string> NodeFields = ["id", "parentId", "relationship", "type", "assembly", "adapter",
         "coverage", "bounds", "currentTab", "scrollIndex", "components"];
     private static readonly HashSet<string> ComponentFields = ["id", "kind", "controllerId", "bounds",
@@ -126,6 +126,7 @@ internal static class ProjectReviewMenuService
                 && report.Menus.Count == 0 && !report.Complete;
         }
         if (report.State != "ready" || report.ErrorCode is not null || report.Viewport is null
+            || !ReviewInputContract.IsUiRevision(report.UiRevision)
             || report.Menus.Count > ReviewMenuContract.MaximumNodes
             || report.MenuOpen != (report.Menus.Count > 0)
             || (report.MenuOpen ? !ReviewTransportToken.IsRequestId(report.IdentityScope) : report.IdentityScope is not null)

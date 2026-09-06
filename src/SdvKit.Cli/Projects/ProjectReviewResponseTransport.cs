@@ -38,6 +38,7 @@ internal static class ProjectReviewResponseTransport
         string? role = null,
         bool drainAfterDispatchOnCancellation = false,
         Func<string, LiveLabCommandResult>? send = null,
+        Action? onCancellation = null,
         CancellationToken cancellationToken = default)
         where TResponse : class
     {
@@ -117,6 +118,8 @@ internal static class ProjectReviewResponseTransport
                         $"The bounded {displayName} request was not written to the exact owned review.")]);
         }
 
+        bool cancellationSignaled = false;
+        ProjectReviewResponseTransportProblem? cancellationSignalFailure = null;
         var stopwatch = Stopwatch.StartNew();
         Action<TimeSpan> wait = delay ?? Thread.Sleep;
         while (!File.Exists(responsePath) && stopwatch.Elapsed < timeout)
@@ -175,7 +178,8 @@ internal static class ProjectReviewResponseTransport
             ObserveCancellation();
             return new ProjectReviewResponseTransportResult<TResponse>(
                 response,
-                cancellationRequested
+                cancellationSignalFailure is not null ? [cancellationSignalFailure]
+                    : cancellationRequested
                     ? [new ProjectReviewResponseTransportProblem(
                         $"{problemPrefix}RequestCanceled",
                         $"The bounded {displayName} request was canceled after it was written; its validated response was retained and the request was not retried.")]
@@ -212,6 +216,16 @@ internal static class ProjectReviewResponseTransport
             if (drainAfterDispatchOnCancellation)
             {
                 cancellationRequested |= cancellationToken.IsCancellationRequested;
+                if (cancellationRequested && !cancellationSignaled)
+                {
+                    cancellationSignaled = true;
+                    try { onCancellation?.Invoke(); }
+                    catch (Exception exception) when (IsControlledFailure(exception))
+                    {
+                        cancellationSignalFailure = new($"{problemPrefix}CancellationNotConfirmed",
+                            $"Cancellation delivery failed after dispatch ({exception.GetType().Name}); the original action was drained without retry.");
+                    }
+                }
                 return;
             }
 

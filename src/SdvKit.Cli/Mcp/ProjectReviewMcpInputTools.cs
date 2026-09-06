@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using ModelContextProtocol.Protocol;
@@ -28,7 +29,12 @@ internal sealed record ProjectReviewMcpInputAcknowledgement(
     bool CursorSet,
     bool MenuOpen,
     bool CancellationRequested,
-    ReviewInputProblem? Problem);
+    ReviewInputProblem? Problem,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Buttons = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DurationTicks = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StartTick = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndTick = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Released = null);
 
 internal sealed class ProjectReviewMcpInputSession
 {
@@ -37,6 +43,11 @@ internal sealed class ProjectReviewMcpInputSession
     private readonly string _runtimePath;
     private readonly Action<TimeSpan> _delay;
     private readonly TimeSpan _postActionTimeout;
+    private readonly TimeSpan _cleanupTimeout;
+    private readonly object _executionSync = new();
+    private CancellationTokenSource? _activeCancellation;
+    private TaskCompletionSource? _activeCompletion;
+    private bool _stopping;
     private int _cleanupRequired;
 
     public ProjectReviewMcpInputSession(
@@ -44,7 +55,8 @@ internal sealed class ProjectReviewMcpInputSession
         string runtimePath,
         ProjectReviewMcpInputRunner runInput,
         Action<TimeSpan>? delay = null,
-        TimeSpan? postActionTimeout = null)
+        TimeSpan? postActionTimeout = null,
+        TimeSpan? cleanupTimeout = null)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         ArgumentException.ThrowIfNullOrWhiteSpace(runtimePath);
@@ -52,13 +64,61 @@ internal sealed class ProjectReviewMcpInputSession
         _runInput = runInput ?? throw new ArgumentNullException(nameof(runInput));
         _delay = delay ?? Thread.Sleep;
         _postActionTimeout = postActionTimeout ?? TimeSpan.FromSeconds(5);
+        _cleanupTimeout = cleanupTimeout ?? TimeSpan.FromSeconds(25);
         if (_postActionTimeout < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(postActionTimeout));
         }
+        if (_cleanupTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cleanupTimeout));
+        }
     }
 
     public ProjectReviewMcpInputInvocation Execute(
+        ReviewInputQuery query,
+        CancellationToken cancellationToken) =>
+        ExecuteWithLifetime(query, cleanup: false, cancellationToken);
+
+    private ProjectReviewMcpInputInvocation ExecuteWithLifetime(
+        ReviewInputQuery query,
+        bool cleanup,
+        CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_executionSync)
+        {
+            if (_stopping && !cleanup)
+            {
+                return ProjectReviewMcpInputInvocation.Error(
+                    "inputSessionStopping", "The input session is closing; no new action was dispatched.");
+            }
+            if (_activeCancellation is not null)
+            {
+                return ProjectReviewMcpInputInvocation.Error(
+                    "inputBusy", "Another bounded input action is already running; the request was not queued.");
+            }
+            _activeCancellation = linked;
+            _activeCompletion = completion;
+        }
+
+        try
+        {
+            return ExecuteLocked(query, linked.Token);
+        }
+        finally
+        {
+            lock (_executionSync)
+            {
+                _activeCancellation = null;
+                _activeCompletion = null;
+                completion.SetResult();
+            }
+        }
+    }
+
+    private ProjectReviewMcpInputInvocation ExecuteLocked(
         ReviewInputQuery query,
         CancellationToken cancellationToken)
     {
@@ -108,12 +168,13 @@ internal sealed class ProjectReviewMcpInputSession
                     "AlwaysOn has not published a valid foreground window handle and process ID for the exact review binding.");
             }
 
+            int previousCleanup = Interlocked.Exchange(ref _cleanupRequired, 1);
             ProjectReviewInputExecutionResult executed = _runInput(
                 query,
                 cancellationToken);
-            if (executed.ActionMayHaveRun)
+            if (!executed.ActionMayHaveRun)
             {
-                Interlocked.Exchange(ref _cleanupRequired, 1);
+                Interlocked.Exchange(ref _cleanupRequired, previousCleanup);
             }
             if (executed.Response is null)
             {
@@ -168,9 +229,15 @@ internal sealed class ProjectReviewMcpInputSession
                     response.CursorSet,
                     response.MenuOpen,
                     cancellationRequested,
-                    response.Problem),
+                    response.Problem,
+                    response.Buttons,
+                    response.DurationTicks,
+                    response.StartTick,
+                    response.EndTick,
+                    response.Released),
                 cancellationRequested
-                    ? FindProblem(executed.Problems, "inputRequestCanceled")
+                    ? FindProblem(executed.Problems, "inputCancellationNotConfirmed")
+                        ?? FindProblem(executed.Problems, "inputRequestCanceled")
                         ?? new ReviewInputProblem(
                             "inputRequestCanceled",
                             "The review-input request was canceled after dispatch; its validated acknowledgement and post-action binding were retained, and it was not retried.")
@@ -181,18 +248,26 @@ internal sealed class ProjectReviewMcpInputSession
 
     public ReviewInputProblem? Cleanup()
     {
+        Task? pending = StopInput();
+        if (pending is not null && !pending.Wait(_cleanupTimeout))
+        {
+            return new ReviewInputProblem(
+                "inputCleanupTimedOut",
+                "The pending input action did not finish its bounded cancellation drain; cleanup was not confirmed.");
+        }
         if (Interlocked.CompareExchange(ref _cleanupRequired, 0, 0) == 0)
         {
             return null;
         }
 
-        ProjectReviewMcpInputInvocation cleanup = Execute(
+        ProjectReviewMcpInputInvocation cleanup = ExecuteWithLifetime(
             new ReviewInputQuery(
                 ReviewInputContract.CursorClearAction,
                 null,
                 null,
                 null,
                 null),
+            cleanup: true,
             CancellationToken.None);
         return cleanup.Acknowledgement is { Succeeded: true }
             ? null
@@ -200,6 +275,29 @@ internal sealed class ProjectReviewMcpInputSession
                 ?? new ReviewInputProblem(
                     "inputCleanupFailed",
                     "Transient review-input state could not be confirmed clear.");
+    }
+
+    internal void CancelPending() => StopInput();
+
+    private Task? StopInput()
+    {
+        CancellationTokenSource? cancellation;
+        Task? completion;
+        lock (_executionSync)
+        {
+            _stopping = true;
+            cancellation = _activeCancellation;
+            completion = _activeCompletion?.Task;
+        }
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The exact action finished between observing it and requesting cancellation.
+        }
+        return completion;
     }
 
     private static bool SameBinding(
@@ -294,6 +392,7 @@ internal sealed record ProjectReviewMcpInputInvocation(
 
 internal static class ProjectReviewMcpInputTools
 {
+    internal const string ChordToolName = "stardew_input_chord";
     internal const string PressToolName = "stardew_input_press";
     internal const string CursorSetToolName = "stardew_input_cursor_set";
     internal const string CursorClearToolName = "stardew_input_cursor_clear";
@@ -304,6 +403,15 @@ internal static class ProjectReviewMcpInputTools
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
+    private static readonly JsonElement ChordInputSchema = ParseSchema(
+        """
+        {"type":"object","additionalProperties":false,"required":["buttons","durationTicks","uiRevision"],
+         "properties":{
+          "buttons":{"type":"array","minItems":1,"maxItems":8,"uniqueItems":true,
+            "items":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]{0,63}$"}},
+          "durationTicks":{"type":"integer","minimum":1,"maximum":120},
+          "uiRevision":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}
+        """);
     private static readonly JsonElement PressInputSchema = ParseSchema(
         """
         {
@@ -381,6 +489,10 @@ internal static class ProjectReviewMcpInputTools
         ArgumentNullException.ThrowIfNull(session);
         return
         [
+            new InputMcpTool(session,
+                Tool(ChordToolName,
+                    "Press 1-8 buttons atomically for 1-120 input updates using a fresh stardew_menu_get uiRevision; acknowledge only after release. Ctrl+V is unsupported.",
+                    ChordInputSchema, destructive: true, idempotent: false), TryChord),
             new InputMcpTool(
                 session,
                 Tool(
@@ -476,6 +588,35 @@ internal static class ProjectReviewMcpInputTools
         IDictionary<string, JsonElement>? arguments,
         out ReviewInputQuery? query);
 
+    private static bool TryChord(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query)
+    {
+        query = null;
+        if (!HasOnly(arguments, ["buttons", "durationTicks", "uiRevision"])
+            || !TryInt32(arguments!, "durationTicks", out int duration)
+            || !TryString(arguments!, "uiRevision", out string? revision)
+            || arguments!["buttons"].ValueKind != JsonValueKind.Array) return false;
+        JsonElement buttons = arguments["buttons"];
+        if (buttons.GetArrayLength() is < 1 or > 8
+            || buttons.EnumerateArray().Any(b => b.ValueKind != JsonValueKind.String)) return false;
+        query = new(ReviewInputContract.ChordAction, null, null, null, null,
+            buttons.EnumerateArray().Select(b => b.GetString()!).ToArray(), duration, revision);
+        return ProjectReviewInputService.Validate(query) is null;
+    }
+
+    private static JsonElement ChordOutputSchema()
+    {
+        JsonNode schema = JsonNode.Parse(OutputSchema.GetRawText())!;
+        JsonObject properties = schema["properties"]!.AsObject();
+        properties["action"] = JsonNode.Parse("{\"type\":\"string\",\"const\":\"chord\"}");
+        properties["buttons"] = JsonNode.Parse("{\"type\":\"array\",\"minItems\":1,\"maxItems\":8,\"items\":{\"type\":\"string\"}}");
+        properties["durationTicks"] = JsonNode.Parse("{\"type\":\"integer\",\"minimum\":1,\"maximum\":120}");
+        properties["startTick"] = JsonNode.Parse("{\"type\":\"integer\",\"minimum\":0}");
+        properties["endTick"] = JsonNode.Parse("{\"type\":\"integer\",\"minimum\":0}");
+        properties["released"] = JsonNode.Parse("{\"type\":\"boolean\"}");
+        foreach (string field in new[] { "buttons", "durationTicks", "released" }) schema["required"]!.AsArray().Add(field);
+        return JsonSerializer.SerializeToElement(schema);
+    }
+
     private static bool TryPress(
         IDictionary<string, JsonElement>? arguments,
         out ReviewInputQuery? query)
@@ -566,7 +707,7 @@ internal static class ProjectReviewMcpInputTools
             Name = name,
             Description = description,
             InputSchema = inputSchema,
-            OutputSchema = OutputSchema,
+            OutputSchema = name == ChordToolName ? ChordOutputSchema() : OutputSchema,
             Annotations = new ToolAnnotations
             {
                 ReadOnlyHint = false,

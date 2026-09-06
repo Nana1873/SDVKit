@@ -11,6 +11,8 @@ namespace SdvKit.AlwaysOn;
 internal sealed class StardewReviewMenuSource : IReviewMenuSource
 {
     public object? Root => Game1.activeClickableMenu;
+    public float UiScale => Game1.options.uiScale;
+    public float Zoom => Game1.options.zoomLevel;
     public ReviewMenuRectangle Viewport => new(Game1.uiViewport.X, Game1.uiViewport.Y,
         Game1.uiViewport.Width, Game1.uiViewport.Height);
 
@@ -117,6 +119,19 @@ internal sealed class ReviewMenuCommand
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal void ObserveRoot(IClickableMenu? menu) => _capture.ObserveRoot(menu);
+
+    internal string? CurrentRevision()
+    {
+        string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
+        string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
+        role = string.IsNullOrWhiteSpace(role) ? null : role;
+        return Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") == "1"
+            && Context.IsWorldReady && !Game1.exitToTitle && ReviewTransportToken.IsRequestId(launch)
+            && (role is null || NetworkTwoContract.IsRole(role))
+                ? _capture.Capture(_source, launch, DateTimeOffset.UtcNow,
+                    role is null ? "single" : "network-2", role).UiRevision
+                : null;
+    }
 
     internal void Handle(string[] args, string runtimePath, IMonitor monitor)
     {
