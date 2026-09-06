@@ -53,6 +53,28 @@ internal static class ProjectReviewInputService
         ["code", "message"],
         StringComparer.Ordinal);
 
+    internal static void DispatchCancellation(Func<LiveLabCommandResult> send, Action<TimeSpan>? delay = null)
+    {
+        Action<TimeSpan> wait = delay ?? Thread.Sleep;
+        for (int attempt = 0; ; attempt++)
+        {
+            LiveLabCommandResult result = send();
+            if (result.ExitCode == 0) return;
+            bool busyBeforeWrite = result.Report switch
+            {
+                ProjectReviewCommandReport report => report.CommandWritten == false
+                    && report.Problems.Count == 1 && report.Problems[0].Code == "labBusy",
+                ProjectNetworkReviewCommandReport report => report.CommandWritten == false
+                    && report.Problems.Count == 1 && report.Problems[0].Code == "labBusy",
+                _ => false,
+            };
+            // Only lock contention proves no write occurred. Never repeat an uncertain delivery.
+            if (!busyBeforeWrite || attempt == 20)
+                throw new IOException("The exact cancellation command was not confirmed written.");
+            wait(TimeSpan.FromMilliseconds(50));
+        }
+    }
+
     public static ProjectReviewInputExecutionResult Execute(
         ReviewInputQuery query,
         string labRoot,
@@ -124,9 +146,8 @@ internal static class ProjectReviewInputService
                     onCancellation: ReviewInputContract.IsGesture(query.Action) || query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction
                         ? () =>
                         {
-                            LiveLabCommandResult canceled = ProjectReviewService.ExecuteCommand(
-                                $"sdvkit input cancel {requestId}", topology, role, labRoot, inputSender);
-                            if (canceled.ExitCode != 0) throw new IOException("The exact cancellation command was not confirmed written.");
+                            DispatchCancellation(() => ProjectReviewService.ExecuteCommand(
+                                $"sdvkit input cancel {requestId}", topology, role, labRoot, inputSender));
                         }
             : null);
 

@@ -12,6 +12,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - `project review menu` and read-only `stardew_menu_get` describe active inventory/shop menus, nested pages and bounded public mod-menu components in each existing review role, with observed-object IDs, fresh geometry and explicit partial coverage.
 
+### Fixed
+
+- Request cancellation for review presses, chords and gestures waits briefly for concurrent read-only command dispatch to finish; uncertain writes are never retried.
+
 ### Documentation
 
 - Document an optional `workspaces/<ModName>/` layout and agent guidance for separate mod sources sharing one lab, while preserving explicit user-selected paths.
