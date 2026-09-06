@@ -29,8 +29,8 @@ and acceptance without duplicating this authoring recipe.
 ## Select the installation and project
 
 Use Windows and the [required SDK/game/SMAPI](../README.md#requirements).
-These commands need `main` after PR #133; **published v0.7.0 alone lacks the
-selection and diagnosis workflow**. Build/package a fresh checkout using the
+These commands are included in the published **v0.8.0** package. Build/package
+a fresh checkout using the
 [CP recipe's CLI setup](cp-authoring.md#prerequisites-and-one-lab-directory),
 omitting its CP provider and CP-specific help commands. Retain the exact commit,
 SDVKit ZIP and SHA-256; set `$sdvkit` to its extracted absolute executable path.

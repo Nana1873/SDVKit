@@ -40,9 +40,8 @@ Choose that version, not an arbitrary latest provider: SDVKit's diagnosis/refres
 currently recognizes exactly 2.9.1. Extract or copy it under your lab's ignored
 `.sdvkit/`; leave the download and any normal Mods installation unchanged.
 
-These commands require the authoring capabilities on `main` after PR #128.
-The published **v0.7.0 alone does not contain them**. Until a release includes
-them, build a fresh checkout using [Contributing](../CONTRIBUTING.md):
+These commands are included in the published **v0.8.0** package. To verify a
+fresh checkout instead, use [Contributing](../CONTRIBUTING.md):
 
 ```powershell
 git clone https://github.com/Nana1873/SDVKit.git SDVKit-authoring
@@ -50,11 +49,11 @@ Set-Location SDVKit-authoring
 git rev-parse HEAD # retain this commit with your evidence
 .\scripts\package-windows-x64.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
-$archive = (Resolve-Path '.sdvkit\distribution\SDVKit-0.7.0-win-x64.zip').Path
+$archive = (Resolve-Path '.sdvkit\distribution\SDVKit-0.8.0-win-x64.zip').Path
 $expected = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) { throw 'Hash mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath .sdvkit\authoring-install
-$sdvkit = (Resolve-Path '.sdvkit\authoring-install\SDVKit-0.7.0-win-x64\sdvkit.exe').Path
+$sdvkit = (Resolve-Path '.sdvkit\authoring-install\SDVKit-0.8.0-win-x64\sdvkit.exe').Path
 & $sdvkit project check --help
 & $sdvkit project review cp-diagnose --help
 & $sdvkit project review cp-refresh --help
