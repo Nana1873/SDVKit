@@ -478,6 +478,7 @@ public sealed class ProjectReviewMcpTests
                         ProjectReviewMcpInputTools.CursorSetToolName,
                         ProjectReviewMcpInputTools.CursorClearToolName,
                         ProjectReviewMcpInputTools.WheelToolName,
+                        ProjectReviewMcpInputTools.TextToolName,
                     ];
                 }
                 Assert.Equal(

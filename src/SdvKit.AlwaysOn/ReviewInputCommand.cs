@@ -20,6 +20,7 @@ internal enum ReviewInputKind
     ClearCursor,
     Chord,
     Gesture,
+    Text,
 }
 
 internal sealed record ReviewInputRequest(
@@ -31,12 +32,13 @@ internal sealed record ReviewInputRequest(
     IReadOnlyList<string>? Buttons = null,
     int DurationTicks = 1,
     string? UiRevision = null,
-    ReviewInputQuery? Gesture = null);
+    ReviewInputQuery? Gesture = null,
+    ReviewInputQuery? TextQuery = null);
 
 internal static class ReviewInputArguments
 {
     internal const string Usage =
-        "Usage: sdvkit input press <SButton|MouseWheelUp|MouseWheelDown> | sdvkit input chord <ticks> <ui-revision> <SButton...> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear";
+        "Usage: sdvkit input press <SButton|MouseWheelUp|MouseWheelDown> | sdvkit input chord <ticks> <ui-revision> <SButton...> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear | sdvkit input text <ui-revision> <field-id> <UTF-8-base64>";
 
     public static bool TryParse(
         IReadOnlyList<string>? arguments,
@@ -62,7 +64,22 @@ internal static class ReviewInputArguments
             actionIndex = 3;
         }
 
-        if (ReviewInputContract.IsGesture(arguments[actionIndex]))
+        if (arguments[actionIndex] == "text" && arguments.Count == actionIndex + 4
+            && ReviewInputContract.IsUiRevision(arguments[actionIndex + 1])
+            && long.TryParse(arguments[actionIndex + 2], NumberStyles.None, CultureInfo.InvariantCulture, out long fieldId)
+            && fieldId > 0 && arguments[actionIndex + 3].Length <= 1024)
+        {
+            try
+            {
+                string text = new System.Text.UTF8Encoding(false, true).GetString(Convert.FromBase64String(arguments[actionIndex + 3]));
+                if (ReviewInputContract.ValidateText(text) is null)
+                    request = new(ReviewInputKind.Text, null, 0, 0, requestId,
+                        TextQuery: new(ReviewInputContract.TextAction, null, null, null, null,
+                            UiRevision: arguments[actionIndex + 1], Text: text, FieldId: fieldId));
+            }
+            catch (Exception exception) when (exception is FormatException or System.Text.DecoderFallbackException) { }
+        }
+        else if (ReviewInputContract.IsGesture(arguments[actionIndex]))
         {
             string action = arguments[actionIndex];
             string[] values = arguments.Skip(actionIndex + 1).ToArray();
@@ -192,6 +209,9 @@ internal interface IReviewInputRuntime
         out string error)
     { error = "Chord input is unavailable."; return false; }
 
+    bool TryText(ReviewInputRequest request, Action<ReviewInputResult> completed, out string error)
+    { error = "Text input is unavailable."; return false; }
+
     bool TryScroll(int direction, out string error);
 
     bool TrySetCursor(int x, int y, out string error);
@@ -210,7 +230,40 @@ internal sealed record ReviewInputResult(
     bool? Released = null,
     int? CompletedSteps = null,
     int? FinalX = null,
-    int? FinalY = null);
+    int? FinalY = null,
+    int? DeliveredScalars = null);
+
+// Advances only after the normal dispatcher poll, with no prequeued remainder.
+internal sealed class ReviewTextProgress
+{
+    private readonly string _text;
+    private bool _inFlight;
+    public ReviewTextProgress(string text)
+    {
+        if (ReviewInputContract.ValidateText(text) is not null) throw new ArgumentException("Unsupported text.", nameof(text));
+        _text = text;
+    }
+    public int Delivered { get; private set; }
+    public bool Stopped { get; private set; }
+    public bool Complete => Delivered == _text.Length;
+    public bool TryNext(bool current, bool concurrent, out char character)
+    {
+        character = default;
+        if (!current || concurrent) Stop();
+        if (Stopped || Complete || _inFlight) return false;
+        character = _text[Delivered];
+        _inFlight = true;
+        return true;
+    }
+    public void ObservePoll(bool completed)
+    {
+        if (!_inFlight) throw new InvalidOperationException("No character event is pending.");
+        _inFlight = false;
+        if (completed) Delivered++;
+        else Stop();
+    }
+    public void Stop() => Stopped = true;
+}
 
 // The existing adapter's mouse values, before SMAPI derives its helpers and events.
 internal sealed class ReviewVirtualMouseState
@@ -589,6 +642,12 @@ internal static class ReviewInputCommand
 
         try
         {
+            if (request!.Kind == ReviewInputKind.Text)
+            {
+                if (!runtime.TryText(request, Complete, out string textError))
+                    Complete(new(false, textError, ProblemCode: "inputTextRejected", DeliveredScalars: 0));
+                return;
+            }
             if (request!.Kind is ReviewInputKind.Chord or ReviewInputKind.Press or ReviewInputKind.Gesture)
             {
                 if (!runtime.TryChord(request, Complete, out string chordError))
@@ -660,6 +719,7 @@ internal static class ReviewInputCommand
     {
         string action = request.Kind switch
         {
+            ReviewInputKind.Text => ReviewInputContract.TextAction,
             ReviewInputKind.Press => ReviewInputContract.PressAction,
             ReviewInputKind.Chord => ReviewInputContract.ChordAction,
             ReviewInputKind.Gesture => request.Gesture!.Action,
@@ -706,7 +766,8 @@ internal static class ReviewInputCommand
             request.Gesture?.Count, request.Gesture?.Notches, request.Gesture?.EndX, request.Gesture?.EndY,
             request.Gesture is not null ? result.CompletedSteps ?? 0 : null,
             request.Gesture is not null && runtime.CursorSet ? result.FinalX ?? runtime.CursorX : null,
-            request.Gesture is not null && runtime.CursorSet ? result.FinalY ?? runtime.CursorY : null);
+            request.Gesture is not null && runtime.CursorSet ? result.FinalY ?? runtime.CursorY : null,
+            request.Kind == ReviewInputKind.Text ? result.DeliveredScalars ?? 0 : null);
     }
 
     private static void TryWriteFailureResponse(
@@ -737,7 +798,7 @@ internal static class ReviewInputCommand
     }
 }
 
-internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?> currentRevision, Func<string?> currentContinuity, Func<string?> currentViewport) : IReviewInputRuntime
+internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?> currentRevision, Func<string?> currentContinuity, Func<string?> currentViewport, Func<long, bool> currentTextField) : IReviewInputRuntime
 {
     public int UiWidth => Game1.uiViewport.Width;
 
@@ -783,6 +844,9 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
         return ReviewVirtualCursor.TryChord(helper.Input, [parsed], 1, null, currentRevision,
             _ => { }, out error, null);
     }
+
+    public bool TryText(ReviewInputRequest request, Action<ReviewInputResult> completed, out string error) =>
+        ReviewVirtualCursor.TryText(request, currentRevision, currentTextField, completed, out error);
 
     public bool TryChord(ReviewInputRequest request, Action<ReviewInputResult> completed,
         out string error)
@@ -862,7 +926,7 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
     }
 }
 
-internal static class ReviewVirtualCursor
+internal static partial class ReviewVirtualCursor
 {
     private const string HarmonyId = "SDVKit.AlwaysOn.VirtualReviewCursor";
 
@@ -874,6 +938,9 @@ internal static class ReviewVirtualCursor
         string? Revision, Func<string?> CurrentRevision, Action<ReviewInputResult> Completed,
         object? Root, object? Player, string? Launch, string? Role, string? RequestId)
     {
+        public TextTarget? CommandTarget { get; init; }
+        public Keys CommandKey { get; init; }
+        public bool CommandDelivered { get; set; }
         public string? Failure { get; set; }
         public Func<string?>? CurrentContinuity { get; init; }
         public string? Continuity { get; init; }
@@ -1012,7 +1079,7 @@ internal static class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (!_installed || _pending is not null)
+            if (!_installed || _text is not null || _pending is not null)
             {
                 error = "Virtual cursor input is unavailable because its process-local input patch was not installed.";
                 return false;
@@ -1031,6 +1098,7 @@ internal static class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
+            FinishText("The review input was cleared before completion.");
             CancelChord("The review input was cleared before completion.");
             if (_pending?.Progress.Gesture is null) _mouse.Clear();
             AllowBackgroundInputForNextTicks();
@@ -1045,7 +1113,7 @@ internal static class ReviewVirtualCursor
         {
             EnsureInputOwner();
             error = "The input adapter is unavailable or another input action is pending.";
-            if (!_installed || _pending is not null || _mouse.HasPendingWheel) return false;
+            if (!_installed || _text is not null || _pending is not null || _mouse.HasPendingWheel) return false;
             if (gesture is null && buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())) && !_mouse.IsSet)
             { error = "Set the virtual review cursor before pressing a mouse button."; return false; }
             if (buttons.Any(b => helper.IsDown(b) || helper.IsSuppressed(b))
@@ -1054,12 +1122,27 @@ internal static class ReviewVirtualCursor
             { error = "A chord member is already down, suppressed or externally queued."; return false; }
             if (revision is not null && currentRevision() != revision)
             { error = "The UI revision is stale; read the current menu before sending input."; return false; }
+            TextTarget? commandTarget = null;
+            Keys commandKey = Keys.None;
+            if (gesture is null && Game1.activeClickableMenu?.GetType() == typeof(StardewValley.Menus.NamingMenu)
+                && buttons.Any(b => b is SButton.Back or SButton.Enter or SButton.Tab))
+            {
+                error = "Text commands require one unmodified Back, Enter or Tab button for one tick and an exact supported selected field.";
+                if (buttons.Length != 1 || duration != 1 || !EnsureTextBinding()
+                    || (commandTarget = CaptureTextTarget()) is null || !buttons[0].TryGetKeyboard(out commandKey)) return false;
+            }
             _pending = new(helper, buttons, new(duration, gesture), revision, currentRevision, completed,
                 Game1.activeClickableMenu, Game1.player,
                 Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID"),
                 Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"), requestId)
-            { CurrentContinuity = currentContinuity, Continuity = currentContinuity?.Invoke(),
-                CurrentViewport = currentViewport, Viewport = currentViewport?.Invoke() };
+            {
+                CommandTarget = commandTarget,
+                CommandKey = commandKey,
+                CurrentContinuity = currentContinuity,
+                Continuity = currentContinuity?.Invoke(),
+                CurrentViewport = currentViewport,
+                Viewport = currentViewport?.Invoke()
+            };
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
@@ -1070,6 +1153,7 @@ internal static class ReviewVirtualCursor
     {
         lock (Sync)
         {
+            if (_text?.Request.RequestId == requestId) FinishText("The request was canceled by its owner.");
             if (_pending?.RequestId == requestId) CancelChord("The request was canceled by its owner.");
         }
     }
@@ -1091,6 +1175,8 @@ internal static class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
+            ObserveTextLifetime();
+            if (_text is not null) AllowBackgroundInputForNextTicks();
             if (!ReferenceEquals(__instance, _inputOwner) || _pending is not PendingInput chord) return;
             if (chord.Progress.AwaitingGameUpdate)
             {
@@ -1232,6 +1318,7 @@ internal static class ReviewVirtualCursor
     {
         lock (Sync)
         {
+            ObserveTextLifetime();
             if (_pending is not PendingInput pending || !pending.Progress.AwaitingGameUpdate) return;
             if (pending.Progress.CompleteGameUpdate(out bool released)) FinishChord(released);
         }
@@ -1250,7 +1337,8 @@ internal static class ReviewVirtualCursor
     {
         if (_pending is not PendingInput chord) return;
         _pending = null;
-        bool success = !chord.Progress.Canceled && released;
+        bool success = !chord.Progress.Canceled && released
+            && (chord.CommandTarget is null || chord.CommandDelivered);
         if (!success && chord.Progress.Gesture is not null) _mouse.Clear();
         chord.Completed(new(success,
             success ? "The complete chord was observed and released."
@@ -1276,7 +1364,7 @@ internal static class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            if (!_installed || _pending is not null || !_mouse.TryQueueWheel(direction))
+            if (!_installed || _text is not null || _pending is not null || !_mouse.TryQueueWheel(direction))
             {
                 error = "The virtual wheel requires a cursor, one pending notch at most, and an available cumulative counter range.";
                 return false;
@@ -1292,6 +1380,7 @@ internal static class ReviewVirtualCursor
     {
         if (!ReferenceEquals(_inputOwner, Game1.input))
         {
+            FinishText("The input owner changed before text delivery completed.");
             _inputOwner = Game1.input;
             _mouse = new ReviewVirtualMouseState();
             CancelChord("The input owner changed before release was confirmed.");

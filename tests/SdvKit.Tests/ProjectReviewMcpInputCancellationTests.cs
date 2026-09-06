@@ -10,8 +10,10 @@ namespace SdvKit.Tests;
 [Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewMcpInputCancellationTests
 {
-    [Fact]
-    public async Task CleanupCancelsPendingInputAndWaitsForReleaseBeforeClearing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CleanupCancelsPendingInputAndWaitsForReleaseBeforeClearing(bool text)
     {
         using TemporaryDirectory temporary = new();
         var entered = Signal();
@@ -31,7 +33,9 @@ public sealed class ProjectReviewMcpInputCancellationTests
             return Acknowledge(temporary, query);
         });
 
-        Task<ProjectReviewMcpInputInvocation> action = Task.Run(() => session.Execute(Query(), CancellationToken.None));
+        Task<ProjectReviewMcpInputInvocation> action = Task.Run(() => session.Execute(text
+            ? new(ReviewInputContract.TextAction, null, null, null, null, UiRevision: new string('a', 64), Text: "abc", FieldId: 1)
+            : Query(), CancellationToken.None));
         Task<ReviewInputProblem?>? cleanup = null;
         try
         {
@@ -45,7 +49,7 @@ public sealed class ProjectReviewMcpInputCancellationTests
             ProjectReviewMcpInputInvocation result = await action.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(result.Acknowledgement!.CancellationRequested);
             Assert.Null(await cleanup.WaitAsync(TimeSpan.FromSeconds(10)));
-            Assert.Equal([ReviewInputContract.CursorSetAction, "released", ReviewInputContract.CursorClearAction], calls);
+            Assert.Equal([text ? ReviewInputContract.TextAction : ReviewInputContract.CursorSetAction, "released", ReviewInputContract.CursorClearAction], calls);
         }
         finally
         {

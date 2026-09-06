@@ -8,10 +8,11 @@ namespace SdvKit.AlwaysOn;
 internal sealed record MenuComponentObservation(object Instance, string Kind, int ControllerId,
     ReviewMenuRectangle Bounds, bool VisibleFlag, bool ControllerFocused);
 internal sealed record MenuChildObservation(object Instance, string Relationship);
+internal sealed record MenuTextFieldObservation(object Instance, object Dispatcher, object? Subscriber, bool Selected, bool Available, ReviewMenuRectangle Bounds);
 internal sealed record MenuObservation(string Type, string Adapter, bool Supported,
     ReviewMenuRectangle Bounds, int? CurrentTab, int? ScrollIndex,
     IReadOnlyList<MenuComponentObservation> Components, IReadOnlyList<MenuChildObservation> Children,
-    bool ScanTruncated = false, string Assembly = "UnknownAssembly");
+    bool ScanTruncated = false, string Assembly = "UnknownAssembly", MenuTextFieldObservation? TextField = null);
 internal interface IReviewMenuSource
 {
     object? Root { get; }
@@ -152,7 +153,9 @@ internal sealed class ReviewMenuCapture
             nodes.Add(new(menuId, parentId, relationship, type, assembly, observed.Adapter,
                 observed.Supported ? "declaredFields" : "partial", observed.Bounds,
                 observed.CurrentTab, observed.ScrollIndex,
-                Array.AsReadOnly(components.OrderBy(c => c.Id).ToArray())));
+                Array.AsReadOnly(components.OrderBy(c => c.Id).ToArray()),
+                observed.TextField is { } field ? new(Id(field.Instance), Id(field.Dispatcher),
+                    field.Subscriber is null ? null : Id(field.Subscriber), field.Selected, field.Available, field.Bounds) : null));
             foreach (MenuChildObservation child in observed.Children.Take(ReviewMenuContract.MaximumNodes + 1))
             {
                 Visit(child.Instance, menuId, child.Relationship, depth + 1);

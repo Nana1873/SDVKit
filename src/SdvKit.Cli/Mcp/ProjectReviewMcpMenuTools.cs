@@ -28,9 +28,12 @@ internal static class ProjectReviewMcpMenuTools
               "relationship":{"enum":["root","activePage","inventory","child"]},
               "type":{"type":"string","minLength":1,"maxLength":128},
               "assembly":{"type":"string","minLength":1,"maxLength":128},
-              "adapter":{"enum":["publicBase","gameMenu","inventoryPage","inventoryMenu","shopMenu"]},
+              "adapter":{"enum":["publicBase","gameMenu","inventoryPage","inventoryMenu","shopMenu","namingMenu"]},
               "coverage":{"enum":["declaredFields","partial"]},"bounds":{"$ref":"#/$defs/rectangle"},
               "currentTab":{"type":["integer","null"]},"scrollIndex":{"type":["integer","null"]},
+              "textField":{"type":"object","additionalProperties":false,"required":["id","dispatcherId","subscriberId","selected","available","bounds"],"properties":{
+                "id":{"type":"integer","minimum":1},"dispatcherId":{"type":"integer","minimum":1},"subscriberId":{"type":["integer","null"],"minimum":1},
+                "selected":{"type":"boolean"},"available":{"type":"boolean"},"bounds":{"$ref":"#/$defs/rectangle"}}},
               "components":{"type":"array","maxItems":128,"items":{"type":"object","additionalProperties":false,
                 "required":["id","kind","controllerId","bounds","visibleFlag","intersectsViewport","controllerFocused"],
                 "properties":{

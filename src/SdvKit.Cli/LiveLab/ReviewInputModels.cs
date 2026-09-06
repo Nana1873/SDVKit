@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace SdvKit.Cli.LiveLab;
@@ -8,6 +9,26 @@ internal static class ReviewInputContract
     public const int SchemaVersion = 1;
     public const int MaximumResponseBytes = 4096;
     public const int MaximumProblemLength = 256;
+    public const string TextAction = "text";
+    public const int MaximumTextScalars = 256;
+
+    public static ReviewInputProblem? ValidateText(string? text)
+    {
+        if (text is null || text.Length == 0) return new("inputTextEmpty", "Text must contain at least one character.");
+        if (!ReviewTransportText.IsWellFormedUtf16(text)) return new("inputTextUnicodeInvalid", "Text must be well-formed Unicode.");
+        int scalars = text.EnumerateRunes().Count();
+        if (scalars > MaximumTextScalars) return new("inputTextTooLong", "Text exceeds 256 Unicode scalar values.");
+        if (text.Any(char.IsControl)) return new("inputTextControlUnsupported", "Control characters must use bounded button input.");
+        if (text.Any(char.IsSurrogate)) return new("inputTextSupplementaryUnsupported", "The supported SDL text path does not deliver supplementary Unicode scalars.");
+        return null;
+    }
+
+    public static bool ValidTextTarget(ReviewInputQuery query) => query.Action == TextAction
+        && IsUiRevision(query.UiRevision) && query.FieldId is > 0
+        && query.Button is null && query.Direction is null && query.X is null && query.Y is null
+        && query.Buttons is null && query.DurationTicks is null && query.Modifiers is null
+        && query.Count is null && query.Notches is null && query.EndX is null && query.EndY is null;
+
     public const string PressAction = "press";
     public const string ChordAction = "chord";
     public const string ClickAction = "click";
@@ -97,7 +118,9 @@ internal sealed record ReviewInputQuery(
     int? Count = null,
     int? Notches = null,
     int? EndX = null,
-    int? EndY = null);
+    int? EndY = null,
+    string? Text = null,
+    long? FieldId = null);
 
 internal sealed record ReviewInputProblem(
     string Code,
@@ -129,4 +152,5 @@ internal sealed record ReviewInputResponseEnvelope(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndY = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? CompletedSteps = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalX = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DeliveredScalars = null);

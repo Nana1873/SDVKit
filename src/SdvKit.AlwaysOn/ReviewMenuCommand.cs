@@ -22,11 +22,25 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         Type type = menu.GetType();
         var components = new List<MenuComponentObservation>();
         var children = new List<MenuChildObservation>();
+        MenuTextFieldObservation? textField = null;
         bool truncated = false;
         int scanned = 0;
         string adapter = "publicBase";
         int? tab = null, scroll = null;
-        if (type == typeof(GameMenu))
+        if (type == typeof(NamingMenu))
+        {
+            adapter = "namingMenu";
+            var naming = (NamingMenu)menu;
+            Add(naming.textBoxCC, "publicComponent");
+            Add(naming.doneNamingButton, "publicComponent");
+            Add(naming.randomButton, "publicComponent");
+            if (naming.textBox is { } box && box.GetType() == typeof(TextBox) && !box.PasswordBox
+                && Game1.keyboardDispatcher is { } dispatcher && dispatcher.GetType() == typeof(KeyboardDispatcher))
+                textField = new(box, dispatcher, dispatcher.Subscriber, box.Selected,
+                    ReferenceEquals(menu, Root) && menu.GetChildMenu() is null && box.Selected
+                        && ReferenceEquals(box, dispatcher.Subscriber), new(box.X, box.Y, box.Width, box.Height));
+        }
+        else if (type == typeof(GameMenu))
         {
             adapter = "gameMenu";
             var game = (GameMenu)menu;
@@ -69,7 +83,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         Child(menu.GetChildMenu(), "child");
         return new(type.FullName ?? type.Name, adapter, adapter != "publicBase",
             new(menu.xPositionOnScreen, menu.yPositionOnScreen, menu.width, menu.height),
-            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly");
+            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField);
 
         void Child(IClickableMenu? child, string relationship)
         {
@@ -119,6 +133,13 @@ internal sealed class ReviewMenuCommand
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal void ObserveRoot(IClickableMenu? menu) => _capture.ObserveRoot(menu);
+
+    internal bool CurrentTextField(long id)
+    {
+        string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
+        return _capture.Capture(_source, launch, DateTimeOffset.UtcNow).Menus
+            .Any(m => m.Relationship == "root" && m.TextField is { Available: true } field && field.Id == id);
+    }
 
     internal string? CurrentRevision() => CaptureRevision(false);
     internal string? CurrentContinuity() => CaptureRevision(true);

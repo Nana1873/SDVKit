@@ -6,6 +6,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Opt-in review text entry delivers bounded BMP characters through the native event queue to exact selected NamingMenu TextBox fields, including mod-created instances. Fresh field/subscriber identity, cancellation, partial delivery counts and a one-tick Back/Enter/Tab command bridge keep field acceptance and persistence separate from acknowledgement.
+
 - Active-menu review input adds bounded click/double-click, signed scrolling and linear drag gestures with optional modifiers, observed partial progress and explicit final virtual-cursor state.
 
 - Opt-in review input supports atomic chords of 1-8 buttons held for 1-120 input updates, with fresh menu UI revisions, observed release acknowledgements, and cancellation without suppressing physical input.

@@ -14,7 +14,49 @@ public sealed class ProjectReviewMcpInputTests
 {
     private static readonly string[] ModifierChord = ["LeftShift", "F8"];
     [Fact]
-    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyEight()
+    public async Task RawJsonUnpairedSurrogatesAreRejectedBySdkAndConnectionRemainsUsable()
+    {
+        using TemporaryDirectory temporary = new();
+        var reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        int calls = 0;
+        var session = CreateSession(temporary, reader, (query, token) =>
+        {
+            calls++;
+            return SuccessfulResponse(LiveLabPaths.Resolve(temporary.Path).RuntimePath, query, token);
+        });
+        var incoming = new Pipe();
+        var outgoing = new Pipe();
+        await using var transport = new StreamServerTransport(incoming.Reader.AsStream(), outgoing.Writer.AsStream(), "raw-text-test");
+        await using var server = McpServer.Create(transport, ProjectReviewMcpServer.CreateOptions(reader, runData: null, inputSession: session));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        Task running = server.RunAsync(timeout.Token);
+        await using var writer = new StreamWriter(incoming.Writer.AsStream(), new System.Text.UTF8Encoding(false)) { AutoFlush = true };
+        using var responseReader = new StreamReader(outgoing.Reader.AsStream());
+        await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"raw","version":"1"}}}""");
+        Assert.NotNull(await responseReader.ReadLineAsync(timeout.Token));
+        await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/initialized"}""");
+        foreach (string literal in new[] { """\uD800""", """\uDC00""", """\uD800x""" })
+        {
+            string json = """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stardew_input_text","arguments":{"text":"TEXT","fieldId":2,"uiRevision":"REVISION"}}}"""
+                .Replace("TEXT", literal, StringComparison.Ordinal).Replace("REVISION", new string('a', 64), StringComparison.Ordinal);
+            await writer.WriteLineAsync(json);
+            using var response = JsonDocument.Parse((await responseReader.ReadLineAsync(timeout.Token))!);
+            JsonElement error = response.RootElement.GetProperty("error");
+            Assert.Equal(-32603, error.GetProperty("code").GetInt32());
+            Assert.Equal("An error occurred.", error.GetProperty("message").GetString());
+            Assert.DoesNotContain(literal, response.RootElement.GetRawText(), StringComparison.Ordinal);
+            Assert.Equal(0, calls);
+        }
+        await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"stardew_input_text","arguments":{"text":"ok","fieldId":2,"uiRevision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}""");
+        using var valid = JsonDocument.Parse((await responseReader.ReadLineAsync(timeout.Token))!);
+        Assert.False(valid.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+        Assert.Equal(1, calls);
+        await incoming.Writer.CompleteAsync();
+        await running.WaitAsync(timeout.Token);
+    }
+
+    [Fact]
+    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyNine()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
@@ -51,6 +93,7 @@ public sealed class ProjectReviewMcpInputTests
                 ProjectReviewMcpInputTools.DragToolName,
                 ProjectReviewMcpInputTools.PressToolName,
                 ProjectReviewMcpInputTools.ScrollToolName,
+                ProjectReviewMcpInputTools.TextToolName,
                 ProjectReviewMcpInputTools.WheelToolName,
             ],
             optedInNames
@@ -104,7 +147,7 @@ public sealed class ProjectReviewMcpInputTests
             .Where(tool => tool.Name.StartsWith("stardew_input_", StringComparison.Ordinal))
             .OrderBy(tool => tool.Name, StringComparer.Ordinal)
             .ToArray();
-        Assert.Equal(8, inputTools.Length);
+        Assert.Equal(9, inputTools.Length);
         foreach (Tool tool in inputTools)
         {
             Assert.False(tool.Annotations?.ReadOnlyHint);
@@ -128,6 +171,27 @@ public sealed class ProjectReviewMcpInputTests
                 .GetBoolean());
         }
 
+        CallToolResult text = await client.CallToolAsync(ProjectReviewMcpInputTools.TextToolName,
+            new Dictionary<string, object?>
+            {
+                ["text"] = "  \u00e4\u00f6\u00fc\u00df  ",
+                ["fieldId"] = 2,
+                ["uiRevision"] = new string('a', 64)
+            }, cancellationToken: timeout.Token);
+        Assert.Equal(8, Assert.IsType<JsonElement>(text.StructuredContent).GetProperty("deliveredScalars").GetInt32());
+        int beforeInvalidText = queries.Count;
+        foreach (string invalidText in new[] { "", "a\n", "a\U0001f600", new string('x', 257) })
+        {
+            CallToolResult rejected = await client.CallToolAsync(ProjectReviewMcpInputTools.TextToolName,
+                new Dictionary<string, object?>
+                {
+                    ["text"] = invalidText,
+                    ["fieldId"] = 2,
+                    ["uiRevision"] = new string('a', 64)
+                }, cancellationToken: timeout.Token);
+            Assert.True(rejected.IsError);
+        }
+        Assert.Equal(beforeInvalidText, queries.Count);
         CallToolResult press = await client.CallToolAsync(
             ProjectReviewMcpInputTools.PressToolName,
             new Dictionary<string, object?> { ["button"] = "MouseLeft" },
@@ -186,9 +250,10 @@ public sealed class ProjectReviewMcpInputTests
             },
             timeout.Token);
 
-        Assert.All([press, chord, click, scroll, drag, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
+        Assert.All([text, press, chord, click, scroll, drag, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
         Assert.Equal(
             [
+                ReviewInputContract.TextAction,
                 ReviewInputContract.PressAction,
                 ReviewInputContract.ChordAction,
                 ReviewInputContract.ClickAction,
@@ -593,7 +658,8 @@ public sealed class ProjectReviewMcpInputTests
                 query.Count, query.Notches, query.EndX, query.EndY,
                 query.Action switch { ReviewInputContract.ClickAction => query.Count, ReviewInputContract.ScrollAction => Math.Abs(query.Notches!.Value), ReviewInputContract.DragAction => query.DurationTicks, _ => null },
                 ReviewInputContract.IsGesture(query.Action) ? query.EndX ?? query.X : null,
-                ReviewInputContract.IsGesture(query.Action) ? query.EndY ?? query.Y : null),
+                ReviewInputContract.IsGesture(query.Action) ? query.EndY ?? query.Y : null,
+                DeliveredScalars: query.Action == ReviewInputContract.TextAction ? query.Text!.Length : null),
             [],
             ActionMayHaveRun: true,
             CancellationRequested: false);

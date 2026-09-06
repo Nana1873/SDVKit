@@ -41,7 +41,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |
 | Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |
-| Button, chord, cursor, wheel, and mouse gestures | Quoted review console command | Input tools | Active selected role; MCP requires `--allow-input`; gestures require an active menu and fresh UI revision; legacy mouse presses require a virtual cursor, legacy wheel also a menu |
+| Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role; MCP requires `--allow-input`; gestures require an active menu and fresh UI revision; legacy mouse presses require a virtual cursor, legacy wheel also a menu; text requires an exact available NamingMenu field and fresh UI revision |
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
 | Fixture building / animal ensure | Quoted review console command | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
 | Fixture object ensure / clear | Quoted review console command | No | Owned disposable world; single or host only |

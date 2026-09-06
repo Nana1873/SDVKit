@@ -94,7 +94,13 @@ internal static class ProjectReviewMenuService
         }
         ResponseJson.ValidateRequiredArray(report.GetProperty("menus"), ReviewMenuContract.MaximumNodes, node =>
         {
-            ResponseJson.RequireExactObject(node, NodeFields);
+            ResponseJson.RequireExactObject(node, node.TryGetProperty("textField", out JsonElement textField)
+                ? NodeFields.Concat(["textField"]).ToHashSet(StringComparer.Ordinal) : NodeFields);
+            if (textField.ValueKind != JsonValueKind.Undefined)
+            {
+                ResponseJson.RequireExactObject(textField, new HashSet<string>(["id", "dispatcherId", "subscriberId", "selected", "available", "bounds"], StringComparer.Ordinal));
+                ResponseJson.RequireExactObject(textField.GetProperty("bounds"), RectangleFields);
+            }
             ResponseJson.RequireExactObject(node.GetProperty("bounds"), RectangleFields);
             ResponseJson.ValidateRequiredArray(node.GetProperty("components"), ReviewMenuContract.MaximumComponents, component =>
             {
@@ -144,7 +150,7 @@ internal static class ProjectReviewMenuService
                 || node.Type.Any(c => !(char.IsLetterOrDigit(c) || c is '_' or '.' or '+' or '`'))
                 || node.Assembly is not { Length: > 0 and <= ReviewMenuContract.MaximumTypeLength }
                 || node.Assembly.Any(c => !(char.IsLetterOrDigit(c) || c is '_' or '.' or '+' or '`' or '-' or ' '))
-                || node.Adapter is not ("publicBase" or "gameMenu" or "inventoryPage" or "inventoryMenu" or "shopMenu")
+                || node.Adapter is not ("publicBase" or "gameMenu" or "inventoryPage" or "inventoryMenu" or "shopMenu" or "namingMenu")
                 || node.Coverage != (node.Adapter == "publicBase" ? "partial" : "declaredFields")
                 || (node.Adapter == "publicBase" && !report.Limitations.Contains("publicBaseOnly"))
                 || node.Relationship is not ("root" or "activePage" or "inventory" or "child")
@@ -152,6 +158,9 @@ internal static class ProjectReviewMenuService
             {
                 return false;
             }
+            if (node.TextField is { } field && (node.Adapter != "namingMenu" || field.Id < 1
+                || field.DispatcherId < 1 || field.SubscriberId is < 1 || field.Bounds is null
+                || field.Available && (!field.Selected || field.SubscriberId != field.Id))) return false;
             int depth = 1;
             if (node.ParentId is long parent)
             {

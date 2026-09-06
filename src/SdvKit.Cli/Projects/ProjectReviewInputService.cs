@@ -143,7 +143,7 @@ internal static class ProjectReviewInputService
                     role,
                     drainAfterDispatchOnCancellation: true,
                     cancellationToken: cancellationToken,
-                    onCancellation: ReviewInputContract.IsGesture(query.Action) || query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction
+                    onCancellation: ReviewInputContract.IsGesture(query.Action) || query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction or ReviewInputContract.TextAction
                         ? () =>
                         {
                             DispatchCancellation(() => ProjectReviewService.ExecuteCommand(
@@ -188,6 +188,12 @@ internal static class ProjectReviewInputService
 
     internal static ReviewInputProblem? Validate(ReviewInputQuery query)
     {
+        if (query.Action == ReviewInputContract.TextAction)
+            return !ReviewInputContract.ValidTextTarget(query)
+                ? Problem("inputArgumentsInvalid", "Text requires an exact field ID and current UI revision.")
+                : ReviewInputContract.ValidateText(query.Text);
+        if (query.Text is not null || query.FieldId is not null)
+            return Problem("inputArgumentsInvalid", "Text values are only accepted by the text action.");
         if (ReviewInputContract.IsGesture(query.Action))
             return ReviewInputContract.ValidGesture(query) ? null
                 : Problem("inputArgumentsInvalid", "A gesture requires bounded coordinates, a current UI revision and its exact click, scroll or drag values.");
@@ -265,6 +271,8 @@ internal static class ProjectReviewInputService
 
         string action = query.Action switch
         {
+            ReviewInputContract.TextAction => string.Create(CultureInfo.InvariantCulture,
+                $"text {query.UiRevision} {query.FieldId} {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(query.Text!))}"),
             ReviewInputContract.ClickAction => string.Create(CultureInfo.InvariantCulture,
                 $"click {query.X} {query.Y} {query.Button} {query.Count} {query.UiRevision}{ModifierSuffix(query)}"),
             ReviewInputContract.ScrollAction => string.Create(CultureInfo.InvariantCulture,
@@ -346,6 +354,11 @@ internal static class ProjectReviewInputService
                 if (fields.Contains("startTick")) RequireKind(root, "startTick", JsonValueKind.Number);
                 if (fields.Contains("endTick")) RequireKind(root, "endTick", JsonValueKind.Number);
             }
+            else if (action.ValueKind == JsonValueKind.String && action.GetString() == ReviewInputContract.TextAction)
+            {
+                ResponseJson.RequireExactObject(root, new HashSet<string>(EnvelopeProperties, StringComparer.Ordinal) { "deliveredScalars" });
+                RequireKind(root, "deliveredScalars", JsonValueKind.Number);
+            }
             else ResponseJson.RequireExactObject(root, EnvelopeProperties);
             RequireKind(root, "schemaVersion", JsonValueKind.Number);
             RequireKind(root, "requestId", JsonValueKind.String);
@@ -398,6 +411,7 @@ internal static class ProjectReviewInputService
             return false;
         }
 
+        if (query.Action != ReviewInputContract.TextAction && response.DeliveredScalars is not null) return false;
         if (ReviewInputContract.IsGesture(query.Action))
         {
             int steps = query.Action switch
@@ -426,6 +440,10 @@ internal static class ProjectReviewInputService
             || response.EndTick is not null || response.Released is not null)) return false;
         return query.Action switch
         {
+            ReviewInputContract.TextAction => response.Button is null && response.Direction is null
+                && response.X is null && response.Y is null && response.DeliveredScalars is >= 0
+                && response.DeliveredScalars <= query.Text!.Length
+                && (!response.Succeeded || response.DeliveredScalars == query.Text.Length),
             ReviewInputContract.ChordAction => response.Button is null && response.Direction is null
                 && response.X is null && response.Y is null
                 && response.Buttons is { Count: >= 1 and <= 8 } && query.Buttons is not null

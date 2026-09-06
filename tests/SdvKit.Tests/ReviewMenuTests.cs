@@ -16,6 +16,33 @@ public sealed class ReviewMenuTests
     private static readonly ReviewMenuRectangle Bounds = new(0, 0, 100, 100);
 
     [Fact]
+    public void TextFieldRevisionBindsActualFieldDispatcherSubscriberAndSelection()
+    {
+        var source = new Source();
+        object field = new(), dispatcher = new();
+        source.Root = source.Add("NamingMenu", "namingMenu");
+        var observed = new MenuTextFieldObservation(field, dispatcher, field, true, true, Bounds);
+        source.Nodes[source.Root] = source.Nodes[source.Root] with { TextField = observed };
+        var capture = new ReviewMenuCapture();
+        ReviewMenuReport Capture() => capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        var first = Capture();
+        Assert.Equal(first.UiRevision, Capture().UiRevision);
+        Assert.Equal(first.Menus[0].TextField!.Id, first.Menus[0].TextField!.SubscriberId);
+        foreach (var changed in new[] { observed with { Instance = new object() },
+            observed with { Dispatcher = new object() }, observed with { Subscriber = new object(), Available = false },
+            observed with { Selected = false, Available = false } })
+        {
+            source.Nodes[source.Root] = source.Nodes[source.Root] with { TextField = changed };
+            Assert.NotEqual(first.UiRevision, Capture().UiRevision);
+        }
+        source.Nodes[source.Root] = source.Nodes[source.Root] with { TextField = observed };
+        capture.Reset();
+        Assert.NotEqual(first.UiRevision, Capture().UiRevision);
+        source.Root = source.Add("CustomMenu", "publicBase");
+        Assert.Null(Capture().Menus[0].TextField);
+    }
+
+    [Fact]
     public void GestureContinuityAllowsValueGeometryChangesButSeparatesViewportAndMenuIdentity()
     {
         var source = new Source();
