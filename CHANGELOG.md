@@ -30,6 +30,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
+- Native launcher test failures retain bounded child output, captured identity, elapsed phases and observed cleanup results in the existing CI failure artifacts, without changing wait bounds or assertions.
+
 - Virtual review mouse input now feeds the shared Stardew/SMAPI snapshot, so helper/event cursor coordinates follow the virtual cursor and wheel notches use normal input processing instead of a direct menu call.
 - Stale or ended review status no longer retains an inner ready runtime payload; return to title immediately invalidates world/player values.
 - Installation and two short quickstarts now lead the README; task guides, the capability matrix, and CLI/MCP references are separately navigable.

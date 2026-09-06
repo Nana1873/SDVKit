@@ -69,7 +69,7 @@ internal static class StatusConcurrencyFailure
         CaptureFile(statusPath, Path.Combine(destination, "status.json"));
     }
 
-    private static string CreateEvidenceDirectory()
+    internal static string CreateEvidenceDirectory()
     {
         string destination = Path.Combine(
             FindRepositoryRoot(), ".sdvkit", "test-failures", Guid.NewGuid().ToString("N"));
