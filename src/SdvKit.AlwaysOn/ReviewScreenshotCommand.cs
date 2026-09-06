@@ -335,7 +335,7 @@ internal static class ReviewCommand
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
         var dataSource = new StardewReviewDataSource(helper);
         var menuCommand = new ReviewMenuCommand();
-        var inputRuntime = new StardewReviewInputRuntime(helper, menuCommand.CurrentRevision, menuCommand.CurrentContinuity, menuCommand.CurrentViewport);
+        var inputRuntime = new StardewReviewInputRuntime(helper, menuCommand.CurrentRevision, menuCommand.CurrentContinuity, menuCommand.CurrentViewport, menuCommand.CurrentTextField);
         helper.Events.Display.MenuChanged += (_, e) => menuCommand.ObserveRoot(e.NewMenu);
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);

@@ -16,9 +16,12 @@ internal static class ReviewMenuContract
 internal sealed record ReviewMenuRectangle(int X, int Y, int Width, int Height);
 internal sealed record ReviewMenuComponent(long Id, string Kind, int ControllerId,
     ReviewMenuRectangle Bounds, bool VisibleFlag, bool IntersectsViewport, bool ControllerFocused);
+internal sealed record ReviewMenuTextField(long Id, long DispatcherId, long? SubscriberId,
+    bool Selected, bool Available, ReviewMenuRectangle Bounds);
 internal sealed record ReviewMenuNode(long Id, long? ParentId, string Relationship,
     string Type, string Assembly, string Adapter, string Coverage, ReviewMenuRectangle Bounds,
-    int? CurrentTab, int? ScrollIndex, IReadOnlyList<ReviewMenuComponent> Components);
+    int? CurrentTab, int? ScrollIndex, IReadOnlyList<ReviewMenuComponent> Components,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] ReviewMenuTextField? TextField = null);
 internal sealed record ReviewMenuReport(int SchemaVersion, string State, string? ErrorCode,
     string? LaunchId, string Topology, string? Role, DateTimeOffset CapturedAtUtc, string? IdentityScope,
     ReviewMenuRectangle? Viewport, bool MenuOpen, bool Complete, bool Truncated,

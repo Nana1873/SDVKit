@@ -126,7 +126,7 @@ surface rather than inferring one role's game-content pipeline from the other.
 ## Opt-in input
 
 With `--allow-input`, and only for that server process, every topology also
-exposes eight typed action tools:
+exposes nine typed action tools:
 
 - `stardew_input_click { "x": 200, "y": 100, "button": "MouseLeft", "count": 2, "uiRevision": "<from stardew_menu_get>", "modifiers": ["LeftShift"] }`
   clicks an active menu once or twice, with a separate complete press/release
@@ -142,6 +142,8 @@ exposes eight typed action tools:
   Click and drag accept MouseLeft, MouseRight, MouseMiddle, MouseX1 or MouseX2,
   and an optional list of up to six distinct Left/Right Shift, Control or Alt
   modifiers. Omitted or null modifiers mean an empty list.
+- `stardew_input_text { "text": "Märchen Hof", "fieldId": 2, "uiRevision": "<from stardew_menu_get>" }`
+  delivers characters to the exact available `textField.id` in that snapshot.
 - `stardew_input_chord { "buttons": ["LeftShift", "F8"], "durationTicks": 5, "uiRevision": "<from stardew_menu_get>" }`
   presses 1-8 distinct exact runtime SMAPI button names in the same input update,
   holds the complete set for 1-120 updates, then confirms release. Read
@@ -161,6 +163,41 @@ exposes eight typed action tools:
   background-input state.
 - `stardew_input_wheel { "direction": "up" | "down" }` sends one wheel notch
   and requires both the virtual cursor and an active game menu.
+
+Text entry supports an exact vanilla `NamingMenu` containing an exact public
+`TextBox`, including a mod-created instance of that same family. Subclasses,
+custom fields, GMCM components and password fields are unavailable. The snapshot
+binds the actual field, keyboard dispatcher and subscriber identities, selection,
+menu lifetime and review role; it does not capture text contents.
+
+Text must contain 1-256 Unicode scalar values. Empty text, malformed Unicode,
+control characters and oversized input are rejected before delivery. Raw JSON with
+unpaired surrogate escapes is rejected by the MCP SDK before tool invocation
+(with a generic protocol error); no input is dispatched and the connection remains
+usable. Supplementary
+scalars are explicitly unsupported by the installed SDL path and reject the whole
+request before its first character. Spaces and BMP characters such as German
+umlauts pass unchanged to native field validation; native length/font/numeric
+limits can still decline them. Text is encoded for transport, never pasted or
+written directly into a field.
+
+At most one character enters `GameWindow.TextInput` immediately before each native
+keyboard-dispatcher poll. Each poll revalidates the exact field/subscriber and UI
+revision. A changed target, lost selection or concurrent native text/keyboard
+input stops the remainder. Delivery has a ten-second lifetime, checked even when
+polling stops. Cancellation/EOF stops remaining characters; already delivered
+characters are not undone, and no remainder is queued. `deliveredScalars` counts
+completed event/dispatcher delivery, **not accepted text**. Verify the field with
+screenshots or selected-mod state, then separately verify submitted/persisted state.
+Never retry an uncertain or partial delivery blindly. Text contents are absent
+from generic acknowledgements and error messages.
+
+For the supported selected field, a one-tick unmodified `Back`, `Enter` or `Tab`
+press/chord bridges its observed SButton edge into the native text-command event
+queue. Existing native input prevents that bridge, avoiding duplicate delivery.
+`Back` means Backspace; Delete and arrow keys have no universal TextBox editing
+behavior, and NamingMenu Escape does not cancel while the field is selected.
+Other buttons keep their existing native behavior. Ctrl+V remains unsupported.
 
 The three mouse gestures validate the full UI revision before acceptance and
 before their first input sample. While further actions remain, root/page/child
@@ -270,9 +307,9 @@ enabled_tools = [
 For an explicitly authorized input session, add `"--allow-input"` to `args`
 and independently allow only the needed names from
 `stardew_input_click`, `stardew_input_scroll`, `stardew_input_drag`,
-`stardew_input_chord`, `stardew_input_press`, `stardew_input_cursor_set`,
+`stardew_input_text`, `stardew_input_chord`, `stardew_input_press`, `stardew_input_cursor_set`,
 `stardew_input_cursor_clear`, and `stardew_input_wheel`. Omitting the startup
-flag keeps all eight absent even if the client requests or allowlists them.
+flag keeps all nine absent even if the client requests or allowlists them.
 
 For example, bind a separate network-2 host client by changing only the server
 name and arguments:

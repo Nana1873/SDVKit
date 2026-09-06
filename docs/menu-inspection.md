@@ -32,6 +32,7 @@ adapters below; subclasses receive the partial public base adapter.
 | `InventoryPage` | Nested inventory grid, equipment icons, portrait, trash can, organize button, junimo note icon |
 | `InventoryMenu` | Inventory slot components |
 | `ShopMenu` | Nested inventory grid, sale row components, up/down arrows, scrollbar, `currentItemIndex` as `scrollIndex` |
+| `NamingMenu` | Public naming, done and random components; exact non-password `TextBox` identity, bounds, `Selected`, keyboard dispatcher and subscriber identities |
 | Unknown or mod-created `IClickableMenu` | Existing public `allClickableComponents`, close component, bounds, snapped-component reference and `GetChildMenu` only; always `partial` |
 
 All adapters also read those public base fields. Missing/null components are
@@ -51,6 +52,14 @@ states are returned. The viewport rectangle starts at screen-local `(0,0)` and
 uses the game's UI viewport dimensions, excluding world-camera offsets. Bounds
 use this UI coordinate system, which
 may differ from screenshot pixel coordinates when UI scaling is active.
+
+An exact NamingMenu (also when constructed by a mod) can expose `textField`:
+`id`, `dispatcherId`, nullable `subscriberId`, `selected`, `available` and `bounds`.
+`available` requires the root without a child menu, a selected exact non-password
+TextBox and subscriber equality. Unknown/custom/GMCM fields have no `textField`.
+These identities and selection participate in `uiRevision`; replacements or lost
+selection invalidate text requests. Use `textField.id` with that fresh revision
+for [opt-in text input](mcp.md#opt-in-input).
 
 No component names, labels, text, item/player data, paths or arbitrary custom
 objects are serialized. The bounded menu type identifier is runtime metadata.

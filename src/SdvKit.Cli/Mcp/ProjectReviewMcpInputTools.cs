@@ -42,7 +42,8 @@ internal sealed record ProjectReviewMcpInputAcknowledgement(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndY = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? CompletedSteps = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalX = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DeliveredScalars = null);
 
 
 internal sealed class ProjectReviewMcpInputSession
@@ -244,7 +245,7 @@ internal sealed class ProjectReviewMcpInputSession
                     response.StartTick,
                     response.EndTick,
                     response.Released, response.Modifiers, response.Count, response.Notches,
-                    response.EndX, response.EndY, response.CompletedSteps, response.FinalX, response.FinalY),
+                    response.EndX, response.EndY, response.CompletedSteps, response.FinalX, response.FinalY, response.DeliveredScalars),
                 cancellationRequested
                     ? FindProblem(executed.Problems, "inputCancellationNotConfirmed")
                         ?? FindProblem(executed.Problems, "inputRequestCanceled")
@@ -405,6 +406,7 @@ internal static class ProjectReviewMcpInputTools
     internal const string ClickToolName = "stardew_input_click";
     internal const string ScrollToolName = "stardew_input_scroll";
     internal const string DragToolName = "stardew_input_drag";
+    internal const string TextToolName = "stardew_input_text";
     internal const string ChordToolName = "stardew_input_chord";
     internal const string PressToolName = "stardew_input_press";
     internal const string CursorSetToolName = "stardew_input_cursor_set";
@@ -512,6 +514,10 @@ internal static class ProjectReviewMcpInputTools
                 "Drag an active menu from x,y to endX,endY over 1-120 movement updates after the initial press, then release at the endpoint; requires a current uiRevision.",
                 GestureInputSchema(ReviewInputContract.DragAction), true, false), TryDrag),
             new InputMcpTool(session,
+                Tool(TextToolName,
+                    "Deliver 1-256 BMP Unicode characters through the native text event queue to an exact selected NamingMenu TextBox from stardew_menu_get. Requires fresh uiRevision and textField.id; no controls, supplementary scalars, paste or secret fields. Delivery acknowledgement does not prove accepted or persisted text.",
+                    ParseSchema("""{"type":"object","additionalProperties":false,"required":["text","fieldId","uiRevision"],"properties":{"text":{"type":"string","minLength":1,"maxLength":256},"fieldId":{"type":"integer","minimum":1},"uiRevision":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}"""), true, false), TryText),
+            new InputMcpTool(session,
                 Tool(ChordToolName,
                     "Press 1-8 buttons atomically for 1-120 input updates using a fresh stardew_menu_get uiRevision; acknowledge only after release. Ctrl+V is unsupported.",
                     ChordInputSchema, destructive: true, idempotent: false), TryChord),
@@ -575,6 +581,9 @@ internal static class ProjectReviewMcpInputTools
                     "inputArgumentsInvalid",
                     $"Invalid arguments for {ProtocolTool.Name}."));
             }
+
+            if (ProjectReviewInputService.Validate(query!) is { } invalid)
+                return ValueTask.FromResult(Error(invalid.Code, invalid.Message));
 
             ProjectReviewMcpInputInvocation result = session.Execute(
                 query!,
@@ -720,6 +729,28 @@ internal static class ProjectReviewMcpInputTools
         return JsonSerializer.SerializeToElement(schema);
     }
 
+    private static bool TryText(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query)
+    {
+        query = null;
+        if (!HasOnly(arguments, ["text", "fieldId", "uiRevision"])
+            || !TryString(arguments!, "text", out string? text)
+            || !TryString(arguments!, "uiRevision", out string? revision)
+            || arguments!["fieldId"].ValueKind != JsonValueKind.Number
+            || !arguments["fieldId"].TryGetInt64(out long field)) return false;
+        query = new(ReviewInputContract.TextAction, null, null, null, null,
+            UiRevision: revision, Text: text, FieldId: field);
+        return true;
+    }
+
+    private static JsonElement TextOutputSchema()
+    {
+        JsonNode schema = JsonNode.Parse(OutputSchema.GetRawText())!;
+        schema["properties"]!["action"] = JsonNode.Parse("""{"const":"text"}""");
+        schema["properties"]!["deliveredScalars"] = JsonNode.Parse("""{"type":"integer","minimum":0,"maximum":256}""");
+        schema["required"]!.AsArray().Add("deliveredScalars");
+        return JsonSerializer.SerializeToElement(schema);
+    }
+
     private static bool TryChord(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query)
     {
         query = null;
@@ -845,6 +876,7 @@ internal static class ProjectReviewMcpInputTools
                 ScrollToolName => GestureOutputSchema(ReviewInputContract.ScrollAction),
                 DragToolName => GestureOutputSchema(ReviewInputContract.DragAction),
                 ChordToolName => ChordOutputSchema(),
+                TextToolName => TextOutputSchema(),
                 _ => OutputSchema,
             },
             Annotations = new ToolAnnotations
@@ -875,7 +907,8 @@ internal static class ProjectReviewMcpInputTools
             return false;
         }
 
-        value = element.GetString();
+        try { value = element.GetString(); }
+        catch (InvalidOperationException) { return false; }
         return value is not null;
     }
 
