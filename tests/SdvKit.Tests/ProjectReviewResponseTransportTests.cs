@@ -6,6 +6,42 @@ namespace SdvKit.Tests;
 public sealed class ProjectReviewResponseTransportTests
 {
     [Theory]
+    [InlineData(false, "open")]
+    [InlineData(true, "delete")]
+    public void FileContentionReportsPrimaryStageAndNativeCodeWithoutPaths(bool allowRead, string expectedStage)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using TemporaryDirectory temporary = new();
+        string path = Path.Combine(temporary.Path, "response.json");
+        FileStream? blocker = null;
+        try
+        {
+            var result = ProjectReviewResponseTransport.Execute("input", path, 100,
+                "input", "review-input", temporary.Path,
+                bytes => Encoding.UTF8.GetString(bytes), text => text == "released",
+                send: _ =>
+                {
+                    File.WriteAllText(path, "released");
+                    blocker = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        allowRead ? FileShare.Read : FileShare.None);
+                    return new(0, new ProjectReviewCommandReport(1, null, temporary.Path, "ready", null, true, [], []));
+                });
+            Assert.Null(result.Response);
+            Assert.True(result.CommandWritten);
+            Assert.True(result.CommandMayHaveBeenWritten);
+            var problem = Assert.Single(result.Problems);
+            Assert.Equal("inputResponseInvalid", problem.Code);
+            Assert.Contains($"stage={expectedStage}; HRESULT=0x80070020", problem.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(temporary.Path, problem.Message, StringComparison.Ordinal);
+            Assert.True(File.Exists(path)); // Failed cleanup must not replace the original failure diagnostic.
+        }
+        finally
+        {
+            blocker?.Dispose();
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void CancellationSignalsOnceAfterDispatchAndDrainsTheReleaseResponse(bool deliveryFails)

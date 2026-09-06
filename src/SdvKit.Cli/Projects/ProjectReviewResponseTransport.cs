@@ -147,6 +147,7 @@ internal static class ProjectReviewResponseTransport
         }
 
         bool regularResponse = false;
+        string responseStage = "attributes";
         try
         {
             ObserveCancellation();
@@ -164,7 +165,8 @@ internal static class ProjectReviewResponseTransport
             }
             regularResponse = true;
 
-            byte[] bytes = ReadBoundedResponse(responsePath, maximumResponseBytes, displayName);
+            byte[] bytes = ReadBoundedResponse(responsePath, maximumResponseBytes, displayName, ref responseStage);
+            responseStage = "validation";
             ObserveCancellation();
             TResponse? response = deserialize(bytes);
             if (response is null || !matchesRequest(response))
@@ -173,6 +175,7 @@ internal static class ProjectReviewResponseTransport
                     $"The {displayName} response does not match the exact request.");
             }
 
+            responseStage = "delete";
             File.Delete(responsePath);
             regularResponse = false;
             ObserveCancellation();
@@ -208,7 +211,7 @@ internal static class ProjectReviewResponseTransport
                 cancellationRequested: cancellationRequested,
                 new ProjectReviewResponseTransportProblem(
                     $"{problemPrefix}ResponseInvalid",
-                    $"The {displayName} response could not be validated ({exception.GetType().Name})."));
+                    FormattableString.Invariant($"The {displayName} response could not be validated ({exception.GetType().Name}; stage={responseStage}; HRESULT=0x{exception.HResult:X8}).")));
         }
 
         void ObserveCancellation()
@@ -254,8 +257,10 @@ internal static class ProjectReviewResponseTransport
     private static byte[] ReadBoundedResponse(
         string responsePath,
         int maximumResponseBytes,
-        string displayName)
+        string displayName,
+        ref string responseStage)
     {
+        responseStage = "open";
         using var stream = new FileStream(
             responsePath,
             FileMode.Open,
@@ -263,6 +268,7 @@ internal static class ProjectReviewResponseTransport
             FileShare.Read,
             bufferSize: 4096,
             FileOptions.SequentialScan);
+        responseStage = "read";
         long length = stream.Length;
         if (length <= 0 || length > maximumResponseBytes)
         {

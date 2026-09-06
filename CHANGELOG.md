@@ -14,6 +14,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- Review response failures report the processing stage and HRESULT without exposing local paths.
+
 - Request cancellation for review presses, chords and gestures waits briefly for concurrent read-only command dispatch to finish; uncertain writes are never retried.
 
 ### Documentation
