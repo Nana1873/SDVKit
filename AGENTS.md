@@ -17,12 +17,3 @@
 The public product has two equal pillars: a modding toolkit and an isolated live test lab. Keep both understandable from the root README and CLI help.
 
 Use `docs/README.md` to find task guides and command references; skills should link to those contracts rather than duplicate them. Maintain user-visible changes in `CHANGELOG.md`. For releases, use `docs/releasing.md`: choose affected live gates before starting, reuse only fully passing evidence for the same artifact and relevant environment, and keep exact ownership and final cleanup mandatory.
-
-## Coordination and worker ownership
-
-- The coordinator clarifies objectives, scope, priorities, and consequential cross-project decisions. Delegate directly through existing task communication and handle replies and follow-ups there; never ask the user to relay copy/paste worker prompts.
-- Astra Low workers own bounded work end to end: investigation, implementation, tests, routine fixes, and normal implementation decisions through a reviewable result. Pass the goal, relevant existing findings and file references, boundaries, and observable success criteria. Avoid duplicate full coordinator investigations, long history dumps, and micro-step handoffs.
-- Group cohesive small changes and reuse suitable tasks. Create extra tasks or subagents only for a concrete benefit; do not start speculative work. Escalate only real blockers, conflicting requirements, material scope expansion, or consequential decisions. If diagnosis stalls, request targeted higher reasoning and reconsider the evidence instead of repeating failed approaches.
-- Completion reports contain concise changes, file/diff references, exact checks and results, and open risks; provide full logs on demand. The coordinator reviews in proportion to risk and states a concrete reason for additional investigation or review. Distinguish worker-reported checks from checks personally verified by the coordinator.
-- Preserve all approval, isolation, and mandatory checks in [Contributing](CONTRIBUTING.md#build-and-check) and the [release procedure](docs/releasing.md). Reuse valid passing evidence for the same artifact and relevant environment under those contracts; do not add restarts or repeat checks without a concrete reason.
-- Update the user for material progress, decisions, blockers, and completion, rather than relaying internal messages. Claim time or cost savings only when measured.
