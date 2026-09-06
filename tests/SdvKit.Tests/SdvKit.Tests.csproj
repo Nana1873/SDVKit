@@ -34,6 +34,7 @@
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewAudioCommand.cs" Link="AlwaysOn\ReviewAudioCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewDataCommand.cs" Link="AlwaysOn\ReviewDataCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewMapCommand.cs" Link="AlwaysOn\ReviewMapCommand.cs" />
+    <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewMenuCapture.cs" Link="AlwaysOn\ReviewMenuCapture.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewModAssetCommand.cs" Link="AlwaysOn\ReviewModAssetCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewTextureCommand.cs" Link="AlwaysOn\ReviewTextureCommand.cs" />
     <Compile Include="..\..\src\SdvKit.AlwaysOn\ReviewTextureXnbClassifier.cs" Link="AlwaysOn\ReviewTextureXnbClassifier.cs" />

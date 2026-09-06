@@ -229,6 +229,7 @@ internal static class ProjectReviewMcpServer
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
+        tools.Add(ProjectReviewMcpMenuTools.Create(reader));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
@@ -263,7 +264,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.7.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics and one bounded screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")
