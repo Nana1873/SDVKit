@@ -120,7 +120,11 @@ internal sealed class ReviewMenuCommand
 
     internal void ObserveRoot(IClickableMenu? menu) => _capture.ObserveRoot(menu);
 
-    internal string? CurrentRevision()
+    internal string? CurrentRevision() => CaptureRevision(false);
+    internal string? CurrentContinuity() => CaptureRevision(true);
+    internal string CurrentViewport() => ReviewMenuCapture.ViewportRevision(_source);
+
+    private string? CaptureRevision(bool continuityOnly)
     {
         string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
         string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
@@ -129,7 +133,7 @@ internal sealed class ReviewMenuCommand
             && Context.IsWorldReady && !Game1.exitToTitle && ReviewTransportToken.IsRequestId(launch)
             && (role is null || NetworkTwoContract.IsRole(role))
                 ? _capture.Capture(_source, launch, DateTimeOffset.UtcNow,
-                    role is null ? "single" : "network-2", role).UiRevision
+                    role is null ? "single" : "network-2", role, continuityOnly).UiRevision
                 : null;
     }
 

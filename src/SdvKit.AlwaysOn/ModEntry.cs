@@ -130,6 +130,7 @@ public sealed class ModEntry : Mod
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
+            ReviewVirtualCursor.AfterGameUpdate();
             _testSave?.OnUpdateTicked();
             _networkTwo?.OnUpdateTicked();
         };

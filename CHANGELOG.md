@@ -6,9 +6,17 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Active-menu review input adds bounded click/double-click, signed scrolling and linear drag gestures with optional modifiers, observed partial progress and explicit final virtual-cursor state.
+
 - Opt-in review input supports atomic chords of 1-8 buttons held for 1-120 input updates, with fresh menu UI revisions, observed release acknowledgements, and cancellation without suppressing physical input.
 
 - `project review menu` and read-only `stardew_menu_get` describe active inventory/shop menus, nested pages and bounded public mod-menu components in each existing review role, with observed-object IDs, fresh geometry and explicit partial coverage.
+
+### Fixed
+
+- Review response failures report the processing stage and HRESULT without exposing local paths.
+
+- Request cancellation for review presses, chords and gestures waits briefly for concurrent read-only command dispatch to finish; uncertain writes are never retried.
 
 ### Documentation
 

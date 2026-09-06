@@ -193,6 +193,121 @@ public sealed class ProjectReviewMcpInputCancellationTests
         }
     }
 
+    [Fact]
+    public async Task RequestNotificationCancelsAnInFlightHandlerWithoutEof()
+    {
+        using TemporaryDirectory temporary = new();
+        var entered = Signal();
+        var canceled = Signal();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        var session = new ProjectReviewMcpInputSession(reader,
+            LiveLabPaths.Resolve(temporary.Path).RuntimePath, (query, token) =>
+            {
+                if (query.Action != ReviewInputContract.CursorClearAction)
+                {
+                    entered.TrySetResult();
+                    Assert.True(token.WaitHandle.WaitOne(TimeSpan.FromSeconds(2)));
+                    canceled.TrySetResult();
+                }
+                return Acknowledge(temporary, query);
+            });
+        var input = new Pipe();
+        var output = new Pipe();
+        await using var writer = new StreamWriter(input.Writer.AsStream()) { AutoFlush = true };
+        using var responses = new StreamReader(output.Reader.AsStream());
+        await using var transport = new StreamServerTransport(input.Reader.AsStream(), output.Writer.AsStream(), "input-eof");
+        await using McpServer server = McpServer.Create(transport,
+            ProjectReviewMcpServer.CreateOptions(reader, inputSession: session));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        Task running = ProjectReviewMcpServer.RunUntilDisconnectAsync(server, transport, session, timeout.Token);
+
+        try
+        {
+            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"input-eof-test","version":"1"}}}""");
+            string? initialized = await responses.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.NotNull(initialized);
+            using (JsonDocument response = JsonDocument.Parse(initialized))
+            {
+                Assert.Equal(1, response.RootElement.GetProperty("id").GetInt32());
+                Assert.True(response.RootElement.TryGetProperty("result", out _));
+            }
+            await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/initialized"}""");
+            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stardew_input_cursor_set","arguments":{"x":20,"y":30}}}""");
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2,"reason":"Bounded cancellation regression"}}""");
+            await canceled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await writer.DisposeAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Null(session.Cleanup());
+        }
+        finally
+        {
+            timeout.Cancel();
+            session.CancelPending();
+        }
+    }
+
+    [Fact]
+    public void ConcurrentLabOperationPreventsTheExactCancellationCommandFromBeingWritten()
+    {
+        using TemporaryDirectory temporary = new();
+        using LiveLabOperationLock held = LiveLabOperationLock.TryAcquire(temporary.Path)!;
+        LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+            "sdvkit input cancel aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", LiveLabState.SingleTopology, null, temporary.Path);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains(Assert.IsType<ProjectReviewCommandReport>(result.Report).Problems, problem => problem.Code == "labBusy");
+    }
+    [Fact]
+    public void CancellationDispatchPolicyWaitsOnlyAfterKnownUnwrittenContention()
+    {
+        using TemporaryDirectory temporary = new();
+        using LiveLabOperationLock held = LiveLabOperationLock.TryAcquire(temporary.Path)!;
+        int calls = 0;
+        int waits = 0;
+        ProjectReviewInputService.DispatchCancellation(() =>
+        {
+            calls++;
+            return calls == 1
+                ? ProjectReviewService.ExecuteCommand("sdvkit input cancel aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", LiveLabState.SingleTopology, null, temporary.Path)
+                : new LiveLabCommandResult(0, new object());
+        }, _ => waits++);
+        Assert.Equal(2, calls);
+        Assert.Equal(1, waits);
+    }
+
+    [Theory]
+    [InlineData(null, "deliveryFailed")]
+    [InlineData(null, "labBusy")]
+    [InlineData(true, "deliveryFailed")]
+    [InlineData(true, "labBusy")]
+    [InlineData(false, "deliveryFailed")]
+    public void CancellationNeverRepeatsUncertainOrNonContentionFailures(bool? written, string code)
+    {
+        int calls = 0;
+        Assert.Throws<IOException>(() => ProjectReviewInputService.DispatchCancellation(() =>
+        {
+            calls++;
+            return new LiveLabCommandResult(1, new ProjectReviewCommandReport(1, null, "lab", "blocked", null,
+                written, [new(code, null, "Unconfirmed delivery")], []));
+        }, _ => Assert.Fail("No wait is allowed after unconfirmed delivery.")));
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void PersistentContentionHasABoundedCancellationWait()
+    {
+        using TemporaryDirectory temporary = new();
+        using LiveLabOperationLock held = LiveLabOperationLock.TryAcquire(temporary.Path)!;
+        int waits = 0;
+        LiveLabCommandResult busy = ProjectReviewService.ExecuteCommand(
+            "sdvkit input cancel aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", LiveLabState.SingleTopology, null, temporary.Path);
+        Assert.Throws<IOException>(() => ProjectReviewInputService.DispatchCancellation(() => busy, duration =>
+        {
+            Assert.Equal(TimeSpan.FromMilliseconds(50), duration);
+            waits++;
+        }));
+        Assert.Equal(20, waits);
+    }
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static ReviewInputQuery Query() => new(ReviewInputContract.CursorSetAction, null, null, 20, 30);

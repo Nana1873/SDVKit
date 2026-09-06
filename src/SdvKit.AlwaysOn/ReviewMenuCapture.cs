@@ -29,6 +29,9 @@ internal sealed class ReviewMenuCapture
     private long _nextId;
     private string _scope = Guid.NewGuid().ToString("N");
 
+    internal static string ViewportRevision(IReviewMenuSource source) => Convert.ToHexString(SHA256.HashData(
+        JsonSerializer.SerializeToUtf8Bytes(new { source.Viewport.Width, source.Viewport.Height, source.UiScale, source.Zoom }))).ToLowerInvariant();
+
     internal void Reset()
     {
         _root = null;
@@ -47,7 +50,7 @@ internal sealed class ReviewMenuCapture
     }
 
     internal ReviewMenuReport Capture(IReviewMenuSource source, string launchId, DateTimeOffset now,
-        string topology = "single", string? role = null)
+        string topology = "single", string? role = null, bool continuityOnly = false)
     {
         object? root = source.Root;
         ObserveRoot(root);
@@ -77,10 +80,12 @@ internal sealed class ReviewMenuCapture
             source.Zoom,
             report.Viewport,
             report.MenuOpen,
-            report.Complete,
-            report.Truncated,
-            report.Limitations,
-            report.Menus,
+            Complete = continuityOnly || report.Complete,
+            Truncated = !continuityOnly && report.Truncated,
+            Limitations = continuityOnly ? Array.Empty<string>() : report.Limitations,
+            Menus = continuityOnly
+                ? (object)report.Menus.Select(m => new { m.Id, m.ParentId, m.Relationship, m.Type }).ToArray()
+                : report.Menus,
         });
         return report with { UiRevision = Convert.ToHexString(SHA256.HashData(revision)).ToLowerInvariant() };
 
