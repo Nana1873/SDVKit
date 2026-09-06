@@ -7,7 +7,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
 | Default observation/evidence | 9 tools | 6 tools | 6 tools |
-| Add `--allow-input` | +5 | +5 | +5 |
+| Add `--allow-input` | +8 | +8 | +8 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
@@ -126,8 +126,22 @@ surface rather than inferring one role's game-content pipeline from the other.
 ## Opt-in input
 
 With `--allow-input`, and only for that server process, every topology also
-exposes five typed action tools:
+exposes eight typed action tools:
 
+- `stardew_input_click { "x": 200, "y": 100, "button": "MouseLeft", "count": 2, "uiRevision": "<from stardew_menu_get>", "modifiers": ["LeftShift"] }`
+  clicks an active menu once or twice, with a separate complete press/release
+  edge for each click. A target may interpret two clicks differently from a
+  native double-click feature.
+- `stardew_input_scroll { "x": 200, "y": 100, "notches": -3, "uiRevision": "<from stardew_menu_get>" }`
+  scrolls an active menu at the coordinate by 1-20 notches, one verified notch
+  per input update. Positive counts scroll up; negative counts scroll down.
+- `stardew_input_drag { "x": 200, "y": 100, "endX": 200, "endY": 300, "button": "MouseLeft", "durationTicks": 30, "uiRevision": "<from stardew_menu_get>" }`
+  presses at the start, moves along one linear path for 1-120 movement updates,
+  then releases at the exact endpoint. Duration excludes the initial press and
+  final release: duration 1 still contains one genuine held movement update.
+  Click and drag accept MouseLeft, MouseRight, MouseMiddle, MouseX1 or MouseX2,
+  and an optional list of up to six distinct Left/Right Shift, Control or Alt
+  modifiers. Omitted or null modifiers mean an empty list.
 - `stardew_input_chord { "buttons": ["LeftShift", "F8"], "durationTicks": 5, "uiRevision": "<from stardew_menu_get>" }`
   presses 1-8 distinct exact runtime SMAPI button names in the same input update,
   holds the complete set for 1-120 updates, then confirms release. Read
@@ -147,6 +161,21 @@ exposes five typed action tools:
   background-input state.
 - `stardew_input_wheel { "direction": "up" | "down" }` sends one wheel notch
   and requires both the virtual cursor and an active game menu.
+
+The three mouse gestures validate the full UI revision before acceptance and
+before their first input sample. While further actions remain, root/page/child
+identity changes stop the gesture; component/value changes caused by scrolling
+or dragging are allowed. The final requested action may change or close the
+menu. Viewport/scale changes interrupt the gesture even during release; `released` still reports whether button release was actually observed.
+
+Gesture responses add the requested action fields, `completedSteps`, observed
+`startTick`/`endTick`, `released`, and `finalX`/`finalY` when `cursorSet` is true.
+Steps mean complete clicks, verified notches, or drag movement updates. Success
+retains the final virtual cursor. Cancellation/failure after acceptance stops
+further steps and clears it after the release game-update opportunity; missing
+completion callbacks report failure with unconfirmed release. Pre-acceptance
+validation does not move the virtual cursor. Partial counts do not authorize an
+automatic retry, and input completion does not prove the intended menu effect.
 
 The chord acknowledgement adds `buttons` (canonical names), `durationTicks`,
 `startTick`, `endTick` (the release input sample) and `released`. One tick keeps
@@ -240,9 +269,10 @@ enabled_tools = [
 
 For an explicitly authorized input session, add `"--allow-input"` to `args`
 and independently allow only the needed names from
+`stardew_input_click`, `stardew_input_scroll`, `stardew_input_drag`,
 `stardew_input_chord`, `stardew_input_press`, `stardew_input_cursor_set`,
 `stardew_input_cursor_clear`, and `stardew_input_wheel`. Omitting the startup
-flag keeps all five absent even if the client requests or allowlists them.
+flag keeps all eight absent even if the client requests or allowlists them.
 
 For example, bind a separate network-2 host client by changing only the server
 name and arguments:

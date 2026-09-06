@@ -14,7 +14,7 @@ public sealed class ProjectReviewMcpInputTests
 {
     private static readonly string[] ModifierChord = ["LeftShift", "F8"];
     [Fact]
-    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyFive()
+    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyEight()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
@@ -45,9 +45,12 @@ public sealed class ProjectReviewMcpInputTests
         Assert.Equal(
             [
                 ProjectReviewMcpInputTools.ChordToolName,
+                ProjectReviewMcpInputTools.ClickToolName,
                 ProjectReviewMcpInputTools.CursorClearToolName,
                 ProjectReviewMcpInputTools.CursorSetToolName,
+                ProjectReviewMcpInputTools.DragToolName,
                 ProjectReviewMcpInputTools.PressToolName,
+                ProjectReviewMcpInputTools.ScrollToolName,
                 ProjectReviewMcpInputTools.WheelToolName,
             ],
             optedInNames
@@ -101,7 +104,7 @@ public sealed class ProjectReviewMcpInputTests
             .Where(tool => tool.Name.StartsWith("stardew_input_", StringComparison.Ordinal))
             .OrderBy(tool => tool.Name, StringComparer.Ordinal)
             .ToArray();
-        Assert.Equal(5, inputTools.Length);
+        Assert.Equal(8, inputTools.Length);
         foreach (Tool tool in inputTools)
         {
             Assert.False(tool.Annotations?.ReadOnlyHint);
@@ -138,6 +141,36 @@ public sealed class ProjectReviewMcpInputTests
                 ["uiRevision"] = new string('a', 64)
             },
             cancellationToken: timeout.Token);
+        CallToolResult click = await client.CallToolAsync(ProjectReviewMcpInputTools.ClickToolName,
+            new Dictionary<string, object?>
+            {
+                ["x"] = 20,
+                ["y"] = 30,
+                ["button"] = "MouseLeft",
+                ["count"] = 2,
+                ["uiRevision"] = new string('a', 64),
+                ["modifiers"] = null
+            }, cancellationToken: timeout.Token);
+        CallToolResult scroll = await client.CallToolAsync(ProjectReviewMcpInputTools.ScrollToolName,
+            new Dictionary<string, object?>
+            {
+                ["x"] = 20,
+                ["y"] = 30,
+                ["notches"] = -3,
+                ["uiRevision"] = new string('a', 64)
+            }, cancellationToken: timeout.Token);
+        CallToolResult drag = await client.CallToolAsync(ProjectReviewMcpInputTools.DragToolName,
+            new Dictionary<string, object?>
+            {
+                ["x"] = 20,
+                ["y"] = 30,
+                ["endX"] = 100,
+                ["endY"] = 200,
+                ["button"] = "MouseLeft",
+                ["durationTicks"] = 1,
+                ["uiRevision"] = new string('a', 64)
+            },
+            cancellationToken: timeout.Token);
         CallToolResult set = await client.CallToolAsync(
             ProjectReviewMcpInputTools.CursorSetToolName,
             new Dictionary<string, object?> { ["x"] = 200, ["y"] = 100 },
@@ -153,11 +186,14 @@ public sealed class ProjectReviewMcpInputTests
             },
             timeout.Token);
 
-        Assert.All([press, chord, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
+        Assert.All([press, chord, click, scroll, drag, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
         Assert.Equal(
             [
                 ReviewInputContract.PressAction,
                 ReviewInputContract.ChordAction,
+                ReviewInputContract.ClickAction,
+                ReviewInputContract.ScrollAction,
+                ReviewInputContract.DragAction,
                 ReviewInputContract.CursorSetAction,
                 ReviewInputContract.WheelAction,
                 ReviewInputContract.CursorClearAction,
@@ -174,6 +210,24 @@ public sealed class ProjectReviewMcpInputTests
         Assert.Equal(5, chordAck.GetProperty("durationTicks").GetInt32());
         Assert.True(chordAck.GetProperty("released").GetBoolean());
         Assert.Equal(["LeftShift", "F8"], chordAck.GetProperty("buttons").EnumerateArray().Select(b => b.GetString()));
+
+        JsonElement dragAck = Assert.IsType<JsonElement>(drag.StructuredContent);
+        Assert.Equal(1, dragAck.GetProperty("completedSteps").GetInt32());
+        Assert.Equal(100, dragAck.GetProperty("finalX").GetInt32());
+        Assert.True(dragAck.GetProperty("cursorSet").GetBoolean());
+        Assert.True(dragAck.GetProperty("endTick").GetInt32() > dragAck.GetProperty("startTick").GetInt32());
+        int beforeInvalidGesture = queries.Count;
+        CallToolResult invalidGesture = await client.CallToolAsync(ProjectReviewMcpInputTools.ClickToolName,
+            new Dictionary<string, object?>
+            {
+                ["x"] = 20,
+                ["y"] = 30,
+                ["button"] = "MouseLeft",
+                ["count"] = 3,
+                ["uiRevision"] = new string('a', 64)
+            }, cancellationToken: timeout.Token);
+        Assert.True(invalidGesture.IsError);
+        Assert.Equal(beforeInvalidGesture, queries.Count);
 
         int beforeInvalid = queries.Count;
         CallToolResult invalid = await client.CallToolAsync(
@@ -532,9 +586,14 @@ public sealed class ProjectReviewMcpInputTests
                     StringComparison.Ordinal),
                 true,
                 null, query.Buttons, query.DurationTicks,
-                query.Action == ReviewInputContract.ChordAction ? acknowledgedTick - query.DurationTicks : null,
-                query.Action == ReviewInputContract.ChordAction ? acknowledgedTick : null,
-                query.Action == ReviewInputContract.ChordAction ? true : null),
+                query.Action == ReviewInputContract.ChordAction ? acknowledgedTick - query.DurationTicks : ReviewInputContract.IsGesture(query.Action) ? acknowledgedTick - (query.DurationTicks ?? query.Count ?? Math.Abs(query.Notches ?? 1)) - 1 : null,
+                query.Action == ReviewInputContract.ChordAction || ReviewInputContract.IsGesture(query.Action) ? acknowledgedTick : null,
+                query.Action == ReviewInputContract.ChordAction || ReviewInputContract.IsGesture(query.Action) ? true : null,
+                ReviewInputContract.IsGesture(query.Action) && query.Action != ReviewInputContract.ScrollAction ? query.Modifiers ?? [] : null,
+                query.Count, query.Notches, query.EndX, query.EndY,
+                query.Action switch { ReviewInputContract.ClickAction => query.Count, ReviewInputContract.ScrollAction => Math.Abs(query.Notches!.Value), ReviewInputContract.DragAction => query.DurationTicks, _ => null },
+                ReviewInputContract.IsGesture(query.Action) ? query.EndX ?? query.X : null,
+                ReviewInputContract.IsGesture(query.Action) ? query.EndY ?? query.Y : null),
             [],
             ActionMayHaveRun: true,
             CancellationRequested: false);

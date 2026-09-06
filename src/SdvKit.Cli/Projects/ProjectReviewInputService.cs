@@ -121,7 +121,7 @@ internal static class ProjectReviewInputService
                     role,
                     drainAfterDispatchOnCancellation: true,
                     cancellationToken: cancellationToken,
-                    onCancellation: query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction
+                    onCancellation: ReviewInputContract.IsGesture(query.Action) || query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction
                         ? () =>
                         {
                             LiveLabCommandResult canceled = ProjectReviewService.ExecuteCommand(
@@ -167,6 +167,12 @@ internal static class ProjectReviewInputService
 
     internal static ReviewInputProblem? Validate(ReviewInputQuery query)
     {
+        if (ReviewInputContract.IsGesture(query.Action))
+            return ReviewInputContract.ValidGesture(query) ? null
+                : Problem("inputArgumentsInvalid", "A gesture requires bounded coordinates, a current UI revision and its exact click, scroll or drag values.");
+        if (query.Modifiers is not null || query.Count is not null || query.Notches is not null
+            || query.EndX is not null || query.EndY is not null)
+            return Problem("inputArgumentsInvalid", "Gesture values are only accepted by gesture actions.");
         if (query.Action == ReviewInputContract.ChordAction)
         {
             return query.Button is null && query.Direction is null && query.X is null && query.Y is null
@@ -238,6 +244,12 @@ internal static class ProjectReviewInputService
 
         string action = query.Action switch
         {
+            ReviewInputContract.ClickAction => string.Create(CultureInfo.InvariantCulture,
+                $"click {query.X} {query.Y} {query.Button} {query.Count} {query.UiRevision}{ModifierSuffix(query)}"),
+            ReviewInputContract.ScrollAction => string.Create(CultureInfo.InvariantCulture,
+                $"scroll {query.X} {query.Y} {query.Notches} {query.UiRevision}"),
+            ReviewInputContract.DragAction => string.Create(CultureInfo.InvariantCulture,
+                $"drag {query.X} {query.Y} {query.EndX} {query.EndY} {query.Button} {query.DurationTicks} {query.UiRevision}{ModifierSuffix(query)}"),
             ReviewInputContract.ChordAction => string.Create(CultureInfo.InvariantCulture,
                 $"chord {query.DurationTicks} {query.UiRevision} {string.Join(" ", query.Buttons!)}"),
             ReviewInputContract.PressAction => $"press {query.Button}",
@@ -260,6 +272,9 @@ internal static class ProjectReviewInputService
         return command;
     }
 
+    private static string ModifierSuffix(ReviewInputQuery query) => query.Modifiers is { Count: > 0 }
+        ? " " + string.Join(" ", query.Modifiers) : string.Empty;
+
     internal static ReviewInputResponseEnvelope? DeserializeResponse(byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
@@ -267,7 +282,35 @@ internal static class ProjectReviewInputService
         {
             JsonElement root = document.RootElement;
             bool chord = root.TryGetProperty("action", out JsonElement action) && action.GetString() == ReviewInputContract.ChordAction;
-            if (chord)
+            if (action.ValueKind == JsonValueKind.String && ReviewInputContract.IsGesture(action.GetString()!))
+            {
+                var fields = new HashSet<string>(EnvelopeProperties, StringComparer.Ordinal) { "released", "completedSteps" };
+                string gesture = action.GetString()!;
+                string[] extra = gesture switch
+                {
+                    ReviewInputContract.ClickAction => ["modifiers", "count"],
+                    ReviewInputContract.ScrollAction => ["notches"],
+                    _ => ["modifiers", "durationTicks", "endX", "endY"],
+                };
+                foreach (string name in extra) fields.Add(name);
+                foreach (string name in new[] { "startTick", "endTick", "finalX", "finalY" })
+                    if (root.TryGetProperty(name, out _)) { fields.Add(name); RequireKind(root, name, JsonValueKind.Number); }
+                ResponseJson.RequireExactObject(root, fields);
+                RequireBoolean(root, "released");
+                RequireKind(root, "completedSteps", JsonValueKind.Number);
+                foreach (string name in extra)
+                {
+                    if (name != "modifiers") RequireKind(root, name, JsonValueKind.Number);
+                    else
+                    {
+                        JsonElement modifiers = root.GetProperty(name);
+                        if (modifiers.ValueKind != JsonValueKind.Array || modifiers.GetArrayLength() > 6
+                            || modifiers.EnumerateArray().Any(m => m.ValueKind != JsonValueKind.String))
+                            throw new InvalidDataException("Invalid gesture modifiers.");
+                    }
+                }
+            }
+            else if (chord)
             {
                 var fields = new HashSet<string>(ChordEnvelopeProperties, StringComparer.Ordinal);
                 if (root.TryGetProperty("startTick", out _)) fields.Add("startTick");
@@ -334,6 +377,29 @@ internal static class ProjectReviewInputService
             return false;
         }
 
+        if (ReviewInputContract.IsGesture(query.Action))
+        {
+            int steps = query.Action switch
+            {
+                ReviewInputContract.ClickAction => query.Count!.Value,
+                ReviewInputContract.ScrollAction => Math.Abs(query.Notches!.Value),
+                _ => query.DurationTicks!.Value,
+            };
+            return response.Buttons is null && response.Direction is null
+                && string.Equals(response.Button, query.Button, StringComparison.OrdinalIgnoreCase)
+                && response.X == query.X && response.Y == query.Y && response.EndX == query.EndX && response.EndY == query.EndY
+                && response.Count == query.Count && response.Notches == query.Notches && response.DurationTicks == query.DurationTicks
+                && (query.Action == ReviewInputContract.ScrollAction ? response.Modifiers is null
+                    : response.Modifiers is not null && response.Modifiers.SequenceEqual(query.Modifiers ?? [], StringComparer.OrdinalIgnoreCase))
+                && response.CompletedSteps is >= 0 && response.CompletedSteps <= steps && response.Released is not null
+                && (response.CursorSet ? response.FinalX is >= 0 && response.FinalY is >= 0 : response.FinalX is null && response.FinalY is null)
+                && (!response.Succeeded || response.Released == true && response.CompletedSteps == steps
+                    && response.StartTick is >= 0 && response.EndTick > response.StartTick && response.GameTick >= response.EndTick
+                    && response.CursorSet && response.FinalX == (query.EndX ?? query.X) && response.FinalY == (query.EndY ?? query.Y));
+        }
+        if (response.Modifiers is not null || response.Count is not null || response.Notches is not null
+            || response.EndX is not null || response.EndY is not null || response.CompletedSteps is not null
+            || response.FinalX is not null || response.FinalY is not null) return false;
         if (query.Action != ReviewInputContract.ChordAction && (response.Buttons is not null
             || response.DurationTicks is not null || response.StartTick is not null
             || response.EndTick is not null || response.Released is not null)) return false;

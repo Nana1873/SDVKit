@@ -16,6 +16,32 @@ public sealed class ReviewMenuTests
     private static readonly ReviewMenuRectangle Bounds = new(0, 0, 100, 100);
 
     [Fact]
+    public void GestureContinuityAllowsValueGeometryChangesButSeparatesViewportAndMenuIdentity()
+    {
+        var source = new Source();
+        object component = new();
+        source.Root = source.Add("ShopMenu", "shopMenu", [Component(component)]);
+        var capture = new ReviewMenuCapture();
+        string? Revision(bool continuity) => capture.Capture(source, Launch, DateTimeOffset.UtcNow, continuityOnly: continuity).UiRevision;
+        string? full = Revision(false), structure = Revision(true);
+        string viewport = ReviewMenuCapture.ViewportRevision(source);
+        source.Nodes[source.Root] = source.Nodes[source.Root] with
+        {
+            ScrollIndex = 4,
+            Components = [Component(component) with { Bounds = new(25, 70, 20, 20) }],
+        };
+        Assert.NotEqual(full, Revision(false));
+        Assert.Equal(structure, Revision(true));
+        source.Root = source.Add("InventoryPage", "inventoryPage");
+        Assert.NotEqual(structure, Revision(true));
+        Assert.Equal(viewport, ReviewMenuCapture.ViewportRevision(source));
+        source.Viewport = source.Viewport with { X = 12, Y = 18 };
+        Assert.Equal(viewport, ReviewMenuCapture.ViewportRevision(source));
+        source.UiScale = 1.5f;
+        Assert.NotEqual(viewport, ReviewMenuCapture.ViewportRevision(source));
+    }
+
+    [Fact]
     public void UiRevisionBindsNoMenuLifetimeAndIgnoresTimeAndCameraOrigin()
     {
         var source = new Source();

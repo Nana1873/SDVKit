@@ -471,7 +471,10 @@ public sealed class ProjectReviewMcpTests
                     [
                         .. expectedTools,
                         ProjectReviewMcpInputTools.ChordToolName,
-                        ProjectReviewMcpInputTools.PressToolName,
+                ProjectReviewMcpInputTools.ClickToolName,
+                        ProjectReviewMcpInputTools.DragToolName,
+                ProjectReviewMcpInputTools.PressToolName,
+                ProjectReviewMcpInputTools.ScrollToolName,
                         ProjectReviewMcpInputTools.CursorSetToolName,
                         ProjectReviewMcpInputTools.CursorClearToolName,
                         ProjectReviewMcpInputTools.WheelToolName,

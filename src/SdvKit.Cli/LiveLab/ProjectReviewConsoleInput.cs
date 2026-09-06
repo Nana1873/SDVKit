@@ -84,6 +84,8 @@ internal static class ProjectReviewConsoleLine
             transportRequest = true;
         }
 
+        if (ReviewInputContract.IsGesture(tokens[actionIndex]))
+            return ReviewInputContract.ParseGesture(tokens[actionIndex], tokens.Skip(actionIndex + 1).ToArray()) is not null;
         if (!transportRequest && tokens.Count == 4 && tokens[2] == "cancel")
             return ReviewTransportToken.IsRequestId(tokens[3]);
         if (tokens.Count >= actionIndex + 4 && tokens[actionIndex] == "chord"

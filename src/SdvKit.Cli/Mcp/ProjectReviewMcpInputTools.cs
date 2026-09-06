@@ -34,7 +34,16 @@ internal sealed record ProjectReviewMcpInputAcknowledgement(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DurationTicks = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StartTick = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndTick = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Released = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Released = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Modifiers = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Count = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Notches = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndX = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndY = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? CompletedSteps = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalX = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null);
+
 
 internal sealed class ProjectReviewMcpInputSession
 {
@@ -234,7 +243,8 @@ internal sealed class ProjectReviewMcpInputSession
                     response.DurationTicks,
                     response.StartTick,
                     response.EndTick,
-                    response.Released),
+                    response.Released, response.Modifiers, response.Count, response.Notches,
+                    response.EndX, response.EndY, response.CompletedSteps, response.FinalX, response.FinalY),
                 cancellationRequested
                     ? FindProblem(executed.Problems, "inputCancellationNotConfirmed")
                         ?? FindProblem(executed.Problems, "inputRequestCanceled")
@@ -392,6 +402,9 @@ internal sealed record ProjectReviewMcpInputInvocation(
 
 internal static class ProjectReviewMcpInputTools
 {
+    internal const string ClickToolName = "stardew_input_click";
+    internal const string ScrollToolName = "stardew_input_scroll";
+    internal const string DragToolName = "stardew_input_drag";
     internal const string ChordToolName = "stardew_input_chord";
     internal const string PressToolName = "stardew_input_press";
     internal const string CursorSetToolName = "stardew_input_cursor_set";
@@ -489,6 +502,15 @@ internal static class ProjectReviewMcpInputTools
         ArgumentNullException.ThrowIfNull(session);
         return
         [
+            new InputMcpTool(session, Tool(ClickToolName,
+                "Click an active menu at one UI coordinate once or twice, with separate press/release edges and optional Shift/Control/Alt modifiers; requires a current uiRevision.",
+                GestureInputSchema(ReviewInputContract.ClickAction), true, false), TryClick),
+            new InputMcpTool(session, Tool(ScrollToolName,
+                "Scroll an active menu at one UI coordinate by -20 to -1 or 1 to 20 notches, one verified notch per input update; requires a current uiRevision.",
+                GestureInputSchema(ReviewInputContract.ScrollAction), false, false), TryScroll),
+            new InputMcpTool(session, Tool(DragToolName,
+                "Drag an active menu from x,y to endX,endY over 1-120 movement updates after the initial press, then release at the endpoint; requires a current uiRevision.",
+                GestureInputSchema(ReviewInputContract.DragAction), true, false), TryDrag),
             new InputMcpTool(session,
                 Tool(ChordToolName,
                     "Press 1-8 buttons atomically for 1-120 input updates using a fresh stardew_menu_get uiRevision; acknowledge only after release. Ctrl+V is unsupported.",
@@ -587,6 +609,116 @@ internal static class ProjectReviewMcpInputTools
     private delegate bool TryCreateQuery(
         IDictionary<string, JsonElement>? arguments,
         out ReviewInputQuery? query);
+
+    private static bool TryClick(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query) =>
+        TryGesture(ReviewInputContract.ClickAction, arguments, out query);
+    private static bool TryScroll(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query) =>
+        TryGesture(ReviewInputContract.ScrollAction, arguments, out query);
+    private static bool TryDrag(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query) =>
+        TryGesture(ReviewInputContract.DragAction, arguments, out query);
+
+    private static bool TryGesture(string action, IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query)
+    {
+        query = null;
+        if (arguments is null || !TryInt32(arguments, "x", out int x) || !TryInt32(arguments, "y", out int y)
+            || !TryString(arguments, "uiRevision", out string? revision)) return false;
+        var required = new HashSet<string>(StringComparer.Ordinal) { "x", "y", "uiRevision" };
+        string? button = null;
+        string[]? modifiers = null;
+        if (action != ReviewInputContract.ScrollAction)
+        {
+            required.Add("button");
+            if (!TryString(arguments, "button", out button)) return false;
+            modifiers = [];
+            if (arguments.TryGetValue("modifiers", out JsonElement value))
+            {
+                required.Add("modifiers");
+                if (value.ValueKind != JsonValueKind.Null)
+                {
+                    if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 6
+                        || value.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String)) return false;
+                    modifiers = value.EnumerateArray().Select(v => v.GetString()!).ToArray();
+                }
+            }
+        }
+        int? count = null, notches = null, duration = null, endX = null, endY = null;
+        string[] numbers = action switch
+        {
+            ReviewInputContract.ClickAction => ["count"],
+            ReviewInputContract.ScrollAction => ["notches"],
+            _ => ["durationTicks", "endX", "endY"],
+        };
+        foreach (string name in numbers)
+        {
+            required.Add(name);
+            if (!TryInt32(arguments, name, out int number)) return false;
+            switch (name)
+            {
+                case "count": count = number; break;
+                case "notches": notches = number; break;
+                case "durationTicks": duration = number; break;
+                case "endX": endX = number; break;
+                case "endY": endY = number; break;
+            }
+        }
+        if (!HasOnly(arguments, required)) return false;
+        query = new(action, button, null, x, y, DurationTicks: duration, UiRevision: revision,
+            Modifiers: modifiers, Count: count, Notches: notches, EndX: endX, EndY: endY);
+        return ProjectReviewInputService.Validate(query) is null;
+    }
+
+    private static JsonElement GestureInputSchema(string action)
+    {
+        JsonNode schema = JsonNode.Parse("{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"x\",\"y\",\"uiRevision\"],\"properties\":{}}")!;
+        JsonObject props = schema["properties"]!.AsObject();
+        props["x"] = JsonNode.Parse("{\"type\":\"integer\",\"minimum\":0,\"maximum\":2147483647}");
+        props["y"] = props["x"]!.DeepClone();
+        props["uiRevision"] = JsonNode.Parse("{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}");
+        if (action != ReviewInputContract.ScrollAction)
+        {
+            props["button"] = JsonNode.Parse("{\"type\":\"string\",\"enum\":[\"MouseLeft\",\"MouseRight\",\"MouseMiddle\",\"MouseX1\",\"MouseX2\"]}");
+            props["modifiers"] = JsonNode.Parse("{\"type\":[\"array\",\"null\"],\"maxItems\":6,\"uniqueItems\":true,\"items\":{\"type\":\"string\",\"enum\":[\"LeftShift\",\"RightShift\",\"LeftControl\",\"RightControl\",\"LeftAlt\",\"RightAlt\"]}}");
+            schema["required"]!.AsArray().Add("button");
+        }
+        string[] numbers = action switch
+        {
+            ReviewInputContract.ClickAction => ["count"],
+            ReviewInputContract.ScrollAction => ["notches"],
+            _ => ["durationTicks", "endX", "endY"],
+        };
+        foreach (string name in numbers)
+        {
+            props[name] = name switch
+            {
+                "count" => JsonNode.Parse("{\"type\":\"integer\",\"enum\":[1,2]}"),
+                "notches" => JsonNode.Parse("{\"type\":\"integer\",\"minimum\":-20,\"maximum\":20,\"not\":{\"const\":0}}"),
+                "durationTicks" => JsonNode.Parse("{\"type\":\"integer\",\"minimum\":1,\"maximum\":120}"),
+                _ => props["x"]!.DeepClone(),
+            };
+            schema["required"]!.AsArray().Add(name);
+        }
+        return JsonSerializer.SerializeToElement(schema);
+    }
+
+    private static JsonElement GestureOutputSchema(string action)
+    {
+        JsonNode schema = JsonNode.Parse(OutputSchema.GetRawText())!;
+        JsonObject props = schema["properties"]!.AsObject();
+        props["action"] = JsonSerializer.SerializeToNode(new { type = "string", @const = action });
+        JsonNode input = JsonNode.Parse(GestureInputSchema(action).GetRawText())!;
+        foreach (string name in new[] { "modifiers", "count", "notches", "durationTicks", "endX", "endY" })
+        {
+            if (input["properties"]![name] is not JsonNode property) continue;
+            props[name] = property.DeepClone();
+            schema["required"]!.AsArray().Add(name);
+        }
+        foreach (string name in new[] { "startTick", "endTick", "finalX", "finalY", "completedSteps" })
+            props[name] = JsonNode.Parse("{\"type\":\"integer\",\"minimum\":0}");
+        props["released"] = JsonNode.Parse("{\"type\":\"boolean\"}");
+        schema["required"]!.AsArray().Add("completedSteps");
+        schema["required"]!.AsArray().Add("released");
+        return JsonSerializer.SerializeToElement(schema);
+    }
 
     private static bool TryChord(IDictionary<string, JsonElement>? arguments, out ReviewInputQuery? query)
     {
@@ -707,7 +839,14 @@ internal static class ProjectReviewMcpInputTools
             Name = name,
             Description = description,
             InputSchema = inputSchema,
-            OutputSchema = name == ChordToolName ? ChordOutputSchema() : OutputSchema,
+            OutputSchema = name switch
+            {
+                ClickToolName => GestureOutputSchema(ReviewInputContract.ClickAction),
+                ScrollToolName => GestureOutputSchema(ReviewInputContract.ScrollAction),
+                DragToolName => GestureOutputSchema(ReviewInputContract.DragAction),
+                ChordToolName => ChordOutputSchema(),
+                _ => OutputSchema,
+            },
             Annotations = new ToolAnnotations
             {
                 ReadOnlyHint = false,
