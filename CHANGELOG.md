@@ -8,65 +8,30 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
-- Opt-in review text entry delivers bounded BMP characters through the native event queue to exact selected NamingMenu TextBox fields, including mod-created instances. Fresh field/subscriber identity, cancellation, partial delivery counts and a one-tick Back/Enter/Tab command bridge keep field acceptance and persistence separate from acknowledgement.
-
-- Active-menu review input adds bounded click/double-click, signed scrolling and linear drag gestures with optional modifiers, observed partial progress and explicit final virtual-cursor state.
-
-- Opt-in review input supports atomic chords of 1-8 buttons held for 1-120 input updates, with fresh menu UI revisions, observed release acknowledgements, and cancellation without suppressing physical input.
-
-- `project review menu` and read-only `stardew_menu_get` describe active inventory/shop menus, nested pages and bounded public mod-menu components in each existing review role, with observed-object IDs, fresh geometry and explicit partial coverage.
-
-### Fixed
-
-- Review response failures report the processing stage and HRESULT without exposing local paths.
-
-- Request cancellation for review presses, chords and gestures waits briefly for concurrent read-only command dispatch to finish; uncertain writes are never retried.
-
-### Documentation
-
-- Clarify that a hybrid tree with one C# project and its code manifest supports build/package without a selector; distinguish it from ambiguous targets requiring `--project`.
-- Document an optional `workspaces/<ModName>/` layout and agent guidance for separate mod sources sharing one lab, while preserving explicit user-selected paths.
-- A SMAPI authoring recipe connects explicit project selection, an original event/config feature, actual runtime-exception diagnosis, corrected in-game observation, cleanup and ZIP identity, with focused lifecycle references.
-
-- A complete Content Patcher authoring recipe connects creation and local checks to deliberate runtime diagnosis, selected JSON refresh, direct Data observations, a second authored change, cleanup and ZIP packaging, with focused version-aware agent references.
+- Check SMAPI manifests, Content Patcher content and direct i18n files offline with `project check`, using bundled official schemas and actionable file/field errors.
+- Select a C# project with `--project` and a complete game installation with `--game-path` for build, package and review. Doctor now explains incomplete installations.
+- Diagnose a selected Content Patcher pack and refresh explicitly selected patch JSON in a running single review, then inspect the resulting Data record.
+- Review an extracted ready SMAPI mod directly, preserving its supplied files without rebuilding.
+- Inspect an explicitly selected save through an isolated copy. Live review status and MCP also expose bounded local-player values and the selected inventory item.
+- Read active inventory/shop menu geometry and supported public mod-menu controls through the CLI and `stardew_menu_get`.
+- Use opt-in MCP button chords and bounded holds, clicks, scrolling, dragging and text entry. Text supports selected vanilla NamingMenu fields, including mod-created instances of that family; custom/GMCM fields and supplementary Unicode characters remain unsupported.
+- Read selected-mod warnings and exceptions through the CLI and MCP, with bounded results and explicit attribution limits.
 
 ### Changed
 
-- Native launcher test failures retain bounded child output, captured identity, elapsed phases and observed cleanup results in the existing CI failure artifacts, without changing wait bounds or assertions.
+- The README now leads with installation and two quickstarts; focused guides, a capability matrix and shorter CLI help provide the details. Portable packages include a short quickstart.
+- Complete CP and SMAPI authoring recipes connect source changes, deliberate error diagnosis, observed in-game effects and packaging. An optional shared-lab workspace layout keeps mod sources separate.
+- Release checks follow the changed capabilities and reuse accepted evidence for the same artifact and environment. Shared package verification and changelog-derived release notes keep distribution checks consistent.
+- Failed native-launcher and concurrent-status tests retain bounded diagnostic evidence without weakening assertions or wait bounds.
 
-- Virtual review mouse input now feeds the shared Stardew/SMAPI snapshot, so helper/event cursor coordinates follow the virtual cursor and wheel notches use normal input processing instead of a direct menu call.
-- Stale or ended review status no longer retains an inner ready runtime payload; return to title immediately invalidates world/player values.
-- Installation and two short quickstarts now lead the README; task guides, the capability matrix, and CLI/MCP references are separately navigable.
-- CLI help now shows a short overview, with console grammar and MCP tool details in their own subcommand help.
-- Agent reviews require a real restart when testing persistence or lifecycle behavior; unrelated inspections no longer require one. Final stop and applicable reset remain mandatory.
-- Release checks now follow a change-based matrix and reuse fully passing evidence for the same artifact and environment. Public download verification does not repeat full live acceptance when the tested package is unchanged.
+### Fixed
 
-- `save inspect` copies one explicitly selected save or registered disposable fixture below the consuming project’s `.sdvkit/` before reading bounded Stardew 1.6 player, calendar and Farm facts, with byte identity, missing-field availability and actionable format/path limits.
-- Review accepts one extracted ready SMAPI code mod as the selected target in single or network-2, preserving its supplied bytes without rebuilding; source projects and ready content-pack targets remain supported.
-- Review status and `stardew_runtime_get` expose the local farmer's stable save-local ID, money, health/stamina and one selected inventory item, with explicit availability and bounded typed values.
-- Build, package, and review start accept `--project` to select one root-relative C# project and its colocated manifest. `--game-path` validates and selects one complete game/SMAPI directory for toolkit and live launch commands, preserving unique automatic defaults. Doctor reports incomplete candidates separately with missing requirements and corrective actions.
-- `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
-- `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
-- `project check [path] [--json]` checks one mod root's manifest, Content Patcher 2.9.x content, and direct i18n files offline, with relative file/field errors and bundled official SMAPI schemas. It accepts comments and trailing commas without changing source files; runtime patch behavior and referenced assets still need separate checks.
-- Selected-mod warnings and multiline exceptions are available through `project review diagnostics` and read-only `stardew_mod_diagnostics`, with exact review/role binding, visible attribution uncertainty, withheld private context, and bounded counts/truncation.
-- A short `README.txt` inside newly built portable packages.
-- A shared release-note extractor and this versioned changelog, including summaries of all previous releases.
-- A reusable portable archive verifier shared by CI and local checks.
+- Virtual mouse input now reaches Stardew/SMAPI's shared input snapshot and normal wheel processing. Cancelled input drains concurrent dispatch safely; uncertain writes are not repeated.
+- Ended or stale review status no longer exposes an old ready runtime snapshot. Failed final status publication remains visible, and Windows status replacement avoids the reproduced replacement-intermediate failure. The separate sporadic rename error 5 remains unresolved.
+- Content Patcher source remains reviewable and refreshable after packaging, with build output excluded from staging.
+- Inspection option handling, response-file ownership checks and failure diagnostics are consistent across adapters. An unconfirmed isolated-option restoration remains a warning when exact exit and cleanup succeeded.
 
-- A failed final lab-status update is reported even when earlier active updates were already failing. The game still exits normally, and a missing final marker remains an unconfirmed stop.
-- Lab status publication avoids Windows replacement-intermediate failures while preserving complete snapshots for concurrent readers; denied writes remain visible and stale markers are still rejected.
-- Content Patcher targets remain reviewable and refreshable from their original source after packaging. Root `.sdvkit` output is retained without entering the game; unsafe paths, unselected edits, companion drift and exact staged identities remain guarded.
-
-- Inspection commands consistently reject unknown CLI options as usage errors before checking review ownership. Data operands beginning with '-' can be escaped after '--', like the other inspection commands.
-- Review response publication uses the same file ownership checks for every command and never cleans up a temporary path when its creation failed.
-- The installation example now uses an explicit extraction directory and the matching executable path.
-- The smoke skill now reports an unconfirmed isolated-option restore as a warning when exact process exit and cleanup succeeded.
-
-- Content Patcher and SMAPI authoring now cover project selection, diagnostics, refresh, extracted targets, and packaged-source verification.
-- Native MCP reviews add menu inspection, local-player state, atomic chords and holds, bounded mouse gestures, and bounded text entry behind explicit startup capabilities.
-- Save inspection and isolated review lifecycle checks preserve selected identities and make persistence evidence explicit.
-
-Upgrade: stop active reviews and finish their required reset before replacing the package. Input and fixture actions require their respective MCP startup opt-ins.
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a new directory and restart MCP clients against it. Input and fixture actions still require their separate startup opt-ins; input acknowledgements do not establish that a menu accepted or persisted a change.
 
 [Release acceptance](https://github.com/Nana1873/SDVKit/issues/154) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.7.0...v0.8.0)
 
