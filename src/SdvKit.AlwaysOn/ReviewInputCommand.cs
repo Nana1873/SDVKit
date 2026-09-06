@@ -167,6 +167,106 @@ internal sealed record ReviewInputResult(
     string? CanonicalButton = null,
     string? ProblemCode = null);
 
+// The existing adapter's mouse values, before SMAPI derives its helpers and events.
+internal sealed class ReviewVirtualMouseState
+{
+    private int? _uiX;
+    private int? _uiY;
+    private int _wheelOffset;
+    private int _pendingWheel;
+    private int _physicalWheel;
+    private bool _hasPhysicalWheelSample;
+    private int _lastWheel;
+
+    public bool IsSet => _uiX is not null && _uiY is not null;
+
+    public void Set(int x, int y)
+    {
+        _uiX = x;
+        _uiY = y;
+    }
+
+    public bool TryQueueWheel(int direction)
+    {
+        long nextOffset = (long)_wheelOffset + direction;
+        long nextValue = _physicalWheel + nextOffset;
+        if (!IsSet || !_hasPhysicalWheelSample || direction is not (120 or -120) || _pendingWheel != 0
+            || nextOffset is < int.MinValue or > int.MaxValue
+            || nextValue is < int.MinValue or > int.MaxValue)
+        {
+            return false;
+        }
+
+        _pendingWheel = direction;
+        return true;
+    }
+
+    public (int X, int Y, int Wheel) Apply(
+        int physicalX, int physicalY, int physicalWheel,
+        int uiWidth, int uiHeight, float uiScale, out bool wheelRejected)
+    {
+        _physicalWheel = physicalWheel;
+        _hasPhysicalWheelSample = true;
+        long neutral = (long)physicalWheel + _wheelOffset;
+        long requested = neutral + _pendingWheel;
+        wheelRejected = requested is < int.MinValue or > int.MaxValue;
+        // Consume at the common input sample, never at a game/helper read afterwards.
+        if (!wheelRejected)
+        {
+            _wheelOffset += _pendingWheel;
+        }
+        _pendingWheel = 0;
+        // An external counter jump may also make the consumed origin unrepresentable.
+        // Retain the last output then; resetting the origin would replay an opposite delta.
+        int wheel = wheelRejected
+            ? neutral is >= int.MinValue and <= int.MaxValue ? (int)neutral : _lastWheel
+            : (int)requested;
+        _lastWheel = wheel;
+        if (_uiX is not int x || _uiY is not int y)
+        {
+            return (physicalX, physicalY, wheel);
+        }
+
+        x = Math.Clamp(x, 0, Math.Max(0, uiWidth - 1));
+        y = Math.Clamp(y, 0, Math.Max(0, uiHeight - 1));
+        return (
+            (int)Math.Round(x * uiScale, MidpointRounding.AwayFromZero),
+            (int)Math.Round(y * uiScale, MidpointRounding.AwayFromZero),
+            wheel);
+    }
+
+    public void Clear()
+    {
+        _uiX = null;
+        _uiY = null;
+        _pendingWheel = 0;
+        // Keep the neutral cumulative origin: resetting it would emit a reverse notch.
+    }
+}
+
+// Ownership bookkeeping only; SMAPI still owns every actual button transition.
+internal sealed class ReviewPendingPresses
+{
+    private readonly HashSet<int> _buttons = new();
+
+    public void Add(int button) => _buttons.Add(button);
+
+    public void RetireConsumed(Func<int, bool> isStillPending) =>
+        _buttons.RemoveWhere(button => !isStillPending(button));
+
+    public void Reset() => _buttons.Clear();
+
+    public void CancelAndClear(ReviewVirtualMouseState mouse, Action<int> suppress)
+    {
+        foreach (int button in _buttons)
+        {
+            suppress(button);
+        }
+        _buttons.Clear();
+        mouse.Clear();
+    }
+}
+
 internal static class ReviewInputResponseFile
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -343,7 +443,21 @@ internal static class ReviewInputCommand
         }
         catch (Exception exception)
         {
-            if (request!.RequestId is not null)
+            if (request!.Kind != ReviewInputKind.ClearCursor)
+            {
+                try
+                {
+                    if (!runtime.TryClearCursor(out string cleanupError))
+                    {
+                        monitor.Log(cleanupError, LogLevel.Error);
+                    }
+                }
+                catch (Exception cleanupException)
+                {
+                    monitor.Log($"Pending review input could not be canceled; the cursor was retained: {cleanupException.Message}", LogLevel.Error);
+                }
+            }
+            if (request.RequestId is not null)
             {
                 TryWriteFailureResponse(request, runtimePath, runtime);
             }
@@ -465,7 +579,7 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
         }
 
         helper.Input.Press(parsed);
-        ReviewVirtualCursor.AllowBackgroundInputForNextTicks();
+        ReviewVirtualCursor.RecordPress(helper.Input, parsed);
         canonicalButton = parsed.ToString();
         error = string.Empty;
         return true;
@@ -485,9 +599,7 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
             return false;
         }
 
-        Game1.activeClickableMenu.receiveScrollWheelAction(direction);
-        error = string.Empty;
-        return true;
+        return ReviewVirtualCursor.TryScroll(direction, out error);
     }
 
     public bool TrySetCursor(int x, int y, out string error)
@@ -497,9 +609,21 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
 
     public bool TryClearCursor(out string error)
     {
-        ReviewVirtualCursor.Clear();
-        error = string.Empty;
-        return true;
+        try
+        {
+            ReviewVirtualCursor.Clear();
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = $"Pending review input could not be canceled; the cursor was retained: {exception.Message}";
+            if (error.Length > ReviewInputContract.MaximumProblemLength)
+            {
+                error = error[..ReviewInputContract.MaximumProblemLength];
+            }
+            return false;
+        }
     }
 }
 
@@ -509,8 +633,12 @@ internal static class ReviewVirtualCursor
 
     private static readonly object Sync = new();
     private static bool _installed;
-    private static int? _uiX;
-    private static int? _uiY;
+    private static ReviewVirtualMouseState _mouse = new();
+    private static InputState? _inputOwner;
+    private static readonly ReviewPendingPresses PendingButtons = new();
+    private static IInputHelper? _buttonHelper;
+    private static IMonitor? _monitor;
+    private static bool _wheelFailureReported;
     private static int _backgroundInputThroughTick = -1;
 
     public static bool IsSet
@@ -519,7 +647,8 @@ internal static class ReviewVirtualCursor
         {
             lock (Sync)
             {
-                return _uiX is not null && _uiY is not null;
+                EnsureInputOwner();
+                return _mouse.IsSet;
             }
         }
     }
@@ -535,7 +664,7 @@ internal static class ReviewVirtualCursor
         }
     }
 
-    public static bool TryInstall(out string error)
+    public static bool TryInstall(IMonitor monitor, out string error)
     {
         lock (Sync)
         {
@@ -545,11 +674,17 @@ internal static class ReviewVirtualCursor
                 return true;
             }
 
+            // TrueUpdate reads this base method before building MouseState and CursorPosition.
             MethodInfo? getMouseState = AccessTools.Method(
-                "StardewModdingAPI.Framework.Input.SInputState:GetMouseState");
+                typeof(InputState), nameof(InputState.GetMouseState));
             MethodInfo? postfix = AccessTools.Method(
                 typeof(ReviewVirtualCursor),
                 nameof(AfterGetMouseState));
+            Type? smapiInput = AccessTools.TypeByName("StardewModdingAPI.Framework.Input.SInputState");
+            MethodInfo? trueUpdate = smapiInput is null ? null : AccessTools.Method(smapiInput, "TrueUpdate");
+            FieldInfo? pressedKeys = smapiInput is null ? null : AccessTools.Field(smapiInput, "CustomPressedKeys");
+            MethodInfo? inputFinalizer = AccessTools.Method(
+                typeof(ReviewVirtualCursor), nameof(AfterInputUpdate));
             MethodInfo? isActiveNoOverlay = AccessTools.PropertyGetter(
                 typeof(Game1),
                 nameof(Game1.IsActiveNoOverlay));
@@ -561,6 +696,13 @@ internal static class ReviewVirtualCursor
                 nameof(AfterGetReviewActivity));
             if (getMouseState is null
                 || postfix is null
+                || trueUpdate is null
+                || trueUpdate.IsStatic
+                || trueUpdate.ReturnType != typeof(void)
+                || trueUpdate.GetParameters().Length != 0
+                || pressedKeys?.FieldType != typeof(HashSet<SButton>)
+                || pressedKeys.IsStatic
+                || inputFinalizer is null
                 || isActiveNoOverlay is null
                 || isActive is null
                 || activePostfix is null)
@@ -576,11 +718,15 @@ internal static class ReviewVirtualCursor
                     getMouseState,
                     postfix: new HarmonyMethod(postfix));
                 harmony.Patch(
+                    trueUpdate,
+                    finalizer: new HarmonyMethod(inputFinalizer));
+                harmony.Patch(
                     isActiveNoOverlay,
                     postfix: new HarmonyMethod(activePostfix));
                 harmony.Patch(
                     isActive,
                     postfix: new HarmonyMethod(activePostfix));
+                _monitor = monitor;
                 _installed = true;
                 error = string.Empty;
                 return true;
@@ -604,8 +750,9 @@ internal static class ReviewVirtualCursor
                 return false;
             }
 
-            _uiX = uiX;
-            _uiY = uiY;
+            EnsureInputOwner();
+            _mouse.Set(uiX, uiY);
+            AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
         }
@@ -615,10 +762,41 @@ internal static class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            _uiX = null;
-            _uiY = null;
-            _backgroundInputThroughTick = -1;
+            EnsureInputOwner();
+            // Console commands run before TrueUpdate. Cancel queued owned presses
+            // before restoring physical coordinates, so a click cannot be redirected.
+            PendingButtons.CancelAndClear(_mouse, button => _buttonHelper!.Suppress((SButton)button));
+            AllowBackgroundInputForNextTicks();
         }
+    }
+
+    public static void RecordPress(IInputHelper helper, SButton button)
+    {
+        lock (Sync)
+        {
+            EnsureInputOwner();
+            _buttonHelper = helper;
+            PendingButtons.Add((int)button);
+            AllowBackgroundInputForNextTicks();
+        }
+    }
+
+    private static Exception? AfterInputUpdate(
+        InputState __instance,
+        HashSet<SButton> ___CustomPressedKeys,
+        Exception? __exception)
+    {
+        lock (Sync)
+        {
+            EnsureInputOwner();
+            if (ReferenceEquals(__instance, _inputOwner))
+            {
+                // Read only: TrueUpdate may catch an exception before or after clearing
+                // its queue, and public UpdateTicked is skipped during loading/saving.
+                PendingButtons.RetireConsumed(button => ___CustomPressedKeys.Contains((SButton)button));
+            }
+        }
+        return __exception;
     }
 
     public static void AllowBackgroundInputForNextTicks()
@@ -629,39 +807,82 @@ internal static class ReviewVirtualCursor
         }
     }
 
-    private static void AfterGetMouseState(ref MouseState __result)
+    public static bool TryScroll(int direction, out string error)
     {
-        int uiX;
-        int uiY;
         lock (Sync)
         {
-            if (_uiX is not int storedX || _uiY is not int storedY)
+            EnsureInputOwner();
+            if (!_installed || !_mouse.TryQueueWheel(direction))
+            {
+                error = "The virtual wheel requires a cursor, one pending notch at most, and an available cumulative counter range.";
+                return false;
+            }
+
+            AllowBackgroundInputForNextTicks();
+            error = string.Empty;
+            return true;
+        }
+    }
+
+    private static void EnsureInputOwner()
+    {
+        if (!ReferenceEquals(_inputOwner, Game1.input))
+        {
+            _inputOwner = Game1.input;
+            _mouse = new ReviewVirtualMouseState();
+            PendingButtons.Reset();
+            _buttonHelper = null;
+            _wheelFailureReported = false;
+            _backgroundInputThroughTick = -1;
+        }
+    }
+
+    private static void AfterGetMouseState(InputState __instance, ref MouseState __result)
+    {
+        lock (Sync)
+        {
+            EnsureInputOwner();
+            if (!ReferenceEquals(__instance, _inputOwner))
             {
                 return;
             }
 
-            uiX = Math.Clamp(storedX, 0, Math.Max(0, Game1.uiViewport.Width - 1));
-            uiY = Math.Clamp(storedY, 0, Math.Max(0, Game1.uiViewport.Height - 1));
+            var sample = _mouse.Apply(
+                __result.X, __result.Y, __result.ScrollWheelValue,
+                Game1.uiViewport.Width, Game1.uiViewport.Height,
+                Game1.options?.uiScale ?? 1f, out bool wheelRejected);
+            if (wheelRejected)
+            {
+                PendingButtons.CancelAndClear(_mouse, button => _buttonHelper!.Suppress((SButton)button));
+                sample.X = __result.X;
+                sample.Y = __result.Y;
+                if (!_wheelFailureReported)
+                {
+                    _monitor?.Log("Virtual wheel input was canceled because the sampled cumulative counter exceeded its range; the consumed origin was retained.", LogLevel.Error);
+                    _wheelFailureReported = true;
+                }
+            }
+            else
+            {
+                _wheelFailureReported = false;
+            }
+            __result = new MouseState(
+                sample.X,
+                sample.Y,
+                sample.Wheel,
+                __result.LeftButton,
+                __result.MiddleButton,
+                __result.RightButton,
+                __result.XButton1,
+                __result.XButton2);
         }
-
-        float uiScale = Game1.options?.uiScale ?? 1f;
-        int rawX = (int)Math.Round(uiX * uiScale, MidpointRounding.AwayFromZero);
-        int rawY = (int)Math.Round(uiY * uiScale, MidpointRounding.AwayFromZero);
-        __result = new MouseState(
-            rawX,
-            rawY,
-            __result.ScrollWheelValue,
-            __result.LeftButton,
-            __result.MiddleButton,
-            __result.RightButton,
-            __result.XButton1,
-            __result.XButton2);
     }
 
     private static void AfterGetReviewActivity(ref bool __result)
     {
         lock (Sync)
         {
+            EnsureInputOwner();
             if (_backgroundInputThroughTick >= Game1.ticks)
             {
                 __result = true;

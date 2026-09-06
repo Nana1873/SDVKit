@@ -92,6 +92,26 @@ Coordinates are an example, not a known button location: inspect the current vie
 
 Mouse input uses only the process-local virtual cursor. Set it before mouse-button or `MouseWheelUp`/`MouseWheelDown` presses; wheel input also needs an active menu. Never move the physical pointer, focus the game, or use desktop automation to substitute for review input. A successful injection still requires a separate check of the intended effect.
 
+### Input behavior
+
+The adapter supplies one mouse snapshot before SMAPI derives helper state and input events. SMAPI retains ownership of button transitions and event dispatch. UI coordinates are scaled to raw screen pixels; SMAPI's cursor properties use its normal zoom/world-coordinate conversion.
+
+| Action | Stardew input/menu | SMAPI helper and events |
+| --- | --- | --- |
+| Keyboard or controller button | Supported `IInputHelper.Press` override for one input update | Normal `Pressed` → `Released` → `None` when the physical button is up; `ButtonsChanged`, `ButtonPressed`, `ButtonReleased` |
+| Mouse button | Same override at the virtual cursor | Same button lifecycle; event cursor and `GetCursorPosition()` use the shared virtual coordinates |
+| Cursor set/change | Scaled virtual position; unchanged coordinates do not create another movement | Normal `CursorMoved` old/new transition when SMAPI observes a changed position |
+| Wheel up/down | One queued cumulative `+120`/`-120` delta through normal menu handling | One corresponding `MouseWheelScrolled` observation; no direct second menu call |
+| Cursor clear, title, controlled exit, command exception | Cancel still-queued owned button presses before restoring physical coordinates; cancel an unconsumed wheel notch | Keep the consumed wheel origin to avoid an opposite notch; allow bounded updates to drain button state; subsequent physical wheel deltas remain visible |
+
+Send actions sequentially and observe their effects before sending the next. A second wheel notch before consumption is rejected. Physical input, other mods' suppression, chat, loading, and saving retain SMAPI's normal rules; this interface does not synthesize holds or guarantee events that SMAPI suppresses in those contexts. Cursor changes and wheel/button input use the existing bounded background activity window.
+
+Wheel input requires a sampled raw counter. Counter overflow is rejected before changing the virtual offset. If physical wheel input changes the counter beyond its available range after queueing, the adapter cancels all pending owned input, clears the virtual cursor, and logs an error; observe the effect rather than retrying an acknowledged command blindly. If button cancellation fails, cursor and pending ownership are retained and clear is reported as failed. An unrepresentable consumed origin retains the last output and reports failure instead of emitting a synthetic reverse notch.
+
+The adapter is bound to the exact input instance. Its SMAPI 4.5.2 integration reads the private `CustomPressedKeys` set after `SInputState.TrueUpdate` solely to retire consumed ownership: loading/saving may skip public tick events, and an input update may fail before consuming the queue. It never writes that set or dispatches private events. Installation validates the required methods and field type and rolls back all input patches if unavailable; there is no fallback to partial input behavior. Normal presses never call `Suppress`; cleanup uses the public helper only for owned presses still pending.
+
+Focused offline tests cover coordinate and cumulative-delta bookkeeping. They do not prove SMAPI event dispatch or menu effects: acceptance requires a neutral isolated probe, separately identified physical observations, virtual observations, exact role binding, pointer/foreground stability, and final cleanup.
+
 For network commands, add exactly one `--role host` or `--role farmhand`; do not infer one role's state from the other. Use distinct screenshot labels.
 
 Choose the detailed surface for the task:
