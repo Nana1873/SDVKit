@@ -7,7 +7,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
 | Default observation/evidence | 9 tools | 6 tools | 6 tools |
-| Add `--allow-input` | +8 | +8 | +8 |
+| Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
