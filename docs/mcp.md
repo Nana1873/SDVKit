@@ -7,7 +7,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
 | Default observation/evidence | 9 tools | 6 tools | 6 tools |
-| Add `--allow-input` | +4 | +4 | +4 |
+| Add `--allow-input` | +5 | +5 | +5 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
@@ -126,8 +126,17 @@ surface rather than inferring one role's game-content pipeline from the other.
 ## Opt-in input
 
 With `--allow-input`, and only for that server process, every topology also
-exposes four typed action tools:
+exposes five typed action tools:
 
+- `stardew_input_chord { "buttons": ["LeftShift", "F8"], "durationTicks": 5, "uiRevision": "<from stardew_menu_get>" }`
+  presses 1-8 distinct exact runtime SMAPI button names in the same input update,
+  holds the complete set for 1-120 updates, then confirms release. Read
+  `stardew_menu_get` first: its opaque `uiRevision` binds the current menu or
+  no-menu lifetime, known page/component geometry, screen size and UI scale.
+  Changes before the first input update reject the chord. Moving the world camera
+  does not invalidate screen-local coordinates. Mouse members require the virtual
+  cursor. None, wheel tokens, overlapping actions, physical/external button
+  collisions and clipboard-triggering Ctrl+V combinations are rejected.
 - `stardew_input_press { "button": "F8" }` injects one exact non-wheel SMAPI
   `SButton` for one input tick. Mouse buttons require a previously confirmed
   virtual cursor; they never fall back to the physical pointer position.
@@ -138,6 +147,14 @@ exposes four typed action tools:
   background-input state.
 - `stardew_input_wheel { "direction": "up" | "down" }` sends one wheel notch
   and requires both the virtual cursor and an active game menu.
+
+The chord acknowledgement adds `buttons` (canonical names), `durationTicks`,
+`startTick`, `endTick` (the release input sample) and `released`. One tick keeps
+single-press semantics; longer durations produce one Pressed transition followed
+by Held samples. Start/end fields are absent when those samples were not observed.
+A physical key still down at release cannot be reported as released and is never
+suppressed. Cancellation sends one request-bound cancellation on the existing
+owned console channel, drains the bounded action, and does not retry it.
 
 Each call is bound to the role selected at server startup, takes a closed JSON
 object, acquires the role-local cross-process action lock without queueing,
@@ -223,9 +240,9 @@ enabled_tools = [
 
 For an explicitly authorized input session, add `"--allow-input"` to `args`
 and independently allow only the needed names from
-`stardew_input_press`, `stardew_input_cursor_set`,
+`stardew_input_chord`, `stardew_input_press`, `stardew_input_cursor_set`,
 `stardew_input_cursor_clear`, and `stardew_input_wheel`. Omitting the startup
-flag keeps all four absent even if the client requests or allowlists them.
+flag keeps all five absent even if the client requests or allowlists them.
 
 For example, bind a separate network-2 host client by changing only the server
 name and arguments:

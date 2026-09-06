@@ -470,6 +470,7 @@ public sealed class ProjectReviewMcpTests
                     expectedTools =
                     [
                         .. expectedTools,
+                        ProjectReviewMcpInputTools.ChordToolName,
                         ProjectReviewMcpInputTools.PressToolName,
                         ProjectReviewMcpInputTools.CursorSetToolName,
                         ProjectReviewMcpInputTools.CursorClearToolName,

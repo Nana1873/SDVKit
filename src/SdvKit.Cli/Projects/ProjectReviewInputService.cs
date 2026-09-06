@@ -47,6 +47,8 @@ internal static class ProjectReviewInputService
         "menuOpen",
         "problem",
     ], StringComparer.Ordinal);
+    private static readonly HashSet<string> ChordEnvelopeProperties = new(EnvelopeProperties.Concat(
+        ["buttons", "durationTicks", "released"]), StringComparer.Ordinal);
     private static readonly HashSet<string> ProblemProperties = new(
         ["code", "message"],
         StringComparer.Ordinal);
@@ -118,7 +120,15 @@ internal static class ProjectReviewInputService
                     topology,
                     role,
                     drainAfterDispatchOnCancellation: true,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken,
+                    onCancellation: query.Action is ReviewInputContract.ChordAction or ReviewInputContract.PressAction
+                        ? () =>
+                        {
+                            LiveLabCommandResult canceled = ProjectReviewService.ExecuteCommand(
+                                $"sdvkit input cancel {requestId}", topology, role, labRoot, inputSender);
+                            if (canceled.ExitCode != 0) throw new IOException("The exact cancellation command was not confirmed written.");
+                        }
+            : null);
 
             if (transported.Response is null)
             {
@@ -157,6 +167,18 @@ internal static class ProjectReviewInputService
 
     internal static ReviewInputProblem? Validate(ReviewInputQuery query)
     {
+        if (query.Action == ReviewInputContract.ChordAction)
+        {
+            return query.Button is null && query.Direction is null && query.X is null && query.Y is null
+                && query.Buttons is { Count: >= 1 and <= 8 } && query.DurationTicks is >= 1 and <= 120
+                && ReviewInputContract.IsUiRevision(query.UiRevision)
+                && query.Buttons.All(b => IsButton(b) && !IsWheelButton(b)
+                    && !string.Equals(b, "None", StringComparison.OrdinalIgnoreCase))
+                && query.Buttons.Distinct(StringComparer.OrdinalIgnoreCase).Count() == query.Buttons.Count
+                    ? null : Problem("inputArgumentsInvalid", "A chord requires 1-8 distinct non-wheel button names, 1-120 ticks and a current UI revision.");
+        }
+        if (query.Buttons is not null || query.DurationTicks is not null || query.UiRevision is not null)
+            return Problem("inputArgumentsInvalid", "Chord values are only accepted by the chord action.");
         if (string.Equals(query.Action, ReviewInputContract.PressAction, StringComparison.Ordinal))
         {
             return IsButton(query.Button)
@@ -216,6 +238,8 @@ internal static class ProjectReviewInputService
 
         string action = query.Action switch
         {
+            ReviewInputContract.ChordAction => string.Create(CultureInfo.InvariantCulture,
+                $"chord {query.DurationTicks} {query.UiRevision} {string.Join(" ", query.Buttons!)}"),
             ReviewInputContract.PressAction => $"press {query.Button}",
             ReviewInputContract.WheelAction => $"wheel {query.Direction}",
             ReviewInputContract.CursorSetAction => string.Create(
@@ -242,7 +266,23 @@ internal static class ProjectReviewInputService
         using (JsonDocument document = JsonDocument.Parse(bytes, ResponseDocumentOptions))
         {
             JsonElement root = document.RootElement;
-            ResponseJson.RequireExactObject(root, EnvelopeProperties);
+            bool chord = root.TryGetProperty("action", out JsonElement action) && action.GetString() == ReviewInputContract.ChordAction;
+            if (chord)
+            {
+                var fields = new HashSet<string>(ChordEnvelopeProperties, StringComparer.Ordinal);
+                if (root.TryGetProperty("startTick", out _)) fields.Add("startTick");
+                if (root.TryGetProperty("endTick", out _)) fields.Add("endTick");
+                ResponseJson.RequireExactObject(root, fields);
+                RequireKind(root, "durationTicks", JsonValueKind.Number);
+                RequireBoolean(root, "released");
+                JsonElement buttons = root.GetProperty("buttons");
+                if (buttons.ValueKind != JsonValueKind.Array || buttons.GetArrayLength() is < 1 or > 8
+                    || buttons.EnumerateArray().Any(b => b.ValueKind != JsonValueKind.String))
+                    throw new InvalidDataException("Invalid chord buttons.");
+                if (fields.Contains("startTick")) RequireKind(root, "startTick", JsonValueKind.Number);
+                if (fields.Contains("endTick")) RequireKind(root, "endTick", JsonValueKind.Number);
+            }
+            else ResponseJson.RequireExactObject(root, EnvelopeProperties);
             RequireKind(root, "schemaVersion", JsonValueKind.Number);
             RequireKind(root, "requestId", JsonValueKind.String);
             RequireKind(root, "observedAtUtc", JsonValueKind.String);
@@ -294,8 +334,18 @@ internal static class ProjectReviewInputService
             return false;
         }
 
+        if (query.Action != ReviewInputContract.ChordAction && (response.Buttons is not null
+            || response.DurationTicks is not null || response.StartTick is not null
+            || response.EndTick is not null || response.Released is not null)) return false;
         return query.Action switch
         {
+            ReviewInputContract.ChordAction => response.Button is null && response.Direction is null
+                && response.X is null && response.Y is null
+                && response.Buttons is { Count: >= 1 and <= 8 } && query.Buttons is not null
+                && response.Buttons.SequenceEqual(query.Buttons, StringComparer.OrdinalIgnoreCase)
+                && response.DurationTicks == query.DurationTicks && response.Released is not null
+                && (!response.Succeeded || response.Released == true && response.StartTick is >= 0
+                    && response.EndTick > response.StartTick && response.GameTick == response.EndTick),
             ReviewInputContract.PressAction =>
                 IsButton(response.Button)
                 && string.Equals(response.Button, query.Button, StringComparison.OrdinalIgnoreCase)

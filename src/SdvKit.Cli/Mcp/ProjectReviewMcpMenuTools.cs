@@ -11,11 +11,12 @@ internal static class ProjectReviewMcpMenuTools
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly JsonElement OutputSchema = JsonDocument.Parse("""
         {"type":"object","additionalProperties":false,
-         "required":["schemaVersion","state","errorCode","launchId","topology","role","capturedAtUtc","identityScope","viewport","menuOpen","complete","truncated","limitations","menus"],
+         "required":["schemaVersion","state","errorCode","launchId","topology","role","capturedAtUtc","identityScope","viewport","menuOpen","complete","truncated","limitations","menus","uiRevision"],
          "properties":{
           "schemaVersion":{"const":1},"state":{"enum":["ready","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
           "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},
+          "uiRevision":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"},
           "capturedAtUtc":{"type":"string","format":"date-time"},"identityScope":{"type":["string","null"]},
           "viewport":{"anyOf":[{"$ref":"#/$defs/rectangle"},{"type":"null"}]},
           "menuOpen":{"type":"boolean"},"complete":{"type":"boolean"},"truncated":{"type":"boolean"},

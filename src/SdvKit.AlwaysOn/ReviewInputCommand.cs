@@ -18,6 +18,7 @@ internal enum ReviewInputKind
     Scroll,
     Cursor,
     ClearCursor,
+    Chord,
 }
 
 internal sealed record ReviewInputRequest(
@@ -25,12 +26,15 @@ internal sealed record ReviewInputRequest(
     string? Button,
     int X,
     int Y,
-    string? RequestId = null);
+    string? RequestId = null,
+    IReadOnlyList<string>? Buttons = null,
+    int DurationTicks = 1,
+    string? UiRevision = null);
 
 internal static class ReviewInputArguments
 {
     internal const string Usage =
-        "Usage: sdvkit input press <SButton|MouseWheelUp|MouseWheelDown> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear";
+        "Usage: sdvkit input press <SButton|MouseWheelUp|MouseWheelDown> | sdvkit input chord <ticks> <ui-revision> <SButton...> | sdvkit input cursor <ui-x> <ui-y> | sdvkit input cursor clear";
 
     public static bool TryParse(
         IReadOnlyList<string>? arguments,
@@ -56,7 +60,24 @@ internal static class ReviewInputArguments
             actionIndex = 3;
         }
 
-        if (arguments.Count == actionIndex + 2
+        if (arguments.Count >= actionIndex + 4
+            && arguments[actionIndex] == "chord"
+            && int.TryParse(arguments[actionIndex + 1], NumberStyles.None,
+                CultureInfo.InvariantCulture, out int duration)
+            && duration is >= 1 and <= 120
+            && ReviewInputContract.IsUiRevision(arguments[actionIndex + 2]))
+        {
+            string[] buttons = arguments.Skip(actionIndex + 3).ToArray();
+            if (buttons.Length is >= 1 and <= 8
+                && buttons.All(b => IsValidButtonToken(b) && !IsMouseWheelToken(b)
+                    && !string.Equals(b, "None", StringComparison.OrdinalIgnoreCase))
+                && buttons.Distinct(StringComparer.OrdinalIgnoreCase).Count() == buttons.Length)
+            {
+                request = new(ReviewInputKind.Chord, null, 0, 0, requestId, buttons, duration,
+                    arguments[actionIndex + 2]);
+            }
+        }
+        else if (arguments.Count == actionIndex + 2
             && string.Equals(arguments[actionIndex], "press", StringComparison.Ordinal)
             && IsValidButtonToken(arguments[actionIndex + 1])
             && (requestId is null || !IsMouseWheelToken(arguments[actionIndex + 1])))
@@ -154,6 +175,10 @@ internal interface IReviewInputRuntime
 
     bool TryPress(string button, out string canonicalButton, out string error);
 
+    bool TryChord(ReviewInputRequest request, Action<ReviewInputResult> completed,
+        out string error)
+    { error = "Chord input is unavailable."; return false; }
+
     bool TryScroll(int direction, out string error);
 
     bool TrySetCursor(int x, int y, out string error);
@@ -165,7 +190,11 @@ internal sealed record ReviewInputResult(
     bool Succeeded,
     string Message,
     string? CanonicalButton = null,
-    string? ProblemCode = null);
+    string? ProblemCode = null,
+    IReadOnlyList<string>? Buttons = null,
+    int? StartTick = null,
+    int? EndTick = null,
+    bool? Released = null);
 
 // The existing adapter's mouse values, before SMAPI derives its helpers and events.
 internal sealed class ReviewVirtualMouseState
@@ -244,26 +273,54 @@ internal sealed class ReviewVirtualMouseState
     }
 }
 
-// Ownership bookkeeping only; SMAPI still owns every actual button transition.
-internal sealed class ReviewPendingPresses
+// Counts completed input samples, never wall-clock or public game-loop events.
+internal sealed class ReviewChordProgress
 {
-    private readonly HashSet<int> _buttons = new();
-
-    public void Add(int button) => _buttons.Add(button);
-
-    public void RetireConsumed(Func<int, bool> isStillPending) =>
-        _buttons.RemoveWhere(button => !isStillPending(button));
-
-    public void Reset() => _buttons.Clear();
-
-    public void CancelAndClear(ReviewVirtualMouseState mouse, Action<int> suppress)
+    public ReviewChordProgress(int duration)
     {
-        foreach (int button in _buttons)
+        if (duration is < 1 or > 120) throw new ArgumentOutOfRangeException(nameof(duration));
+        Remaining = duration;
+    }
+    public int Remaining { get; private set; }
+    public int? StartTick { get; private set; }
+    public int? EndTick { get; private set; }
+    public bool Canceled { get; private set; }
+    public bool Finished => EndTick is not null;
+    public void Cancel() { Canceled = true; Remaining = 0; }
+    public void Consumed(int tick)
+    {
+        if (Finished || Canceled || Remaining == 0) throw new InvalidOperationException("No input sample was requested.");
+        StartTick ??= tick;
+        Remaining--;
+    }
+    public void Released(int tick)
+    {
+        if (Remaining != 0 || Finished) throw new InvalidOperationException("The chord still owns input samples.");
+        EndTick = tick;
+    }
+}
+
+// Own only additions made within one synchronous SMAPI sample.
+internal sealed class ReviewOwnedButtonSample
+{
+    private readonly HashSet<int> _added = new();
+    public bool Injected { get; private set; }
+    public bool TryInject(IReadOnlyList<int> buttons, Func<int, bool> queued, Action<int> press)
+    {
+        if (buttons.Any(queued)) return false;
+        foreach (int button in buttons)
         {
-            suppress(button);
+            _added.Add(button);
+            press(button);
         }
-        _buttons.Clear();
-        mouse.Clear();
+        Injected = true;
+        return true;
+    }
+    public bool IsConsumed(Func<int, bool> queued) => _added.All(b => !queued(b));
+    public void Rollback(Action<int> remove)
+    {
+        foreach (int button in _added) remove(button);
+        _added.Clear();
     }
 }
 
@@ -421,6 +478,12 @@ internal static class ReviewInputCommand
         string runtimePath,
         IMonitor monitor)
     {
+        if (arguments.Length == 3 && arguments[0] == "input" && arguments[1] == "cancel"
+            && ReviewTransportToken.IsRequestId(arguments[2]))
+        {
+            ReviewVirtualCursor.CancelRequest(arguments[2]);
+            return;
+        }
         if (!ReviewInputArguments.TryParse(
                 arguments,
                 out ReviewInputRequest? request,
@@ -432,6 +495,13 @@ internal static class ReviewInputCommand
 
         try
         {
+            if (request!.Kind is ReviewInputKind.Chord or ReviewInputKind.Press)
+            {
+                if (!runtime.TryChord(request, Complete, out string chordError))
+                    Complete(new(false, chordError, ProblemCode: "inputChordRejected",
+                        Buttons: request.Buttons, Released: false));
+                return;
+            }
             ReviewInputResult result = ReviewInputOperation.Execute(request!, runtime);
             if (request!.RequestId is not null)
             {
@@ -441,6 +511,7 @@ internal static class ReviewInputCommand
             }
             monitor.Log(result.Message, result.Succeeded ? LogLevel.Info : LogLevel.Error);
         }
+
         catch (Exception exception)
         {
             if (request!.Kind != ReviewInputKind.ClearCursor)
@@ -465,6 +536,20 @@ internal static class ReviewInputCommand
                 $"SDVKit input command failed without confirming input: {exception.Message}",
                 LogLevel.Error);
         }
+        void Complete(ReviewInputResult result)
+        {
+            try
+            {
+                if (request!.RequestId is not null)
+                    ReviewInputResponseFile.Write(runtimePath, CreateResponse(request, runtime, result));
+                monitor.Log(result.Message, result.Succeeded ? LogLevel.Info : LogLevel.Error);
+            }
+            catch (Exception exception)
+            {
+                monitor.Log($"Review input completion could not be published: {exception.Message}", LogLevel.Error);
+            }
+        }
+
     }
 
     private static ReviewInputResponseEnvelope CreateResponse(
@@ -475,6 +560,7 @@ internal static class ReviewInputCommand
         string action = request.Kind switch
         {
             ReviewInputKind.Press => ReviewInputContract.PressAction,
+            ReviewInputKind.Chord => ReviewInputContract.ChordAction,
             ReviewInputKind.Scroll => ReviewInputContract.WheelAction,
             ReviewInputKind.Cursor => ReviewInputContract.CursorSetAction,
             ReviewInputKind.ClearCursor => ReviewInputContract.CursorClearAction,
@@ -507,7 +593,12 @@ internal static class ReviewInputCommand
                     result.ProblemCode ?? "inputRejected",
                     result.Message.Length <= ReviewInputContract.MaximumProblemLength
                         ? result.Message
-                        : result.Message[..ReviewInputContract.MaximumProblemLength]));
+                        : result.Message[..ReviewInputContract.MaximumProblemLength]),
+            request.Kind == ReviewInputKind.Chord ? result.Buttons ?? request.Buttons : null,
+            request.Kind == ReviewInputKind.Chord ? request.DurationTicks : null,
+            request.Kind == ReviewInputKind.Chord ? result.StartTick : null,
+            request.Kind == ReviewInputKind.Chord ? result.EndTick : null,
+            request.Kind == ReviewInputKind.Chord ? result.Released ?? false : null);
     }
 
     private static void TryWriteFailureResponse(
@@ -538,7 +629,7 @@ internal static class ReviewInputCommand
     }
 }
 
-internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInputRuntime
+internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?> currentRevision) : IReviewInputRuntime
 {
     public int UiWidth => Game1.uiViewport.Width;
 
@@ -578,11 +669,32 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper) : IReviewInpu
             return false;
         }
 
-        helper.Input.Press(parsed);
-        ReviewVirtualCursor.RecordPress(helper.Input, parsed);
         canonicalButton = parsed.ToString();
-        error = string.Empty;
-        return true;
+        return ReviewVirtualCursor.TryChord(helper.Input, [parsed], 1, null, currentRevision,
+            _ => { }, out error, null);
+    }
+
+    public bool TryChord(ReviewInputRequest request, Action<ReviewInputResult> completed,
+        out string error)
+    {
+        error = "A chord requires 1-8 distinct exact SMAPI button names, 1-120 input ticks and a current UI revision.";
+        bool chord = request.Kind == ReviewInputKind.Chord;
+        IReadOnlyList<string>? names = chord ? request.Buttons : request.Button is null ? null : [request.Button];
+        if (names is not { Count: >= 1 and <= 8 }
+            || request.DurationTicks is < 1 or > 120
+            || chord && !ReviewInputContract.IsUiRevision(request.UiRevision)) return false;
+        var buttons = new List<SButton>();
+        foreach (string token in names)
+        {
+            string? name = Enum.GetNames<SButton>().FirstOrDefault(n =>
+                string.Equals(n, token, StringComparison.OrdinalIgnoreCase));
+            if (name is null || !Enum.TryParse(name, out SButton button) || button == SButton.None
+                || buttons.Contains(button)) return false;
+            buttons.Add(button);
+        }
+        return ReviewVirtualCursor.TryChord(helper.Input, buttons.ToArray(), request.DurationTicks,
+            request.UiRevision, currentRevision,
+            result => completed(result with { CanonicalButton = result.Buttons?[0] }), out error, request.RequestId);
     }
 
     public bool TryScroll(int direction, out string error)
@@ -635,8 +747,20 @@ internal static class ReviewVirtualCursor
     private static bool _installed;
     private static ReviewVirtualMouseState _mouse = new();
     private static InputState? _inputOwner;
-    private static readonly ReviewPendingPresses PendingButtons = new();
-    private static IInputHelper? _buttonHelper;
+    private sealed record PendingChord(IInputHelper Helper, SButton[] Buttons, ReviewChordProgress Progress,
+        string? Revision, Func<string?> CurrentRevision, Action<ReviewInputResult> Completed,
+        object? Root, object? Player, string? Launch, string? Role, string? RequestId)
+    {
+        public string? Failure { get; set; }
+    }
+    private sealed class InputSample
+    {
+        public object? PreviousStates { get; init; }
+        public ReviewOwnedButtonSample Owned { get; } = new();
+    }
+    private static PendingChord? _chord;
+    private static PropertyInfo? _buttonStates;
+    private static FieldInfo? _pressedKeys;
     private static IMonitor? _monitor;
     private static bool _wheelFailureReported;
     private static int _backgroundInputThroughTick = -1;
@@ -683,6 +807,8 @@ internal static class ReviewVirtualCursor
             Type? smapiInput = AccessTools.TypeByName("StardewModdingAPI.Framework.Input.SInputState");
             MethodInfo? trueUpdate = smapiInput is null ? null : AccessTools.Method(smapiInput, "TrueUpdate");
             FieldInfo? pressedKeys = smapiInput is null ? null : AccessTools.Field(smapiInput, "CustomPressedKeys");
+            PropertyInfo? buttonStates = smapiInput is null ? null : AccessTools.Property(smapiInput, "ButtonStates");
+            MethodInfo? inputPrefix = AccessTools.Method(typeof(ReviewVirtualCursor), nameof(BeforeInputUpdate));
             MethodInfo? inputFinalizer = AccessTools.Method(
                 typeof(ReviewVirtualCursor), nameof(AfterInputUpdate));
             MethodInfo? isActiveNoOverlay = AccessTools.PropertyGetter(
@@ -702,6 +828,9 @@ internal static class ReviewVirtualCursor
                 || trueUpdate.GetParameters().Length != 0
                 || pressedKeys?.FieldType != typeof(HashSet<SButton>)
                 || pressedKeys.IsStatic
+                || buttonStates?.PropertyType != typeof(IDictionary<SButton, SButtonState>)
+                || buttonStates.GetMethod is null || buttonStates.GetMethod.IsStatic
+                || inputPrefix is null
                 || inputFinalizer is null
                 || isActiveNoOverlay is null
                 || isActive is null
@@ -719,6 +848,7 @@ internal static class ReviewVirtualCursor
                     postfix: new HarmonyMethod(postfix));
                 harmony.Patch(
                     trueUpdate,
+                    prefix: new HarmonyMethod(inputPrefix),
                     finalizer: new HarmonyMethod(inputFinalizer));
                 harmony.Patch(
                     isActiveNoOverlay,
@@ -726,6 +856,8 @@ internal static class ReviewVirtualCursor
                 harmony.Patch(
                     isActive,
                     postfix: new HarmonyMethod(activePostfix));
+                _buttonStates = buttonStates;
+                _pressedKeys = pressedKeys;
                 _monitor = monitor;
                 _installed = true;
                 error = string.Empty;
@@ -744,7 +876,7 @@ internal static class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (!_installed)
+            if (!_installed || _chord is not null)
             {
                 error = "Virtual cursor input is unavailable because its process-local input patch was not installed.";
                 return false;
@@ -763,40 +895,162 @@ internal static class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            // Console commands run before TrueUpdate. Cancel queued owned presses
-            // before restoring physical coordinates, so a click cannot be redirected.
-            PendingButtons.CancelAndClear(_mouse, button => _buttonHelper!.Suppress((SButton)button));
+            CancelChord("The review input was cleared before completion.");
+            _mouse.Clear();
             AllowBackgroundInputForNextTicks();
         }
     }
 
-    public static void RecordPress(IInputHelper helper, SButton button)
+    public static bool TryChord(IInputHelper helper, SButton[] buttons, int duration, string? revision,
+        Func<string?> currentRevision, Action<ReviewInputResult> completed, out string error, string? requestId)
     {
         lock (Sync)
         {
             EnsureInputOwner();
-            _buttonHelper = helper;
-            PendingButtons.Add((int)button);
+            error = "The input adapter is unavailable or another input action is pending.";
+            if (!_installed || _chord is not null) return false;
+            if (buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())) && !_mouse.IsSet)
+            { error = "Set the virtual review cursor before pressing a mouse button."; return false; }
+            if (buttons.Any(b => helper.IsDown(b) || helper.IsSuppressed(b))
+                || _pressedKeys?.GetValue(_inputOwner) is not HashSet<SButton> queued
+                || buttons.Any(queued.Contains))
+            { error = "A chord member is already down, suppressed or externally queued."; return false; }
+            if (revision is not null && currentRevision() != revision)
+            { error = "The UI revision is stale; read the current menu before sending input."; return false; }
+            _chord = new(helper, buttons, new(duration), revision, currentRevision, completed,
+                Game1.activeClickableMenu, Game1.player,
+                Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID"),
+                Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"), requestId);
             AllowBackgroundInputForNextTicks();
+            error = string.Empty;
+            return true;
         }
     }
 
-    private static Exception? AfterInputUpdate(
-        InputState __instance,
-        HashSet<SButton> ___CustomPressedKeys,
-        Exception? __exception)
+    internal static void CancelRequest(string requestId)
     {
         lock (Sync)
         {
+            if (_chord?.RequestId == requestId) CancelChord("The request was canceled by its owner.");
+        }
+    }
+
+    private static void BeforeInputUpdate(InputState __instance, HashSet<SButton> ___CustomPressedKeys,
+        out InputSample? __state)
+    {
+        __state = null;
+        lock (Sync)
+        {
             EnsureInputOwner();
-            if (ReferenceEquals(__instance, _inputOwner))
+            if (!ReferenceEquals(__instance, _inputOwner) || _chord is not PendingChord chord) return;
+            __state = new() { PreviousStates = _buttonStates!.GetValue(__instance) };
+            try
             {
-                // Read only: TrueUpdate may catch an exception before or after clearing
-                // its queue, and public UpdateTicked is skipped during loading/saving.
-                PendingButtons.RetireConsumed(button => ___CustomPressedKeys.Contains((SButton)button));
+                AllowBackgroundInputForNextTicks();
+                if (Game1.exitToTitle || !ReferenceEquals(chord.Player, Game1.player)
+                    || chord.Launch != Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID")
+                    || chord.Role != Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE")
+                    || chord.Revision is not null && (!Context.IsWorldReady
+                        || Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") != "1"))
+                    CancelChord("The owned review context changed during input.");
+                if (chord.Progress.Remaining > 0 && chord.Revision is not null
+                    && (!ReferenceEquals(chord.Root, Game1.activeClickableMenu)
+                        || chord.CurrentRevision() != chord.Revision))
+                    CancelChord(chord.Progress.StartTick is null
+                        ? "The UI revision changed before the first input update."
+                        : "The UI context changed while the chord still required input updates.");
+                if (chord.Progress.Remaining == 0) return;
+
+                // Read-only physical samples: never move the cursor, change focus or suppress a key.
+                KeyboardState keyboard = Keyboard.GetState();
+                MouseState mouse = Mouse.GetState();
+                GamePadState controller = Game1.playerOneIndex >= Microsoft.Xna.Framework.PlayerIndex.One
+                    ? GamePad.GetState(Game1.playerOneIndex) : default;
+                bool Physical(SButton b) => b.TryGetKeyboard(out Keys key) ? keyboard.IsKeyDown(key)
+                    : b.TryGetController(out Buttons pad) ? controller.IsButtonDown(pad)
+                    : b switch
+                    {
+                        SButton.MouseLeft => mouse.LeftButton == ButtonState.Pressed,
+                        SButton.MouseRight => mouse.RightButton == ButtonState.Pressed,
+                        SButton.MouseMiddle => mouse.MiddleButton == ButtonState.Pressed,
+                        SButton.MouseX1 => mouse.XButton1 == ButtonState.Pressed,
+                        SButton.MouseX2 => mouse.XButton2 == ButtonState.Pressed,
+                        _ => false,
+                    };
+                bool Merged(SButton b) => chord.Buttons.Contains(b) || Physical(b)
+                    || ___CustomPressedKeys.Contains(b) || (!chord.Buttons.Contains(b) && chord.Helper.IsDown(b));
+                if (chord.Buttons.Any(b => Physical(b) || chord.Helper.IsSuppressed(b)
+                    || ___CustomPressedKeys.Contains(b)))
+                { CancelChord("A physical or external input overlaps a chord member."); return; }
+                // KeyboardDispatcher polls Ctrl+V even without a text subscriber.
+                if (Merged(SButton.V) && (Merged(SButton.LeftControl) || Merged(SButton.RightControl))
+                    && chord.Buttons.Any(b => b is SButton.V or SButton.LeftControl or SButton.RightControl))
+                { CancelChord("Clipboard-triggering Ctrl+V input is unsupported."); return; }
+                if (!__state.Owned.TryInject(chord.Buttons.Select(b => (int)b).ToArray(),
+                    b => ___CustomPressedKeys.Contains((SButton)b), b => chord.Helper.Press((SButton)b)))
+                    CancelChord("An external press overlapped the chord before injection.");
+            }
+            catch (Exception)
+            {
+                __state.Owned.Rollback(b => ___CustomPressedKeys.Remove((SButton)b));
+                CancelChord("The input update failed before the complete chord was applied.");
+            }
+        }
+    }
+
+    private static Exception? AfterInputUpdate(InputState __instance,
+        HashSet<SButton> ___CustomPressedKeys, InputSample? __state, Exception? __exception)
+    {
+        lock (Sync)
+        {
+            if (__state is null || _chord is not PendingChord chord) return __exception;
+            bool updated = __exception is null
+                && !ReferenceEquals(__state.PreviousStates, _buttonStates!.GetValue(__instance));
+            bool consumed = __state.Owned.IsConsumed(b => ___CustomPressedKeys.Contains((SButton)b));
+            if (!updated || !consumed)
+            {
+                // Only entries absent before this exact prefix and added by it are ours.
+                __state.Owned.Rollback(b => ___CustomPressedKeys.Remove((SButton)b));
+                CancelChord("SMAPI did not complete the input sample; owned overrides were removed.");
+                FinishChord(false);
+            }
+            else if (__state.Owned.Injected)
+            {
+                SButtonState expected = chord.Progress.StartTick is null ? SButtonState.Pressed : SButtonState.Held;
+                if (chord.Buttons.All(b => chord.Helper.GetState(b) == expected))
+                    chord.Progress.Consumed(Game1.ticks);
+                else CancelChord("SMAPI did not observe every chord member in the expected state.");
+            }
+            else if (chord.Progress.Remaining == 0)
+            {
+                bool released = chord.Buttons.All(b => chord.Progress.StartTick is null
+                    ? !chord.Helper.IsDown(b) : chord.Helper.GetState(b) == SButtonState.Released);
+                chord.Progress.Released(Game1.ticks);
+                FinishChord(released);
             }
         }
         return __exception;
+    }
+
+    private static void CancelChord(string failure)
+    {
+        if (_chord is not PendingChord chord) return;
+        chord.Failure ??= failure;
+        chord.Progress.Cancel();
+        AllowBackgroundInputForNextTicks();
+    }
+
+    private static void FinishChord(bool released)
+    {
+        if (_chord is not PendingChord chord) return;
+        _chord = null;
+        bool success = !chord.Progress.Canceled && released;
+        chord.Completed(new(success,
+            success ? "The complete chord was observed and released."
+                : chord.Failure ?? "Release could not be confirmed without suppressing external input.",
+            ProblemCode: success ? null : "inputChordInterrupted",
+            Buttons: chord.Buttons.Select(b => b.ToString()).ToArray(),
+            StartTick: chord.Progress.StartTick, EndTick: chord.Progress.EndTick, Released: released));
     }
 
     public static void AllowBackgroundInputForNextTicks()
@@ -812,7 +1066,7 @@ internal static class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            if (!_installed || !_mouse.TryQueueWheel(direction))
+            if (!_installed || _chord is not null || !_mouse.TryQueueWheel(direction))
             {
                 error = "The virtual wheel requires a cursor, one pending notch at most, and an available cumulative counter range.";
                 return false;
@@ -830,8 +1084,8 @@ internal static class ReviewVirtualCursor
         {
             _inputOwner = Game1.input;
             _mouse = new ReviewVirtualMouseState();
-            PendingButtons.Reset();
-            _buttonHelper = null;
+            CancelChord("The input owner changed before release was confirmed.");
+            FinishChord(false);
             _wheelFailureReported = false;
             _backgroundInputThroughTick = -1;
         }
@@ -853,7 +1107,8 @@ internal static class ReviewVirtualCursor
                 Game1.options?.uiScale ?? 1f, out bool wheelRejected);
             if (wheelRejected)
             {
-                PendingButtons.CancelAndClear(_mouse, button => _buttonHelper!.Suppress((SButton)button));
+                CancelChord("Virtual wheel input was canceled.");
+                _mouse.Clear();
                 sample.X = __result.X;
                 sample.Y = __result.Y;
                 if (!_wheelFailureReported)

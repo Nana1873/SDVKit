@@ -12,8 +12,9 @@ namespace SdvKit.Tests;
 [Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewMcpInputTests
 {
+    private static readonly string[] ModifierChord = ["LeftShift", "F8"];
     [Fact]
-    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyFour()
+    public void DefaultDiscoveryHasNoActionToolsAndOptInAddsExactlyFive()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
@@ -43,6 +44,7 @@ public sealed class ProjectReviewMcpInputTests
             StringComparison.Ordinal));
         Assert.Equal(
             [
+                ProjectReviewMcpInputTools.ChordToolName,
                 ProjectReviewMcpInputTools.CursorClearToolName,
                 ProjectReviewMcpInputTools.CursorSetToolName,
                 ProjectReviewMcpInputTools.PressToolName,
@@ -99,7 +101,7 @@ public sealed class ProjectReviewMcpInputTests
             .Where(tool => tool.Name.StartsWith("stardew_input_", StringComparison.Ordinal))
             .OrderBy(tool => tool.Name, StringComparer.Ordinal)
             .ToArray();
-        Assert.Equal(4, inputTools.Length);
+        Assert.Equal(5, inputTools.Length);
         foreach (Tool tool in inputTools)
         {
             Assert.False(tool.Annotations?.ReadOnlyHint);
@@ -127,6 +129,15 @@ public sealed class ProjectReviewMcpInputTests
             ProjectReviewMcpInputTools.PressToolName,
             new Dictionary<string, object?> { ["button"] = "MouseLeft" },
             cancellationToken: timeout.Token);
+        CallToolResult chord = await client.CallToolAsync(
+            ProjectReviewMcpInputTools.ChordToolName,
+            new Dictionary<string, object?>
+            {
+                ["buttons"] = ModifierChord,
+                ["durationTicks"] = 5,
+                ["uiRevision"] = new string('a', 64)
+            },
+            cancellationToken: timeout.Token);
         CallToolResult set = await client.CallToolAsync(
             ProjectReviewMcpInputTools.CursorSetToolName,
             new Dictionary<string, object?> { ["x"] = 200, ["y"] = 100 },
@@ -142,10 +153,11 @@ public sealed class ProjectReviewMcpInputTests
             },
             timeout.Token);
 
-        Assert.All([press, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
+        Assert.All([press, chord, set, wheel, clear], result => Assert.NotEqual(true, result.IsError));
         Assert.Equal(
             [
                 ReviewInputContract.PressAction,
+                ReviewInputContract.ChordAction,
                 ReviewInputContract.CursorSetAction,
                 ReviewInputContract.WheelAction,
                 ReviewInputContract.CursorClearAction,
@@ -156,6 +168,12 @@ public sealed class ProjectReviewMcpInputTests
         Assert.Equal("MouseLeft", pressAck.GetProperty("button").GetString());
         Assert.False(pressAck.GetProperty("cancellationRequested").GetBoolean());
         Assert.DoesNotContain("Path", pressAck.GetRawText(), StringComparison.OrdinalIgnoreCase);
+
+        Assert.False(pressAck.TryGetProperty("buttons", out _));
+        JsonElement chordAck = Assert.IsType<JsonElement>(chord.StructuredContent);
+        Assert.Equal(5, chordAck.GetProperty("durationTicks").GetInt32());
+        Assert.True(chordAck.GetProperty("released").GetBoolean());
+        Assert.Equal(["LeftShift", "F8"], chordAck.GetProperty("buttons").EnumerateArray().Select(b => b.GetString()));
 
         int beforeInvalid = queries.Count;
         CallToolResult invalid = await client.CallToolAsync(
@@ -513,7 +531,10 @@ public sealed class ProjectReviewMcpInputTests
                     ReviewInputContract.CursorClearAction,
                     StringComparison.Ordinal),
                 true,
-                null),
+                null, query.Buttons, query.DurationTicks,
+                query.Action == ReviewInputContract.ChordAction ? acknowledgedTick - query.DurationTicks : null,
+                query.Action == ReviewInputContract.ChordAction ? acknowledgedTick : null,
+                query.Action == ReviewInputContract.ChordAction ? true : null),
             [],
             ActionMayHaveRun: true,
             CancellationRequested: false);

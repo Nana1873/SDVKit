@@ -84,6 +84,14 @@ internal static class ProjectReviewConsoleLine
             transportRequest = true;
         }
 
+        if (!transportRequest && tokens.Count == 4 && tokens[2] == "cancel")
+            return ReviewTransportToken.IsRequestId(tokens[3]);
+        if (tokens.Count >= actionIndex + 4 && tokens[actionIndex] == "chord"
+            && int.TryParse(tokens[actionIndex + 1], NumberStyles.None, CultureInfo.InvariantCulture, out int duration))
+            return ProjectReviewInputService.Validate(new(ReviewInputContract.ChordAction,
+                null, null, null, null, tokens.Skip(actionIndex + 3).ToArray(), duration,
+                tokens[actionIndex + 2])) is null;
+
         if (tokens.Count == actionIndex + 2
             && string.Equals(tokens[actionIndex], "press", StringComparison.Ordinal))
         {

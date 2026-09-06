@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SdvKit.Cli.LiveLab;
 
 internal static class ReviewInputContract
@@ -6,6 +8,10 @@ internal static class ReviewInputContract
     public const int MaximumResponseBytes = 4096;
     public const int MaximumProblemLength = 256;
     public const string PressAction = "press";
+    public const string ChordAction = "chord";
+
+    public static bool IsUiRevision(string? value) => value is { Length: 64 }
+        && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
     public const string CursorSetAction = "cursorSet";
     public const string CursorClearAction = "cursorClear";
     public const string WheelAction = "wheel";
@@ -34,7 +40,10 @@ internal sealed record ReviewInputQuery(
     string? Button,
     string? Direction,
     int? X,
-    int? Y);
+    int? Y,
+    IReadOnlyList<string>? Buttons = null,
+    int? DurationTicks = null,
+    string? UiRevision = null);
 
 internal sealed record ReviewInputProblem(
     string Code,
@@ -53,4 +62,9 @@ internal sealed record ReviewInputResponseEnvelope(
     int? Y,
     bool CursorSet,
     bool MenuOpen,
-    ReviewInputProblem? Problem);
+    ReviewInputProblem? Problem,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Buttons = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DurationTicks = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StartTick = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? EndTick = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Released = null);

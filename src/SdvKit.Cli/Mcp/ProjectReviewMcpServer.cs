@@ -190,7 +190,7 @@ internal static class ProjectReviewMcpServer
         {
             await using var transport = new StdioServerTransport(options);
             await using McpServer server = McpServer.Create(transport, options);
-            await server.RunAsync(cancellationToken).ConfigureAwait(false);
+            await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -198,6 +198,25 @@ internal static class ProjectReviewMcpServer
         }
 
         return exitCode;
+    }
+
+    internal static async Task RunUntilDisconnectAsync(
+        McpServer server,
+        ITransport transport,
+        ProjectReviewMcpInputSession? inputSession,
+        CancellationToken cancellationToken = default)
+    {
+        Task running = server.RunAsync(cancellationToken);
+        try
+        {
+            await Task.WhenAny(running, transport.MessageReader.Completion).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Signal the pending request before SDK disposal can wait for its handler.
+            inputSession?.CancelPending();
+        }
+        await running.ConfigureAwait(false);
     }
 
     internal static int CompleteInputCleanup(

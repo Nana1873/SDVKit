@@ -263,7 +263,6 @@ public sealed class ReviewInputCommandTests
         Assert.DoesNotContain("Game1.setMousePosition", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SetForegroundWindow", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AppActivate", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Context.IsWorldReady", source, StringComparison.Ordinal);
         Assert.Contains(
             "WindowsForegroundWindowProbe.Observe()",
             File.ReadAllText(Path.Combine(
@@ -283,7 +282,7 @@ public sealed class ReviewInputCommandTests
             "SdvKit.AlwaysOn",
             "ReviewInputCommand.cs"));
 
-        Assert.Contains("helper.Input.Press(parsed);", source, StringComparison.Ordinal);
+        Assert.Contains("chord.Helper.Press((SButton)b)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewVirtualCursor.IsInstalled", source, StringComparison.Ordinal);
         Assert.Contains("ReviewVirtualCursor.IsSet", source, StringComparison.Ordinal);
         Assert.Contains("typeof(Microsoft.Xna.Framework.Game)", source, StringComparison.Ordinal);

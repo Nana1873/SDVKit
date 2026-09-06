@@ -22,5 +22,5 @@ internal sealed record ReviewMenuNode(long Id, long? ParentId, string Relationsh
 internal sealed record ReviewMenuReport(int SchemaVersion, string State, string? ErrorCode,
     string? LaunchId, string Topology, string? Role, DateTimeOffset CapturedAtUtc, string? IdentityScope,
     ReviewMenuRectangle? Viewport, bool MenuOpen, bool Complete, bool Truncated,
-    IReadOnlyList<string> Limitations, IReadOnlyList<ReviewMenuNode> Menus);
+    IReadOnlyList<string> Limitations, IReadOnlyList<ReviewMenuNode> Menus, string? UiRevision = null);
 internal sealed record ReviewMenuResponseEnvelope(int SchemaVersion, string RequestId, ReviewMenuReport Report);
