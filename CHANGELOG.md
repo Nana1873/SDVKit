@@ -4,6 +4,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-06
+
 ### Added
 
 - Opt-in review text entry delivers bounded BMP characters through the native event queue to exact selected NamingMenu TextBox fields, including mod-created instances. Fresh field/subscriber identity, cancellation, partial delivery counts and a one-tick Back/Enter/Tab command bridge keep field acceptance and persistence separate from acknowledgement.
@@ -39,8 +41,6 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Agent reviews require a real restart when testing persistence or lifecycle behavior; unrelated inspections no longer require one. Final stop and applicable reset remain mandatory.
 - Release checks now follow a change-based matrix and reuse fully passing evidence for the same artifact and environment. Public download verification does not repeat full live acceptance when the tested package is unchanged.
 
-### Added
-
 - `save inspect` copies one explicitly selected save or registered disposable fixture below the consuming project’s `.sdvkit/` before reading bounded Stardew 1.6 player, calendar and Farm facts, with byte identity, missing-field availability and actionable format/path limits.
 - Review accepts one extracted ready SMAPI code mod as the selected target in single or network-2, preserving its supplied bytes without rebuilding; source projects and ready content-pack targets remain supported.
 - Review status and `stardew_runtime_get` expose the local farmer's stable save-local ID, money, health/stamina and one selected inventory item, with explicit availability and bounded typed values.
@@ -53,8 +53,6 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - A shared release-note extractor and this versioned changelog, including summaries of all previous releases.
 - A reusable portable archive verifier shared by CI and local checks.
 
-### Fixed
-
 - A failed final lab-status update is reported even when earlier active updates were already failing. The game still exits normally, and a missing final marker remains an unconfirmed stop.
 - Lab status publication avoids Windows replacement-intermediate failures while preserving complete snapshots for concurrent readers; denied writes remain visible and stale markers are still rejected.
 - Content Patcher targets remain reviewable and refreshable from their original source after packaging. Root `.sdvkit` output is retained without entering the game; unsafe paths, unselected edits, companion drift and exact staged identities remain guarded.
@@ -63,6 +61,14 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Review response publication uses the same file ownership checks for every command and never cleans up a temporary path when its creation failed.
 - The installation example now uses an explicit extraction directory and the matching executable path.
 - The smoke skill now reports an unconfirmed isolated-option restore as a warning when exact process exit and cleanup succeeded.
+
+- Content Patcher and SMAPI authoring now cover project selection, diagnostics, refresh, extracted targets, and packaged-source verification.
+- Native MCP reviews add menu inspection, local-player state, atomic chords and holds, bounded mouse gestures, and bounded text entry behind explicit startup capabilities.
+- Save inspection and isolated review lifecycle checks preserve selected identities and make persistence evidence explicit.
+
+Upgrade: stop active reviews and finish their required reset before replacing the package. Input and fixture actions require their respective MCP startup opt-ins.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/154) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.7.0...v0.8.0)
 
 ## [0.7.0] - 2026-09-04
 

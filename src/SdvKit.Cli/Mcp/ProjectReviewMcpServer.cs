@@ -280,7 +280,7 @@ internal static class ProjectReviewMcpServer
             {
                 Name = "sdvkit-project-review",
                 Version = typeof(ProjectReviewMcpServer).Assembly
-                    .GetName().Version?.ToString(3) ?? "0.7.0",
+                    .GetName().Version?.ToString(3) ?? "0.8.0",
             },
             ServerInstructions =
                 "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "

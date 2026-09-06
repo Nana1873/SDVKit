@@ -132,8 +132,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     {
         using TemporaryDirectory temporary = new();
         PreparedNetwork network = PrepareNetwork(temporary, NetworkArtifacts(temporary.Path),
-            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.7.0", false)),
-            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.7.0", false)));
+            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)),
+            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
         WriteLog(network.HostReader, "[08:00:04 WARN  Target] host-only warning");
         WriteLog(network.FarmhandReader, "[08:00:04 WARN  Target] farmhand-only warning");
         ProjectReviewMcpRuntimeReader reader = role == "host" ? network.HostReader : network.FarmhandReader;
@@ -151,7 +151,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
     private static PreparedReview LogReview(TemporaryDirectory temporary) => PrepareSingle(temporary,
         CompleteArtifacts(temporary.Path), ReadyLoadedMods(new LoadedModEntry("Zulu.Target", "1.0.0", false),
-            new LoadedModEntry("SDVKit.AlwaysOn", "0.7.0", false)));
+            new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
 
     [Theory]
     [InlineData("file")]

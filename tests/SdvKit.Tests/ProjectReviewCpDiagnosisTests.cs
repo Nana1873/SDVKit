@@ -164,7 +164,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var pack = ProjectReviewStagerTests.Artifact(temporary.Path, "Test Pack", ProjectReviewArtifactRole.Target, "Test.Pack", contentPackFor: ProjectReviewCpDiagnosis.ProviderId, kind: ProjectInspectionReport.ContentPack);
         var provider = ProjectReviewStagerTests.Artifact(temporary.Path, "ContentPatcher", ProjectReviewArtifactRole.Companion, ProjectReviewCpDiagnosis.ProviderId, version: version);
         var review = PrepareSingle(temporary, [pack, provider], ReadyLoadedMods(
-            new LoadedModEntry("Test.Pack", "1.0.0", true), new LoadedModEntry(ProjectReviewCpDiagnosis.ProviderId, version, false), new LoadedModEntry("SDVKit.AlwaysOn", "0.7.0", false)));
+            new LoadedModEntry("Test.Pack", "1.0.0", true), new LoadedModEntry(ProjectReviewCpDiagnosis.ProviderId, version, false), new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
         var verified = review.Reader.ReadContext();
         Assert.True(verified.Succeeded, verified.ErrorCode + ": " + verified.ErrorMessage);
         string log = WriteLog(review.Reader, "");

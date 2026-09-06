@@ -21,7 +21,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         pack = pack with { BuildIdentity = ModBuildIdentity.ComputeFileSet(pack.SourceRoot) };
         var review = PrepareSingle(temporary, [pack, provider], ReadyLoadedMods(
             new LoadedModEntry("Test.Pack", "1.0.0", true), new LoadedModEntry(ProjectReviewCpDiagnosis.ProviderId, "2.9.1", false),
-            new LoadedModEntry("SDVKit.AlwaysOn", "0.7.0", false)));
+            new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
         WriteLog(review.Reader, "");
         File.WriteAllText(Path.Combine(pack.SourceRoot, "patches/item.json"), RefreshPatch("after"));
         return review;
