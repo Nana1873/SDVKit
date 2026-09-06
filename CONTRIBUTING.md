@@ -36,6 +36,8 @@ The concurrent reader test also retains up to four original first-chance excepti
 
 For native rename error 5 in those tests, test-only code also records the immediate thread-local native-status observation and old/new snapshots before publisher cleanup. The optional partial-method implementation exists only in the test assembly and is compiled out of AlwaysOn; this is not a syscall trace or a recovery policy.
 
+The native launcher environment/argument test also retains failure observations under `.sdvkit/test-failures/`: the captured process identity and wait result, actual elapsed phases, observed exact-child cleanup outcome, and up to 16 KiB from the beginning of each stdout/stderr file. Missing results and files are explicit. Snapshots are taken after cleanup and before temporary-file disposal; they may differ from output at the failed wait. Diagnostics do not explain a timeout or alter the 15-second wait and 5-second cleanup bounds, and diagnostic/cleanup errors do not replace the original assertion.
+
 ## Release
 
 Follow the [release procedure](docs/releasing.md). It defines artifact identity, focused live acceptance, retry rules, and publication verification. Do not substitute build success for actual in-game evidence.

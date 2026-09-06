@@ -5,11 +5,12 @@ using System.IO.Pipes;
 using System.Reflection;
 using System.Text;
 using SdvKit.Cli.LiveLab;
+using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
 [Collection(NativeWindowsProcessGroup.Name)]
-public sealed class WindowsLabProcessHostTests
+public sealed class WindowsLabProcessHostTests(ITestOutputHelper output)
 {
     [Fact]
     public void StartInfoKeepsIsolatedModsPathAsOneArgument()
@@ -420,7 +421,7 @@ public sealed class WindowsLabProcessHostTests
             return;
         }
 
-        using TemporaryDirectory temporary = new();
+        TemporaryDirectory temporary = new();
         string script = temporary.WriteFile(
             "script with spaces.ps1",
             "param([string]$Value)\n"
@@ -435,51 +436,106 @@ public sealed class WindowsLabProcessHostTests
             "v1.0",
             "powershell.exe");
         WindowsLabProcessHost host = new();
-        LabProcessStartResult start = host.Start(new LabProcessStartSpec(
-            executable,
-            temporary.Path,
-            [
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                script,
-                "argument with spaces",
-            ],
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["SDVKIT_NATIVE_ENV"] = "environment with spaces",
-            },
-            stdout,
-            stderr));
-
-        Assert.Equal(LabProcessStartStatus.Started, start.Status);
-        Assert.NotNull(start.Identity);
+        NativeLauncherFailure diagnostics = new(output, stdout, stderr);
         Process? child = null;
-        try
+        diagnostics.Run(() =>
         {
-            child = Process.GetProcessById(start.Identity.ProcessId);
-
-            LabProcessWaitResult wait = host.WaitForExit(
-                start.Identity,
-                TimeSpan.FromSeconds(15));
-
-            Assert.Equal(LabProcessWaitStatus.Exited, wait.Status);
-            string[] lines = File.ReadAllLines(stdout);
-            Assert.Contains("environment with spaces", lines, StringComparer.Ordinal);
-            Assert.Contains("argument with spaces", lines, StringComparer.Ordinal);
-            Assert.Equal(string.Empty, File.ReadAllText(stderr));
-        }
-        finally
-        {
-            if (child is not null)
+            long phase = Stopwatch.GetTimestamp();
+            try
             {
-                EnsureExited(child);
+                diagnostics.Start = host.Start(new LabProcessStartSpec(
+                    executable,
+                    temporary.Path,
+                    [
+                        "-NoLogo",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        script,
+                        "argument with spaces",
+                    ],
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["SDVKIT_NATIVE_ENV"] = "environment with spaces",
+                    },
+                    stdout,
+                    stderr));
+            }
+            finally
+            {
+                diagnostics.ElapsedMilliseconds["startAndIdentityVerification"] = Stopwatch.GetElapsedTime(phase).TotalMilliseconds;
+            }
+
+            Assert.Equal(LabProcessStartStatus.Started, diagnostics.Start.Status);
+            Assert.NotNull(diagnostics.Start.Identity);
+            phase = Stopwatch.GetTimestamp();
+            try
+            {
+                diagnostics.ChildAcquisition = "Attempted; no child captured.";
+                child = Process.GetProcessById(diagnostics.Start.Identity.ProcessId);
+                diagnostics.ChildAcquisition = "Captured exact started child.";
+            }
+            finally
+            {
+                diagnostics.ElapsedMilliseconds["childAcquisition"] = Stopwatch.GetElapsedTime(phase).TotalMilliseconds;
+            }
+
+            phase = Stopwatch.GetTimestamp();
+            try
+            {
+                diagnostics.Wait = host.WaitForExit(
+                    diagnostics.Start.Identity,
+                    TimeSpan.FromSeconds(15));
+            }
+            finally
+            {
+                diagnostics.ElapsedMilliseconds["wait"] = Stopwatch.GetElapsedTime(phase).TotalMilliseconds;
+            }
+
+            Assert.Equal(LabProcessWaitStatus.Exited, diagnostics.Wait.Status);
+            phase = Stopwatch.GetTimestamp();
+            try
+            {
+                string[] lines = File.ReadAllLines(stdout);
+                Assert.Contains("environment with spaces", lines, StringComparer.Ordinal);
+                Assert.Contains("argument with spaces", lines, StringComparer.Ordinal);
+                Assert.Equal(string.Empty, File.ReadAllText(stderr));
+            }
+            finally
+            {
+                diagnostics.ElapsedMilliseconds["outputAssertions"] = Stopwatch.GetElapsedTime(phase).TotalMilliseconds;
+            }
+        }, () =>
+        {
+            if (child is null)
+            {
+                diagnostics.Cleanup = "Unavailable: no captured child; no cleanup attempted.";
+                return;
+            }
+
+            try
+            {
+                diagnostics.Cleanup = "Checking captured child exit.";
+                if (child.HasExited)
+                {
+                    diagnostics.Cleanup = "Observed already exited.";
+                }
+                else
+                {
+                    diagnostics.Cleanup = "Attempting exact-child kill (entireProcessTree: false).";
+                    child.Kill(entireProcessTree: false);
+                    diagnostics.Cleanup = "Kill returned; cleanup wait not completed.";
+                    bool exited = child.WaitForExit(5000);
+                    diagnostics.Cleanup = $"Kill returned; WaitForExit(5000): {exited}.";
+                }
+            }
+            finally
+            {
                 child.Dispose();
             }
-        }
+        }, temporary.Dispose);
     }
 
     [Fact]
