@@ -8,6 +8,81 @@ namespace SdvKit.Tests;
 
 public sealed class ProjectReviewArtifactPreparerTests
 {
+    [Theory]
+    [InlineData("single")]
+    [InlineData("network-2")]
+    public void ReadyCodeTargetStagesExactBytesWithoutBuildingAndKeepsSourceAfterCleanup(string topology)
+    {
+        using TemporaryDirectory temporary = new();
+        string target = WriteReadyCodeMod(temporary.Path, "PackagedMod", "Test.PackagedMod", "1.0.0");
+        File.WriteAllBytes(Path.Combine(target, "Provider.dll"), [0, 1, 2, 255]);
+        string[] before = SnapshotTree(target);
+        LiveLabPaths paths = ResolveLab(temporary.Path);
+
+        var prepared = ProjectModStager.PrepareReview(target, [], [], paths, DoctorMustNotRun,
+            _ => throw new InvalidOperationException("Ready targets must not build or package."));
+
+        Assert.Null(prepared.Problem);
+        var artifact = Assert.Single(prepared.Artifacts);
+        Assert.Equal(ProjectReviewArtifactRole.Target, artifact.Role);
+        Assert.Equal(ProjectInspectionReport.SmapiMod, artifact.Manifest.Kind);
+        Assert.Null(artifact.ProjectFile);
+        Assert.Equal(before, SnapshotTree(artifact.PreparedPath));
+        Assert.Equal(ModBuildIdentity.ComputeFileSet(target), artifact.BuildIdentity);
+        var staged = ProjectModStager.StageReview(prepared.Artifacts, topology, paths);
+        Assert.Null(staged.Problem);
+        Assert.Equal(topology == "single" ? 1 : 2, staged.Staging!.Target.RoleStagingPaths.Count);
+        Assert.All(staged.Staging.Target.RoleStagingPaths,
+            role => Assert.Equal(before, SnapshotTree(role.StagingPath)));
+        Assert.Equal(artifact.BuildIdentity, staged.Staging.Target.BuildIdentity);
+        Assert.True(ProjectModStager.RemoveReview(paths, topology).Removed);
+        Assert.True(ProjectModStager.RemoveReviewPreparation(prepared.PreparationRoot, paths));
+        Assert.Equal(before, SnapshotTree(target));
+    }
+
+    [Theory]
+    [InlineData("missingDll", "reviewReadyManifestInvalid")]
+    [InlineData("invalidEntryDll", "invalidManifest")]
+    [InlineData("bundle", "reviewReadyDirectoryInvalid")]
+    [InlineData("sourceFile", "reviewPreparationFailed")]
+    public void ReadyCodeTargetRejectsInvalidSelectionWithoutChangingSource(string mutation, string expectedCode)
+    {
+        using TemporaryDirectory temporary = new();
+        string target = WriteReadyCodeMod(temporary.Path, "PackagedMod", "Test.PackagedMod", "1.0.0");
+        switch (mutation)
+        {
+            case "missingDll": File.Delete(Path.Combine(target, "Provider.dll")); break;
+            case "invalidEntryDll":
+                File.WriteAllText(Path.Combine(target, "manifest.json"),
+                    Manifest("Test.PackagedMod", "1.0.0", entryDll: "../Provider.dll"));
+                break;
+            case "bundle": WriteReadyCodeMod(target, "Nested", "Test.Nested", "1.0.0"); break;
+            case "sourceFile": File.WriteAllText(Path.Combine(target, "Source.cs"), "source"); break;
+        }
+        string[] before = SnapshotTree(target);
+        LiveLabPaths paths = ResolveLab(temporary.Path);
+        var prepared = ProjectModStager.PrepareReview(target, [], [], paths, DoctorMustNotRun);
+        Assert.Equal(expectedCode, prepared.Problem?.Code);
+        Assert.Null(prepared.PreparationRoot);
+        Assert.Empty(prepared.Artifacts);
+        Assert.Equal(before, SnapshotTree(target));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(paths.ModsPath));
+    }
+
+    [Fact]
+    public void ReadyCodeTargetDoesNotIgnoreExplicitProjectSelector()
+    {
+        using TemporaryDirectory temporary = new();
+        string target = WriteReadyCodeMod(temporary.Path, "PackagedMod", "Test.PackagedMod", "1.0.0");
+        string[] before = SnapshotTree(target);
+        var prepared = ProjectModStager.PrepareReview(target, [], [], ResolveLab(temporary.Path),
+            DoctorMustNotRun, projectFile: "Missing.csproj");
+        Assert.Equal("projectSelectionInvalid", prepared.Problem?.Code);
+        Assert.Null(prepared.PreparationRoot);
+        Assert.Empty(prepared.Artifacts);
+        Assert.Equal(before, SnapshotTree(target));
+    }
+
     [Fact]
     public void GeneratedCpPackRemainsReviewableAfterCheckAndPackage()
     {
