@@ -99,7 +99,7 @@ public sealed class ModEntry : Mod
                     "The AlwaysOn status path has no runtime directory."),
             () => _testSave,
             () => _networkTwo);
-        if (!ReviewVirtualCursor.TryInstall(out string virtualCursorError))
+        if (!ReviewVirtualCursor.TryInstall(Monitor, out string virtualCursorError))
         {
             Monitor.Log(virtualCursorError, LogLevel.Error);
         }
