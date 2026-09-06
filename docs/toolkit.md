@@ -35,7 +35,7 @@ Run these commands from the chosen lab root, using `$sdvkit` from [installation]
 & $sdvkit project inspect .\workspaces\ExampleMod --json
 ```
 
-For live work, keep the current directory at that same lab root and pass the explicit mod path, for example `& $sdvkit project smoke .\workspaces\ExampleMod --topology single --json`. Run review lifecycle and MCP commands from the same lab root too, even when the agent edits source in a mod workspace. This reuses one lab without creating a complete lab per mod. Ordinary `project build` and `project package` output belongs to the selected mod's `.sdvkit/`; review preparation and runtime state belong to the lab's `.sdvkit/`. Follow the [live review guide](live-review.md) for prerequisites and ownership checks before testing.
+For live work, keep the current directory at that same lab root and pass the explicit mod path, for example `& $sdvkit project smoke .\workspaces\ExampleMod --topology single --json`. Run review lifecycle and MCP commands from the same lab root too, even when the agent edits source in a mod workspace. This reuses one lab without creating a complete lab per mod. Ordinary `project build` and `project package` output belongs to the selected source project's `.sdvkit/`; review preparation and runtime state belong to the lab's `.sdvkit/`. Follow the [live review guide](live-review.md) for prerequisites and ownership checks before testing.
 
 ## Inspect an installation or project
 
