@@ -46,6 +46,68 @@ public sealed class AlwaysOnStatusReaderTests
     }
 
     [Fact]
+    public void RegularReadRecoversAfterMalformedMarkerIsReplaced()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = WriteMarker(temporary, Process());
+        Assert.Equal("active", AlwaysOnStatusReader.Read(path, "launch-1", Process(), ObservedAt).State);
+
+        File.WriteAllText(path, "{");
+
+        AlwaysOnStatusReport unavailable = AlwaysOnStatusReader.Read(path, "launch-1", Process(), ObservedAt);
+        Assert.Equal("invalid", unavailable.State);
+        Assert.Null(unavailable.Tick);
+        Assert.Null(unavailable.ObservedAtUtc);
+
+        WriteMarker(temporary, Process(), observedAt: ObservedAt.AddSeconds(1));
+        AlwaysOnStatusReport recovered = AlwaysOnStatusReader.Read(path, "launch-1", Process(), ObservedAt.AddSeconds(1));
+        Assert.Equal("active", recovered.State);
+        Assert.Equal(600, recovered.Tick);
+        Assert.Equal(ObservedAt.AddSeconds(1), recovered.ObservedAtUtc);
+    }
+
+    [Theory]
+    [InlineData(6, false, "stale")]
+    [InlineData(-2, false, "stale")]
+    [InlineData(0, true, "mismatch")]
+    public void ReadAfterExclusiveLockReleaseStillValidatesFreshnessAndIdentity(
+        int ageSeconds,
+        bool foreignProcess,
+        string expectedState)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        using TemporaryDirectory temporary = new();
+        string path = WriteMarker(temporary, Process());
+        Assert.Equal("active", AlwaysOnStatusReader.Read(path, "launch-1", Process(), ObservedAt).State);
+        OwnedProcessIdentity markerProcess = foreignProcess
+            ? Process() with { StartTimeUtc = StartedAt.AddTicks(1) }
+            : Process();
+        WriteMarker(temporary, markerProcess);
+        byte[] originalBytes = File.ReadAllBytes(path);
+        DateTimeOffset now = ObservedAt.AddSeconds(ageSeconds);
+
+        using (var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            AlwaysOnStatusReport unavailable = AlwaysOnStatusReader.Read(path, "launch-1", Process(), now);
+            Assert.Equal("invalid", unavailable.State);
+            Assert.Null(unavailable.Tick);
+            Assert.Null(unavailable.ObservedAtUtc);
+        }
+
+        AlwaysOnStatusReport recovered = AlwaysOnStatusReader.Read(path, "launch-1", Process(), now);
+        Assert.Equal(expectedState, recovered.State);
+        Assert.Equal(foreignProcess ? (int?)null : 600, recovered.Tick);
+        Assert.Equal(foreignProcess ? (DateTimeOffset?)null : ObservedAt, recovered.ObservedAtUtc);
+        Assert.Equal(originalBytes, File.ReadAllBytes(path));
+
+        WriteMarker(temporary, Process(), observedAt: now);
+        AlwaysOnStatusReport fresh = AlwaysOnStatusReader.Read(path, "launch-1", Process(), now);
+        Assert.Equal("active", fresh.State);
+        Assert.Equal(now, fresh.ObservedAtUtc);
+    }
+
+    [Fact]
     public void RealStatusWriterRoundTripsThroughReaderAndExactCurrentProcess()
     {
         using TemporaryDirectory temporary = new();
@@ -408,7 +470,8 @@ public sealed class AlwaysOnStatusReaderTests
         TemporaryDirectory temporary,
         OwnedProcessIdentity process,
         TestSaveStatusMarker? testSave = null,
-        RuntimeSnapshotMarker? runtime = null)
+        RuntimeSnapshotMarker? runtime = null,
+        DateTimeOffset? observedAt = null)
     {
         string path = System.IO.Path.Combine(temporary.Path, "always-on.json");
         var marker = new AlwaysOnStatusMarker(
@@ -420,7 +483,7 @@ public sealed class AlwaysOnStatusReaderTests
             600,
             IsActive: false,
             PauseWhenOutOfFocus: false,
-            ObservedAt,
+            observedAt ?? ObservedAt,
             testSave,
             Runtime: runtime);
         File.WriteAllText(path, JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));

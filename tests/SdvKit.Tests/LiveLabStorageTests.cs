@@ -1,10 +1,11 @@
 using System.Text.Json;
 using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
-public sealed class LiveLabStorageTests
+public sealed class LiveLabStorageTests(ITestOutputHelper output)
 {
     [Fact]
     public void ResolveIsReadOnlyAndReturnsAbsoluteSingleLabPaths()
@@ -93,36 +94,27 @@ public sealed class LiveLabStorageTests
             paths.StatusPath);
         writer.Write("active", 0, isActive: false, pauseWhenOutOfFocus: false);
         using var start = new Barrier(2);
-        var successfulWrites = 0;
+        int writeTick = 1;
+        int scanIndex = 0;
 
-        Task writes = Task.Run(() =>
+        Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(paths.StatusPath, () =>
         {
             start.SignalAndWait();
-            for (var tick = 1; tick <= 750; tick++)
+            for (; writeTick <= 750; writeTick++)
             {
-                try
-                {
-                    writer.Write(
-                        "active",
-                        tick,
-                        isActive: false,
-                        pauseWhenOutOfFocus: false);
-                    Interlocked.Increment(ref successfulWrites);
-                }
-                catch (Exception exception) when (exception is IOException
-                    or UnauthorizedAccessException)
-                {
-                    // The real game loop also retries a transient status-write
-                    // failure. This regression targets the concurrent lab scan.
-                }
+                writer.Write(
+                    "active",
+                    writeTick,
+                    isActive: false,
+                    pauseWhenOutOfFocus: false);
             }
-        });
+        }));
 
         start.SignalAndWait();
         Exception? scanFailure = null;
         try
         {
-            for (var index = 0; index < 2_500; index++)
+            for (; scanIndex < 2_500; scanIndex++)
             {
                 paths.EnsureDirectories();
             }
@@ -132,9 +124,17 @@ public sealed class LiveLabStorageTests
             scanFailure = exception;
         }
 
-        await writes;
-        Assert.Null(scanFailure);
-        Assert.True(successfulWrites > 0);
+        Exception? writerFailure = await Record.ExceptionAsync(() => writes);
+        StatusConcurrencyFailure.ThrowIfAny(output, paths.StatusPath,
+            new
+            {
+                Test = nameof(EnsureDirectoriesToleratesAtomicStatusReplacementTempFiles),
+                paths.StatusPath,
+                NextWriteTick = writeTick,
+                CompletedWrites = writeTick - 1,
+                ScanIndex = scanIndex,
+                CompletedScans = scanIndex,
+            }, writerFailure, scanFailure);
         Assert.True(File.Exists(paths.StatusPath));
     }
 

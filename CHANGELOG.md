@@ -4,13 +4,20 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- `project review menu` and read-only `stardew_menu_get` describe active inventory/shop menus, nested pages and bounded public mod-menu components in each existing review role, with observed-object IDs, fresh geometry and explicit partial coverage.
+
 ### Documentation
 
 - Document an optional `workspaces/<ModName>/` layout and agent guidance for separate mod sources sharing one lab, while preserving explicit user-selected paths.
+- A SMAPI authoring recipe connects explicit project selection, an original event/config feature, actual runtime-exception diagnosis, corrected in-game observation, cleanup and ZIP identity, with focused lifecycle references.
+
 - A complete Content Patcher authoring recipe connects creation and local checks to deliberate runtime diagnosis, selected JSON refresh, direct Data observations, a second authored change, cleanup and ZIP packaging, with focused version-aware agent references.
 
 ### Changed
 
+- Stale or ended review status no longer retains an inner ready runtime payload; return to title immediately invalidates world/player values.
 - Installation and two short quickstarts now lead the README; task guides, the capability matrix, and CLI/MCP references are separately navigable.
 - CLI help now shows a short overview, with console grammar and MCP tool details in their own subcommand help.
 - Agent reviews require a real restart when testing persistence or lifecycle behavior; unrelated inspections no longer require one. Final stop and applicable reset remain mandatory.
@@ -18,6 +25,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `save inspect` copies one explicitly selected save or registered disposable fixture below the consuming project’s `.sdvkit/` before reading bounded Stardew 1.6 player, calendar and Farm facts, with byte identity, missing-field availability and actionable format/path limits.
+- Review accepts one extracted ready SMAPI code mod as the selected target in single or network-2, preserving its supplied bytes without rebuilding; source projects and ready content-pack targets remain supported.
+- Review status and `stardew_runtime_get` expose the local farmer's stable save-local ID, money, health/stamina and one selected inventory item, with explicit availability and bounded typed values.
+- Build, package, and review start accept `--project` to select one root-relative C# project and its colocated manifest. `--game-path` validates and selects one complete game/SMAPI directory for toolkit and live launch commands, preserving unique automatic defaults. Doctor reports incomplete candidates separately with missing requirements and corrective actions.
 - `project review cp-refresh` checks explicitly selected root/Include patch JSON, updates only owned staged copies, reloads CP 2.9.1 and diagnoses/observes one selected Data record in the same single review. Launch and current staged identities remain distinct; partial copies and uncertain delivery retain a visible stop/reset/restart recovery requirement.
 - `project review cp-diagnose` explains one selected Content Patcher 2.9.1 pack through correlated summary/parse replies, preserving enabled/condition/applied states and explicit incomplete results before separate asset inspection.
 - `project check [path] [--json]` checks one mod root's manifest, Content Patcher 2.9.x content, and direct i18n files offline, with relative file/field errors and bundled official SMAPI schemas. It accepts comments and trailing commas without changing source files; runtime patch behavior and referenced assets still need separate checks.
@@ -27,6 +38,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - A reusable portable archive verifier shared by CI and local checks.
 
 ### Fixed
+
+- A failed final lab-status update is reported even when earlier active updates were already failing. The game still exits normally, and a missing final marker remains an unconfirmed stop.
+- Lab status publication avoids Windows replacement-intermediate failures while preserving complete snapshots for concurrent readers; denied writes remain visible and stale markers are still rejected.
+- Content Patcher targets remain reviewable and refreshable from their original source after packaging. Root `.sdvkit` output is retained without entering the game; unsafe paths, unselected edits, companion drift and exact staged identities remain guarded.
 
 - Inspection commands consistently reject unknown CLI options as usage errors before checking review ownership. Data operands beginning with '-' can be escaped after '--', like the other inspection commands.
 - Review response publication uses the same file ownership checks for every command and never cleans up a temporary path when its creation failed.

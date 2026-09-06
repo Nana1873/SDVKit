@@ -21,7 +21,7 @@ public sealed class ModEntry : Mod
     private bool _exitPrepared;
     private bool _labWindowModeRequired;
     private bool _labWindowModeAttempted;
-    private bool _statusWriteErrorLogged;
+    private readonly StatusPublication _statusPublication = new();
     private bool _stopReadErrorLogged;
 
     public override void Entry(IModHelper helper)
@@ -161,6 +161,10 @@ public sealed class ModEntry : Mod
             _backgroundRun.ResetAfterReturnToTitle();
             _testSave?.OnReturnedToTitle();
             _networkTwo?.OnReturnedToTitle();
+            if (!_exitPrepared)
+            {
+                WriteActiveStatus();
+            }
         };
 
         Monitor.Log(
@@ -362,17 +366,15 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        if (PrepareForExit())
-        {
-            GameRunner.instance.Exit();
-        }
+        PrepareForExit();
+        GameRunner.instance.Exit();
     }
 
-    private bool PrepareForExit()
+    private void PrepareForExit()
     {
         if (_exitPrepared)
         {
-            return true;
+            return;
         }
 
         int tick = Game1.ticks;
@@ -393,9 +395,9 @@ public sealed class ModEntry : Mod
                 LogLevel.Error);
         }
 
-        // These options belong to the isolated .sdvkit profile. A failed readback
-        // remains visible in the terminal marker, but it must not hold the exact
-        // lab process open; the next launch applies the lab values again.
+        // Restoration and publication are separate from allowing shutdown.
+        // A failed readback is reported by the attempted terminal marker; a
+        // denied publication is logged and must not hold the lab process open.
         _exitPrepared = true;
 
         WriteStatus(
@@ -407,11 +409,17 @@ public sealed class ModEntry : Mod
             restore.ConfirmedIpConnectionsEnabled,
             foregroundWindow?.WindowHandle,
             foregroundWindow?.ProcessId);
-        return true;
     }
 
     private void WriteActiveStatus()
     {
+        // Automation callbacks must not replace a terminal marker or report
+        // restored settings as active after exit preparation.
+        if (_exitPrepared)
+        {
+            return;
+        }
+
         bool networkHost = _networkTwo?.IsHost == true;
         WindowsForegroundWindowObservation? foregroundWindow =
             _networkTwo is null
@@ -444,9 +452,9 @@ public sealed class ModEntry : Mod
         long? foregroundWindowHandle,
         int? foregroundProcessId)
     {
-        try
-        {
-            _statusWriter!.Write(
+        _statusPublication.TryWrite(
+            phase,
+            () => _statusWriter!.Write(
                 phase,
                 tick,
                 isActive,
@@ -459,19 +467,8 @@ public sealed class ModEntry : Mod
                 foregroundProcessId,
                 _projectMod?.Snapshot,
                 CaptureRuntimeSnapshot(),
-                _projectMod?.LoadedModsSnapshot);
-            _statusWriteErrorLogged = false;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            if (!_statusWriteErrorLogged)
-            {
-                Monitor.Log(
-                    $"SDVKit AlwaysOn couldn't write its lab status marker: {exception.Message}",
-                    LogLevel.Error);
-                _statusWriteErrorLogged = true;
-            }
-        }
+                _projectMod?.LoadedModsSnapshot),
+            message => Monitor.Log(message, LogLevel.Error));
     }
 
     private static RuntimeSnapshotMarker CaptureRuntimeSnapshot()
@@ -491,7 +488,8 @@ public sealed class ModEntry : Mod
                 null,
                 null,
                 Game1.activeClickableMenu is not null,
-                observedAtUtc);
+                observedAtUtc,
+                LocalPlayerCapture.Capture(false));
         }
 
         return new RuntimeSnapshotMarker(
@@ -505,7 +503,8 @@ public sealed class ModEntry : Mod
             Game1.player.TilePoint.X,
             Game1.player.TilePoint.Y,
             Game1.activeClickableMenu is not null,
-            observedAtUtc);
+            observedAtUtc,
+            LocalPlayerCapture.Capture(true));
     }
 
     private void OnProcessExit(object? sender, EventArgs eventArgs)

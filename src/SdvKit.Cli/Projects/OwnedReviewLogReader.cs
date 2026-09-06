@@ -114,6 +114,32 @@ internal static class OwnedReviewLogReader
             throw new InvalidDataException("Refresh files must have exactly one filesystem link.");
     }
 
+    internal static FileStream OpenSingleLinkSnapshot(string path)
+    {
+        SafeFileHandle handle = CreateFile(path, 0x80000000, 1, IntPtr.Zero,
+            3, 0x00200000, IntPtr.Zero);
+        try
+        {
+            if (handle.IsInvalid)
+                throw new IOException("The selected file is unavailable for a read-only snapshot.");
+            if (!GetFileInformationByHandle(handle, out FileInformation info)
+                || (info.Attributes & (uint)(FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0
+                || info.Links != 1)
+                throw new InvalidDataException("linkedPath: Select a plain single-link file.");
+            var finalPath = new char[32768];
+            uint length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Length, 0);
+            if (length == 0 || length >= finalPath.Length
+                || !string.Equals(new string(finalPath, 0, (int)length), @"\\?\" + path, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("linkedPath: The selected handle resolved outside its exact path.");
+            return new FileStream(handle, FileAccess.Read);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct FileInformation
     {

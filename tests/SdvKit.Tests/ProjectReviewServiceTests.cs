@@ -11,6 +11,85 @@ namespace SdvKit.Tests;
 [Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewServiceTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void StoppedNetworkReviewBindsInstallationEvenWhenSelectionIsOmitted(bool explicitSelection, bool legacyMarker)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        string gameA = Path.Combine(temporary.Path, "game-a");
+        string gameB = Path.Combine(temporary.Path, "game-b");
+        staging = staging with { GamePath = legacyMarker ? null : gameA };
+        ProjectModStager.WriteReviewOwnership(staging.OwnershipPath, staging, replace: true);
+        Assert.Null(ProjectModStager.ReadReview(paths, NetworkTwoContract.Topology).Problem);
+        string before = File.ReadAllText(staging.OwnershipPath);
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatePath));
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatePath));
+        LiveLabCommandResult result = ProjectReviewService.Execute("start", staging.Target.SourceRoot,
+            staging.Artifacts.Where(a => a.Role == "companion").Select(a => a.SourceRoot).ToArray(),
+            staging.Artifacts.Where(a => a.Role == "contentPack").Select(a => a.SourceRoot).ToArray(),
+            NetworkTwoContract.Topology, temporary.Path,
+            () => new DoctorReport(1, DoctorReport.Ready, [new(gameB)]), gamePath: explicitSelection ? gameB : null);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(legacyMarker ? "reviewGameSelectionUnknown" : "reviewGameSelectionMismatch",
+            Assert.Single(Assert.IsType<ProjectNetworkReviewReport>(result.Report).Problems).Code);
+        Assert.Equal(before, File.ReadAllText(staging.OwnershipPath));
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatePath));
+        Assert.False(File.Exists(LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatePath));
+        if (!legacyMarker)
+            Assert.Null(ProjectReviewService.RetainedReviewGameProblem(staging, new DoctorReport(1, DoctorReport.Ready, [new(gameA)])));
+        Assert.True(ProjectModStager.RemoveReview(paths, NetworkTwoContract.Topology).Removed);
+    }
+
+    [Theory]
+    [InlineData("different.csproj", "reviewSetMismatch")]
+    [InlineData("bad\0.csproj", "projectReviewFailed")]
+    public void RetainedNetworkProjectSelectionCannotChangeOrEscapeStructuredFailure(string selection, string expected)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole);
+        new JsonLiveLabStateStore(hostPaths.StatePath).Write(NetworkReviewState(paths, staging.TargetLaunchState, NetworkTwoContract.HostRole));
+        string before = File.ReadAllText(hostPaths.StatePath);
+        LiveLabCommandResult result = ProjectReviewService.Execute("start", staging.Target.SourceRoot,
+            staging.Artifacts.Where(a => a.Role == "companion").Select(a => a.SourceRoot).ToArray(),
+            staging.Artifacts.Where(a => a.Role == "contentPack").Select(a => a.SourceRoot).ToArray(),
+            NetworkTwoContract.Topology, temporary.Path,
+            () => throw new InvalidOperationException("No installation lookup for mismatched project."), projectFile: selection);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal(expected, Assert.Single(Assert.IsType<ProjectNetworkReviewReport>(result.Report).Problems).Code);
+        Assert.Equal(before, File.ReadAllText(hostPaths.StatePath));
+        Assert.Null(ProjectModStager.ReadReview(paths, NetworkTwoContract.Topology).Problem);
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void ExplicitGameSelectionCannotReplaceARetainedNetworkRolesInstallation(string role)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageNetworkReviewSet(paths, temporary.Path);
+        LiveLabPaths rolePaths = LiveLabPaths.ResolveNetworkRole(paths, role);
+        new JsonLiveLabStateStore(rolePaths.StatePath).Write(NetworkReviewState(paths, staging.TargetLaunchState, role));
+        string before = File.ReadAllText(rolePaths.StatePath);
+        string selected = Path.Combine(temporary.Path, "other-game");
+        LiveLabCommandResult result = ProjectReviewService.Execute("start", staging.Target.SourceRoot, [], [],
+            NetworkTwoContract.Topology, temporary.Path,
+            () => new DoctorReport(1, DoctorReport.Ready, [new(selected)]), gamePath: selected);
+        Assert.Equal(3, result.ExitCode);
+        Assert.Equal("reviewGameSelectionMismatch", Assert.Single(Assert.IsType<ProjectNetworkReviewReport>(result.Report).Problems).Code);
+        Assert.Equal(before, File.ReadAllText(rolePaths.StatePath));
+        Assert.Null(ProjectModStager.ReadReview(paths, NetworkTwoContract.Topology).Problem);
+    }
+
     [Fact]
     public void SharedResponseTransportRetainsAValidatedAcknowledgementAfterCancellation()
     {

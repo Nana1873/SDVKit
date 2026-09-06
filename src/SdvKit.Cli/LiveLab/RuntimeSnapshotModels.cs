@@ -16,7 +16,8 @@ internal sealed record RuntimeSnapshotMarker(
     int? TileX,
     int? TileY,
     bool MenuOpen,
-    DateTimeOffset ObservedAtUtc);
+    DateTimeOffset ObservedAtUtc,
+    LocalPlayerSnapshot? LocalPlayer = null);
 
 internal sealed record RuntimeSnapshotReport(
     string State,
@@ -30,4 +31,5 @@ internal sealed record RuntimeSnapshotReport(
     int? TileX,
     int? TileY,
     bool? MenuOpen,
-    DateTimeOffset? ObservedAtUtc);
+    DateTimeOffset? ObservedAtUtc,
+    LocalPlayerSnapshot? LocalPlayer = null);

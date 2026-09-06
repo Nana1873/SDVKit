@@ -213,10 +213,9 @@ $content | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $contentPath -Enc
 ```
 
 Require Wood `Description=Wood for a fresh spring start.`, Stone still corrected,
-and the same exact process/launch. Package only after final cleanup below:
-packaging creates `.sdvkit/packages` in the source pack, which prevents later
-ready-directory staging/refresh. Use a clean authored source copy without that
-generated subtree for a subsequent review.
+and the same exact process/launch. You can package at any point and continue
+editing, refreshing, or starting another review from this same source pack.
+Its root `.sdvkit` output stays outside the staged pack; no clean source copy is needed.
 
 ## Finish and package
 

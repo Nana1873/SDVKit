@@ -13,7 +13,7 @@ Before starting, record the release's previous tag, candidate commit, changed ca
 | Game adapter, lifecycle, or MCP | Game-backed AlwaysOn build, live baseline, and affected features/roles. |
 | Save, join, resume, or persistence | Actual save completion, exact host/farmhand stop and restart, retained identities/state, role restrictions, final reset. |
 | Input | Actual UI effect and pressed/released cleanup while unfocused; virtual-cursor/foreground boundaries and MCP EOF cleanup when affected. |
-| Isolation, ownership, or shared cleanup | Both supported topologies, verified exact exits, final staging/mount/reset checks, and unchanged protected-path evidence. |
+| Isolation, ownership, or shared cleanup | Both supported topologies, verified exact exits, final staging/mount/reset checks, and protected-path comparison with attributable external changes recorded separately. |
 
 Existing CI remains complete for every PR/main run: restore, format, build, all tests, packaging, and portable verification. Do not shard or omit the inexpensive suite just to reduce test counts. Full asset catalogues are also cheap; retain them when their adapter is covered.
 
@@ -38,7 +38,7 @@ From the checkout, substitute the selected artifact path and version:
 .\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-0.7.0-win-x64.zip -ExpectedVersion 0.7.0 -ExpectedDoctorStatus ready
 ```
 
-Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It does not prove live MCP behavior or compile the game-bound adapter.
+Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
 
 The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves independence from repository files; this temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
 
@@ -65,7 +65,9 @@ Use the existing [live-review sequence](live-review.md#prepare-the-lab), [inspec
 
 For a persistence gate, save through the supported interface, confirm completion, stop, restart the same exact selection, and verify retained identities and values. For network-2, check host and farmhand separately. Preserve work state between those halves; reset only at the end. For input, observe actual UI effects, role binding, physical pointer and foreground stability, and relevant EOF cleanup.
 
-Final cleanup is mandatory: exact process exits, owned staging/mailbox/mount state, and applicable fixture reset. Compare protected-path evidence for gates that require it. Report an isolated-option restoration warning separately from a blocked exit or cleanup. Do not publish with unknown ownership, uncertain action completion, or an unresolved protected-path change.
+Final cleanup is mandatory: exact process exits, owned staging/mailbox/mount state, and applicable fixture reset. Compare protected-path evidence for gates that require it. Report an isolated-option restoration warning separately from a blocked exit or cleanup. Do not publish with unknown ownership, uncertain action completion, or an unexplained or SDVKit-caused protected-path change.
+
+Intentional external changes by the user or Vortex in normal `Mods` do not stop isolated checks, require another approval, invalidate isolated proof, or require repetition solely because that inventory differs. Record attributable external changes separately and continue; never claim the whole inventory was unchanged when it differed. Investigate unexplained or SDVKit-caused protected changes and any disturbance to owned-lab bindings.
 
 ## Keep valid evidence and retry narrowly
 

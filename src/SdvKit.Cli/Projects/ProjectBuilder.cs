@@ -38,6 +38,8 @@ internal sealed record ModBuildTargetResolution(
 
 internal static class ProjectBuilder
 {
+    private static readonly HashSet<string> ExcludedSelectionDirectories = new(["..", ".git", ".sdvkit", "bin", "obj"], StringComparer.OrdinalIgnoreCase);
+
     public const string Configuration = "Release";
     public const string BuildLogPath = ".sdvkit/logs/build.log";
     public const string PackageLogPath = ".sdvkit/logs/package.log";
@@ -47,39 +49,44 @@ internal static class ProjectBuilder
     public static ProjectBuildReport Build(
         string path,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner? runner = null)
+        DotNetBuildRunner? runner = null,
+        string? projectFile = null)
     {
         return Build(
             path,
             discoverInstallations,
             stateDirectory: null,
-            runner);
+            runner,
+            projectFile);
     }
 
     internal static ProjectBuildReport BuildForReview(
         string path,
         string stateDirectory,
         Func<DoctorReport> discoverInstallations,
-        DotNetBuildRunner? runner = null)
+        DotNetBuildRunner? runner = null,
+        string? projectFile = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         return Build(
             path,
             discoverInstallations,
             Path.GetFullPath(stateDirectory),
-            runner);
+            runner,
+            projectFile);
     }
 
     private static ProjectBuildReport Build(
         string path,
         Func<DoctorReport> discoverInstallations,
         string? stateDirectory,
-        DotNetBuildRunner? runner)
+        DotNetBuildRunner? runner,
+        string? projectFile)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(discoverInstallations);
 
-        ModBuildTargetResolution resolution = ResolveTarget(path);
+        ModBuildTargetResolution resolution = ResolveTarget(path, projectFile);
         if (resolution.Target is null)
         {
             return Report(resolution, null, resolution.Problems);
@@ -133,9 +140,9 @@ internal static class ProjectBuilder
         return Report(resolution, reportLogPath, problems);
     }
 
-    internal static ModBuildTargetResolution ResolveTarget(string path)
+    internal static ModBuildTargetResolution ResolveTarget(string path, string? selectedProject = null)
     {
-        ProjectInspectionReport inspection = ProjectInspector.Inspect(path);
+        ProjectInspectionReport inspection = InspectTarget(path, selectedProject);
         if (inspection.Problems.Count > 0)
         {
             return new ModBuildTargetResolution(inspection, null, inspection.Problems);
@@ -152,13 +159,14 @@ internal static class ProjectBuilder
             return Failure(inspection, "projectFileNotFound");
         }
 
-        if (inspection.ProjectFiles.Count > 1)
+        if (selectedProject is null && inspection.ProjectFiles.Count > 1)
         {
             return Failure(inspection, "projectFileAmbiguous");
         }
 
+        string selectedFile = selectedProject is null ? inspection.ProjectFiles[0] : inspection.ProjectFiles.Single();
         ProjectManifestSummary[] modManifests = inspection.Manifests
-            .Where(manifest => string.Equals(
+            .Where(manifest => (selectedProject is null || RelativeDirectory(manifest.Path) == RelativeDirectory(selectedFile)) && string.Equals(
                 manifest.Kind,
                 ProjectInspectionReport.SmapiMod,
                 StringComparison.Ordinal))
@@ -169,7 +177,7 @@ internal static class ProjectBuilder
         }
 
         if (!string.Equals(
-            RelativeDirectory(inspection.ProjectFiles[0]),
+            RelativeDirectory(selectedFile),
             RelativeDirectory(modManifests[0].Path),
             OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase
@@ -180,7 +188,7 @@ internal static class ProjectBuilder
 
         string projectFile = Path.Combine(
             inspection.Root,
-            FromSlashPath(inspection.ProjectFiles[0]));
+            FromSlashPath(selectedFile));
         try
         {
             if ((File.GetAttributes(inspection.Root) & FileAttributes.ReparsePoint) != 0
@@ -200,6 +208,40 @@ internal static class ProjectBuilder
             inspection,
             new ModBuildTarget(inspection, projectFile, modManifests[0]),
             []);
+    }
+
+    internal static ProjectInspectionReport InspectTarget(string path, string? selectedProject)
+    {
+        if (selectedProject is null) return ProjectInspector.Inspect(path);
+        ProjectInspectionReport Invalid(string code) => new(1, path, ProjectInspectionReport.Unknown, [], [], [new(code, selectedProject)]);
+        try
+        {
+            string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+            string project = Path.GetFullPath(selectedProject, root);
+            string relative = Path.GetRelativePath(root, project);
+            string[] parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (Path.IsPathRooted(selectedProject) || parts.Any(ExcludedSelectionDirectories.Contains)
+                || !string.Equals(Path.GetExtension(project), ".csproj", StringComparison.OrdinalIgnoreCase)
+                || !File.Exists(project)) return Invalid("projectSelectionInvalid");
+            if (!ReviewStatePathIsPlain(root, project, allowFinalFile: true)) return Invalid("reparsePointNotAllowed");
+            string selectedRoot = Path.GetDirectoryName(project)!;
+            if (!ReviewStatePathIsPlain(root, Path.Combine(selectedRoot, "manifest.json"), allowFinalFile: true)) return Invalid("reparsePointNotAllowed");
+            ProjectInspectionReport inspection = ProjectInspector.Inspect(selectedRoot);
+            string Rebase(string value) => RelativePath(root, Path.Combine(selectedRoot, FromSlashPath(value)));
+            if ((inspection.Problems.Count == 0 || inspection.Problems.All(problem => problem.Code == "manifestNotFound")) && !inspection.Manifests.Any(manifest => RelativeDirectory(manifest.Path).Length == 0 && manifest.Kind == ProjectInspectionReport.SmapiMod))
+                return Invalid("projectManifestMismatch");
+            return inspection with
+            {
+                Root = root,
+                ProjectFiles = [RelativePath(root, project)],
+                Manifests = inspection.Manifests.Select(manifest => manifest with { Path = Rebase(manifest.Path) }).ToArray(),
+                Problems = inspection.Problems.Select(problem => problem with { Path = problem.Path is null ? null : Rebase(problem.Path) }).ToArray(),
+            };
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException or SecurityException or UnauthorizedAccessException)
+        {
+            return Invalid("projectSelectionInvalid");
+        }
     }
 
     internal static ProjectProblem? GetGamePath(DoctorReport doctor, out string? gamePath)

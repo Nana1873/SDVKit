@@ -462,10 +462,11 @@ public sealed class BackgroundRunGuardTests
             .ReplaceLineEndings("\n");
 
         int controlledStop = source.IndexOf(
-            "if (PrepareForExit())",
+            "PrepareForExit();\n        GameRunner.instance.Exit();",
             StringComparison.Ordinal);
+        Assert.True(controlledStop >= 0);
         int preparation = source.IndexOf(
-            "private bool PrepareForExit()",
+            "private void PrepareForExit()",
             controlledStop,
             StringComparison.Ordinal);
         int restore = source.IndexOf(
@@ -484,18 +485,18 @@ public sealed class BackgroundRunGuardTests
             "WriteStatus(",
             restore,
             StringComparison.Ordinal);
-        int unconditionalExit = source.IndexOf(
-            "return true;",
-            markerWrite,
-            StringComparison.Ordinal);
-
-        Assert.True(controlledStop >= 0);
         Assert.True(preparation > controlledStop);
         Assert.True(restore > preparation);
         Assert.True(exitPrepared > restore);
         Assert.True(exitingMarker > restore);
         Assert.True(markerWrite > restore);
-        Assert.True(unconditionalExit > markerWrite);
+        Assert.Contains("if (_exitPrepared)\n        {\n            return;\n        }",
+            source[preparation..restore], StringComparison.Ordinal);
+        Assert.Contains("private void WriteActiveStatus()\n    {", source, StringComparison.Ordinal);
+        int activeStatus = source.IndexOf("private void WriteActiveStatus()", StringComparison.Ordinal);
+        int activeCapture = source.IndexOf("bool networkHost", activeStatus, StringComparison.Ordinal);
+        Assert.Contains("if (_exitPrepared)\n        {\n            return;\n        }",
+            source[activeStatus..activeCapture], StringComparison.Ordinal);
         Assert.DoesNotContain("GameRunner.instance.Exiting", source, StringComparison.Ordinal);
     }
 

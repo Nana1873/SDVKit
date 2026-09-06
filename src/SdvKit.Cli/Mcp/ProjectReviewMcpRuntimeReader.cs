@@ -22,7 +22,8 @@ internal sealed record ProjectReviewMcpRuntime(
     string? LocationId,
     int? TileX,
     int? TileY,
-    bool MenuOpen);
+    bool MenuOpen,
+    LocalPlayerSnapshot? LocalPlayer = null);
 
 internal sealed record ProjectReviewMcpRuntimeSnapshot(
     int SchemaVersion,
@@ -371,7 +372,8 @@ internal sealed class ProjectReviewMcpRuntimeReader
                     runtime.LocationId,
                     runtime.TileX,
                     runtime.TileY,
-                    runtime.MenuOpen.Value),
+                    runtime.MenuOpen.Value,
+                    runtime.LocalPlayer),
                 alwaysOn.Tick!.Value,
                 alwaysOn.ObservedAtUtc!.Value,
                 alwaysOn.ForegroundWindowHandle,

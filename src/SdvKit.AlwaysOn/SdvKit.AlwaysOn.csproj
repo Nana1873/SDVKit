@@ -22,6 +22,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewFixtureModels.cs" Link="LiveLab\ReviewFixtureModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMenuModels.cs" Link="LiveLab\ReviewMenuModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewModAssetModels.cs" Link="LiveLab\ReviewModAssetModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenshotModels.cs" Link="LiveLab\ReviewScreenshotModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTextureModels.cs" Link="LiveLab\ReviewTextureModels.cs" />
@@ -29,6 +30,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTransportModels.cs" Link="LiveLab\ReviewTransportModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeVersionCompatibility.cs" Link="LiveLab\RuntimeVersionCompatibility.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeSnapshotModels.cs" Link="LiveLab\RuntimeSnapshotModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\LocalPlayerSnapshotModels.cs" Link="LiveLab\LocalPlayerSnapshotModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\TestSaveModels.cs" Link="LiveLab\TestSaveModels.cs" />
     <Reference Include="StardewModdingAPI">
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>

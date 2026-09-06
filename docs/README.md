@@ -6,11 +6,15 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | --- | --- |
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
+| Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
+| Inspect an explicitly selected saved world offline | [Save inspection](save-inspection.md) |
+| Inspect active inventory, shop, or public mod-menu controls | [Menu inspection](menu-inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
+| Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
@@ -23,11 +27,14 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Capability | CLI | Native MCP | Topology / prerequisites |
 | --- | --- | --- | --- |
 | Create, inspect, package | `project` | No | C# mods or content packs; no live review |
+| Offline save inspection | `save sections/inspect` | Deliberately deferred | Explicit local file or registered single fixture; isolated copy, Stardew 1.6 |
 | Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, direct i18n; no game/network |
-| Build | `project build` | No | One C# project and ready game/SMAPI |
+| Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
-| Review lifecycle | `project review start/status/stop/reset` | No | C# target in either topology; content-pack target single only, with explicit provider |
+| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
+| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; explicit bounded vanilla adapters and partial custom coverage |
+| World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Refresh selected CP patch JSON | `project review cp-refresh` | No | Owned single root CP 2.9.1 target; explicit source/files and Data observation |

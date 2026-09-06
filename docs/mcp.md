@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 8 tools | 5 tools | 5 tools |
+| Default observation/evidence | 9 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +4 | +4 | +4 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
@@ -46,14 +46,21 @@ selects a save and never grants access to the normal Stardew `Saves` directory.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
-`farmhand` for `network-2`. Every server exposes four read-only observation tools:
+`farmhand` for `network-2`. Every server exposes five read-only observation tools:
+
+- `stardew_menu_get {}` captures [bounded active-menu geometry and public controls](menu-inspection.md)
+  on demand. Inventory/shop adapters and partial custom base coverage share the
+  exact world-ready role binding; this surface never sends input.
 
 - `stardew_runtime_get {}` returns matching structured JSON and compact JSON
   text with schema version, launch ID, topology, selected role, observation
   time, exact target `UniqueID`/version/build identity, optional verified
   review-fixture identity, and the selected role's runtime object. Before a
   world is ready, season/day/year/time/location/tile are explicitly `null`;
-  `worldReady` and `menuOpen` remain available.
+  `worldReady` and `menuOpen` remain available. The additive `localPlayer`
+  slice supplies bounded farmer identity, money, health/stamina and one selected
+  inventory item. See the [field and availability contract](runtime-state.md)
+  for sources, bounds, nulls, versions and transition semantics.
 - `stardew_review_get {}` returns the exact active ownership projection: the
   launch and topology, fixed role, verified running process and fresh status,
   target identity and load state, optional verified fixture/save identity, and

@@ -1,5 +1,6 @@
 using System.Security;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace SdvKit.Cli.LiveLab;
 
@@ -43,6 +44,25 @@ internal static class AlwaysOnStatusReader
 {
     internal const int MaximumStatusBytes = 256 * 1024;
     private static readonly TimeSpan FreshnessWindow = TimeSpan.FromSeconds(5);
+    private static readonly JsonSerializerOptions StatusJsonOptions = CreateStatusJsonOptions();
+
+    private static JsonSerializerOptions CreateStatusJsonOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(type =>
+        {
+            if (type.Type == typeof(LocalPlayerSnapshot)
+                || type.Type == typeof(LocalPlayerValues)
+                || type.Type == typeof(SelectedItemValues))
+            {
+                foreach (JsonPropertyInfo property in type.Properties)
+                {
+                    property.IsRequired = true;
+                }
+            }
+        });
+        return new JsonSerializerOptions(LiveLabJsonOptions.CamelCase) { TypeInfoResolver = resolver };
+    }
 
     public static AlwaysOnStatusReport Read(
         string statusPath,
@@ -77,7 +97,7 @@ internal static class AlwaysOnStatusReader
 
             marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
                 stream,
-                LiveLabJsonOptions.CamelCase);
+                StatusJsonOptions);
         }
         catch (Exception exception) when (exception is IOException
             or SecurityException
@@ -121,7 +141,15 @@ internal static class AlwaysOnStatusReader
         ProjectModStatusReport? projectMod = ReadProjectMod(
             marker.ProjectMod,
             expectedProjectMod);
-        RuntimeSnapshotReport runtime = ReadRuntime(marker.Runtime, marker.ObservedAtUtc);
+        RuntimeSnapshotReport runtime = state == "active"
+            ? ReadRuntime(marker.Runtime, marker.ObservedAtUtc)
+            : InvalidRuntime(state);
+        if (runtime.LocalPlayer?.Data is { } player
+            && networkTwo?.LocalPlayerId is { } localPlayerId
+            && player.PlayerId != localPlayerId.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        {
+            runtime = InvalidRuntime("invalid");
+        }
         LoadedModsStatusReport? loadedMods = ReadLoadedMods(
             marker.LoadedMods,
             marker.ProcessStartTimeUtc,
@@ -259,7 +287,8 @@ internal static class AlwaysOnStatusReader
                 && marker.TileY is null;
         if (marker.SchemaVersion != RuntimeSnapshotContract.SchemaVersion
             || !timestampValid
-            || !worldValuesValid)
+            || !worldValuesValid
+            || !LocalPlayerSnapshotContract.TryRead(marker.LocalPlayer, marker.WorldReady, out LocalPlayerSnapshot localPlayer))
         {
             return InvalidRuntime("invalid");
         }
@@ -276,7 +305,8 @@ internal static class AlwaysOnStatusReader
             marker.TileX,
             marker.TileY,
             marker.MenuOpen,
-            marker.ObservedAtUtc);
+            marker.ObservedAtUtc,
+            localPlayer);
     }
 
     private static RuntimeSnapshotReport InvalidRuntime(string state) =>
