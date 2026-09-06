@@ -42,6 +42,14 @@ The root-relative selector follows the [toolkit selection rules](toolkit.md#crea
 
 A retained review cannot switch explicit projects within the same root. Its ownership marker also retains `gamePath`, so both explicit and automatically discovered installations must match on network-2 restart after stop. Older retained staging without installation binding remains readable for status/stop/reset, but must be reset and rebuilt before restart. Stop/reset the exact owned review before changing its selection. Network-2 restart must repeat the exact target/project/companions/content-pack selection.
 
+To review an already packaged code mod, extract it yourself and select the single mod directory containing `manifest.json` and its `EntryDll`:
+
+```powershell
+& $sdvkit project review start .\ExtractedMod --game-path $gamePath --topology single --json
+```
+
+With no C# project present, review copies the ready artifact unchanged and does not build or package it. This also supports `network-2`. Do not pass `--project` for a ready artifact. Select one root mod, not a ZIP or a multi-mod bundle; dependencies still require explicit companions. Missing or unsafe `EntryDll` paths fail preparation. SMAPI validates DLL loading and compatibility; check review status and selected-mod diagnostics for load failures. Supplied bytes and their staged build identity are preserved, but staging alone does not prove a valid or loaded mod.
+
 Review stays running until stopped. It starts windowed at 1280x720, keeps the SMAPI terminal available, and permits subsequent resize/UI-scale testing. Confirm the expected target is loaded; a built/staged artifact is not load confirmation.
 
 For selected dependencies, add repeatable `--companion .\ReadyCompanion` and `--content-pack .\ExamplePack`. A content-pack target itself needs its provider explicitly:
