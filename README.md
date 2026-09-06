@@ -39,6 +39,8 @@ Before an upgrade, cleanly stop active labs/reviews and finish their required re
 
 ## Create and package a mod
 
+For several mods sharing one lab, the optional [workspace layout](docs/toolkit.md#choose-a-mod-workspace) keeps each mod's source under `workspaces/<ModName>/` beside the lab's `.sdvkit/`; explicit project paths remain your choice.
+
 Run from the directory where you want to create `ExampleMod`:
 
 ```powershell
