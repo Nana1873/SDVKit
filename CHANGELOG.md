@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- A focused GMCM 1.16.0 Boolean authoring recipe connects an original mod, owned UI editing, explicit config export/restaging, and the observed effect of the same packaged DLL after restart. Generic GMCM text input remains unsupported.
+
 ## [0.8.0] - 2026-09-06
 
 ### Added
