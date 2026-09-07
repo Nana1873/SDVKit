@@ -30,7 +30,22 @@ Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages.
 
 The existing CI runs restore, formatting, build, the complete tests, packaging, and portable verification. It does not launch Stardew. Offline checks may run independently; live work requires one known owner of the selected lab and verified teardown before handoff.
 
-The two concurrent status tests retain failure context and bounded post-failure snapshots under `.sdvkit/test-failures/`; failing CI uploads that directory. Writer and reader/scanner failures remain visible together. A retained file may be newer than the failed read or rename, so it is not proof of the bytes or competing access at failure time.
+Two status-file stress tests are reported as skipped in ordinary local runs while the intermittent Windows rename denial in [#136](https://github.com/Nana1873/SDVKit/issues/136) remains unresolved: `LiveLabStorageTests.EnsureDirectoriesToleratesAtomicStatusReplacementTempFiles` and `StatusWriterTests.ConcurrentReaderSeesCompleteExactSnapshotsWithContractFreshness`. Their workloads and assertions remain unchanged. CI always runs them and verifies both passed; this local exception is not a fix for the underlying file error. All other tests, including ordinary status publication, freshness, identity and deliberate-denial checks, remain in the default local suite.
+
+To include both stress tests in a local run, set the process-local opt-in and restore its previous value afterwards:
+
+```powershell
+$previousStatusStress = $env:SDVKIT_RUN_STATUS_FILE_STRESS
+try {
+    $env:SDVKIT_RUN_STATUS_FILE_STRESS = '1'
+    dotnet test SDVKit.sln -c Release --no-build
+}
+finally {
+    $env:SDVKIT_RUN_STATUS_FILE_STRESS = $previousStatusStress
+}
+```
+
+`CI=true` or `GITHUB_ACTIONS=true` also enables them, regardless of the opt-in value. These two tests retain failure context and bounded post-failure snapshots under `.sdvkit/test-failures/`; failing CI uploads that directory. Writer and reader/scanner failures remain visible together. A retained file may be newer than the failed read or rename, so it is not proof of the bytes or competing access at failure time.
 
 The concurrent reader test also retains up to four original first-chance exceptions from its last synchronous read, restricted to that managed thread and the reader's caught exception families. On failure, it describes their HRESULTs and bounded messages/stacks after unsubscribing. An exception need not reach the reader's outer catch; an empty capture does not exclude pending, invalid-length, or mismatch reports. This test-only observation changes scheduling and cannot identify an external actor or explain a nonreproducing historical failure.
 
