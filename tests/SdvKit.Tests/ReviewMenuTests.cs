@@ -272,6 +272,7 @@ public sealed class ReviewMenuTests
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
         ProjectReviewMcpRuntimeSnapshot snapshot = reader.Read().Snapshot!;
         Assert.False(ProjectReviewMenuService.SameBinding(snapshot, snapshot with { LaunchId = new string('b', 32) }));
+        Assert.False(ProjectReviewMenuService.SameBinding(snapshot, snapshot with { UseStatusPipe = !snapshot.UseStatusPipe }));
         Assert.False(ProjectReviewMenuService.SameBinding(snapshot, snapshot with { Target = snapshot.Target with { BuildIdentity = "changed" } }));
         var result = ProjectReviewMenuService.Execute(reader, command =>
         {

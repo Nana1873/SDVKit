@@ -290,6 +290,25 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void StateStoreRetainsExplicitPipeSelectionWhileOldRecordsDefaultToFiles()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        var store = new JsonLiveLabStateStore(paths.StatePath);
+        LiveLabState state = CreateState(paths, Guid.NewGuid().ToString("N"), 111);
+        store.Write(state);
+        Assert.False(Assert.IsType<LiveLabState>(store.Read()).UseStatusPipe);
+        Assert.DoesNotContain("useStatusPipe", File.ReadAllText(paths.StatePath), StringComparison.Ordinal);
+
+        store.Write(state with { UseStatusPipe = true });
+
+        Assert.True(Assert.IsType<LiveLabState>(store.Read()).UseStatusPipe);
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(paths.StatePath));
+        Assert.True(document.RootElement.GetProperty("useStatusPipe").GetBoolean());
+    }
+
+    [Fact]
     public void StateWriteProbeUsesRuntimeDirectoryWithoutChangingExistingState()
     {
         using TemporaryDirectory project = new();

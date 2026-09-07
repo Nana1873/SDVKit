@@ -315,6 +315,7 @@ internal sealed class ProjectReviewMcpInputSession
         ProjectReviewMcpRuntimeSnapshot before,
         ProjectReviewMcpRuntimeSnapshot after) =>
         string.Equals(before.LaunchId, after.LaunchId, StringComparison.Ordinal)
+        && before.UseStatusPipe == after.UseStatusPipe
         && string.Equals(before.Topology, after.Topology, StringComparison.Ordinal)
         && string.Equals(before.Role, after.Role, StringComparison.Ordinal)
         && string.Equals(before.Target.UniqueId, after.Target.UniqueId, StringComparison.Ordinal)

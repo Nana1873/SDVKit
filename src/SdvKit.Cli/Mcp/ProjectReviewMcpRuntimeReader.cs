@@ -42,7 +42,9 @@ internal sealed record ProjectReviewMcpRuntimeSnapshot(
     [property: JsonIgnore]
     long? ForegroundWindowHandle,
     [property: JsonIgnore]
-    int? ForegroundProcessId);
+    int? ForegroundProcessId,
+    [property: JsonIgnore]
+    bool UseStatusPipe = false);
 
 internal sealed record ProjectReviewMcpReadResult(
     ProjectReviewMcpRuntimeSnapshot? Snapshot,
@@ -377,7 +379,8 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 alwaysOn.Tick!.Value,
                 alwaysOn.ObservedAtUtc!.Value,
                 alwaysOn.ForegroundWindowHandle,
-                alwaysOn.ForegroundProcessId),
+                alwaysOn.ForegroundProcessId,
+                state.UseStatusPipe),
             null,
             null);
     }
@@ -496,7 +499,8 @@ internal sealed class ProjectReviewMcpRuntimeReader
             nowUtc,
             state.TestSave,
             state.NetworkTwo,
-            state.ProjectMod);
+            state.ProjectMod,
+            useStatusPipe: state.UseStatusPipe);
 
     private static bool StatePathsMatch(LiveLabState state, LiveLabPaths paths) =>
         PathsEqual(state.ModsPath, paths.ModsPath)

@@ -392,6 +392,8 @@ public sealed class ProjectReviewMcpFixtureTests
 
         Assert.True(ProjectReviewFixtureService.HasSameActionBinding(expected, expected));
         Assert.False(ProjectReviewFixtureService.HasSameActionBinding(
+            expected, expected with { UseStatusPipe = !expected.UseStatusPipe }));
+        Assert.False(ProjectReviewFixtureService.HasSameActionBinding(
             expected with { LaunchId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
             expected));
         Assert.False(ProjectReviewFixtureService.HasSameActionBinding(

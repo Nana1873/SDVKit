@@ -79,6 +79,7 @@ internal static class ProjectReviewMenuService
 
     internal static bool SameBinding(ProjectReviewMcpRuntimeSnapshot before, ProjectReviewMcpRuntimeSnapshot after) =>
         before.LaunchId == after.LaunchId && before.Topology == after.Topology && before.Role == after.Role
+        && before.UseStatusPipe == after.UseStatusPipe
         && before.Target == after.Target && before.TestSave == after.TestSave;
 
     internal static ReviewMenuResponseEnvelope? DeserializeResponse(byte[] bytes)

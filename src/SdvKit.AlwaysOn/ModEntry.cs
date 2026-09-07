@@ -46,7 +46,10 @@ public sealed class ModEntry : Mod
         _backgroundRun = new BackgroundRunGuard(
             new SmapiBackgroundRunState(),
             networkHost);
-        _statusWriter = new StatusWriter(launchId, statusPath);
+        _statusWriter = new StatusWriter(launchId, statusPath,
+            useStatusPipe: string.Equals(
+                Environment.GetEnvironmentVariable("SDVKIT_LAB_STATUS_PIPE"),
+                "1", StringComparison.Ordinal));
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
         _labWindowModeRequired = string.Equals(
@@ -530,6 +533,10 @@ public sealed class ModEntry : Mod
         catch
         {
             // Process teardown can't safely report or recover a restoration failure.
+        }
+        finally
+        {
+            _statusWriter?.Dispose();
         }
     }
 }

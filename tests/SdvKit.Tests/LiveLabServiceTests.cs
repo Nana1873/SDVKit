@@ -11,6 +11,31 @@ public sealed class LiveLabServiceTests
 
     private const string LaunchId = "11111111111111111111111111111111";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StartPersistsSelectedStatusTransportAndPassesItToTheExactChild(bool useStatusPipe)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        FakeStateStore stateStore = new();
+        FakeProcessHost process = new()
+        {
+            StartResult = new LabProcessStartResult(LabProcessStartStatus.Started, Identity(gamePath)),
+        };
+        var service = new LiveLabService(paths, stateStore, new FakeBuilder(), process,
+            () => Ready(gamePath), () => StartedAt.AddSeconds(10), () => LaunchId,
+            useStatusPipe: useStatusPipe);
+
+        LiveLabCommandResult result = service.Execute("start");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(useStatusPipe, Assert.IsType<LiveLabState>(stateStore.State).UseStatusPipe);
+        Assert.Equal(useStatusPipe ? "1" : string.Empty,
+            Assert.IsType<LabProcessStartSpec>(process.Specification).Environment["SDVKIT_LAB_STATUS_PIPE"]);
+    }
+
     [Fact]
     public void StartUsesTheReadyInstallAndOnlyTheProjectLocalModsPath()
     {
@@ -697,14 +722,16 @@ public sealed class LiveLabServiceTests
         Assert.NotNull(stateStore.State);
     }
 
-    [Fact]
-    public void CleanStopDeletesOnlyTheOwnedRuntimeRecord()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CleanStopDeletesOnlyTheOwnedRuntimeRecord(bool useStatusPipe)
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
         gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
-        LiveLabState state = State(paths, gamePath);
+        LiveLabState state = State(paths, gamePath) with { UseStatusPipe = useStatusPipe };
         WriteExitingMarker(paths, state);
         FakeStateStore stateStore = new() { State = state };
         FakeProcessHost process = new()
@@ -730,15 +757,17 @@ public sealed class LiveLabServiceTests
         Assert.False(File.Exists(paths.StopRequestPath));
     }
 
-    [Fact]
-    public void StopWithoutExitingMarkerRetainsOwnershipAndReportsUnconfirmedCleanup()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StopWithoutExitingMarkerRetainsOwnershipAndReportsUnconfirmedCleanup(bool useStatusPipe)
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
         gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         paths.EnsureDirectories();
-        LiveLabState state = State(paths, gamePath);
+        LiveLabState state = State(paths, gamePath) with { UseStatusPipe = useStatusPipe };
         FakeStateStore stateStore = new() { State = state };
         FakeProcessHost process = new()
         {
@@ -791,14 +820,16 @@ public sealed class LiveLabServiceTests
         Assert.NotNull(stateStore.State);
     }
 
-    [Fact]
-    public void RestoreFailureDoesNotBlockAnOtherwiseSafeCleanStop()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RestoreFailureDoesNotBlockAnOtherwiseSafeCleanStop(bool useStatusPipe)
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
         gamePath = System.IO.Path.GetDirectoryName(gamePath)!;
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
-        LiveLabState state = State(paths, gamePath);
+        LiveLabState state = State(paths, gamePath) with { UseStatusPipe = useStatusPipe };
         WriteStatusMarker(paths, state, "restoreFailed", null);
         FakeStateStore stateStore = new() { State = state };
         FakeProcessHost process = new()

@@ -109,6 +109,7 @@ internal sealed class LiveLabService
     private readonly ITestSaveFixtureStore _testSaveStore;
     private readonly Action<TimeSpan> _delay;
     private readonly string _reportTopology;
+    private readonly bool _useStatusPipe;
     private IReadOnlyList<string> _lastTestSaveLogPaths = [];
 
     internal AlwaysOnStatusReport? LastAlwaysOn { get; private set; }
@@ -123,9 +124,13 @@ internal sealed class LiveLabService
         Func<string>? createLaunchId = null,
         ITestSaveFixtureStore? testSaveStore = null,
         Action<TimeSpan>? delay = null,
-        string reportTopology = LiveLabState.SingleTopology)
+        string reportTopology = LiveLabState.SingleTopology,
+        bool? useStatusPipe = null)
     {
         _paths = paths;
+        _useStatusPipe = useStatusPipe ?? string.Equals(
+            Environment.GetEnvironmentVariable("SDVKIT_EXPERIMENTAL_STATUS_PIPE"),
+            "1", StringComparison.Ordinal);
         _stateStore = stateStore;
         _alwaysOnBuilder = alwaysOnBuilder;
         _processHost = processHost;
@@ -1020,6 +1025,7 @@ internal sealed class LiveLabService
             ["SDVKIT_LAB_DATA_PATH"] = _paths.StardewDataPath,
             ["SDVKIT_LAB_LAUNCH_ID"] = launchId,
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
+            ["SDVKIT_LAB_STATUS_PIPE"] = _useStatusPipe ? "1" : string.Empty,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
             ["SDVKIT_LAB_WINDOWED"] = "1",
             ["SDVKIT_REVIEW_CONSOLE_BACKGROUND"] = interactiveConsole ? "1" : string.Empty,
@@ -1092,7 +1098,8 @@ internal sealed class LiveLabService
             _paths.StopRequestPath,
             testSave,
             networkTwo,
-            projectMod);
+            projectMod,
+            UseStatusPipe: _useStatusPipe);
         if (started.Status != LabProcessStartStatus.Started)
         {
             return HandleLaunchVerificationFailure(
@@ -1887,7 +1894,8 @@ internal sealed class LiveLabService
             _utcNow().ToUniversalTime(),
             state.TestSave,
             state.NetworkTwo,
-            state.ProjectMod);
+            state.ProjectMod,
+            useStatusPipe: state.UseStatusPipe);
     }
 
     private LiveLabCommandResult Failure(

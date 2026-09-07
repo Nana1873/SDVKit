@@ -13,7 +13,8 @@ internal sealed record LiveLabState(
     string StopRequestPath,
     TestSaveLaunchState? TestSave = null,
     NetworkTwoLaunchState? NetworkTwo = null,
-    ProjectModLaunchState? ProjectMod = null)
+    ProjectModLaunchState? ProjectMod = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool UseStatusPipe = false)
 {
     public const int CurrentSchemaVersion = 1;
     public const string SingleTopology = "single";

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -42,7 +43,7 @@ internal sealed record AlwaysOnStatusMarker(
 
 internal static class AlwaysOnStatusReader
 {
-    internal const int MaximumStatusBytes = 256 * 1024;
+    internal const int MaximumStatusBytes = StatusPipeContract.MaximumSnapshotBytes;
     private static readonly TimeSpan FreshnessWindow = TimeSpan.FromSeconds(5);
     private static readonly JsonSerializerOptions StatusJsonOptions = CreateStatusJsonOptions();
 
@@ -71,18 +72,80 @@ internal static class AlwaysOnStatusReader
         DateTimeOffset nowUtc,
         TestSaveLaunchState? expectedTestSave = null,
         NetworkTwoLaunchState? expectedNetworkTwo = null,
-        ProjectModLaunchState? expectedProjectMod = null)
+        ProjectModLaunchState? expectedProjectMod = null,
+        bool useStatusPipe = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(statusPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
         ArgumentNullException.ThrowIfNull(process);
 
+        if (useStatusPipe)
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            StatusPipeReadResult pipe = StatusPipeClient.Read(
+                launchId,
+                process.ProcessId,
+                process.StartTimeUtc);
+            DateTimeOffset observedNowUtc = nowUtc + elapsed.Elapsed;
+            if (pipe.State == StatusPipeReadState.Success)
+            {
+                return ReadSnapshot(
+                    pipe.Snapshot!,
+                    launchId,
+                    process,
+                    observedNowUtc,
+                    expectedTestSave,
+                    expectedNetworkTwo,
+                    expectedProjectMod,
+                    terminalOnly: false);
+            }
+
+            if (pipe.State == StatusPipeReadState.Invalid)
+            {
+                return Invalid();
+            }
+
+            return ReadFile(
+                statusPath,
+                launchId,
+                process,
+                nowUtc,
+                expectedTestSave,
+                expectedNetworkTwo,
+                expectedProjectMod,
+                terminalOnly: true,
+                elapsed);
+        }
+
+        return ReadFile(
+            statusPath,
+            launchId,
+            process,
+            nowUtc,
+            expectedTestSave,
+            expectedNetworkTwo,
+            expectedProjectMod,
+            terminalOnly: false,
+            elapsed: null);
+    }
+
+    private static AlwaysOnStatusReport ReadFile(
+        string statusPath,
+        string launchId,
+        OwnedProcessIdentity process,
+        DateTimeOffset nowUtc,
+        TestSaveLaunchState? expectedTestSave,
+        NetworkTwoLaunchState? expectedNetworkTwo,
+        ProjectModLaunchState? expectedProjectMod,
+        bool terminalOnly,
+        Stopwatch? elapsed)
+    {
         if (!File.Exists(statusPath))
         {
             return Pending();
         }
 
-        AlwaysOnStatusMarker? marker;
+        byte[] snapshot;
         try
         {
             using FileStream stream = new(
@@ -92,19 +155,48 @@ internal static class AlwaysOnStatusReader
                 FileShare.ReadWrite | FileShare.Delete);
             if (stream.Length is <= 0 or > MaximumStatusBytes)
             {
-                return new AlwaysOnStatusReport("invalid", null, null, null, null);
+                return Invalid();
             }
 
-            marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
-                stream,
-                StatusJsonOptions);
+            snapshot = new byte[checked((int)stream.Length)];
+            stream.ReadExactly(snapshot);
         }
         catch (Exception exception) when (exception is IOException
             or SecurityException
-            or UnauthorizedAccessException
-            or JsonException)
+            or UnauthorizedAccessException)
         {
-            return new AlwaysOnStatusReport("invalid", null, null, null, null);
+            return Invalid();
+        }
+
+        return ReadSnapshot(
+            snapshot,
+            launchId,
+            process,
+            elapsed is null ? nowUtc : nowUtc + elapsed.Elapsed,
+            expectedTestSave,
+            expectedNetworkTwo,
+            expectedProjectMod,
+            terminalOnly);
+    }
+
+    private static AlwaysOnStatusReport ReadSnapshot(
+        ReadOnlySpan<byte> snapshot,
+        string launchId,
+        OwnedProcessIdentity process,
+        DateTimeOffset nowUtc,
+        TestSaveLaunchState? expectedTestSave,
+        NetworkTwoLaunchState? expectedNetworkTwo,
+        ProjectModLaunchState? expectedProjectMod,
+        bool terminalOnly)
+    {
+        AlwaysOnStatusMarker? marker;
+        try
+        {
+            marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(snapshot, StatusJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return Invalid();
         }
 
         if (marker is null
@@ -120,6 +212,11 @@ internal static class AlwaysOnStatusReader
             || marker.Phase is not ("active" or "exiting" or "restoreFailed"))
         {
             return new AlwaysOnStatusReport("mismatch", null, null, null, null);
+        }
+
+        if (terminalOnly && string.Equals(marker.Phase, "active", StringComparison.Ordinal))
+        {
+            return Pending();
         }
 
         string state = marker.Phase;
@@ -170,6 +267,9 @@ internal static class AlwaysOnStatusReader
             runtime,
             loadedMods);
     }
+
+    private static AlwaysOnStatusReport Invalid() =>
+        new("invalid", null, null, null, null);
 
     private static LoadedModsStatusReport? ReadLoadedMods(
         LoadedModsStatusMarker? marker,

@@ -40,4 +40,6 @@ The native launcher environment/argument test also retains failure observations 
 
 ## Release
 
+The opt-in [status pipe prototype](docs/status-pipe-prototype.md) preserves the default file transport while testing an alternative for active status. Its acceptance is separate from the unresolved native file-rename investigation.
+
 Follow the [release procedure](docs/releasing.md). It defines artifact identity, focused live acceptance, retry rules, and publication verification. Do not substitute build success for actual in-game evidence.

@@ -191,6 +191,7 @@ internal static class ProjectReviewFixtureService
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(expected);
         return current.SchemaVersion == expected.SchemaVersion
+            && current.UseStatusPipe == expected.UseStatusPipe
             && string.Equals(current.LaunchId, expected.LaunchId, StringComparison.Ordinal)
             && string.Equals(current.Topology, expected.Topology, StringComparison.Ordinal)
             && string.Equals(current.Role, expected.Role, StringComparison.Ordinal)
