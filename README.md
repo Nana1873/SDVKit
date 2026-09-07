@@ -7,7 +7,7 @@ A Windows toolkit for developing Stardew Valley mods, with an isolated live test
 
 [Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Roadmap](https://github.com/Nana1873/SDVKit/issues/84)
 
-This documentation follows `main`. For a published package, use the [documentation at its release tag](https://github.com/Nana1873/SDVKit/tree/v0.8.0) (latest release: **v0.8.0**).
+This documentation follows `main`. For a published package, use the [documentation at its release tag](https://github.com/Nana1873/SDVKit/tree/v0.9.0) (latest release: **v0.9.0**).
 
 ## Requirements
 
@@ -19,16 +19,16 @@ Project creation and inspection work without an installed game. Content-pack rev
 
 ## Install
 
-Download `SDVKit-0.8.0-win-x64.zip` and its `.sha256` file from [v0.8.0](https://github.com/Nana1873/SDVKit/releases/tag/v0.8.0). In the download directory, compare the hash with the sidecar, then extract to a fresh directory:
+Download `SDVKit-0.9.0-win-x64.zip` and its `.sha256` file from [v0.9.0](https://github.com/Nana1873/SDVKit/releases/tag/v0.9.0). In the download directory, compare the hash with the sidecar, then extract to a fresh directory:
 
 ```powershell
-$archive = '.\SDVKit-0.8.0-win-x64.zip'
+$archive = '.\SDVKit-0.9.0-win-x64.zip'
 $expectedHash = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'The download checksum does not match.'
 }
 Expand-Archive -LiteralPath $archive -DestinationPath .\SDVKit-install
-$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-0.8.0-win-x64\sdvkit.exe).Path
+$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-0.9.0-win-x64\sdvkit.exe).Path
 & $sdvkit --help
 & $sdvkit doctor --json
 ```

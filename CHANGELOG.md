@@ -4,6 +4,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-07
+
 ### Added
 
 - Explicitly reconcile one selected staged mod or Content Patcher pack's root configuration save in the same owned single review, retaining the running process and code/content identity with an old/new config hash audit and isolated export.
@@ -18,6 +20,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - Review honors an explicit `--project` when nested C# test or QA mods have their own manifests. Unselected mods are not staged automatically, and multi-mod packages remain rejected.
 - Interactive review consoles start minimized, then appear without activation when SMAPI is ready, avoiding the terminal host taking focus during creation.
+
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a fresh directory and restart MCP clients against it. Config reconciliation requires a newly staged single review with an existing root config file; it cannot be combined with CP patch refresh in the same review. It accepts saved configuration bytes, but does not reload a mod or rewrite source files.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/175) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.8.0...v0.9.0)
 
 ## [0.8.0] - 2026-09-06
 
