@@ -294,6 +294,59 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     [Theory]
+    [InlineData("missingReceipt")]
+    [InlineData("restartCleared")]
+    [InlineData("missingRecovery")]
+    [InlineData("missingError")]
+    [InlineData("rejectedReceipt")]
+    [InlineData("foreignPendingReceipt")]
+    public async Task CpMcpRejectsContradictoryPartialAndRecoveryReceipts(string mode)
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        var permission = review.Reader.ReadContext().Context!;
+        var commands = new List<string>();
+        var send = CpMcpSender(temporary, review, commands, "timeout");
+        await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
+            runCpRefresh: (pack, provider, files, asset, key, grant) =>
+            {
+                if (mode is "rejectedReceipt" or "foreignPendingReceipt")
+                {
+                    var receipt = new CpRefreshReceipt(Guid.NewGuid().ToString("N"), grant.State.LaunchId,
+                        grant.Staging.Target.StagedBuildIdentity, grant.Staging.Target.StagedBuildIdentity,
+                        files, false, true);
+                    return new CpRefreshResult("rejected",
+                        mode == "foreignPendingReceipt" ? "cpRefreshRestartRequired" : "cpRefreshNoChanges",
+                        mode == "foreignPendingReceipt" ? "Do not retry this refresh." : "none",
+                        grant.State.LaunchId, grant.State.OwnedProcessIdentity, grant.Staging.Target.BuildIdentity,
+                        receipt, 0, false, null, null, 0);
+                }
+                var result = ProjectReviewCpRefresh.Execute(temporary.Path, grant.Staging.Target.SourceRoot,
+                    pack, provider, files, asset, key, review.ProcessHost, () => ObservedAt.AddSeconds(1), send,
+                    responseTimeout: TimeSpan.FromMilliseconds(150), expectedContext: grant);
+                Assert.Equal("incomplete", result.State);
+                return mode switch
+                {
+                    "missingReceipt" => result with { Refresh = null },
+                    "restartCleared" => result with { Refresh = result.Refresh! with { RequiresRestart = false } },
+                    "missingRecovery" => result with { Recovery = "none" },
+                    _ => result with { ErrorCode = null },
+                };
+            }, cpRefreshPermission: permission));
+
+        var called = await harness.Client.CallToolAsync(ProjectReviewMcpCpTools.RefreshToolName,
+            CpArgs(refresh: true), cancellationToken: harness.Token);
+
+        Assert.True(called.IsError);
+        Assert.Null(called.StructuredContent);
+        Assert.Contains("cpRefreshResponseInvalid",
+            Assert.IsType<TextContentBlock>(Assert.Single(called.Content)).Text);
+        Assert.True(mode is "rejectedReceipt" or "foreignPendingReceipt"
+            ? commands.Count == 0
+            : commands.Count(command => command.StartsWith("patch reload", StringComparison.Ordinal)) == 1);
+    }
+
+    [Theory]
     [InlineData("host")]
     [InlineData("farmhand")]
     public async Task CpMcpToolsAreNeverAdvertisedForNetworkRoles(string role)

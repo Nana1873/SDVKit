@@ -268,11 +268,44 @@ internal static class ProjectReviewMcpCpTools
         if (result.Observation is ReviewDataReport data && ProjectReviewCpRefresh.MatchesObservation(data, asset, key))
             observation = new ProjectReviewMcpDataRecordSnapshot(data.SchemaVersion, data.GameVersion!, data.GameFileVersion!,
                 data.AssetName!, data.DataType!, data.Shape!, data.KeyKind!, data.Key!, data.Record!.Value);
-        return result.State != "observed" || result.ErrorCode is null && result.Recovery == "none"
-            && receipt is { RequiresRestart: false, CommandWritten: true } && result.Diagnosis?.State == "ready"
-            && result.LaunchId == before.State.LaunchId && result.Process == before.State.OwnedProcessIdentity
+        bool exactExecutionBinding = result.LaunchId == before.State.LaunchId
+            && result.Process == before.State.OwnedProcessIdentity
+            && result.LaunchBuildIdentity == before.Staging.Target.BuildIdentity;
+        bool hasError = result.ErrorCode is not null && Code(result.ErrorCode) != "cpOperationFailed";
+        if (result.State == "rejected")
+        {
+            if (!hasError || result.FilesReplaced != 0 || result.StagingRestored
+                || result.Diagnosis is not null || result.Observation is not null)
+                return false;
+            return pendingRecovery
+                ? exactExecutionBinding && receipt is { RequiresRestart: true }
+                    && SameReceipt(receipt, before.Staging.Target.CpRefresh)
+                    && result.Recovery != "none"
+                : receipt is null && result.Recovery == "none";
+        }
+        if (result.State == "incomplete")
+        {
+            return hasError && exactExecutionBinding
+                && receipt is { RequiresRestart: true }
+                && result.Recovery != "none"
+                && (!result.StagingRestored
+                    || receipt.CommandWritten == false
+                    && receipt.StagedBuildIdentity == receipt.PreviousBuildIdentity);
+        }
+        return result.ErrorCode is null && result.Recovery == "none"
+            && receipt is { RequiresRestart: false, CommandWritten: true }
+            && result.Diagnosis?.State == "ready" && exactExecutionBinding
             && result.FilesReplaced == files.Count && observation is not null;
     }
+
+    private static bool SameReceipt(CpRefreshReceipt? left, CpRefreshReceipt? right) =>
+        left is not null && right is not null
+        && left.RefreshId == right.RefreshId && left.LaunchId == right.LaunchId
+        && left.PreviousBuildIdentity == right.PreviousBuildIdentity
+        && left.StagedBuildIdentity == right.StagedBuildIdentity
+        && left.Files.SequenceEqual(right.Files)
+        && left.CommandWritten == right.CommandWritten
+        && left.RequiresRestart == right.RequiresRestart;
 
     private static bool Only(IDictionary<string, JsonElement>? args, string[] names) => args is not null && args.Keys.All(names.Contains);
     private static bool String(IDictionary<string, JsonElement>? args, string name, out string? value)
