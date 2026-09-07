@@ -29,7 +29,7 @@ and acceptance without duplicating this authoring recipe.
 ## Select the installation and project
 
 Use Windows and the [required SDK/game/SMAPI](../README.md#requirements).
-These commands are included in the published **v0.8.0** package. Build/package
+These commands are included in the published **v0.9.0** package. Build/package
 a fresh checkout using the
 [CP recipe's CLI setup](cp-authoring.md#prerequisites-and-one-lab-directory),
 omitting its CP provider and CP-specific help commands. Retain the exact commit,

@@ -44,10 +44,9 @@ Choose that version, not an arbitrary latest provider: SDVKit's diagnosis/refres
 currently recognizes exactly 2.9.1. Extract or copy it under your lab's ignored
 `.sdvkit/`; leave the download and any normal Mods installation unchanged.
 
-The CP check, diagnosis and refresh CLI commands are included in the published
-**v0.8.0** package. The Native MCP diagnosis and separately authorized refresh
-described later belong to the current unreleased candidate. To verify a fresh
-checkout of that candidate, use [Contributing](../CONTRIBUTING.md):
+The CP check, diagnosis and refresh CLI commands, plus Native MCP diagnosis and
+separately authorized refresh, are included in the published **v0.9.0** package.
+To verify a fresh checkout, use [Contributing](../CONTRIBUTING.md):
 
 ```powershell
 git clone https://github.com/Nana1873/SDVKit.git SDVKit-authoring
@@ -55,11 +54,11 @@ Set-Location SDVKit-authoring
 git rev-parse HEAD # retain this commit with your evidence
 .\scripts\package-windows-x64.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
-$archive = (Resolve-Path '.sdvkit\distribution\SDVKit-0.8.0-win-x64.zip').Path
+$archive = (Resolve-Path '.sdvkit\distribution\SDVKit-0.9.0-win-x64.zip').Path
 $expected = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) { throw 'Hash mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath .sdvkit\authoring-install
-$sdvkit = (Resolve-Path '.sdvkit\authoring-install\SDVKit-0.8.0-win-x64\sdvkit.exe').Path
+$sdvkit = (Resolve-Path '.sdvkit\authoring-install\SDVKit-0.9.0-win-x64\sdvkit.exe').Path
 & $sdvkit project check --help
 & $sdvkit project review cp-diagnose --help
 & $sdvkit project review cp-refresh --help
