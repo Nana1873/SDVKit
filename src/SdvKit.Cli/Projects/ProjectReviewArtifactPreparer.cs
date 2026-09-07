@@ -307,7 +307,7 @@ internal static partial class ProjectModStager
                 resolution.Inspection.Kind,
                 ProjectInspectionReport.SmapiMod,
                 StringComparison.Ordinal)
-            || resolution.Inspection.Manifests.Count != 1)
+            || (projectFile is null && resolution.Inspection.Manifests.Count != 1))
         {
             ProjectProblem sourceProblem = resolution.Problems.Count > 0
                 ? resolution.Problems[0]
