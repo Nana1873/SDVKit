@@ -181,7 +181,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         Assert.Equal([path], Directory.GetFiles(directory.Path));
     }
 
-    [Fact]
+    [StatusFileStressFact]
     public async Task ConcurrentReaderSeesCompleteExactSnapshotsWithContractFreshness()
     {
         using TemporaryDirectory directory = new();

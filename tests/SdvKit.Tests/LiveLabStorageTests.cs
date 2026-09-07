@@ -83,7 +83,7 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
                 .ToArray());
     }
 
-    [Fact]
+    [StatusFileStressFact]
     public async Task EnsureDirectoriesToleratesAtomicStatusReplacementTempFiles()
     {
         using TemporaryDirectory project = new();
