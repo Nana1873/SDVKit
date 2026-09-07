@@ -236,10 +236,12 @@ binding as the CLI, and are absent from network servers.
 
 Audio pages contain the same final-pipeline cue identities, sources, definition
 metadata and explicitly bounded coverage as `project review audio`. Exact cue IDs
-are case-sensitive. An unknown cue can validly return `sessionResident: false`
-with unavailable definition fields represented as `null`; a case mismatch or
-response echo mismatch fails closed. No call plays, records, reads, or exports
-audio bytes or paths.
+are case-sensitive. An exact cue discovered through the supported data sources
+can validly return `sessionResident: false` with unavailable soundbank definition
+fields represented as `null`. A cue absent from both the supported data-driven
+population and the active soundbank fails closed with `audioCueUnknown`; a case
+mismatch or response echo mismatch also fails closed. No call plays, records,
+reads, or exports audio bytes or paths.
 
 The mod-asset catalogue covers only conventional `Mods/<owner>/...` requests
 observed since AlwaysOn subscribed. It is not a filesystem scan or a claim that

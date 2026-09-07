@@ -152,7 +152,7 @@ public sealed class ProjectReviewMcpAudioModAssetTests
     }
 
     [Fact]
-    public async Task AudioExactRejectsEchoMismatchButAcceptsUnknownCueNullMetadata()
+    public async Task AudioExactRejectsEchoMismatchButAcceptsDataDiscoveredUnavailableCue()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
@@ -162,17 +162,20 @@ public sealed class ProjectReviewMcpAudioModAssetTests
                 runAudio: query => new LiveLabCommandResult(0,
                     query.CueId == "Mismatch"
                         ? ReadyAudioReport(query) with { CueId = "Other" }
-                        : UnknownAudioReport(query)),
+                        : DataDiscoveredUnavailableAudioReport(query)),
                 runModAsset: ReadyModAsset));
 
         CallToolResult mismatch = await Call(harness, ProjectReviewMcpAssetTools.AudioCueToolName,
             new() { ["cueId"] = "Mismatch" });
         Assert.True(mismatch.IsError);
 
-        JsonElement unknown = Successful(await Call(harness, ProjectReviewMcpAssetTools.AudioCueToolName,
-            new() { ["cueId"] = "MissingCue" }));
-        JsonElement cue = unknown.GetProperty("cues")[0];
+        JsonElement unavailable = Successful(await Call(harness, ProjectReviewMcpAssetTools.AudioCueToolName,
+            new() { ["cueId"] = "OldCue" }));
+        JsonElement cue = unavailable.GetProperty("cues")[0];
         Assert.False(cue.GetProperty("sessionResident").GetBoolean());
+        Assert.Equal(
+            ReviewAudioContract.JukeboxAlternativeSource,
+            cue.GetProperty("sources")[0].GetString());
         Assert.Equal(JsonValueKind.Null, cue.GetProperty("category").ValueKind);
         Assert.Equal(JsonValueKind.Null, cue.GetProperty("streamedVorbis").ValueKind);
     }
@@ -327,16 +330,18 @@ public sealed class ProjectReviewMcpAudioModAssetTests
             []);
     }
 
-    private static ReviewAudioReport UnknownAudioReport(ReviewAudioQuery query)
+    private static ReviewAudioReport DataDiscoveredUnavailableAudioReport(ReviewAudioQuery query)
     {
         var cue = new ReviewAudioCueReport(
-            query.CueId!, [], false, false, false,
-            null, null, null, null, null, null, []);
+            query.CueId!, [ReviewAudioContract.JukeboxAlternativeSource],
+            false, false, false, null, null, null, null, null, null,
+            [new ReviewAudioJukeboxReference(
+                "NewCue", ReviewAudioContract.AlternativeJukeboxRelation)]);
         return new ReviewAudioReport(
             ReviewAudioContract.SchemaVersion, "ready", query.Operation,
             "1.6.15", "1.6.15.24356", query.CueId,
             [cue], null,
-            new ReviewAudioCoverageReport(0, 0, 0, 0, 1, 0, 1, 0, true, null,
+            new ReviewAudioCoverageReport(0, 1, 1, 2, 1, 0, 1, 0, true, null,
                 ReviewAudioContract.BuiltInInventoryStatus),
             []);
     }
