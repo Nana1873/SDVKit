@@ -38,7 +38,21 @@ To review one code project within an existing repository:
 & $sdvkit project review start .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --topology single --json
 ```
 
-The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Review accepts one standalone code mod per source; hybrid/bundled-pack build/package support does not make a multi-manifest bundle reviewable. Supply separately supported ready packs through `--content-pack`. Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
+The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Review stages one standalone code-mod package per target or companion; hybrid/bundled-pack build/package support does not make a multi-manifest bundle reviewable. Supply separately supported ready packs through `--content-pack`. Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
+
+A selected code project may have nested C# test projects and QA mods with their own
+code manifests. For a root mod plus a separate live-test companion, select both
+explicitly:
+
+```powershell
+& $sdvkit project review start .\ExampleMod --project 'ExampleMod.csproj' --companion '.\ExampleMod\tests\LiveHarness' --topology single --json
+```
+
+Only the selected project's validated standalone package becomes the target.
+Nested test mods are not added automatically; omit `--companion` when the test mod
+is not needed. The selected project must exclude test sources and unwanted files
+from its normal compilation and package. A package containing another manifest
+is still rejected, and omitting `--project` still requires a unique code project.
 
 A retained review cannot switch explicit projects within the same root. Its ownership marker also retains `gamePath`, so both explicit and automatically discovered installations must match on network-2 restart after stop. Older retained staging without installation binding remains readable for status/stop/reset, but must be reset and rebuilt before restart. Stop/reset the exact owned review before changing its selection. Network-2 restart must repeat the exact target/project/companions/content-pack selection.
 

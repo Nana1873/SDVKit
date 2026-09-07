@@ -15,6 +15,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- Review honors an explicit `--project` when nested C# test or QA mods have their own manifests. Unselected mods are not staged automatically, and multi-mod packages remain rejected.
 - Interactive review consoles start minimized, then appear without activation when SMAPI is ready, avoiding the terminal host taking focus during creation.
 
 ## [0.8.0] - 2026-09-06
