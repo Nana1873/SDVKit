@@ -7,6 +7,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Added
 
 - Inspect bounded vanilla SeedShop Gold offers, money, inventory and held items through `project review shop` and single-review `stardew_shop_get`; unsupported shop or offer semantics are explicit.
+- A runnable shop purchase authoring recipe connects one original SeedShop Gold offer, a deliberate configuration failure, exact packaged artifacts and process-local input to observed money, stock and inventory deltas.
 - A focused GMCM 1.16.0 Boolean authoring recipe connects an original mod, owned UI editing, explicit config export/restaging, and the observed effect of the same packaged DLL after restart. Generic GMCM text input remains unsupported.
 
 ### Fixed
