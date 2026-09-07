@@ -105,8 +105,8 @@ internal static class OwnedReviewLogReader
     }
 
     internal static bool SameStagedContent(ProjectReviewStaging before, ProjectReviewStaging after) =>
-        before.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId))
-            .SequenceEqual(after.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId)));
+        before.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId, a.ConfigReconciliation?.ReconciliationId))
+            .SequenceEqual(after.Artifacts.Select(a => (a.Manifest.UniqueId, a.StagedBuildIdentity, a.CpRefresh?.RefreshId, a.ConfigReconciliation?.ReconciliationId)));
 
     internal static void RequireSingleLink(FileStream stream)
     {

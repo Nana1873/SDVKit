@@ -11,6 +11,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
+| Accept an intentional staged config save without restarting | [Configuration reconciliation](live-review.md#accept-an-intentional-configuration-change) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
 | Read Data, maps, textures, audio, or observed mod assets | [Inspection reference](inspection.md) |
 | Inspect an explicitly selected saved world offline | [Save inspection](save-inspection.md) |
@@ -44,6 +45,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | `stardew_cp_diagnose` | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Refresh selected CP patch JSON | `project review cp-refresh` | `stardew_cp_refresh`, separate `--allow-cp-refresh` | Owned single root CP 2.9.1 target; startup-bound source, explicit files and Data observation |
+| Reconcile one staged mod's intentional root config save | `project review config-reconcile --mod` | No; existing tools continue after reconciliation | Exact owned single; config-only drift, JSON validation, unchanged code/content and audit/export; separate from CP refresh; [contract](live-review.md#accept-an-intentional-configuration-change) |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
 | Audio and observed mod assets | `project review audio/mod-assets` | Audio/mod-asset tools | Active single review; CLI-parity bounds, observed-only asset coverage, no audio or asset export |

@@ -76,6 +76,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
     private readonly ILabProcessHost _processHost;
     private readonly Func<DateTimeOffset> _utcNow;
     internal LiveLabOperationLock? HeldOperationLock { get; init; }
+    internal string? ReconcileConfigUniqueId { get; init; }
 
     internal string ProjectRoot => _projectRoot;
 
@@ -140,9 +141,11 @@ internal sealed class ProjectReviewMcpRuntimeReader
             }
 
             LiveLabPaths paths = LiveLabPaths.Resolve(_projectRoot);
-            ProjectReviewStagingResult staged = ProjectModStager.ReadReview(
-                paths,
-                _topology);
+            if (ReconcileConfigUniqueId is not null && _topology != LiveLabState.SingleTopology)
+                return ContextFailure("configReconcileTopologyUnsupported", "Configuration reconciliation supports only single reviews.");
+            ProjectReviewStagingResult staged = ReconcileConfigUniqueId is null
+                ? ProjectModStager.ReadReview(paths, _topology)
+                : ProjectModStager.ReadReviewForConfiguration(paths, ReconcileConfigUniqueId);
             if (staged.Problem is not null || staged.Staging is null)
             {
                 return ContextFailure(
@@ -393,6 +396,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
             || state.NetworkTwo is not null
             || state.ProjectMod is null
             || staging.Target.CpRefresh is { } refresh && refresh.LaunchId != state.LaunchId
+            || staging.Artifacts.Any(a => a.ConfigReconciliation is { } config && config.LaunchId != state.LaunchId)
             || !StatePathsMatch(state, paths))
         {
             return false;

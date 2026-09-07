@@ -66,6 +66,12 @@ internal static class ModBuildIdentity
         return fullIdentity;
     }
 
+    internal static (string FullIdentity, string ContentIdentity) ComputeConfigurationIdentities(string rootPath)
+    {
+        var identities = ComputeFileSetIdentities(InspectFileSet(rootPath), includeWithoutRuntimeConfig: true);
+        return (identities.FullIdentity, identities.IdentityWithoutRuntimeConfig!);
+    }
+
     internal static string ComputeSelectedFiles(string rootPath, IReadOnlyList<string> paths)
     {
         var files = paths.Select(path => new FileSetEntry(path, NormalizeRelativePath(rootPath, path)))
