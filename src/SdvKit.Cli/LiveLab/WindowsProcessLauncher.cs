@@ -293,7 +293,7 @@ internal static partial class WindowsProcessLauncher
         if (specification.InteractiveConsole)
         {
             return specification.StartVisibleWithoutActivation
-                ? (StartfUseShowWindow, SwShowNoActivate)
+                ? (StartfUseShowWindow, SwShowMinNoActive)
                 : (0, (short)0);
         }
 

@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Fixed
+
+- Interactive review consoles start minimized, then appear without activation when SMAPI is ready, avoiding the terminal host taking focus during creation.
+
 ## [0.8.0] - 2026-09-06
 
 ### Added

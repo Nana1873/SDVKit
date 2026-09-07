@@ -48,7 +48,7 @@ public sealed class WindowsLabProcessHostTests(ITestOutputHelper output)
     [InlineData(true, false, false, 0x00000101, 7)]
     [InlineData(false, true, false, 0x00000101, 4)]
     [InlineData(false, false, true, 0, 0)]
-    [InlineData(false, true, true, 0x00000001, 4)]
+    [InlineData(false, true, true, 0x00000001, 7)]
     public void NativeLauncherUsesWindowFlagsForTheSelectedLaunchMode(
         bool startMinimized,
         bool startVisibleWithoutActivation,

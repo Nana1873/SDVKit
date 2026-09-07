@@ -1022,6 +1022,7 @@ internal sealed class LiveLabService
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
             ["SDVKIT_LAB_WINDOWED"] = "1",
+            ["SDVKIT_REVIEW_CONSOLE_BACKGROUND"] = interactiveConsole ? "1" : string.Empty,
         };
         foreach (string name in TestSaveEnvironmentNames)
         {
