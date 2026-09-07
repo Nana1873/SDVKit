@@ -347,6 +347,50 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     [Theory]
+    [InlineData("incomplete")]
+    [InlineData("rejected")]
+    public async Task CpMcpRetainsSafeRecoveryWhenInternalErrorsUseSentenceText(string state)
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        var permission = review.Reader.ReadContext().Context!;
+        var commands = new List<string>();
+        var send = CpMcpSender(temporary, review, commands, "timeout");
+        await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
+            runCpRefresh: (pack, provider, files, asset, key, grant) =>
+            {
+                if (state == "rejected")
+                    return new CpRefreshResult("rejected", "The selected file could not be inspected.", "none",
+                        null, null, null, null, 0, false, null, null, 0);
+                var result = ProjectReviewCpRefresh.Execute(temporary.Path, grant.Staging.Target.SourceRoot,
+                    pack, provider, files, asset, key, review.ProcessHost, () => ObservedAt.AddSeconds(1), send,
+                    responseTimeout: TimeSpan.FromMilliseconds(150), expectedContext: grant);
+                Assert.Equal("incomplete", result.State);
+                return result with { ErrorCode = "The file could not be hashed: private source detail." };
+            }, cpRefreshPermission: permission));
+
+        var called = await harness.Client.CallToolAsync(ProjectReviewMcpCpTools.RefreshToolName,
+            CpArgs(refresh: true), cancellationToken: harness.Token);
+
+        Assert.True(called.IsError);
+        var json = Assert.IsType<JsonElement>(called.StructuredContent);
+        Assert.Equal(state, json.GetProperty("state").GetString());
+        Assert.Equal("cpOperationFailed", json.GetProperty("errorCode").GetString());
+        if (state == "incomplete")
+        {
+            Assert.True(json.GetProperty("refresh").GetProperty("requiresRestart").GetBoolean());
+            Assert.NotEqual("none", json.GetProperty("recovery").GetString());
+            Assert.Single(commands, command => command.StartsWith("patch reload", StringComparison.Ordinal));
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, json.GetProperty("refresh").ValueKind);
+            Assert.Equal("none", json.GetProperty("recovery").GetString());
+            Assert.Empty(commands);
+        }
+    }
+
+    [Theory]
     [InlineData("host")]
     [InlineData("farmhand")]
     public async Task CpMcpToolsAreNeverAdvertisedForNetworkRoles(string role)

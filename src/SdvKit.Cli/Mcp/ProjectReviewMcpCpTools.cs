@@ -271,7 +271,7 @@ internal static class ProjectReviewMcpCpTools
         bool exactExecutionBinding = result.LaunchId == before.State.LaunchId
             && result.Process == before.State.OwnedProcessIdentity
             && result.LaunchBuildIdentity == before.Staging.Target.BuildIdentity;
-        bool hasError = result.ErrorCode is not null && Code(result.ErrorCode) != "cpOperationFailed";
+        bool hasError = !string.IsNullOrWhiteSpace(result.ErrorCode);
         if (result.State == "rejected")
         {
             if (!hasError || result.FilesReplaced != 0 || result.StagingRestored
