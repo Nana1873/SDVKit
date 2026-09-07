@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace SdvKit.Tests;
 
 public sealed class ProjectModObserverSourceTests
@@ -87,15 +89,7 @@ public sealed class ProjectModObserverSourceTests
     }
 
     [Theory]
-    [InlineData("LoadedModsModels.cs")]
-    [InlineData("ReviewAudioModels.cs")]
-    [InlineData("ReviewMapModels.cs")]
-    [InlineData("ReviewModAssetModels.cs")]
-    [InlineData("ReviewScreenshotModels.cs")]
-    [InlineData("ReviewTextureModels.cs")]
-    [InlineData("ReviewTexturePngValidator.cs")]
-    [InlineData("ReviewTransportModels.cs")]
-    [InlineData("RuntimeVersionCompatibility.cs")]
+    [MemberData(nameof(AlwaysOnLinkedSourceFiles))]
     public void PortablePackageIncludesAlwaysOnLinkedCliSource(string fileName)
     {
         string packageScript = ReadRepositoryFile(
@@ -103,6 +97,18 @@ public sealed class ProjectModObserverSourceTests
             "package-windows-x64.ps1");
 
         Assert.Contains($"\"{fileName}\"", packageScript, StringComparison.Ordinal);
+    }
+
+    public static TheoryData<string> AlwaysOnLinkedSourceFiles
+    {
+        get
+        {
+            XDocument project = XDocument.Parse(ReadRepositoryFile("src", "SdvKit.AlwaysOn", "SdvKit.AlwaysOn.csproj"));
+            var files = new TheoryData<string>();
+            foreach (XElement compile in project.Descendants("Compile").Where(element => element.Attribute("Link") is not null))
+                files.Add(Path.GetFileName(compile.Attribute("Include")!.Value));
+            return files;
+        }
     }
 
     private static string ReadObserverSource()

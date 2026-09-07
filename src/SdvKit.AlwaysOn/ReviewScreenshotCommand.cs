@@ -381,6 +381,10 @@ internal static class ReviewCommand
                         runtimePath,
                         testSave);
                 }
+                else if (arguments.Length > 0 && arguments[0] == "shop")
+                {
+                    ReviewShopCommand.Handle(arguments, runtimePath, monitor, menuCommand);
+                }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {
                     menuCommand.Handle(arguments, runtimePath, monitor);
