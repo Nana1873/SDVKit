@@ -138,6 +138,14 @@ public sealed class ModEntry : Mod
         {
             _backgroundRun!.Enable();
             _gameLaunched = true;
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable("SDVKIT_REVIEW_CONSOLE_BACKGROUND"),
+                    "1",
+                    StringComparison.Ordinal)
+                && !WindowsReviewConsole.ShowWithoutActivation())
+            {
+                Monitor.Log("Could not show the review console without activation.", LogLevel.Warn);
+            }
             _projectMod?.ObserveLoadedMod();
             WriteActiveStatus();
         };

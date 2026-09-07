@@ -76,6 +76,8 @@ For a C# host/farmhand review, prepare that same baseline and start with `--topo
 
 ## Exercise behavior and collect evidence
 
+On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.
+
 Use an idle SMAPI console with no concurrent manual typing. Console delivery proves only delivery; verify the actual effect through matching logs, state, or images.
 
 ```powershell
