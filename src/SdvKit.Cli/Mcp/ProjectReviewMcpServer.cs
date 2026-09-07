@@ -249,6 +249,7 @@ internal static class ProjectReviewMcpServer
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
+        if (reader.Topology == "single" && reader.Role is null) tools.Add(ProjectReviewMcpShopTools.Create(reader));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
