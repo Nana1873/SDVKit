@@ -455,6 +455,8 @@ public sealed class ProjectReviewMcpTests
                     timeout.Token);
                 string[] expectedTools =
                 [
+                    ProjectReviewMcpAssetTools.AudioCueToolName,
+                    ProjectReviewMcpAssetTools.AudioCuesToolName,
                     ProjectReviewMcpDataTools.AssetsToolName,
                     ProjectReviewMcpDataTools.KeysToolName,
                     ProjectReviewMcpDataTools.RecordToolName,
@@ -474,6 +476,9 @@ public sealed class ProjectReviewMcpTests
                 ProjectReviewMcpLogTools.ToolName,
                     ProjectReviewMcpDiagnosticsTools.ModsToolName,
                     ProjectReviewMcpDiagnosticsTools.ReviewToolName,
+                    ProjectReviewMcpAssetTools.ModAssetKeysToolName,
+                    ProjectReviewMcpAssetTools.ModAssetRecordToolName,
+                    ProjectReviewMcpAssetTools.ModAssetsToolName,
                     ProjectReviewMcpServer.RuntimeToolName,
                     ProjectReviewMcpScreenshotTools.CaptureToolName,
                 ];

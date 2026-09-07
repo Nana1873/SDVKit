@@ -170,6 +170,18 @@ internal static class ProjectReviewMcpServer
             StringComparison.Ordinal)
                 ? query => ProjectReviewTextureService.Execute(query, projectRoot)
                 : null;
+        ProjectReviewMcpAudioQueryRunner? runAudio = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewAudioService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewModAssetService.Execute(query, projectRoot)
+                : null;
         ProjectReviewMcpInputSession? inputSession = allowInput
             ? new ProjectReviewMcpInputSession(
                 reader,
@@ -198,7 +210,9 @@ internal static class ProjectReviewMcpServer
             runMap: runMap,
             runTexture: runTexture,
             topology: topology,
-            role: role);
+            role: role,
+            runAudio: runAudio,
+            runModAsset: runModAsset);
         var exitCode = 0;
         try
         {
@@ -258,7 +272,9 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpMapQueryRunner? runMap = null,
         ProjectReviewMcpTextureQueryRunner? runTexture = null,
         string topology = LiveLabState.SingleTopology,
-        string? role = null)
+        string? role = null,
+        ProjectReviewMcpAudioQueryRunner? runAudio = null,
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -289,6 +305,13 @@ internal static class ProjectReviewMcpServer
             && reader.Role is null)
         {
             tools.AddRange(ProjectReviewMcpTextureTools.Create(reader, runTexture));
+        }
+        if (reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null
+            && runAudio is not null
+            && runModAsset is not null)
+        {
+            tools.AddRange(ProjectReviewMcpAssetTools.Create(reader, runAudio, runModAsset));
         }
         if (inputSession is not null)
         {
