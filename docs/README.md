@@ -7,6 +7,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
+| Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Explain a selected Content Patcher change | [CP diagnosis](cp-diagnosis.md) |
@@ -34,6 +35,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
 | Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; explicit bounded vanilla adapters and partial custom coverage |
+| Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
 | World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
