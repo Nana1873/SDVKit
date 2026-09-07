@@ -101,6 +101,18 @@ if (-not [System.IO.Path]::IsPathRooted($relativeToWorkspace) `
 
 Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ExtractRoot
 $packageRoot = Join-Path $ExtractRoot $archive.BaseName
+$adapterRoot = Join-Path $packageRoot 'src\SdvKit.AlwaysOn'
+[xml]$adapterProject = Get-Content -LiteralPath (Join-Path $adapterRoot 'SdvKit.AlwaysOn.csproj') -Raw
+foreach ($source in $adapterProject.Project.ItemGroup.Compile) {
+    $sourcePath = [System.IO.Path]::GetFullPath([string]$source.Include, $adapterRoot)
+    $relativeSource = [System.IO.Path]::GetRelativePath($packageRoot, $sourcePath)
+    if ([System.IO.Path]::IsPathRooted($relativeSource) `
+        -or $relativeSource -eq '..' `
+        -or $relativeSource.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)") `
+        -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "The portable AlwaysOn project has a missing or external linked source: $($source.Include)"
+    }
+}
 $cli = Join-Path $packageRoot "sdvkit.exe"
 Push-Location -LiteralPath $packageRoot
 try {
