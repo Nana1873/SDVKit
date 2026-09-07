@@ -1506,6 +1506,8 @@ public sealed class CliApplicationTests
         Assert.Contains("--allow-input", output, StringComparison.Ordinal);
         Assert.Contains("--allow-fixture-actions", output, StringComparison.Ordinal);
         Assert.Contains("stardew_data_assets_list", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_map_tile_get", output, StringComparison.Ordinal);
+        Assert.Contains("stardew_texture_preview", output, StringComparison.Ordinal);
         Assert.Contains("stardew_screenshot_capture", output, StringComparison.Ordinal);
     }
 

@@ -2,11 +2,11 @@
 
 Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`. Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
 
-[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
+[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 10 tools | 6 tools | 6 tools |
+| Default observation/evidence | 21 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
@@ -128,6 +128,42 @@ record and 5 MiB response limits. All three tools return operation-specific clos
 envelopes and identical compact JSON text. They are deliberately absent from a
 `network-2` server; use the existing single-review CLI or MCP
 surface rather than inferring one role's game-content pipeline from the other.
+
+## Maps and textures
+
+Single-review servers expose the existing [map and texture inspection](inspection.md)
+operations without an action opt-in. These calls use the final active SMAPI content
+pipeline and the same bounds, exact selections and ownership checks as the CLI.
+They are absent from network servers.
+
+| Tool | Selection |
+| --- | --- |
+| `stardew_map_assets_list` | Optional `offset`, `limit` |
+| `stardew_map_get` | `asset` |
+| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list` | `asset`; optional `offset`, `limit` |
+| `stardew_map_layer_get` | `asset`, `layer` |
+| `stardew_map_tile_get` | `asset`, `layer`, non-negative `x`, `y` |
+| `stardew_map_property_get` | `asset`, `property`, explicit `scope` and `source`; scope-specific `layer`, `x`, `y`, `frameIndex` |
+| `stardew_texture_assets_list` | Optional `offset`, `limit` |
+| `stardew_texture_get`, `stardew_texture_preview` | `asset` |
+
+Pages default to offset 0 and limit 50, with limits of 1-100. Property scope is
+`map`, `layer` or `tile`; source is `direct` or, for tile-index properties,
+`tile-index`. Only tile-index selection accepts a frame index. Select property
+names from observed content; an absent property remains a controlled error.
+
+For example, call `stardew_map_get {"asset":"Maps/Town"}`, then
+`stardew_texture_get {"asset":"LooseSprites/Cursors"}` and
+`stardew_texture_preview {"asset":"LooseSprites/Cursors"}`.
+Preview returns structured metadata with matching JSON text and an `image/png`
+MCP image block. It reads and verifies the existing request-bound PNG before
+returning those bytes, including its hash, dimensions and encoded size. A local
+path alone is not the preview result. The same 512x512 and 2 MiB diagnostic limits
+apply; this is not a raw texture or source-asset export.
+
+Unknown, stale, unsafe, colliding, unsupported and oversized selections fail
+closed. Inspect the named problem and review status before another request;
+do not treat a failed inventory as complete coverage.
 
 ## Opt-in input
 
@@ -368,6 +404,6 @@ arbitrary console text, or mutate a review except through an explicitly enabled
 typed action family. `--allow-input` wraps only the existing process-local
 cursor, one-tick button, and one-notch wheel paths described above.
 `--allow-fixture-actions` wraps only the closed typed operations above inside the
-already active owned disposable fixture. Without either action opt-in, the
-screenshot tool's only write is its named, create-new evidence PNG below the
-selected role's ignored isolated profile.
+already active owned disposable fixture. Screenshot capture and texture preview
+create bounded, non-overwriting evidence PNGs below the selected role's ignored
+profile or review runtime, respectively; neither requires an action opt-in.

@@ -45,7 +45,8 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
 | Refresh selected CP patch JSON | `project review cp-refresh` | No | Owned single root CP 2.9.1 target; explicit source/files and Data observation |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
-| Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |
+| Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
+| Audio and observed mod assets | `project review audio/mod-assets` | No | Active single review |
 | Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |
 | Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role; MCP requires `--allow-input`; gestures require an active menu and fresh UI revision; legacy mouse presses require a virtual cursor, legacy wheel also a menu; text requires an exact available NamingMenu field and fresh UI revision |
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |

@@ -2,7 +2,7 @@
 
 Use this reference to query the final SMAPI content pipeline of an already-running, load-confirmed **single** review. Start with the [live guide](live-review.md#start-a-review). Examples use the executable variable from [installation](../README.md#install).
 
-Choose [Data](#read-canonical-data-definitions), [maps](#inspect-active-map-structure), [textures](#inspect-canonical-textures-safely), [audio](#inspect-active-audio-metadata), or [observed mod assets](#inspect-observed-mod-owned-asset-namespaces). Only Data is also available through [MCP](mcp.md#canonical-data).
+Choose [Data](#read-canonical-data-definitions), [maps](#inspect-active-map-structure), [textures](#inspect-canonical-textures-safely), [audio](#inspect-active-audio-metadata), or [observed mod assets](#inspect-observed-mod-owned-asset-namespaces). Data, maps and textures are also available through [MCP](mcp.md#maps-and-textures).
 
 ## Shared rules
 
@@ -45,7 +45,7 @@ Run `& $sdvkit project review map --help` for the exact layer, direct-tile, and 
 
 `assets` independently scans the installed `Content/Maps` XNB candidates without following reparse points, excludes locale siblings, and classifies each pipeline result as a supported xTile map, a known non-map candidate, or an explicit gap. Unsafe physical candidate names are represented only by deterministic `invalid-map-asset-NNNN` labels and are never echoed into the report. This inventory describes physical game candidates only; an exact canonical `Maps/*` name introduced by a loaded mod can still be inspected through SMAPI's active content pipeline. Require `coverage.complete=true` before claiming complete physical-inventory support. A canonical name unavailable through that pipeline is reported separately from a name outside the namespace; load failures, normalized identity collisions, malformed warps, unsafe shapes, and oversized structures fail closed.
 
-List operations are paged from stable collection order, while `get`, `layer`, `tile`, and `property` return one bounded selection. Warp entries distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`). Tile output identifies an empty, static, or animated tile and returns stable frame references and property counts, never the layer's tile matrix. Exact property reads preserve their JSON type and require an explicit map, layer, direct-tile, or tile-index scope. An animated tile-index property additionally requires its stable zero-based `--frame`; direct and tile-index properties are never merged. Map access is intentionally CLI-only here and is not added to MCP.
+List operations are paged from stable collection order, while `get`, `layer`, `tile`, and `property` return one bounded selection. Warp entries distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`). Tile output identifies an empty, static, or animated tile and returns stable frame references and property counts, never the layer's tile matrix. Exact property reads preserve their JSON type and require an explicit map, layer, direct-tile, or tile-index scope. An animated tile-index property additionally requires its stable zero-based `--frame`; direct and tile-index properties are never merged. The [single-review MCP adapters](mcp.md#maps-and-textures) reuse these selections and limits.
 
 ## Inspect canonical textures safely
 
@@ -63,7 +63,7 @@ The physical inventory bounds total traversed entries as well as candidate count
 
 `preview` reads back only that one selected texture after requiring the RGBA8 `Color` runtime format and rejecting source dimensions above 8192, source populations above 16,777,216 pixels, or invalid metadata. Unsupported compressed or differently packed formats remain metadata-readable through `get` but fail closed for preview instead of interpreting their bytes as RGBA. A supported preview preserves aspect ratio, never upscales, uses nearest-neighbor sampling, and writes at most one 512x512 diagnostic PNG with a 2 MiB encoded limit. The response contains only its GUID-derived path relative to `.sdvkit/lab/single/runtime`, output dimensions, byte count, and SHA-256; the PNG itself remains below ignored `.sdvkit` as review evidence. The cached game texture is not mutated or disposed.
 
-Every response and preview target is create-new, regular-file and reparse checked, request-bound, size bounded, and never reused. Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched, or unsafe requests fail closed. There is no bulk preview, raw-pixel/base64 response, crop API, source-XNB export, texture mutation, network-role variant, or texture MCP tool.
+Every response and preview target is create-new, regular-file and reparse checked, request-bound, size bounded, and never reused. Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched, or unsafe requests fail closed. The [MCP preview](mcp.md#maps-and-textures) returns the checked diagnostic PNG as image content alongside metadata. There is no bulk preview, raw-pixel response, crop API, source-XNB export, texture mutation, or network-role variant.
 
 ## Inspect active audio metadata
 

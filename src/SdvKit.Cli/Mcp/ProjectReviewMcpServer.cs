@@ -158,6 +158,18 @@ internal static class ProjectReviewMcpServer
             StringComparison.Ordinal)
                 ? query => ProjectReviewDataService.Execute(query, projectRoot)
                 : null;
+        ProjectReviewMcpMapQueryRunner? runMap = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewMapService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpTextureQueryRunner? runTexture = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewTextureService.Execute(query, projectRoot)
+                : null;
         ProjectReviewMcpInputSession? inputSession = allowInput
             ? new ProjectReviewMcpInputSession(
                 reader,
@@ -183,6 +195,8 @@ internal static class ProjectReviewMcpServer
             runData,
             inputSession: inputSession,
             runFixture: runFixture,
+            runMap: runMap,
+            runTexture: runTexture,
             topology: topology,
             role: role);
         var exitCode = 0;
@@ -241,6 +255,8 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpScreenshotRunner? runScreenshot = null,
         ProjectReviewMcpInputSession? inputSession = null,
         ProjectReviewMcpFixtureQueryRunner? runFixture = null,
+        ProjectReviewMcpMapQueryRunner? runMap = null,
+        ProjectReviewMcpTextureQueryRunner? runTexture = null,
         string topology = LiveLabState.SingleTopology,
         string? role = null)
     {
@@ -261,6 +277,18 @@ internal static class ProjectReviewMcpServer
         if (runData is not null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
+        }
+        if (runMap is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null)
+        {
+            tools.AddRange(ProjectReviewMcpMapTools.Create(reader, runMap));
+        }
+        if (runTexture is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null)
+        {
+            tools.AddRange(ProjectReviewMcpTextureTools.Create(reader, runTexture));
         }
         if (inputSession is not null)
         {
@@ -284,7 +312,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.8.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data, map, and texture tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")
