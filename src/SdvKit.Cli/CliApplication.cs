@@ -318,7 +318,7 @@ public static partial class CliApplication
     }
 
     private static string CurrentVersion =>
-        typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.8.0";
+        typeof(CliApplication).Assembly.GetName().Version?.ToString(3) ?? "0.9.0";
 
     private static int RunVersion(
         IReadOnlyList<string> arguments,

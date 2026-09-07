@@ -35,7 +35,7 @@ If a defect needs a separate fix PR, update the candidate to the new green main 
 From the checkout, substitute the selected artifact path and version:
 
 ```powershell
-.\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-0.8.0-win-x64.zip -ExpectedVersion 0.8.0 -ExpectedDoctorStatus ready
+.\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-0.9.0-win-x64.zip -ExpectedVersion 0.9.0 -ExpectedDoctorStatus ready
 ```
 
 Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
@@ -90,7 +90,7 @@ After every required gate is green, tag the exact accepted green main commit and
 Generate the user-facing body from the changelog:
 
 ```powershell
-.\scripts\release-notes.ps1 -Version 0.8.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
+.\scripts\release-notes.ps1 -Version 0.9.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
 ```
 
 Use that file for the GitHub release body. The version section should link to the release acceptance and compare view. Keep detailed hashes, logs, and CI provenance in that linked acceptance; do not maintain a second editorial summary in README or a separate notes file. The helper only extracts text; it does not publish anything.
