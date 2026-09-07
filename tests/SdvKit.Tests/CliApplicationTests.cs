@@ -8,6 +8,45 @@ namespace SdvKit.Tests;
 public sealed class CliApplicationTests
 {
     [Fact]
+    public void ConfigReconcileHelpDescribesTheExplicitSingleReviewBoundary()
+    {
+        (int exitCode, string output, string error) = Run("project", "review", "config-reconcile", "--help");
+        Assert.Equal(0, exitCode);
+        Assert.Contains("--mod <staged-UniqueID>", output, StringComparison.Ordinal);
+        Assert.Contains("same owned running single review", output, StringComparison.Ordinal);
+        Assert.Contains("old/new config hashes", output, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
+    [InlineData("--mod", "Test.Pack", "--json")]
+    [InlineData("--json", "--topology", "single", "--mod", "Test.Pack")]
+    public void ConfigReconcileParsesOneExplicitMod(params string[] arguments)
+    {
+        Assert.True(CliApplication.TryParseConfigReconcile(
+            ["project", "review", "config-reconcile", .. arguments], out string uniqueId));
+        Assert.Equal("Test.Pack", uniqueId);
+    }
+
+    [Theory]
+    [InlineData("--json")]
+    [InlineData("--mod", "Test.Pack")]
+    [InlineData("--mod", "../config.json", "--json")]
+    [InlineData("--mod", "Test.Pack", "--mod", "Other.Pack", "--json")]
+    [InlineData("--mod", "Test.Pack", "--json", "--json")]
+    [InlineData("--mod", "Test.Pack", "--topology", "network-2", "--json")]
+    [InlineData("--mod", "Test.Pack", "--role", "host", "--json")]
+    [InlineData("--mod", "Test.Pack", "--file", "content.json", "--json")]
+    public void ConfigReconcileRejectsAmbiguousOrExpandedSelectionsWithoutDispatch(params string[] arguments)
+    {
+        (int exitCode, string output, string error) = Run(
+            ["project", "review", "config-reconcile", .. arguments]);
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("Usage:", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NoArgumentsPrintsTheSmallPublicSurface()
     {
         (int exitCode, string output, string error) = Run();

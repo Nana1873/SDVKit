@@ -62,6 +62,8 @@ internal static class ProjectReviewCpRefresh
             var verified = reader.ReadContext();
             if (!verified.Succeeded) return Result("rejected", verified.ErrorCode);
             context = verified.Context!;
+            if (context.Staging.Artifacts.Any(a => a.ConfigReconciliation is not null))
+                return Result("rejected", "cpRefreshAfterConfigReconcileUnsupported");
             if (expectedContext is not null && !SamePermissionBinding(expectedContext, context))
                 return Result("rejected", "cpRefreshBindingChanged");
             ProjectReviewOwnedArtifact target = context.Staging.Target;

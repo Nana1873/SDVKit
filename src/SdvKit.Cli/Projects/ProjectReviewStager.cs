@@ -167,6 +167,14 @@ internal static partial class ProjectModStager
                     }
                 }
 
+                if (topology == LiveLabState.SingleTopology)
+                {
+                    owned = owned.Select(artifact => artifact with
+                    {
+                        ConfigBaseline = ProjectReviewConfigReconcile.CaptureBaseline(artifact.StagingPath, artifact.BuildIdentity),
+                    }).ToArray();
+                }
+
                 var staging = new ProjectReviewStaging(
                     ReviewOwnershipSchemaVersion,
                     topology,
@@ -293,6 +301,10 @@ internal static partial class ProjectModStager
             allowMissingStagingPaths: false,
             requireContentIdentity: true);
     }
+
+    internal static ProjectReviewStagingResult ReadReviewForConfiguration(LiveLabPaths paths, string uniqueId) =>
+        ReadReviewOwnership(paths, LiveLabState.SingleTopology, allowMissingStagingPaths: false,
+            requireContentIdentity: true, reconcileConfigUniqueId: uniqueId);
 
     internal static ProjectReviewStagingResult ReadReviewForCleanup(
         LiveLabPaths singlePaths,
@@ -608,7 +620,8 @@ internal static partial class ProjectModStager
         LiveLabPaths singlePaths,
         string topology,
         bool allowMissingStagingPaths,
-        bool requireContentIdentity)
+        bool requireContentIdentity,
+        string? reconcileConfigUniqueId = null)
     {
         string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
         try
@@ -633,7 +646,8 @@ internal static partial class ProjectModStager
                 singlePaths,
                 topology,
                 allowMissingStagingPaths,
-                requireContentIdentity);
+                requireContentIdentity,
+                reconcileConfigUniqueId);
             return validation is null
                 ? new ProjectReviewStagingResult(staging, null)
                 : new ProjectReviewStagingResult(null, validation);
@@ -652,7 +666,8 @@ internal static partial class ProjectModStager
         LiveLabPaths singlePaths,
         string topology,
         bool allowMissingStagingPaths,
-        bool requireContentIdentity)
+        bool requireContentIdentity,
+        string? reconcileConfigUniqueId)
     {
         ReviewRolePaths[] expectedRoles = ResolveReviewRolePaths(singlePaths, topology);
         if (staging.SchemaVersion != ReviewOwnershipSchemaVersion
@@ -671,6 +686,7 @@ internal static partial class ProjectModStager
                 || artifact.RoleStagingPaths.Any(path => path is null)
                 || !IsSafeSegment(artifact.TopLevelDirectory)
                 || !ModBuildIdentity.IsValid(artifact.BuildIdentity)
+                || !ProjectReviewConfigReconcile.ValidConfigurationOwnership(artifact, singlePaths, topology)
                 || artifact.CpRefresh is not null && (topology != LiveLabState.SingleTopology
                     || artifact.Role != ProjectReviewArtifactRole.Target
                     || !string.Equals(artifact.Manifest.ContentPackFor, ProjectReviewCpDiagnosis.ProviderId, StringComparison.OrdinalIgnoreCase)
@@ -798,13 +814,15 @@ internal static partial class ProjectModStager
                         out _);
                     if (manifest is null
                         || !OwnedManifestMatchesFresh(artifact.Manifest, manifest)
-                        || !ModBuildIdentity.MatchesFileSet(
-                            stagingPath,
-                            artifact.StagedBuildIdentity,
-                            allowNewRootConfigJson: string.Equals(
-                                artifact.Manifest.Kind,
-                                ProjectInspectionReport.SmapiMod,
-                                StringComparison.Ordinal)))
+                        || !(string.Equals(artifact.Manifest.UniqueId, reconcileConfigUniqueId, StringComparison.OrdinalIgnoreCase)
+                            ? ProjectReviewConfigReconcile.MatchesSelectedContent(artifact, stagingPath)
+                            : ModBuildIdentity.MatchesFileSet(
+                                stagingPath,
+                                artifact.StagedBuildIdentity,
+                                allowNewRootConfigJson: artifact.ConfigReconciliation is null && string.Equals(
+                                    artifact.Manifest.Kind,
+                                    ProjectInspectionReport.SmapiMod,
+                                    StringComparison.Ordinal))))
                     {
                         return ReviewProblem(
                             "reviewStagingOwnershipDrifted",

@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Explicitly reconcile one selected staged mod or Content Patcher pack's root configuration save in the same owned single review, retaining the running process and code/content identity with an old/new config hash audit and isolated export.
 - Inspect bounded map structure and texture metadata through single-review Native MCP; texture previews deliver a checked diagnostic PNG as image content.
 - Inspect audio metadata and observed mod-owned asset catalogues and primitive values through single-review Native MCP with the same bounds and selections as the CLI.
 - Diagnose a selected Content Patcher pack through Native MCP. Enable selected patch-JSON refresh independently with `--allow-cp-refresh`; its permission stays bound to the original review and retains incomplete-operation recovery evidence.

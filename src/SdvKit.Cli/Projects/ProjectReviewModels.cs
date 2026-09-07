@@ -82,9 +82,21 @@ internal sealed record ProjectReviewOwnedArtifact(
 
     public CpRefreshReceipt? CpRefresh { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReviewConfigBaseline? ConfigBaseline { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ConfigReconcileReceipt? ConfigReconciliation { get; init; }
+
     [JsonIgnore]
-    public string StagedBuildIdentity => CpRefresh?.StagedBuildIdentity ?? BuildIdentity;
+    public string StagedBuildIdentity => ConfigReconciliation?.StagedBuildIdentity ?? CpRefresh?.StagedBuildIdentity ?? BuildIdentity;
 }
+
+internal sealed record ReviewConfigBaseline(string ContentIdentity, string? ConfigHash);
+
+internal sealed record ConfigReconcileReceipt(string ReconciliationId, string LaunchId,
+    string PreviousConfigHash, string ConfigHash, string ContentIdentity, string StagedBuildIdentity,
+    string? PreviousReconciliationId, string AuditPath, string ExportPath, DateTimeOffset ReconciledAtUtc);
 
 internal sealed record CpRefreshReceipt(string RefreshId, string LaunchId, string PreviousBuildIdentity,
     string StagedBuildIdentity, IReadOnlyList<string> Files, bool? CommandWritten, bool RequiresRestart);
@@ -136,6 +148,9 @@ internal sealed record ProjectReviewArtifactReport(
     public string? ProjectFile { get; init; }
 
     public CpRefreshReceipt? CpRefresh { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ConfigReconcileReceipt? ConfigReconciliation { get; init; }
 }
 
 internal sealed record ProjectReviewReport(

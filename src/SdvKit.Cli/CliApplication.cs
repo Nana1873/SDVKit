@@ -600,6 +600,11 @@ public static partial class CliApplication
             return RunProjectReviewCpRefresh(arguments, output, error);
         }
 
+        if (arguments.Count > 2 && arguments[2] == "config-reconcile")
+        {
+            return RunProjectReviewConfigReconcile(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "cp-diagnose")
         {
             return RunProjectReviewCpDiagnosis(arguments, output, error);
@@ -1820,6 +1825,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review diagnostics --help Selected-mod warnings and exceptions.");
         output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis.");
         output.WriteLine("  sdvkit project review cp-refresh --help Refresh selected owned CP patch JSON.");
+        output.WriteLine("  sdvkit project review config-reconcile --help Accept a selected staged config change.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");

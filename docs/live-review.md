@@ -148,6 +148,54 @@ Choose the detailed surface for the task:
 - [Fixture reference](lab-reference.md#fixture-command-reference): owned buildings, objects, animals, and natural navigation.
 - [MCP](mcp.md): typed observation, screenshots, and separately enabled input/fixture actions.
 
+## Accept an intentional configuration change
+
+A mod's GMCM Save action can change its staged root `config.json`. When that
+configuration participated in the reviewed file set, subsequent inspection and
+input reject the changed bytes until you explicitly reconcile the selected mod:
+
+```powershell
+& $sdvkit project review config-reconcile --mod Example.Mod --topology single --json
+& $sdvkit project review menu --topology single --json
+& $sdvkit project review diagnostics --mod Example.Mod --topology single --json
+```
+
+Use the exact staged `UniqueID` from the original review status. The selected
+artifact may be the target, a companion code mod, or an explicitly staged Content
+Patcher pack. Its root config must already have existed when staging began;
+newly created config files are outside this operation. Reconcile checks the active
+single review's launch, process, profile
+and complete artifact set. Only the selected regular root `config.json` may differ;
+malformed JSON, linked files or directories, changed assemblies/content/manifests,
+and another artifact's drift are rejected. Config must be a JSON object of at most
+1 MiB; SMAPI-compatible comments and trailing commas are accepted. `network-2` is unsupported.
+
+`state=reconciled` records the previous and accepted config hashes, unchanged
+non-config content identity, and an audit/export below the lab's ignored
+`.sdvkit/`. Repeated intentional changes retain the preceding reconciliation ID.
+`state=unchanged` means the selected config already matches the accepted files.
+The original launch/build identity and running process remain the same. Source
+files are never updated, and the operation does not rebuild, reload the mod, or
+restart Stardew. Observe the intended menu or gameplay effect separately; accepting
+saved JSON does not establish that the mod applied its settings in memory.
+
+If `auditWarning=configReconcileAuditUnconfirmed` accompanies a confirmed
+`reconciled` result, acceptance succeeded but the final audit write did not.
+Rerun the same selection without another config edit to verify its retained export
+and repair the receipt. A changed or missing export retains the warning; keep the
+reported recovery evidence and finish through the normal owned stop/reset.
+
+Config reconciliation and [CP patch refresh](cp-refresh.md) cannot be combined in
+one review. Stop and start a new exact review when switching between them. Reconcile
+is currently CLI-only; an already connected MCP client can continue its existing
+inspection/input tools after successful reconciliation.
+
+Retain the returned audit/export paths if you need the saved configuration later.
+They do not automatically become the next review's input. Explicit export/restage
+and restart remain the separate [GMCM persistence workflow](gmcm-authoring.md#validate-export-stop-and-restage-the-saved-config).
+Finish with the normal [stop/reset sequence](#finish-or-test-persistence), including
+after a rejected reconciliation; never edit ownership markers to accept drift.
+
 ## Diagnose selected-mod warnings and exceptions
 
 For a selected Content Patcher change, use the [CP diagnosis recipe](cp-diagnosis.md)

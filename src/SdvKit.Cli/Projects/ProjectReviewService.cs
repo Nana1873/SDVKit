@@ -1562,6 +1562,7 @@ internal static class ProjectReviewService
                     PathComparison()));
         if (!string.Equals(state.Topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
             || staging.Target.CpRefresh is { } refresh && refresh.LaunchId != state.LaunchId
+            || staging.Artifacts.Any(a => a.ConfigReconciliation is { } config && config.LaunchId != state.LaunchId)
             || !testSaveBindingValid
             || state.NetworkTwo is not null
             || state.ProjectMod is null
@@ -1937,7 +1938,7 @@ internal static class ProjectReviewService
                 RelativePath(paths.ProjectRoot, artifact.StagingPathFor(role)),
                 artifact.BuildLog,
                 artifact.PackageLog)
-            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile }).ToArray();
+            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile, ConfigReconciliation = artifact.ConfigReconciliation }).ToArray();
         return new ProjectNetworkReviewRoleReport(
             role,
             RelativePath(paths.ProjectRoot, rolePaths.StardewDataPath),
@@ -2054,7 +2055,7 @@ internal static class ProjectReviewService
                 RelativePath(paths.ProjectRoot, artifact.StagingPath),
                 artifact.BuildLog,
                 artifact.PackageLog)
-            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile }).ToArray();
+            { CpRefresh = artifact.CpRefresh, ProjectFile = artifact.ProjectFile, ConfigReconciliation = artifact.ConfigReconciliation }).ToArray();
         var report = new ProjectReviewReport(
             1,
             staging?.Target.SourceRoot,
