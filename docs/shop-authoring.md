@@ -11,8 +11,8 @@ compare actual offer, money, inventory, held-item and stock observations.
 > [#160](https://github.com/Nana1873/SDVKit/issues/160): the same packaged DLL
 > diagnosed the broken config, then the corrected config produced 500 to 490
 > Gold, stock 3 to 2, one held Stone and finally one Stone in empty inventory
-> slot 5. Exact stop and reset passed. The issue retains the full identities and
-> evidence; its remaining protected-path and integration gates are separate.
+> slot 5. Exact stop/reset and the comparison of all 20,292 protected entries
+> passed. The issue retains the full identities, failures and integration evidence.
 > The shop observation capability was implemented in
 > [#159](https://github.com/Nana1873/SDVKit/issues/159).
 
@@ -23,9 +23,11 @@ The supported evidence contract is the exact vanilla `ShopMenu` for
 non-Gold currency, callbacks, custom price logic, custom shop menus, recipes,
 special objects and inferred purchase outcomes stay unavailable.
 
-Everything uses the CLI. Native MCP has matching `stardew_shop_get`,
-`stardew_menu_get`, diagnostics, screenshot and opt-in input surfaces, but this
-recipe needs no second lifecycle. Screenshots support the typed proof; they do
+The commands below use the CLI. Recorded acceptance used CLI lifecycle and
+captures together with native MCP `stardew_shop_get`, `stardew_menu_get`,
+diagnostics and opt-in `stardew_input_click` for the two completed clicks.
+The CLI console equivalents below deliver to the same input adapter; require
+the observed effect after delivery before continuing. Screenshots support the typed proof; they do
 not replace it.
 
 ## Select the installation and lab
@@ -430,8 +432,10 @@ Do not send another action before reading the final state. Require the same
 launch/player, money still exactly 10 below baseline, stock still 2,
 `heldItem=null`, and matching inventory quantity exactly 1 above the pre-purchase
 inventory. Retain labelled viewport screenshots before the purchase and after
-final placement as supporting evidence. For this input gate, also retain the
-required physical-pointer and foreground observations. Use only SDVKit's
+final placement as supporting evidence. Separate physical-pointer samples were
+not retained for the recorded purchase, so it does not add a new proof of
+physical-cursor invariance. Input implementation changes require the broader
+observations in the release matrix. Use only SDVKit's
 process-local input; never move the physical pointer or activate the game window.
 
 ## Finish and retain evidence
