@@ -1173,11 +1173,13 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             _) =>
         {
             called = true;
             Assert.Equal("single", topology);
             Assert.Null(role);
+            Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
@@ -1208,10 +1210,12 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             _) =>
         {
             Assert.Equal(NetworkTwoContract.Topology, topology);
             Assert.Equal(expectedRole, role);
+            Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
@@ -1243,11 +1247,13 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             _) =>
         {
             Assert.Equal(LiveLabState.SingleTopology, topology);
             Assert.Null(role);
             Assert.False(allowInput);
+            Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return 0;
@@ -1279,12 +1285,14 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             _) =>
         {
             Assert.Equal(topology, actualTopology);
             Assert.Equal(role, actualRole);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
+            Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             return 0;
         };
@@ -1307,6 +1315,36 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
+    public void ProjectReviewMcpServeForwardsSeparateCpRefreshOptIn()
+    {
+        ProjectReviewMcpCommandRunner runner = (topology, role, _, input, fixture, refresh, _) =>
+        {
+            Assert.Equal("single", topology);
+            Assert.Null(role);
+            Assert.False(input);
+            Assert.False(fixture);
+            Assert.True(refresh);
+            return 0;
+        };
+        var (exitCode, output, error) = RunWithProjectReviewMcp(runner,
+            "project", "review", "mcp", "serve", "--allow-cp-refresh");
+        Assert.Equal(0, exitCode);
+        Assert.Empty(output);
+        Assert.Empty(error);
+    }
+
+    [Theory]
+    [InlineData("--allow-cp-refresh", "--allow-cp-refresh")]
+    [InlineData("--allow-cp-refresh", "true")]
+    [InlineData("--allow-cp-refresh", "--topology", "network-2", "--role", "host")]
+    public void ProjectReviewMcpCpRefreshRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
+    {
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _) =>
+            throw new InvalidOperationException("Invalid opt-in dispatched"), ["project", "review", "mcp", "serve", .. suffix]);
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
     public void ProjectReviewMcpServeForwardsBothExplicitOptIns()
     {
         ProjectReviewMcpCommandRunner mcpRunner = (
@@ -1315,12 +1353,14 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             _) =>
         {
             Assert.Equal(LiveLabState.SingleTopology, topology);
             Assert.Null(role);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
+            Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
             return 0;
         };
@@ -1495,7 +1535,7 @@ public sealed class CliApplicationTests
     [InlineData("mcp", "serve", "--help")]
     public void McpHelpExplainsRoleAndOptInsWithoutStartingServer(params string[] suffix)
     {
-        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _) =>
+        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _) =>
             throw new InvalidOperationException("MCP must not start for help.");
         (int exitCode, string output, string error) = RunWithProjectReviewMcp(
             runner, ["project", "review", .. suffix]);

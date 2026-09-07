@@ -130,6 +130,7 @@ internal static class ProjectReviewMcpServer
         string? role,
         bool allowInput,
         bool allowFixtureActions,
+        bool allowCpRefresh,
         TextWriter error,
         CancellationToken cancellationToken = default)
     {
@@ -149,6 +150,12 @@ internal static class ProjectReviewMcpServer
         {
             error.WriteLine(
                 "SDVKit MCP startup failed [fixtureTestSaveRequired]: Fixture actions require the exact ready SDVKit-owned test save.");
+            return OperationFailed;
+        }
+
+        if (allowCpRefresh && ProjectReviewMcpCpTools.RefreshPermissionError(preflight.Context!) is { } cpError)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [{cpError}]: CP refresh requires the exact ready single root CP 2.9.1 selection.");
             return OperationFailed;
         }
 
@@ -212,7 +219,8 @@ internal static class ProjectReviewMcpServer
             topology: topology,
             role: role,
             runAudio: runAudio,
-            runModAsset: runModAsset);
+            runModAsset: runModAsset,
+            cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         var exitCode = 0;
         try
         {
@@ -274,7 +282,10 @@ internal static class ProjectReviewMcpServer
         string topology = LiveLabState.SingleTopology,
         string? role = null,
         ProjectReviewMcpAudioQueryRunner? runAudio = null,
-        ProjectReviewMcpModAssetQueryRunner? runModAsset = null)
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = null,
+        ProjectReviewMcpCpDiagnosisRunner? runCpDiagnosis = null,
+        ProjectReviewMcpCpRefreshRunner? runCpRefresh = null,
+        ProjectReviewMcpVerifiedContext? cpRefreshPermission = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -282,6 +293,13 @@ internal static class ProjectReviewMcpServer
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
         if (reader.Topology == "single" && reader.Role is null) tools.Add(ProjectReviewMcpShopTools.Create(reader));
+        runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
+        if (cpRefreshPermission is not null)
+        {
+            runCpRefresh ??= (pack, provider, files, asset, key, permission) => ProjectReviewCpRefresh.Execute(
+                reader.ProjectRoot, permission.Staging.Target.SourceRoot, pack, provider, files, asset, key, expectedContext: permission);
+        }
+        tools.AddRange(ProjectReviewMcpCpTools.Create(reader, runCpDiagnosis, runCpRefresh, cpRefreshPermission));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
@@ -342,6 +360,9 @@ internal static class ProjectReviewMcpServer
                 + (runFixture is null
                     ? "Fixture actions are disabled. "
                     : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
+                + (cpRefreshPermission is null
+                    ? "CP refresh is disabled; input and fixture permissions do not authorize it. "
+                    : "CP refresh was separately enabled for the exact startup launch and root pack. Select existing patch JSON files and one Data observation explicitly; retain incomplete receipts and never retry blindly. ")
                 + "Re-check errors by starting or repairing that review; never infer access to normal saves, Mods, OS-wide input, or arbitrary console commands.",
             ToolCollection = [.. tools],
         };

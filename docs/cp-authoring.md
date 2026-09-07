@@ -23,11 +23,15 @@ only the relevant references below, matched to the selected versions:
 | Diagnosis and patch-only reload | [CP troubleshooting](https://github.com/Pathoschild/StardewMods/blob/content-patcher/2.9.1/ContentPatcher/docs/author-guide/troubleshooting.md), [SDVKit diagnosis](cp-diagnosis.md) and [refresh contract](cp-refresh.md). |
 | Localize a later user-facing pack | [CP translations](https://github.com/Pathoschild/StardewMods/blob/content-patcher/2.9.1/ContentPatcher/docs/author-guide/translations.md) and the [small i18n example](toolkit.md#small-runnable-cp-example). These two diagnostic descriptions use literal English; adding/changing i18n requires a restart. |
 
-Everything below uses the **CLI**. Existing native MCP [Data tools](mcp.md#canonical-data)
-can read the final record; `stardew_mod_diagnostics` can read selected warnings and
-exceptions. Creation, checks, packaging, lifecycle, CP diagnosis and refresh use
-the CLI here. There is no dedicated CP MCP mutation tool or CP `project smoke`.
-For interactive or visual extensions use the existing
+The core recipe uses the **CLI** for creation, checks, packaging and review
+lifecycle. The edit cycle can use either CLI diagnosis/refresh or the later
+[Native MCP route](#use-an-mcp-client-for-the-same-edit-cycle): read-only
+`stardew_cp_diagnose` is available by default, while `stardew_cp_refresh` requires
+its separate startup grant and refreshes only explicitly selected JSON. MCP Data
+tools can read the final record, and `stardew_mod_diagnostics` can read selected
+warnings and exceptions. The MCP tool does not edit source, package a project,
+or replace the CLI lifecycle, and CP has no `project smoke`. For interactive or
+visual extensions use the existing
 [project-review skill](../.agents/skills/sdv-project-review/SKILL.md) and its linked
 lab contracts; the project-smoke skill covers standalone C# mods.
 
@@ -40,8 +44,10 @@ Choose that version, not an arbitrary latest provider: SDVKit's diagnosis/refres
 currently recognizes exactly 2.9.1. Extract or copy it under your lab's ignored
 `.sdvkit/`; leave the download and any normal Mods installation unchanged.
 
-These commands are included in the published **v0.8.0** package. To verify a
-fresh checkout instead, use [Contributing](../CONTRIBUTING.md):
+The CP check, diagnosis and refresh CLI commands are included in the published
+**v0.8.0** package. The Native MCP diagnosis and separately authorized refresh
+described later belong to the current unreleased candidate. To verify a fresh
+checkout of that candidate, use [Contributing](../CONTRIBUTING.md):
 
 ```powershell
 git clone https://github.com/Nana1873/SDVKit.git SDVKit-authoring
@@ -215,6 +221,43 @@ Require Wood `Description=Wood for a fresh spring start.`, Stone still corrected
 and the same exact process/launch. You can package at any point and continue
 editing, refreshing, or starting another review from this same source pack.
 Its root `.sdvkit` output stays outside the staged pack; no clean source copy is needed.
+
+## Use an MCP client for the same edit cycle
+
+After preparing the same owned review and CP-generated config bytes above,
+connect a [native MCP client](mcp.md#content-patcher-diagnosis-and-opt-in-refresh)
+from that lab. Retain `tools/list` from the default server: diagnosis is available
+and refresh is absent. Call `stardew_cp_diagnose` with:
+
+```json
+{"packId":"ExampleAuthor.SeasonalObjects","providerId":"Pathoschild.ContentPatcher","asset":"Data/Objects"}
+```
+
+Retain its correlated `summary` before calling `stardew_data_record_get` with
+`{"asset":"Data/Objects","key":"390"}`. Compare Stone's deliberate wrong value
+with the intended value in this recipe. Diagnosis and this later final-asset
+observation answer different questions; inspection itself may load the asset.
+
+Start the separately authorized MCP server with `--allow-cp-refresh` while the
+same review remains active. Edit only the already selected source `content.json`
+with your editor, using the correction above. The MCP tool does not edit source.
+Run the existing `project check $pack --json`, then call `stardew_cp_refresh`:
+
+```json
+{"packId":"ExampleAuthor.SeasonalObjects","providerId":"Pathoschild.ContentPatcher","files":["content.json"],"asset":"Data/Objects","key":"390"}
+```
+
+Require `isError=false`, `state=observed`, `refresh.requiresRestart=false` and the
+expected corrected field in `observation.record`. Compare `process.processId`,
+`process.startTimeUtc` and `launchId` with the pre-edit review. Confirm separately
+with `stardew_data_record_get`; retain both replies. An incomplete/uncertain result
+requires the documented status/diagnosis and exact recovery, never a blind retry.
+
+Package the selected authored source using `project package $pack --json` and
+retain the exact ZIP SHA-256. Packaging still uses the existing CLI. Close the MCP
+client and finish the exact stop/reset sequence below, retaining protected-path
+and fixture-reset evidence. Keep every transcript, report and backup below the
+lab's ignored `.sdvkit/`; no normal save or mod deployment is involved.
 
 ## Finish and package
 

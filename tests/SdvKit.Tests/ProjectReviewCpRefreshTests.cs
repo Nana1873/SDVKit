@@ -205,6 +205,23 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     [Theory]
+    [InlineData("Maps/Town", "388")]
+    [InlineData("Data/Objects", "malformedUtf16")]
+    public void RefreshRejectsInvalidObservationBeforePreparingOrReplacingFiles(string asset, string key)
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        if (key == "malformedUtf16") key = new string((char)0xd800, 1);
+        var result = ProjectReviewCpRefresh.Execute(temporary.Path, review.Staging.Target.SourceRoot, "Test.Pack",
+            ProjectReviewCpDiagnosis.ProviderId, ["patches/item.json"], asset, key, review.ProcessHost,
+            () => ObservedAt.AddSeconds(1), _ => throw new InvalidOperationException("Invalid observation dispatched"));
+        Assert.Equal("cpRefreshArgumentsInvalid", result.ErrorCode);
+        Assert.Equal(0, result.FilesReplaced);
+        Assert.Null(result.Refresh);
+        Assert.False(Directory.Exists(Path.Combine(LiveLabPaths.Resolve(temporary.Path).SingleRoot, "review-prepared")));
+    }
+
+    [Theory]
     [InlineData("../outside.json")]
     [InlineData("C:/outside.json")]
     [InlineData("patches\\item.json")]

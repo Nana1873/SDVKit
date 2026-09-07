@@ -7,6 +7,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Added
 
 - Inspect bounded map structure and texture metadata through single-review Native MCP; texture previews deliver a checked diagnostic PNG as image content.
+- Inspect audio metadata and observed mod-owned asset catalogues and primitive values through single-review Native MCP with the same bounds and selections as the CLI.
+- Diagnose a selected Content Patcher pack through Native MCP. Enable selected patch-JSON refresh independently with `--allow-cp-refresh`; its permission stays bound to the original review and retains incomplete-operation recovery evidence.
 - Inspect bounded vanilla SeedShop Gold offers, money, inventory and held items through `project review shop` and single-review `stardew_shop_get`; unsupported shop or offer semantics are explicit.
 - A runnable shop purchase authoring recipe connects one original SeedShop Gold offer, a deliberate configuration failure, exact packaged artifacts and process-local input to observed money, stock and inventory deltas.
 - A focused GMCM 1.16.0 Boolean authoring recipe connects an original mod, owned UI editing, explicit config export/restaging, and the observed effect of the same packaged DLL after restart. Generic GMCM text input remains unsupported.
