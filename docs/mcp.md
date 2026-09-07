@@ -2,13 +2,14 @@
 
 Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`. Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
 
-[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
+[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Audio and mod assets](#audio-and-observed-mod-assets) · [Content Patcher](#content-patcher-diagnosis-and-opt-in-refresh) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 10 tools | 6 tools | 6 tools |
+| Default observation/evidence | 27 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
+| Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
 
@@ -41,6 +42,59 @@ or input switch. Without it, no `stardew_fixture_*` tool is advertised. With it,
 startup requires the exact selected role to be bound to a fresh SDVKit-owned
 disposable test save; a plain review or normal save is rejected. The flag never
 selects a save and never grants access to the normal Stardew `Saves` directory.
+
+## Content Patcher diagnosis and opt-in refresh
+
+Single-review servers expose read-only `stardew_cp_diagnose` by default:
+
+```json
+{"packId":"ExampleAuthor.SeasonalObjects","providerId":"Pathoschild.ContentPatcher","asset":"Data/Objects","parse":"{{Season}}"}
+```
+
+`packId` and `providerId` are required exact staged selections. `asset` and `parse`
+are optional; omit `asset` to retain patches with unresolved targets. The tool
+uses the existing [CP 2.9.1 diagnosis contract](cp-diagnosis.md), including argument
+bounds, owned-log correlation, disclosure limits and explicit incomplete results.
+`structuredContent.summary` precedes optional `parse`; `reload` is null. Diagnosis
+does not inspect or reload an asset. `state=ready` means recognized, correlated
+CP output; compare patch states and then separately inspect the final asset.
+
+Enable the independent refresh capability only for an authorized client:
+
+```powershell
+& $sdvkit project review mcp serve --allow-cp-refresh
+```
+
+Startup requires a ready owned single review with a root CP pack and the selected
+CP 2.9.1 provider. The grant remains bound to that launch, exact process and source
+selection. It cannot move to a restarted review. Input and fixture flags never
+enable refresh; `stardew_cp_refresh` is absent without its own flag. Files remain
+explicit on every call:
+
+```json
+{"packId":"ExampleAuthor.SeasonalObjects","providerId":"Pathoschild.ContentPatcher","files":["content.json"],"asset":"Data/Objects","key":"390"}
+```
+
+The source root is the root pack recorded at server startup, never a tool-supplied
+filesystem path. All [selected JSON refresh limits](cp-refresh.md) apply. The
+existing operation lock rechecks permission before any staged replacement, then
+covers copies, one reload, diagnosis and the selected Data observation.
+
+The result retains `state`, `errorCode`, `recovery`, launch/process identity,
+`launchBuildIdentity`, `refresh`, `filesReplaced`, `stagingRestored`, `diagnosis`,
+`observation` and `elapsedSeconds`. Process identity exposes `processId` and
+`startTimeUtc`; it omits the local executable path. A validated final record is
+at `structuredContent.observation.record`. Compare the expected field yourself;
+`state=observed` does not assert which mod caused it or whether a UI rendered it.
+
+Incomplete operations have `isError=true` and retain valid partial receipts and
+diagnosis. In particular, `refresh.commandWritten=null` or a response's
+`commandMayHaveBeenWritten=true` can mean reload ran. A canceled/disconnected client
+must inspect review status: an already-dispatched refresh finishes its bounded
+operation or records restart recovery, and is never retried automatically. Even
+restored copies can require exact stop/reset/start. No source edit, packaging,
+watcher, general console command or network refresh tool is added. Follow the
+[authoring recipe](cp-authoring.md#use-an-mcp-client-for-the-same-edit-cycle).
 
 ## Default observation and screenshots
 
@@ -128,6 +182,77 @@ record and 5 MiB response limits. All three tools return operation-specific clos
 envelopes and identical compact JSON text. They are deliberately absent from a
 `network-2` server; use the existing single-review CLI or MCP
 surface rather than inferring one role's game-content pipeline from the other.
+
+## Maps and textures
+
+Single-review servers expose the existing [map and texture inspection](inspection.md)
+operations without an action opt-in. These calls use the final active SMAPI content
+pipeline and the same bounds, exact selections and ownership checks as the CLI.
+They are absent from network servers.
+
+| Tool | Selection |
+| --- | --- |
+| `stardew_map_assets_list` | Optional `offset`, `limit` |
+| `stardew_map_get` | `asset` |
+| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list` | `asset`; optional `offset`, `limit` |
+| `stardew_map_layer_get` | `asset`, `layer` |
+| `stardew_map_tile_get` | `asset`, `layer`, non-negative `x`, `y` |
+| `stardew_map_property_get` | `asset`, `property`, explicit `scope` and `source`; scope-specific `layer`, `x`, `y`, `frameIndex` |
+| `stardew_texture_assets_list` | Optional `offset`, `limit` |
+| `stardew_texture_get`, `stardew_texture_preview` | `asset` |
+
+Pages default to offset 0 and limit 50, with limits of 1-100. Property scope is
+`map`, `layer` or `tile`; source is `direct` or, for tile-index properties,
+`tile-index`. Only tile-index selection accepts a frame index. Select property
+names from observed content; an absent property remains a controlled error.
+
+For example, call `stardew_map_get {"asset":"Maps/Town"}`, then
+`stardew_texture_get {"asset":"LooseSprites/Cursors"}` and
+`stardew_texture_preview {"asset":"LooseSprites/Cursors"}`.
+Preview returns structured metadata with matching JSON text and an `image/png`
+MCP image block. It reads and verifies the existing request-bound PNG before
+returning those bytes, including its hash, dimensions and encoded size. A local
+path alone is not the preview result. The same 512x512 and 2 MiB diagnostic limits
+apply; this is not a raw texture or source-asset export.
+
+Unknown, stale, unsafe, colliding, unsupported and oversized selections fail
+closed. Inspect the named problem and review status before another request;
+do not treat a failed inventory as complete coverage.
+
+## Audio and observed mod assets
+
+Single-review servers expose five read-only adapters over the existing
+[audio and observed mod-asset inspection](inspection.md#inspect-active-audio-metadata).
+They use the same typed queries, bounds, response validation and exact active-review
+binding as the CLI, and are absent from network servers.
+
+| Tool | Selection |
+| --- | --- |
+| `stardew_audio_cues_list` | Optional `offset`, `limit` |
+| `stardew_audio_cue_get` | Required `cueId` |
+| `stardew_mod_assets_list` | Optional `offset`, `limit` |
+| `stardew_mod_asset_keys_list` | Required `asset`; optional `offset`, `limit` |
+| `stardew_mod_asset_record_get` | Required `asset`, `key` |
+
+Audio pages contain the same final-pipeline cue identities, sources, definition
+metadata and explicitly bounded coverage as `project review audio`. Exact cue IDs
+are case-sensitive. An exact cue discovered through the supported data sources
+can validly return `sessionResident: false` with unavailable soundbank definition
+fields represented as `null`. A cue absent from both the supported data-driven
+population and the active soundbank fails closed with `audioCueUnknown`; a case
+mismatch or response echo mismatch also fails closed. No call plays, records,
+reads, or exports audio bytes or paths.
+
+The mod-asset catalogue covers only conventional `Mods/<owner>/...` requests
+observed since AlwaysOn subscribed. It is not a filesystem scan or a claim that
+unrequested assets do not exist. Catalogue entries retain lifecycle, generation,
+request/ready counts, collisions and adapter availability; an unsupported entry
+therefore has `shape: null` and remains visible, while exact keys or records for
+it fail closed. Asset selection accepts the same unambiguous case/separator
+normalization as the CLI and returns the canonical identity. String keys remain
+ordinal and exact. Exact records expose only one reviewed primitive string or
+32-bit integer through the six existing adapters. There is no arbitrary object
+serialization, bulk export, mutation, normal-`Mods` scan, or source/provider path.
 
 ## Opt-in input
 
@@ -307,6 +432,11 @@ enabled_tools = [
   "stardew_data_assets_list",
   "stardew_data_keys_list",
   "stardew_data_record_get",
+  "stardew_audio_cues_list",
+  "stardew_audio_cue_get",
+  "stardew_mod_assets_list",
+  "stardew_mod_asset_keys_list",
+  "stardew_mod_asset_record_get",
 ]
 ```
 
@@ -358,16 +488,21 @@ MCP serialization.
 A mismatch returns a controlled tool error and no stale payload; Data and
 screenshot failures expose a bounded internal code rather than raw paths or
 transport details. MCP
-responses never expose peer runtime data, private absolute paths, PIDs, environment
+responses never expose peer runtime data, private absolute paths, environment
 values, complete raw logs, menu CLR types, or arbitrary state. Selected log
 diagnostics preserve useful relative locations and filter recognized private
 context; this is not complete sanitization of arbitrary mod-authored text.
+CP refresh exposes only the owned process ID and start time for same-process
+verification; valid incomplete receipts remain available as error evidence.
 The MCP server never reads the normal or mod-manager-owned `Mods` directory or
 normal saves. It opens no listener and cannot start, stop, reset, transport
 arbitrary console text, or mutate a review except through an explicitly enabled
 typed action family. `--allow-input` wraps only the existing process-local
 cursor, one-tick button, and one-notch wheel paths described above.
 `--allow-fixture-actions` wraps only the closed typed operations above inside the
-already active owned disposable fixture. Without either action opt-in, the
-screenshot tool's only write is its named, create-new evidence PNG below the
-selected role's ignored isolated profile.
+already active owned disposable fixture. Screenshot capture and texture preview
+create bounded, non-overwriting evidence PNGs below the selected role's ignored
+profile or review runtime, respectively; neither requires an action opt-in.
+`--allow-cp-refresh` separately wraps the selected root pack's bounded JSON
+refresh and exposes only the owned process ID and start time for same-process
+verification.

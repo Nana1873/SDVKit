@@ -270,7 +270,7 @@ public sealed class ProjectReviewMcpTests
         ListToolsResult listed = await client.ListToolsAsync(
             new ListToolsRequestParams(),
             timeout.Token);
-        Assert.Equal(10, listed.Tools.Count);
+        Assert.Equal(11, listed.Tools.Count);
         Tool tool = Assert.Single(
             listed.Tools,
             candidate => string.Equals(
@@ -455,14 +455,31 @@ public sealed class ProjectReviewMcpTests
                     timeout.Token);
                 string[] expectedTools =
                 [
+                    ProjectReviewMcpAssetTools.AudioCueToolName,
+                    ProjectReviewMcpAssetTools.AudioCuesToolName,
+                    ProjectReviewMcpCpTools.DiagnoseToolName,
                     ProjectReviewMcpDataTools.AssetsToolName,
                     ProjectReviewMcpDataTools.KeysToolName,
                     ProjectReviewMcpDataTools.RecordToolName,
+                    ProjectReviewMcpMapTools.AssetsToolName,
+                    ProjectReviewMcpMapTools.GetToolName,
+                    ProjectReviewMcpMapTools.LayersToolName,
+                    ProjectReviewMcpMapTools.LayerToolName,
+                    ProjectReviewMcpMapTools.TileSheetsToolName,
+                    ProjectReviewMcpMapTools.WarpsToolName,
+                    ProjectReviewMcpMapTools.TileToolName,
+                    ProjectReviewMcpMapTools.PropertyToolName,
+                    ProjectReviewMcpTextureTools.AssetsToolName,
+                    ProjectReviewMcpTextureTools.GetToolName,
+                    ProjectReviewMcpTextureTools.PreviewToolName,
                     ProjectReviewMcpMenuTools.ToolName,
                     ProjectReviewMcpShopTools.ToolName,
                 ProjectReviewMcpLogTools.ToolName,
                     ProjectReviewMcpDiagnosticsTools.ModsToolName,
                     ProjectReviewMcpDiagnosticsTools.ReviewToolName,
+                    ProjectReviewMcpAssetTools.ModAssetKeysToolName,
+                    ProjectReviewMcpAssetTools.ModAssetRecordToolName,
+                    ProjectReviewMcpAssetTools.ModAssetsToolName,
                     ProjectReviewMcpServer.RuntimeToolName,
                     ProjectReviewMcpScreenshotTools.CaptureToolName,
                 ];

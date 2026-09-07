@@ -33,7 +33,7 @@ internal static class ProjectReviewCpRefresh
         string providerId, IReadOnlyList<string> files, string asset, string key,
         ILabProcessHost? processHost = null, Func<DateTimeOffset>? utcNow = null,
         Func<string, LiveLabCommandResult>? send = null, Action<string, string>? replace = null,
-        TimeSpan? responseTimeout = null)
+        TimeSpan? responseTimeout = null, ProjectReviewMcpVerifiedContext? expectedContext = null)
     {
         var timer = Stopwatch.StartNew();
         ProjectReviewMcpVerifiedContext? context = null;
@@ -47,7 +47,9 @@ internal static class ProjectReviewCpRefresh
             context?.State.LaunchId, context?.State.OwnedProcessIdentity, context?.Staging.Target.BuildIdentity,
             receipt, replaced, restored, diagnosis, observation, timer.Elapsed.TotalSeconds);
         if (!ValidFiles(files) || !ProjectReviewCpDiagnosis.ValidArguments(packId, providerId, asset, null)
-            || string.IsNullOrWhiteSpace(key) || key.Length > ReviewDataContract.MaximumKeyLength || key.Any(char.IsControl))
+            || !asset.StartsWith("Data/", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(key) || key.Length > ReviewDataContract.MaximumKeyLength || key.Any(char.IsControl)
+            || !ReviewTransportText.IsWellFormedUtf16(key))
             return Result("rejected", "cpRefreshArgumentsInvalid");
         try
         {
@@ -60,6 +62,8 @@ internal static class ProjectReviewCpRefresh
             var verified = reader.ReadContext();
             if (!verified.Succeeded) return Result("rejected", verified.ErrorCode);
             context = verified.Context!;
+            if (expectedContext is not null && !SamePermissionBinding(expectedContext, context))
+                return Result("rejected", "cpRefreshBindingChanged");
             ProjectReviewOwnedArtifact target = context.Staging.Target;
             if (!target.Manifest.UniqueId.Equals(packId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(target.Manifest.ContentPackFor, ProjectReviewCpDiagnosis.ProviderId, StringComparison.OrdinalIgnoreCase)
@@ -188,7 +192,8 @@ internal static class ProjectReviewCpRefresh
             if (!afterObservation.Succeeded || afterObservation.Context!.State != context.State
                 || afterObservation.Context.Staging.Target.StagedBuildIdentity != nextIdentity)
                 return Result("incomplete", "cpRefreshBindingChanged");
-            if (observed.ExitCode != 0) return Result("incomplete", "cpRefreshObservationIncomplete");
+            if (observed.ExitCode != 0 || observed.Report is not ReviewDataReport data || !MatchesObservation(data, asset, key))
+                return Result("incomplete", "cpRefreshObservationIncomplete");
             receipt = receipt with { RequiresRestart = false };
             Persist();
             return Result("observed", null);
@@ -203,6 +208,34 @@ internal static class ProjectReviewCpRefresh
 
     private static bool Controlled(Exception e) => e is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException
         or InvalidOperationException or System.Security.SecurityException or JsonException;
+
+    private static bool ObservationText(string? value, int limit) => !string.IsNullOrWhiteSpace(value)
+        && value.Length <= limit && !value.Any(char.IsControl) && ReviewTransportText.IsWellFormedUtf16(value);
+
+    internal static bool MatchesObservation(ReviewDataReport data, string asset, string key) =>
+        data is not null && data.State == "ready" && data.SchemaVersion == ReviewDataContract.SchemaVersion
+        && data.Operation == ReviewDataContract.GetOperation && data.Problems is { Count: 0 } && data.Record is not null
+        && ObservationText(data.AssetName, ReviewDataContract.MaximumAssetLength)
+        && ObservationText(data.Key, ReviewDataContract.MaximumKeyLength)
+        && StableIdentityNormalizer.Normalize(data.AssetName!) == StableIdentityNormalizer.Normalize(asset)
+        && (data.KeyKind is "string" or "singleton"
+            ? StableIdentityNormalizer.Normalize(data.Key!) == StableIdentityNormalizer.Normalize(key) : data.Key == key)
+        && data.Shape is "dictionary" or "list" or "singleton" && data.KeyKind is "string" or "integer" or "index" or "singleton"
+        && ObservationText(data.DataType, 512)
+        && ObservationText(data.GameVersion, 128) && ObservationText(data.GameFileVersion, 128)
+        && data.Assets is null && data.Keys is null && data.Page is null && data.Coverage is null
+        && System.Text.Encoding.UTF8.GetByteCount(data.Record.Value.GetRawText()) <= ReviewDataContract.MaximumRecordBytes;
+
+    // A server permission belongs to the original launch and selected sources.
+    // Successful refreshes may advance staged hashes without changing that grant.
+    internal static bool SamePermissionBinding(ProjectReviewMcpVerifiedContext expected, ProjectReviewMcpVerifiedContext actual) =>
+        expected.State == actual.State && expected.Role == actual.Role && expected.TestSave == actual.TestSave
+        && expected.Staging.Topology == LiveLabState.SingleTopology && actual.Staging.Topology == LiveLabState.SingleTopology
+        && expected.Staging.OwnershipPath == actual.Staging.OwnershipPath
+        && expected.Staging.Artifacts.Select(a => (a.Role, a.SourceRoot, a.StagingPath, a.Manifest.UniqueId,
+            a.Manifest.Version, a.Manifest.ContentPackFor, a.BuildIdentity)).SequenceEqual(
+            actual.Staging.Artifacts.Select(a => (a.Role, a.SourceRoot, a.StagingPath, a.Manifest.UniqueId,
+                a.Manifest.Version, a.Manifest.ContentPackFor, a.BuildIdentity)));
 
     private static byte[] ReadPatch(string path)
     {

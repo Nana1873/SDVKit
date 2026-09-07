@@ -59,6 +59,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     string labRoot,
     bool allowInput,
     bool allowFixtureActions,
+    bool allowCpRefresh,
     TextWriter error);
 
 public static partial class CliApplication
@@ -128,11 +129,11 @@ public static partial class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-cp-refresh]";
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_shop_get";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string ReviewMcpFixtureDescription =
@@ -256,6 +257,7 @@ public static partial class CliApplication
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowCpRefresh,
             mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
                 labRoot,
@@ -263,6 +265,7 @@ public static partial class CliApplication
                 role,
                 allowInput,
                 allowFixtureActions,
+                allowCpRefresh,
                 mcpError)
                 .GetAwaiter().GetResult();
 
@@ -683,7 +686,8 @@ public static partial class CliApplication
                 out string? mcpTopology,
                 out string? mcpRole,
                 out bool allowInput,
-                out bool allowFixtureActions))
+                out bool allowFixtureActions,
+                out bool allowCpRefresh))
         {
             return runProjectReviewMcp(
                 mcpTopology!,
@@ -691,6 +695,7 @@ public static partial class CliApplication
                 Environment.CurrentDirectory,
                 allowInput,
                 allowFixtureActions,
+                allowCpRefresh,
                 error);
         }
 
@@ -1308,12 +1313,14 @@ public static partial class CliApplication
         out string? topology,
         out string? role,
         out bool allowInput,
-        out bool allowFixtureActions)
+        out bool allowFixtureActions,
+        out bool allowCpRefresh)
     {
         topology = LiveLabState.SingleTopology;
         role = null;
         allowInput = false;
         allowFixtureActions = false;
+        allowCpRefresh = false;
         if (arguments.Count < 4
             || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
             || !string.Equals(arguments[3], "serve", StringComparison.Ordinal))
@@ -1325,9 +1332,16 @@ public static partial class CliApplication
         var roleCount = 0;
         var allowInputCount = 0;
         var allowFixtureActionsCount = 0;
+        var allowCpRefreshCount = 0;
         for (var index = 4; index < arguments.Count; index++)
         {
             string option = arguments[index];
+            if (option == "--allow-cp-refresh")
+            {
+                allowCpRefreshCount++;
+                allowCpRefresh = true;
+                continue;
+            }
             if (string.Equals(option, "--allow-input", StringComparison.Ordinal))
             {
                 allowInputCount++;
@@ -1371,7 +1385,9 @@ public static partial class CliApplication
         if (topologyCount > 1
             || roleCount > 1
             || allowInputCount > 1
-            || allowFixtureActionsCount > 1)
+            || allowFixtureActionsCount > 1
+            || allowCpRefreshCount > 1
+            || allowCpRefresh && topology != LiveLabState.SingleTopology)
         {
             return false;
         }
@@ -1817,6 +1833,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMcpToolsDescription.TrimStart());
         output.WriteLine(ReviewMcpInputDescription.TrimStart());
         output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
+        output.WriteLine("--allow-cp-refresh separately exposes stardew_cp_refresh for the exact startup single root CP 2.9.1 pack; input and fixture opt-ins never authorize refresh.");
         output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
         output.WriteLine("The role is fixed at startup. Closing stdin stops this server; stdout contains only MCP frames.");
     }

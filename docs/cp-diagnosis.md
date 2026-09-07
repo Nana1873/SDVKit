@@ -78,6 +78,7 @@ a known sensitive token withholds its entire response as incomplete. This is not
 complete sanitization of arbitrary text or indirect custom-token values. Local
 owned logs remain available through the existing guide; no log is uploaded.
 
-The CLI is the first surface. The shared read-only diagnostic MCP tool remains
-available for warnings/errors; a dedicated CP MCP command is deferred.
-[Selected JSON refresh](cp-refresh.md) is CLI-only. This workflow does not establish general conflict detection.
+Native MCP exposes the same selected-pack diagnosis through
+[`stardew_cp_diagnose`](mcp.md#content-patcher-diagnosis-and-opt-in-refresh).
+[Selected JSON refresh](cp-refresh.md) has a separate explicit MCP startup opt-in;
+diagnosis never grants it. This workflow does not establish general conflict detection.

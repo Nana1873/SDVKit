@@ -41,11 +41,12 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Original shop purchase authoring recipe | Existing check/build/package, ready review, shop/menu/diagnostics and process-local input | Optional matching observation and opt-in input tools | Single disposable world; original SeedShop Stone offer, deliberate config failure and observed money/stock/inventory deltas; [recipe and limits](shop-authoring.md) |
 | Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
 | World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
-| Selected Content Patcher diagnosis | `project review cp-diagnose` | CLI workflow; dedicated tool deferred | Active single; explicit pack and CP 2.9.1 provider |
+| Selected Content Patcher diagnosis | `project review cp-diagnose` | `stardew_cp_diagnose` | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
-| Refresh selected CP patch JSON | `project review cp-refresh` | No | Owned single root CP 2.9.1 target; explicit source/files and Data observation |
+| Refresh selected CP patch JSON | `project review cp-refresh` | `stardew_cp_refresh`, separate `--allow-cp-refresh` | Owned single root CP 2.9.1 target; startup-bound source, explicit files and Data observation |
 | Canonical structured Data | `project review data` | Data tools | Active single review |
-| Maps, textures, audio, observed mod assets | Corresponding `project review` subcommands | No | Active single review |
+| Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
+| Audio and observed mod assets | `project review audio/mod-assets` | Audio/mod-asset tools | Active single review; CLI-parity bounds, observed-only asset coverage, no audio or asset export |
 | Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |
 | Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role; MCP requires `--allow-input`; gestures require an active menu and fresh UI revision; legacy mouse presses require a virtual cursor, legacy wheel also a menu; text requires an exact available NamingMenu field and fresh UI revision |
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |

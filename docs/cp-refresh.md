@@ -76,8 +76,11 @@ Otherwise stop/reset, rebuild when needed, and start again.
   Reload permits CP 2.9.1's single known cache-invalidation trace before the
   complete INFO acknowledgment, including SMAPI's intervening propagation log.
 
-There is no watcher, arbitrary filesystem synchronization, asset/code hot reload,
-network-2 refresh or native MCP mutation command.
+Native MCP exposes this same operation through separately opted-in
+[`stardew_cp_refresh`](mcp.md#content-patcher-diagnosis-and-opt-in-refresh), bound to
+the server's startup launch and root source. Input and fixture permissions never
+authorize it. There is no watcher, arbitrary filesystem synchronization,
+asset/code hot reload or network-2 refresh.
 
 ## Identity and interrupted operations
 

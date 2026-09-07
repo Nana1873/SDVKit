@@ -160,6 +160,110 @@ internal static class ProjectReviewTextureService
             report);
     }
 
+    internal static bool TryReadMcpPreviewBytes(
+        ReviewTextureQuery query,
+        ReviewTextureReport report,
+        string labRoot,
+        out byte[]? pngBytes)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(report);
+        pngBytes = null;
+
+        if (!string.Equals(report.State, "ready", StringComparison.Ordinal)
+            || report.Problems.Count != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            LiveLabPaths paths = LiveLabPaths.Resolve(labRoot);
+            string requestId = "00000000000000000000000000000000";
+            if (query.Operation == ReviewTextureContract.PreviewOperation)
+            {
+                const string prefix = "review-texture-preview-";
+                const string suffix = ".png";
+                string? relativePath = report.Preview?.RelativePath;
+                if (relativePath is null
+                    || !relativePath.StartsWith(prefix, StringComparison.Ordinal)
+                    || !relativePath.EndsWith(suffix, StringComparison.Ordinal)
+                    || relativePath.Length != prefix.Length + 32 + suffix.Length)
+                {
+                    return false;
+                }
+
+                requestId = relativePath.Substring(prefix.Length, 32);
+                if (!ReviewTransportToken.IsRequestId(requestId)
+                    || !string.Equals(
+                        relativePath,
+                        ReviewTextureContract.PreviewFileName(requestId),
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            var envelope = new ReviewTextureResponseEnvelope(
+                ReviewTextureContract.SchemaVersion,
+                requestId,
+                report);
+            if (!MatchesRequest(envelope, query, requestId, paths.RuntimePath))
+            {
+                return false;
+            }
+            if (query.Operation != ReviewTextureContract.PreviewOperation)
+            {
+                return true;
+            }
+
+            ReviewTexturePreviewReport preview = report.Preview!;
+            FileAttributes runtimeAttributes = File.GetAttributes(paths.RuntimePath);
+            if ((runtimeAttributes & FileAttributes.ReparsePoint) != 0
+                || (runtimeAttributes & FileAttributes.Directory) == 0)
+            {
+                return false;
+            }
+
+            string path = ReviewTextureContract.PreviewPath(paths.RuntimePath, requestId);
+            using FileStream stream = OwnedReviewLogReader.OpenSingleLinkSnapshot(path);
+            if (stream.Length != preview.EncodedBytes
+                || stream.Length is < 57 or > ReviewTextureContract.MaximumPreviewBytes)
+            {
+                return false;
+            }
+
+            byte[] bytes = new byte[(int)stream.Length];
+            stream.ReadExactly(bytes);
+            using var image = new MemoryStream(bytes, writable: false);
+            if (!ReviewTexturePngValidator.TryValidateRgba8(
+                    image,
+                    ReviewTextureContract.MaximumPreviewBytes,
+                    ReviewTextureContract.MaximumPreviewDimension,
+                    ReviewTextureContract.MaximumPreviewPixels,
+                    out ReviewTexturePngInfo? png)
+                || png is null
+                || png.Width != preview.Width
+                || png.Height != preview.Height
+                || bytes.LongLength != preview.EncodedBytes
+                || !string.Equals(
+                    Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+                    preview.Sha256,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            pngBytes = bytes;
+            return true;
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            pngBytes = null;
+            return false;
+        }
+    }
+
     internal static string BuildCommand(
         string requestId,
         ReviewTextureQuery query)

@@ -130,6 +130,7 @@ internal static class ProjectReviewMcpServer
         string? role,
         bool allowInput,
         bool allowFixtureActions,
+        bool allowCpRefresh,
         TextWriter error,
         CancellationToken cancellationToken = default)
     {
@@ -152,11 +153,41 @@ internal static class ProjectReviewMcpServer
             return OperationFailed;
         }
 
+        if (allowCpRefresh && ProjectReviewMcpCpTools.RefreshPermissionError(preflight.Context!) is { } cpError)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [{cpError}]: CP refresh requires the exact ready single root CP 2.9.1 selection.");
+            return OperationFailed;
+        }
+
         ProjectReviewMcpDataQueryRunner? runData = string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
                 ? query => ProjectReviewDataService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpMapQueryRunner? runMap = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewMapService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpTextureQueryRunner? runTexture = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewTextureService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpAudioQueryRunner? runAudio = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewAudioService.Execute(query, projectRoot)
+                : null;
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = string.Equals(
+            topology,
+            LiveLabState.SingleTopology,
+            StringComparison.Ordinal)
+                ? query => ProjectReviewModAssetService.Execute(query, projectRoot)
                 : null;
         ProjectReviewMcpInputSession? inputSession = allowInput
             ? new ProjectReviewMcpInputSession(
@@ -183,8 +214,13 @@ internal static class ProjectReviewMcpServer
             runData,
             inputSession: inputSession,
             runFixture: runFixture,
+            runMap: runMap,
+            runTexture: runTexture,
             topology: topology,
-            role: role);
+            role: role,
+            runAudio: runAudio,
+            runModAsset: runModAsset,
+            cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         var exitCode = 0;
         try
         {
@@ -241,8 +277,15 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpScreenshotRunner? runScreenshot = null,
         ProjectReviewMcpInputSession? inputSession = null,
         ProjectReviewMcpFixtureQueryRunner? runFixture = null,
+        ProjectReviewMcpMapQueryRunner? runMap = null,
+        ProjectReviewMcpTextureQueryRunner? runTexture = null,
         string topology = LiveLabState.SingleTopology,
-        string? role = null)
+        string? role = null,
+        ProjectReviewMcpAudioQueryRunner? runAudio = null,
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = null,
+        ProjectReviewMcpCpDiagnosisRunner? runCpDiagnosis = null,
+        ProjectReviewMcpCpRefreshRunner? runCpRefresh = null,
+        ProjectReviewMcpVerifiedContext? cpRefreshPermission = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -250,6 +293,13 @@ internal static class ProjectReviewMcpServer
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
         if (reader.Topology == "single" && reader.Role is null) tools.Add(ProjectReviewMcpShopTools.Create(reader));
+        runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
+        if (cpRefreshPermission is not null)
+        {
+            runCpRefresh ??= (pack, provider, files, asset, key, permission) => ProjectReviewCpRefresh.Execute(
+                reader.ProjectRoot, permission.Staging.Target.SourceRoot, pack, provider, files, asset, key, expectedContext: permission);
+        }
+        tools.AddRange(ProjectReviewMcpCpTools.Create(reader, runCpDiagnosis, runCpRefresh, cpRefreshPermission));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
@@ -261,6 +311,25 @@ internal static class ProjectReviewMcpServer
         if (runData is not null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
+        }
+        if (runMap is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null)
+        {
+            tools.AddRange(ProjectReviewMcpMapTools.Create(reader, runMap));
+        }
+        if (runTexture is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null)
+        {
+            tools.AddRange(ProjectReviewMcpTextureTools.Create(reader, runTexture));
+        }
+        if (reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null
+            && runAudio is not null
+            && runModAsset is not null)
+        {
+            tools.AddRange(ProjectReviewMcpAssetTools.Create(reader, runAudio, runModAsset));
         }
         if (inputSession is not null)
         {
@@ -284,13 +353,16 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.8.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data, map, and texture tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")
                 + (runFixture is null
                     ? "Fixture actions are disabled. "
                     : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
+                + (cpRefreshPermission is null
+                    ? "CP refresh is disabled; input and fixture permissions do not authorize it. "
+                    : "CP refresh was separately enabled for the exact startup launch and root pack. Select existing patch JSON files and one Data observation explicitly; retain incomplete receipts and never retry blindly. ")
                 + "Re-check errors by starting or repairing that review; never infer access to normal saves, Mods, OS-wide input, or arbitrary console commands.",
             ToolCollection = [.. tools],
         };
