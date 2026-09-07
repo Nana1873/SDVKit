@@ -41,6 +41,8 @@ The declared fields do not cover every drawn control or private menu state.
 Other vanilla pages, custom fields, shop stock/items/prices, inventory items,
 hover text and scroll internals are outside this slice. A shop row represents a
 reusable control object, not the identity of the stock currently drawn in it.
+Use the separate [shop inspection](shop-inspection.md) capture for supported
+single-review Gold-shop offers, money, inventory and held-item observations.
 
 Components report only an opaque numeric ID, fixed semantic kind, public
 controller ID, bounds, `visibleFlag`, `intersectsViewport` and

@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 9 tools | 6 tools | 6 tools |
+| Default observation/evidence | 10 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 
@@ -43,6 +43,12 @@ disposable test save; a plain review or normal save is rejected. The flag never
 selects a save and never grants access to the normal Stardew `Saves` directory.
 
 ## Default observation and screenshots
+
+Single-review servers additionally expose `stardew_shop_get {}` for a fresh
+read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).
+It requires no input opt-in. Unsupported shop semantics are explicitly unavailable;
+the tool neither purchases items nor infers a successful purchase from a price.
+Network servers do not advertise this single-review capability.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or

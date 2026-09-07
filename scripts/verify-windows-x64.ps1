@@ -101,16 +101,18 @@ if (-not [System.IO.Path]::IsPathRooted($relativeToWorkspace) `
 
 Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ExtractRoot
 $packageRoot = Join-Path $ExtractRoot $archive.BaseName
-$adapterRoot = Join-Path $packageRoot 'src\SdvKit.AlwaysOn'
-[xml]$adapterProject = Get-Content -LiteralPath (Join-Path $adapterRoot 'SdvKit.AlwaysOn.csproj') -Raw
-foreach ($source in $adapterProject.Project.ItemGroup.Compile) {
-    $sourcePath = [System.IO.Path]::GetFullPath([string]$source.Include, $adapterRoot)
-    $relativeSource = [System.IO.Path]::GetRelativePath($packageRoot, $sourcePath)
-    if ([System.IO.Path]::IsPathRooted($relativeSource) `
-        -or $relativeSource -eq '..' `
-        -or $relativeSource.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)") `
+$alwaysOnProjectPath = Join-Path $packageRoot 'src\SdvKit.AlwaysOn\SdvKit.AlwaysOn.csproj'
+[xml]$alwaysOnProject = Get-Content -LiteralPath $alwaysOnProjectPath -Raw
+foreach ($compile in $alwaysOnProject.SelectNodes('/Project/ItemGroup/Compile[@Include]')) {
+    $sourcePath = [System.IO.Path]::GetFullPath(
+        [string]$compile.Include,
+        [System.IO.Path]::GetDirectoryName($alwaysOnProjectPath))
+    $relativeSourcePath = [System.IO.Path]::GetRelativePath($packageRoot, $sourcePath)
+    if ([System.IO.Path]::IsPathRooted($relativeSourcePath) `
+        -or $relativeSourcePath -eq '..' `
+        -or $relativeSourcePath.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)") `
         -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-        throw "The portable AlwaysOn project has a missing or external linked source: $($source.Include)"
+        throw "The portable AlwaysOn project has an invalid or missing linked source: $($compile.Include)"
     }
 }
 $cli = Join-Path $packageRoot "sdvkit.exe"
