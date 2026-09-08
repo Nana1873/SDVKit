@@ -26,10 +26,7 @@ internal static class ReviewShopContract
         : price < 0 || stock < 0 ? "shopOfferValuesInvalid"
         : null;
 
-    public static bool ItemValid(SelectedItemValues? item) => item is not null
-        && item.QualifiedItemId is { Length: > 3 and <= LocalPlayerSnapshotContract.MaximumItemIdLength } id
-        && id[0] == '(' && id.IndexOf(')') is > 1 && id[^1] != ')'
-        && !id.Any(char.IsControl) && item.Stack > 0 && item.Quality is null or >= 0;
+    public static bool ItemValid(SelectedItemValues? item) => ReviewItemSlotContract.ItemValid(item);
 
     public static bool DataValid(ReviewShopValues? data)
     {
