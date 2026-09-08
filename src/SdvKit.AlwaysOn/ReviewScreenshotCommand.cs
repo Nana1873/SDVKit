@@ -310,9 +310,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded menu/data/map/texture/audio/mod-assets transports";
+        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded inventory/menu/data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
+        "Usage: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit inventory ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
@@ -406,6 +406,10 @@ internal static class ReviewCommand
                 else if (arguments.Length > 0 && arguments[0] == "shop")
                 {
                     ReviewShopCommand.Handle(arguments, runtimePath, monitor, menuCommands.Value);
+                }
+                else if (arguments.Length > 0 && arguments[0] == "inventory")
+                {
+                    ReviewInventoryCommand.Handle(arguments, runtimePath, monitor);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {
