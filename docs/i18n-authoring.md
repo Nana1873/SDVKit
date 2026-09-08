@@ -17,8 +17,10 @@ locales and then `default.json`; warnings therefore do not change the check's
 exit status. Placeholder name mismatches are errors because they can leave
 unsubstituted tokens at runtime. Diagnostics identify the locale file and JSON
 key. Case-insensitively duplicated keys, malformed JSON, and schema violations
-remain blocking errors because SMAPI treats locale keys without case
-distinction and the effective value would otherwise be ambiguous.
+remain blocking errors as a conservative authoring validation. SMAPI's
+runtime loader removes later case-insensitive duplicates with a warning; the
+offline check fails instead so the source author must resolve the duplicate
+deterministically.
 
 This is a static authoring check only. It does not extract translation keys
 from C# code, inspect nested i18n layouts, prove the selected language in-game,

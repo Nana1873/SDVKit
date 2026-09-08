@@ -93,6 +93,20 @@ public sealed class ProjectCheckerTests : IDisposable
     }
 
     [Fact]
+    public void UnsupportedDoubleBraceExpressionsRemainLiteralButSpacesOnlyTokensAreMatched()
+    {
+        Create();
+        Write("i18n/default.json", "{\"literal\":\"{{choice: one}}\",\"empty-token\":\"Value {{   }}\"}");
+        Write("i18n/de.json", "{\"literal\":\"{{choice: two}}\",\"empty-token\":\"Value\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Single(result.Problems, problem => problem.Code == "placeholderMismatch"
+            && problem.Field == "/empty-token");
+        Assert.DoesNotContain(result.Problems, problem => problem.Field == "/literal");
+    }
+
+    [Fact]
     public void CaseInsensitiveDuplicateKeysAndEmptyTranslationsFailClosed()
     {
         Create();
