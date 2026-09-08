@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SdvKit.AlwaysOn;
@@ -315,6 +316,54 @@ public sealed class ReviewMenuTests
         }
     }
 
+    [Fact]
+    public void DialogueAndCraftingResponseFieldsAreStrictlyDeserializedAndBounded()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        ProjectReviewMcpRuntimeSnapshot snapshot = reader.Read().Snapshot!;
+        DateTimeOffset captured = DateTimeOffset.UtcNow;
+        ReviewMenuReport report = DialogueCraftingReport(captured, snapshot.LaunchId, snapshot.Topology,
+            snapshot.Role, limitedAvailability: true);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewMenuResponseEnvelope(1, Launch, report), JsonOptions);
+
+        ReviewMenuResponseEnvelope response = Assert.IsType<ReviewMenuResponseEnvelope>(
+            ProjectReviewMenuService.DeserializeResponse(bytes));
+        Assert.True(ProjectReviewMenuService.ValidResponse(response.Report, snapshot,
+            captured.AddSeconds(-1), captured.AddSeconds(1)));
+
+        string json = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.Throws<InvalidDataException>(() => ProjectReviewMenuService.DeserializeResponse(
+            System.Text.Encoding.UTF8.GetBytes(json.Replace("\"text\":\"Choose\"",
+                "\"text\":\"Choose\",\"privateState\":true", StringComparison.Ordinal))));
+
+        ReviewMenuReport tooManyOutputs = report with
+        {
+            Menus = report.Menus.Select(node => node.Crafting is null ? node : node with
+            {
+                Crafting = node.Crafting with
+                {
+                    Recipes = [node.Crafting.Recipes[0] with { Outputs = Enumerable.Repeat("390", 17).ToArray() }]
+                }
+            }).ToArray()
+        };
+        Assert.Throws<InvalidDataException>(() => ProjectReviewMenuService.DeserializeResponse(
+            JsonSerializer.SerializeToUtf8Bytes(new ReviewMenuResponseEnvelope(1, Launch, tooManyOutputs), JsonOptions)));
+
+        ReviewMenuReport shortenedIdentity = report with
+        {
+            Menus = report.Menus.Select(node => node.Dialogue is null ? node : node with
+            {
+                Dialogue = node.Dialogue with
+                {
+                    Choices = [node.Dialogue.Choices[0] with { Key = new string('x', 129) }]
+                }
+            }).ToArray()
+        };
+        Assert.False(ProjectReviewMenuService.ValidResponse(shortenedIdentity, snapshot,
+            captured.AddSeconds(-1), captured.AddSeconds(1)));
+    }
+
     [Theory]
     [InlineData(5, 5, null)]
     [InlineData(10, 10, "menuResponseInvalid")]
@@ -380,19 +429,7 @@ public sealed class ReviewMenuTests
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
-        var dialogue = new ReviewDialogueObservation("Choose", 1,
-            [new ReviewDialogueChoice(2, "yes", "Yes", 11, Bounds, true, true)]);
-        var crafting = new ReviewCraftingObservation(0,
-            [new ReviewCraftingRecipe("Stone", "Stone", 3, true, 2,
-                [new ReviewCraftingIngredient("390", 1)], ["390"])]);
-        ReviewMenuReport report = new ReviewMenuCapture().Capture(new Source(), Launch, DateTimeOffset.UtcNow)
-            with
-        {
-            Menus = [new ReviewMenuNode(1, null, "root", "DialogueBox", "StardewValley", "dialogueBox",
-                    "declaredFields", Bounds, null, null, [], null, dialogue, null),
-                    new ReviewMenuNode(4, null, "root", "CraftingPage", "StardewValley", "craftingPage",
-                        "declaredFields", Bounds, null, 0, [], null, null, crafting)]
-        };
+        ReviewMenuReport report = DialogueCraftingReport(DateTimeOffset.UtcNow, Launch, "single", null);
         McpServerTool tool = ProjectReviewMcpMenuTools.Create(reader, _ => report);
         var options = new McpServerOptions { ServerInfo = new Implementation { Name = "menu-test", Version = "1" }, ToolCollection = [tool] };
         await using McpTestClient harness = await McpTestClient.StartAsync(options);
@@ -400,11 +437,9 @@ public sealed class ReviewMenuTests
         CallToolResult result = await harness.Client.CallToolAsync(ProjectReviewMcpMenuTools.ToolName,
             new Dictionary<string, object?>(), cancellationToken: harness.Token);
         JsonElement json = Assert.IsType<JsonElement>(result.StructuredContent);
-        using JsonDocument declaredSchema = JsonDocument.Parse(tool.ProtocolTool.OutputSchema!.Value.GetRawText());
-        Assert.True(declaredSchema.RootElement.GetProperty("properties").GetProperty("menus").GetProperty("items")
-            .GetProperty("properties").TryGetProperty("dialogue", out _));
-        Assert.True(declaredSchema.RootElement.GetProperty("properties").GetProperty("menus").GetProperty("items")
-            .GetProperty("properties").TryGetProperty("crafting", out _));
+        JsonElement outputSchema = Assert.IsType<JsonElement>(tool.ProtocolTool.OutputSchema);
+        Assert.True(Json.Schema.JsonSchema.FromText(outputSchema.GetRawText())
+            .Evaluate(JsonNode.Parse(json.GetRawText())).IsValid);
         Assert.Equal(JsonValueKind.Array, json.GetProperty("menus")[0].GetProperty("dialogue").GetProperty("choices").ValueKind);
         Assert.Equal(JsonValueKind.Array, json.GetProperty("menus")[1].GetProperty("crafting").GetProperty("recipes").ValueKind);
         Assert.Equal("yes", json.GetProperty("menus")[0].GetProperty("dialogue").GetProperty("choices")[0].GetProperty("key").GetString());
@@ -449,6 +484,67 @@ public sealed class ReviewMenuTests
         Assert.Null(craftingFirst.Menus[0].Crafting!.Recipes[0].Available);
         source.Nodes[craftingRoot] = source.Nodes[craftingRoot] with { Crafting = new MenuCraftingObservation(1, []) };
         Assert.NotEqual(craftingFirst.UiRevision, capture.Capture(source, Launch, DateTimeOffset.UtcNow).UiRevision);
+
+        string rejectedIdentity = new('x', 129);
+        source.Root = dialogueRoot;
+        source.Nodes[dialogueRoot] = source.Nodes[dialogueRoot] with
+        {
+            Dialogue = new MenuDialogueObservation("Limited", null, []),
+            Limitations = ["dialogueChoiceKeyUnavailable"]
+        };
+        ReviewMenuReport limited = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.False(limited.Complete);
+        Assert.True(limited.Truncated);
+        Assert.Contains("dialogueChoiceKeyUnavailable", limited.Limitations);
+        Assert.DoesNotContain(limited.Menus[0].Dialogue!.Choices, choice => choice.Key == rejectedIdentity[..128]);
+
+        source.Root = craftingRoot;
+        source.Nodes[craftingRoot] = source.Nodes[craftingRoot] with
+        {
+            Crafting = new MenuCraftingObservation(null, []),
+            Limitations = ["craftingPageUnavailable"]
+        };
+        limited = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.Null(limited.Menus[0].Crafting!.CurrentPage);
+        Assert.False(limited.Complete);
+        Assert.Contains("craftingPageUnavailable", limited.Limitations);
+    }
+
+    [Fact]
+    public void StableMenuIdentitiesAreAcceptedExactlyOrRejectedWithoutShortening()
+    {
+        string exact = new('x', 128);
+        Assert.True(ReviewMenuCapture.TryStableIdentity(exact, 128, out string accepted));
+        Assert.Same(exact, accepted);
+
+        string overlong = exact + "y";
+        Assert.False(ReviewMenuCapture.TryStableIdentity(overlong, 128, out string rejected));
+        Assert.Equal(overlong, rejected);
+        Assert.NotEqual(exact, rejected);
+    }
+
+    private static ReviewMenuReport DialogueCraftingReport(DateTimeOffset captured, string launchId,
+        string topology, string? role, bool limitedAvailability = false)
+    {
+        var source = new Source();
+        object recipeComponent = new();
+        object crafting = source.Add("CraftingPage", "craftingPage");
+        source.Nodes[crafting] = source.Nodes[crafting] with
+        {
+            Crafting = new MenuCraftingObservation(0,
+                [new MenuCraftingRecipeObservation(recipeComponent, "Stone", "Stone",
+                    limitedAvailability ? null : true, limitedAvailability ? null : 2,
+                    [new ReviewCraftingIngredient("390", 1)], ["390"])]),
+            Limitations = limitedAvailability ? ["craftingAvailabilityUnavailable"] : null
+        };
+        object choice = new();
+        source.Root = source.Add("DialogueBox", "dialogueBox", children: [new(crafting, "child")]);
+        source.Nodes[source.Root] = source.Nodes[source.Root] with
+        {
+            Dialogue = new MenuDialogueObservation("Choose", 1,
+                [new MenuDialogueChoiceObservation(choice, "yes", "Yes", 11, Bounds, true, true)])
+        };
+        return new ReviewMenuCapture().Capture(source, launchId, captured, topology, role);
     }
 
     private static MenuComponentObservation Component(object instance) => new(instance, "publicComponent", 7, Bounds, true, false);

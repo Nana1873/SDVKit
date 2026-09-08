@@ -12,6 +12,9 @@ Availability and craftable count are `null` with the explicit
 material containers that SDVKit cannot safely aggregate without changing game
 state. Invalid or overlong stable recipe/choice identities are omitted with a
 limitation rather than truncated into a new identity.
+An unavailable crafting page is `null` with `craftingPageUnavailable`.
+Recipe, ingredient, and output bounds use `craftingCollectionLimit`; the
+limitation makes the report incomplete.
 
 Dialogue and crafting values are observations only; they do not select,
 activate, or infer clickability. Text is bounded and localized display text is

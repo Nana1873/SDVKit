@@ -13,6 +13,11 @@ internal static class ProjectReviewMenuService
         "topology", "role", "capturedAtUtc", "identityScope", "viewport", "menuOpen", "complete", "truncated", "limitations", "menus", "uiRevision"];
     private static readonly HashSet<string> NodeFields = ["id", "parentId", "relationship", "type", "assembly", "adapter",
         "coverage", "bounds", "currentTab", "scrollIndex", "components"];
+    private static readonly HashSet<string> DialogueFields = ["text", "currentChoice", "choices"];
+    private static readonly HashSet<string> ChoiceFields = ["id", "key", "text", "controllerId", "bounds", "visibleFlag", "controllerFocused"];
+    private static readonly HashSet<string> CraftingFields = ["currentPage", "recipes"];
+    private static readonly HashSet<string> RecipeFields = ["recipeId", "displayName", "componentId", "available", "craftableCount", "ingredients", "outputs"];
+    private static readonly HashSet<string> IngredientFields = ["itemId", "quantity"];
     private static readonly HashSet<string> ComponentFields = ["id", "kind", "controllerId", "bounds",
         "visibleFlag", "intersectsViewport", "controllerFocused"];
     private static readonly HashSet<string> RectangleFields = ["x", "y", "width", "height"];
@@ -94,12 +99,35 @@ internal static class ProjectReviewMenuService
         }
         ResponseJson.ValidateRequiredArray(report.GetProperty("menus"), ReviewMenuContract.MaximumNodes, node =>
         {
-            ResponseJson.RequireExactObject(node, node.TryGetProperty("textField", out JsonElement textField)
-                ? NodeFields.Concat(["textField"]).ToHashSet(StringComparer.Ordinal) : NodeFields);
+            var fields = new HashSet<string>(NodeFields, StringComparer.Ordinal);
+            if (node.TryGetProperty("textField", out JsonElement textField)) fields.Add("textField");
+            if (node.TryGetProperty("dialogue", out JsonElement dialogue)) fields.Add("dialogue");
+            if (node.TryGetProperty("crafting", out JsonElement crafting)) fields.Add("crafting");
+            ResponseJson.RequireExactObject(node, fields);
             if (textField.ValueKind != JsonValueKind.Undefined)
             {
                 ResponseJson.RequireExactObject(textField, new HashSet<string>(["id", "dispatcherId", "subscriberId", "selected", "available", "bounds"], StringComparer.Ordinal));
                 ResponseJson.RequireExactObject(textField.GetProperty("bounds"), RectangleFields);
+            }
+            if (dialogue.ValueKind != JsonValueKind.Undefined)
+            {
+                ResponseJson.RequireExactObject(dialogue, DialogueFields);
+                ResponseJson.ValidateRequiredArray(dialogue.GetProperty("choices"), 64, choice =>
+                {
+                    ResponseJson.RequireExactObject(choice, ChoiceFields);
+                    ResponseJson.RequireExactObject(choice.GetProperty("bounds"), RectangleFields);
+                });
+            }
+            if (crafting.ValueKind != JsonValueKind.Undefined)
+            {
+                ResponseJson.RequireExactObject(crafting, CraftingFields);
+                ResponseJson.ValidateRequiredArray(crafting.GetProperty("recipes"), 128, recipe =>
+                {
+                    ResponseJson.RequireExactObject(recipe, RecipeFields);
+                    ResponseJson.ValidateRequiredArray(recipe.GetProperty("ingredients"), 64,
+                        ingredient => ResponseJson.RequireExactObject(ingredient, IngredientFields));
+                    ResponseJson.ValidateRequiredArray(recipe.GetProperty("outputs"), 16, _ => { });
+                });
             }
             ResponseJson.RequireExactObject(node.GetProperty("bounds"), RectangleFields);
             ResponseJson.ValidateRequiredArray(node.GetProperty("components"), ReviewMenuContract.MaximumComponents, component =>
@@ -121,7 +149,11 @@ internal static class ProjectReviewMenuService
             || now - report.CapturedAtUtc > TimeSpan.FromSeconds(5)
             || report.Menus is null || report.Limitations is null || report.Limitations.Count > 8
             || report.Limitations.Any(x => x is not ("menuTreeLimit" or "repeatedMenuReference"
-                or "publicBaseOnly" or "componentScanLimit" or "typeIdentifierWithheld" or "componentLimit")))
+                or "publicBaseOnly" or "componentScanLimit" or "typeIdentifierWithheld" or "componentLimit"
+                or "dialogueTextTruncated" or "dialogueChoiceControlUnavailable" or "dialogueChoiceKeyUnavailable"
+                or "dialogueChoiceTextTruncated" or "dialogueChoiceLimit" or "craftingAvailabilityUnavailable"
+                or "craftingPageUnavailable" or "craftingRecipeIdentityUnavailable" or "craftingDisplayNameTruncated"
+                or "craftingCollectionLimit")))
         {
             return false;
         }
@@ -150,7 +182,7 @@ internal static class ProjectReviewMenuService
                 || node.Type.Any(c => !(char.IsLetterOrDigit(c) || c is '_' or '.' or '+' or '`'))
                 || node.Assembly is not { Length: > 0 and <= ReviewMenuContract.MaximumTypeLength }
                 || node.Assembly.Any(c => !(char.IsLetterOrDigit(c) || c is '_' or '.' or '+' or '`' or '-' or ' '))
-                || node.Adapter is not ("publicBase" or "gameMenu" or "inventoryPage" or "inventoryMenu" or "shopMenu" or "namingMenu")
+                || node.Adapter is not ("publicBase" or "gameMenu" or "inventoryPage" or "inventoryMenu" or "shopMenu" or "namingMenu" or "dialogueBox" or "craftingPage")
                 || node.Coverage != (node.Adapter == "publicBase" ? "partial" : "declaredFields")
                 || (node.Adapter == "publicBase" && !report.Limitations.Contains("publicBaseOnly"))
                 || node.Relationship is not ("root" or "activePage" or "inventory" or "child")
@@ -161,6 +193,35 @@ internal static class ProjectReviewMenuService
             if (node.TextField is { } field && (node.Adapter != "namingMenu" || field.Id < 1
                 || field.DispatcherId < 1 || field.SubscriberId is < 1 || field.Bounds is null
                 || field.Available && (!field.Selected || field.SubscriberId != field.Id))) return false;
+            if (node.Dialogue is { } dialogue)
+            {
+                if (node.Adapter != "dialogueBox" || dialogue.Text is not { Length: <= 8192 }
+                    || dialogue.Choices is null || dialogue.Choices.Count > 64
+                    || dialogue.Choices.Any(choice => choice is null || choice.Id < 1 || choice.Bounds is null
+                        || choice.Key is not { Length: > 0 and <= 128 } || choice.Text is not { Length: <= 1024 })) return false;
+            }
+            else if (node.Adapter == "dialogueBox") return false;
+            if (node.Crafting is { } crafting)
+            {
+                if (node.Adapter != "craftingPage" || crafting.Recipes is null || crafting.Recipes.Count > 128
+                    || crafting.CurrentPage is < 0
+                    || crafting.CurrentPage is null && !report.Limitations.Contains("craftingPageUnavailable")
+                    || crafting.Recipes.Any(recipe => recipe is null || recipe.ComponentId < 1
+                        || recipe.RecipeId is not { Length: > 0 and <= 256 }
+                        || recipe.DisplayName is not { Length: <= 1024 }
+                        || recipe.CraftableCount is < 0
+                        || (recipe.Available is null) != (recipe.CraftableCount is null)
+                        || recipe.Available is null && !report.Limitations.Contains("craftingAvailabilityUnavailable")
+                        || recipe.Ingredients is null || recipe.Ingredients.Count > 64
+                        || recipe.Ingredients.Any(ingredient => ingredient is null
+                            || ingredient.ItemId is not { Length: > 0 and <= 256 } || ingredient.Quantity <= 0)
+                        || recipe.Outputs is null || recipe.Outputs.Count > 16
+                        || recipe.Outputs.Any(output => output is not { Length: > 0 and <= 256 }))) return false;
+            }
+            else if (node.Adapter == "craftingPage") return false;
+            if (node.Adapter is not "namingMenu" && node.TextField is not null
+                || node.Adapter is not "dialogueBox" && node.Dialogue is not null
+                || node.Adapter is not "craftingPage" && node.Crafting is not null) return false;
             int depth = 1;
             if (node.ParentId is long parent)
             {

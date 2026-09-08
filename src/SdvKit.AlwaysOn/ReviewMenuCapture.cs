@@ -16,7 +16,7 @@ internal sealed record MenuDialogueObservation(string Text, int? CurrentChoice,
 internal sealed record MenuCraftingRecipeObservation(object Component, string RecipeId, string DisplayName,
     bool? Available, int? CraftableCount, IReadOnlyList<ReviewCraftingIngredient> Ingredients,
     IReadOnlyList<string> Outputs);
-internal sealed record MenuCraftingObservation(int CurrentPage, IReadOnlyList<MenuCraftingRecipeObservation> Recipes);
+internal sealed record MenuCraftingObservation(int? CurrentPage, IReadOnlyList<MenuCraftingRecipeObservation> Recipes);
 internal sealed record MenuObservation(string Type, string Adapter, bool Supported,
     ReviewMenuRectangle Bounds, int? CurrentTab, int? ScrollIndex,
     IReadOnlyList<MenuComponentObservation> Components, IReadOnlyList<MenuChildObservation> Children,
@@ -42,6 +42,12 @@ internal sealed class ReviewMenuCapture
 
     internal static string ViewportRevision(IReviewMenuSource source) => Convert.ToHexString(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(new { source.Viewport.Width, source.Viewport.Height, source.UiScale, source.Zoom }))).ToLowerInvariant();
+
+    internal static bool TryStableIdentity(string? value, int maximum, out string identity)
+    {
+        identity = value ?? "";
+        return value is not null && value.Length > 0 && value.Length <= maximum;
+    }
 
     internal void Reset()
     {

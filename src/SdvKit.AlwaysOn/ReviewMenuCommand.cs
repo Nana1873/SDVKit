@@ -104,8 +104,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                     limitations.Add("dialogueChoiceControlUnavailable");
                     continue;
                 }
-                string key = response.responseKey ?? "";
-                if (key.Length > 128)
+                if (!ReviewMenuCapture.TryStableIdentity(response.responseKey, 128, out string key))
                 {
                     limitations.Add("dialogueChoiceKeyUnavailable");
                     continue;
@@ -128,37 +127,43 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
             var recipes = new List<MenuCraftingRecipeObservation>();
             bool availabilityAvailable = craftingPage._materialContainers is null || craftingPage._materialContainers.Count == 0;
             if (!availabilityAvailable) limitations.Add("craftingAvailabilityUnavailable");
-            if (craftingPage.currentCraftingPage >= 0 && craftingPage.currentCraftingPage < craftingPage.pagesOfCraftingRecipes.Count)
+            int? currentPage = craftingPage.currentCraftingPage >= 0
+                && craftingPage.currentCraftingPage < craftingPage.pagesOfCraftingRecipes.Count
+                    ? craftingPage.currentCraftingPage
+                    : null;
+            if (currentPage is null) limitations.Add("craftingPageUnavailable");
+            if (currentPage is int page)
             {
-                foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in craftingPage.pagesOfCraftingRecipes[craftingPage.currentCraftingPage]
+                foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in craftingPage.pagesOfCraftingRecipes[page]
                     .Take(MaximumCraftingRecipes + 1))
                 {
                     if (recipes.Count >= MaximumCraftingRecipes)
                     {
-                        truncated = true;
+                        limitations.Add("craftingCollectionLimit");
                         break;
                     }
-                    if (recipe.name is null or { Length: > 256 }
-                        || recipe.itemToProduce.Any(item => item is null or { Length: > 256 })
-                        || recipe.recipeList.Any(pair => pair.Key is null or { Length: > 256 } || pair.Value <= 0))
+                    KeyValuePair<string, int>[] ingredients = recipe.recipeList.Take(MaximumRecipeIngredients).ToArray();
+                    string[] outputs = recipe.itemToProduce.Take(MaximumRecipeOutputs).ToArray();
+                    if (!ReviewMenuCapture.TryStableIdentity(recipe.name, 256, out string recipeId)
+                        || outputs.Any(item => !ReviewMenuCapture.TryStableIdentity(item, 256, out _))
+                        || ingredients.Any(pair => !ReviewMenuCapture.TryStableIdentity(pair.Key, 256, out _) || pair.Value <= 0))
                     {
                         limitations.Add("craftingRecipeIdentityUnavailable");
                         continue;
                     }
                     if ((recipe.DisplayName?.Length ?? 0) > 1024) limitations.Add("craftingDisplayNameTruncated");
-                    recipes.Add(new(component, recipe.name, Bound(recipe.DisplayName, 1024),
+                    recipes.Add(new(component, recipeId, Bound(recipe.DisplayName, 1024),
                         availabilityAvailable ? recipe.doesFarmerHaveIngredientsInInventory(Game1.player.Items) : null,
                         availabilityAvailable ? recipe.getCraftableCount(Game1.player.Items) : null,
-                        recipe.recipeList.Take(MaximumRecipeIngredients)
-                            .Select(pair => new ReviewCraftingIngredient(pair.Key, pair.Value)).ToArray(),
-                        recipe.itemToProduce.Take(MaximumRecipeOutputs).ToArray()));
+                        ingredients.Select(pair => new ReviewCraftingIngredient(pair.Key, pair.Value)).ToArray(),
+                        outputs));
                     if (recipe.recipeList.Count > MaximumRecipeIngredients || recipe.itemToProduce.Count > MaximumRecipeOutputs)
                     {
-                        truncated = true;
+                        limitations.Add("craftingCollectionLimit");
                     }
                 }
             }
-            crafting = new(Math.Max(0, craftingPage.currentCraftingPage), recipes);
+            crafting = new(currentPage, recipes);
         }
         Add(menu.upperRightCloseButton, "close");
         AddList(menu.allClickableComponents, "publicComponent");
@@ -209,6 +214,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         static string Bound(string? value, int maximum) => string.IsNullOrEmpty(value)
             ? "" : value.Length <= maximum ? value : value[..maximum];
     }
+
 }
 
 internal sealed class ReviewMenuCommand

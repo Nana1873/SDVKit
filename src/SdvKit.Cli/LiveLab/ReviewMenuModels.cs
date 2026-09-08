@@ -26,7 +26,7 @@ internal sealed record ReviewCraftingIngredient(string ItemId, int Quantity);
 internal sealed record ReviewCraftingRecipe(string RecipeId, string DisplayName, long ComponentId,
     bool? Available, int? CraftableCount, IReadOnlyList<ReviewCraftingIngredient> Ingredients,
     IReadOnlyList<string> Outputs);
-internal sealed record ReviewCraftingObservation(int CurrentPage, IReadOnlyList<ReviewCraftingRecipe> Recipes);
+internal sealed record ReviewCraftingObservation(int? CurrentPage, IReadOnlyList<ReviewCraftingRecipe> Recipes);
 internal sealed record ReviewMenuNode(long Id, long? ParentId, string Relationship,
     string Type, string Assembly, string Adapter, string Coverage, ReviewMenuRectangle Bounds,
     int? CurrentTab, int? ScrollIndex, IReadOnlyList<ReviewMenuComponent> Components,
