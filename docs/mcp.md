@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
-| Default observation/evidence | 27 tools | 6 tools | 6 tools |
+| Default observation/evidence | 28 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported |
@@ -98,7 +98,14 @@ watcher, general console command or network refresh tool is added. Follow the
 
 ## Default observation and screenshots
 
-Single-review servers additionally expose `stardew_shop_get {}` for a fresh
+Single-review servers additionally expose `stardew_inventory_get {}` for a
+fresh read-only capture of the [complete bounded backpack](inventory-inspection.md)
+without opening a menu. It returns every slot plus request and visible-fact
+revision identities; neither is a durable item-instance handle. Unsupported or
+incomplete item data is explicit, and network servers do not advertise this
+single-review capability.
+
+Single-review servers also expose `stardew_shop_get {}` for a fresh
 read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).
 It requires no input opt-in. Unsupported shop semantics are explicitly unavailable;
 the tool neither purchases items nor infers a successful purchase from a price.

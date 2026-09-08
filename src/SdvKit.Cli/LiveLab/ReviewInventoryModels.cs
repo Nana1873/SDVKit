@@ -6,6 +6,21 @@ namespace SdvKit.Cli.LiveLab;
 
 internal static class ReviewItemSlotContract
 {
+    public static ReviewItemSlot ReadOccupied(int slot, Func<SelectedItemValues> read)
+    {
+        try
+        {
+            SelectedItemValues item = read();
+            return ItemValid(item)
+                ? new(slot, "occupied", null, item)
+                : new(slot, "unavailable", "itemDataUnavailable", null);
+        }
+        catch (Exception)
+        {
+            return new(slot, "unavailable", "itemDataUnavailable", null);
+        }
+    }
+
     public static bool ItemValid(SelectedItemValues? item) => item is not null
         && item.QualifiedItemId is { Length: > 3 and <= LocalPlayerSnapshotContract.MaximumItemIdLength } id
         && id[0] == '(' && id.IndexOf(')') is > 1 && id[^1] != ')'
@@ -35,14 +50,14 @@ internal static class ReviewInventoryContract
         && value.StartsWith("sha256:", StringComparison.Ordinal)
         && value.Skip(7).All(character => character is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
-    public static string Revision(string launchId, string playerId, int capacity, int selectedSlot,
+    public static string Revision(string launchId, string playerId, int capacity, int? selectedSlot,
         IReadOnlyList<ReviewItemSlot> slots)
     {
         var text = new StringBuilder();
         Append(launchId);
         Append(playerId);
         Append(capacity.ToString(CultureInfo.InvariantCulture));
-        Append(selectedSlot.ToString(CultureInfo.InvariantCulture));
+        Append(selectedSlot?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
         foreach (ReviewItemSlot slot in slots)
         {
             Append(slot.Slot.ToString(CultureInfo.InvariantCulture));
@@ -58,28 +73,30 @@ internal static class ReviewInventoryContract
             .Append(':').Append(value).Append(';');
     }
 
-    public static bool DataValid(ReviewInventoryValues? data, string? expectedLaunchId = null)
+    public static bool DataValid(ReviewInventoryValues? data, string expectedLaunchId)
     {
         if (data is null || !ReviewTransportToken.IsRequestId(data.CaptureId)
             || !long.TryParse(data.PlayerId, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long playerId)
             || playerId == 0 || data.PlayerId != playerId.ToString(CultureInfo.InvariantCulture)
-            || data.Capacity is <= 0 or > MaximumSlots || data.SelectedSlot < 0 || data.SelectedSlot >= data.Capacity
+            || data.Capacity is <= 0 or > MaximumSlots
+            || data.SelectedSlot is < 0 || data.SelectedSlot >= data.Capacity
             || data.Slots is null || data.Slots.Count != data.Capacity
+            || data.Slots.Any(slot => slot is null)
             || data.Complete != data.Slots.All(slot => slot.State != "unavailable")
             || data.Limitations is null || data.Limitations.Count > 1
             || (data.Complete ? data.Limitations.Count != 0
                 : !data.Limitations.SequenceEqual(["itemDataUnavailable"], StringComparer.Ordinal))) return false;
         for (int index = 0; index < data.Slots.Count; index++)
             if (!ReviewItemSlotContract.SlotValid(data.Slots[index], index)) return false;
-        string launchId = expectedLaunchId ?? string.Empty;
-        return (expectedLaunchId is null || ReviewTransportToken.IsRequestId(launchId))
-            && data.InventoryRevision == Revision(launchId, data.PlayerId, data.Capacity, data.SelectedSlot, data.Slots);
+        return ReviewTransportToken.IsRequestId(expectedLaunchId)
+            && data.InventoryRevision == Revision(expectedLaunchId, data.PlayerId, data.Capacity,
+                data.SelectedSlot, data.Slots);
     }
 }
 
 internal sealed record ReviewItemSlot(int Slot, string State, string? Reason, SelectedItemValues? Item);
 internal sealed record ReviewInventoryValues(string CaptureId, string InventoryRevision, string PlayerId, int Capacity,
-    int SelectedSlot, bool Complete, IReadOnlyList<string> Limitations, IReadOnlyList<ReviewItemSlot> Slots);
+    int? SelectedSlot, bool Complete, IReadOnlyList<string> Limitations, IReadOnlyList<ReviewItemSlot> Slots);
 internal sealed record ReviewInventoryReport(int SchemaVersion, string State, string? ErrorCode,
     string? LaunchId, string Topology, string? Role, DateTimeOffset CapturedAtUtc, ReviewInventoryValues? Data);
 internal sealed record ReviewInventoryResponseEnvelope(int SchemaVersion, string RequestId, ReviewInventoryReport Report);
