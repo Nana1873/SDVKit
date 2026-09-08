@@ -87,7 +87,8 @@ internal sealed record TestSaveStatusMarker(
     bool IdentityVerified,
     int WaitedTicks,
     string? Message,
-    string ScenarioLogPath);
+    string ScenarioLogPath,
+    bool LocalSplitScreen = false);
 
 internal sealed record TestSaveStatusReport(
     string State,
@@ -98,4 +99,5 @@ internal sealed record TestSaveStatusReport(
     bool? IdentityVerified,
     int? WaitedTicks,
     string? Message,
-    string? ScenarioLogPath);
+    string? ScenarioLogPath,
+    bool LocalSplitScreen = false);

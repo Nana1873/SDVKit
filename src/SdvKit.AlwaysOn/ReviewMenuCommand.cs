@@ -132,6 +132,9 @@ internal sealed class ReviewMenuCommand
     private readonly StardewReviewMenuSource _source = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    internal ReviewMenuReport CaptureCurrent() => _capture.Capture(_source,
+        Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "", DateTimeOffset.UtcNow);
+
     internal void ObserveRoot(IClickableMenu? menu) => _capture.ObserveRoot(menu);
 
     internal bool CurrentTextField(long id)

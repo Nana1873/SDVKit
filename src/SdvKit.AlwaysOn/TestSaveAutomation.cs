@@ -27,6 +27,25 @@ internal sealed class TestSaveAutomation
     private readonly MethodInfo? _optionButtonClick;
     private readonly DateTimeOffset _startedAtUtc = DateTimeOffset.UtcNow;
 
+    private OwnedLocalSplitScreen? _localSplitScreen;
+    internal void UpdateLocalScreens() => _localSplitScreen?.OnUpdateTicked();
+
+    internal void HandleLocalSplitScreen(string[] arguments, IMonitor monitor, ReviewMenuCommand menu,
+        Action<Game1> prepareScreenExit)
+    {
+        if (arguments.Length != 2 || arguments[1] is not ("join" or "leave" or "status"))
+            throw new InvalidOperationException("Usage: sdvkit split-screen <join|leave|status> [screen=<id>]");
+        if (!IsPassedReview || _allowMultiplayer)
+            throw new InvalidOperationException("Select a passed single fixture review for local split-screen.");
+        _localSplitScreen ??= new OwnedLocalSplitScreen(this, monitor, prepareScreenExit);
+        switch (arguments[1])
+        {
+            case "join": _localSplitScreen.Join(); break;
+            case "leave": _localSplitScreen.Leave(); break;
+            case "status": _localSplitScreen.Status(menu); break;
+        }
+    }
+
     private string _phase = "waitingForTitle";
     private bool _identityVerified;
     private int _waitedTicks;
@@ -34,6 +53,7 @@ internal sealed class TestSaveAutomation
     private bool _createMarkersApplied;
     private bool _saveCreated;
     private IEnumerator<int>? _saveIterator;
+    private bool _localSaveCompleted;
     private bool _saveReachedCompletion;
     private DateTimeOffset? _saveOperationStartedAtUtc;
     private Action<bool, string>? _reviewSaveCompletion;
@@ -68,8 +88,15 @@ internal sealed class TestSaveAutomation
     public bool CanStop =>
         IsTerminal
         && _saveIterator is null
-        && !SaveGame.IsProcessing
-        && !Game1.game1.IsSaving;
+        && !IsSaveBusy;
+
+    // Stardew 1.6.15's synchronous local save iterator leaves IsProcessing set.
+    // Only a confirmed completion in the explicitly selected local review can
+    // supersede that flag; an active native save on either screen still blocks.
+    internal bool IsSaveBusy => _localSplitScreen?.Selected == true
+        ? GameRunner.instance.gameInstances.Any(game => game.IsSaving)
+            || (SaveGame.IsProcessing && !_localSaveCompleted)
+        : SaveGame.IsProcessing || Game1.game1.IsSaving;
 
     public TestSaveStatusMarker Snapshot => new(
         TestSaveContract.SchemaVersion,
@@ -80,7 +107,8 @@ internal sealed class TestSaveAutomation
         _identityVerified,
         _waitedTicks,
         _message,
-        _scenarioLogPath);
+        _scenarioLogPath,
+        _localSplitScreen?.Selected == true);
 
     private bool IsTerminal => _phase is "created" or "passed" or "failed";
 
@@ -264,7 +292,10 @@ internal sealed class TestSaveAutomation
 
         try
         {
-            VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
+            if (_localSplitScreen?.Selected == true && Context.ScreenId != 0)
+                _localSplitScreen.VerifyCurrentPlayer();
+            else
+                VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
             reason = string.Empty;
             return true;
         }
@@ -288,8 +319,7 @@ internal sealed class TestSaveAutomation
 
         if (_reviewSaveCompletion is not null
             || _saveIterator is not null
-            || SaveGame.IsProcessing
-            || Game1.game1.IsSaving)
+            || IsSaveBusy)
         {
             reason = "Stardew is already processing an action or save for the exact fixture.";
             return false;
@@ -527,6 +557,7 @@ internal sealed class TestSaveAutomation
 
     public void OnSaving()
     {
+        _localSaveCompleted = false;
         if (!Context.IsWorldReady)
         {
             return;
@@ -546,6 +577,12 @@ internal sealed class TestSaveAutomation
             Fail(exception.GetBaseException().Message);
             throw;
         }
+    }
+
+    public void OnSaved()
+    {
+        if (_localSplitScreen?.Selected == true)
+            _localSaveCompleted = true;
     }
 
     public void OnReturnedToTitle()
@@ -612,13 +649,13 @@ internal sealed class TestSaveAutomation
     private void StartDurableSave()
     {
         VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
-        if (SaveGame.IsProcessing || Game1.game1.IsSaving)
+        if (IsSaveBusy)
         {
             throw new InvalidOperationException(
                 "Stardew is already processing save data for the exact fixture.");
         }
 
-        if (_allowMultiplayer)
+        if (_allowMultiplayer || _localSplitScreen?.Selected == true)
         {
             if (!Context.IsMultiplayer || !Game1.IsServer)
             {
@@ -629,6 +666,7 @@ internal sealed class TestSaveAutomation
             Game1.Multiplayer.saveFarmhands();
         }
 
+        _localSaveCompleted = false;
         Game1.game1.IsSaving = true;
         try
         {
@@ -686,7 +724,7 @@ internal sealed class TestSaveAutomation
                 "Stardew's save iterator ended without its completion signal.");
         }
 
-        if (SaveGame.IsProcessing)
+        if (SaveGame.IsProcessing && _localSplitScreen?.Selected != true)
         {
             throw new InvalidOperationException(
                 "Stardew's save iterator ended while still reporting active processing.");
@@ -710,7 +748,9 @@ internal sealed class TestSaveAutomation
             return;
         }
 
-        if (progress != 1)
+        // Local multiplayer forwards the native serializer's intermediate
+        // percentages; the non-local task wrapper only yields 1 while waiting.
+        if (progress != 1 && !(_localSplitScreen?.Selected == true && progress is > 1 and < 100))
         {
             throw new InvalidOperationException(
                 $"Stardew's save iterator reported unexpected progress '{progress}'.");
@@ -719,6 +759,8 @@ internal sealed class TestSaveAutomation
 
     private void CompleteDurableSave()
     {
+        if (_localSplitScreen?.Selected == true)
+            _localSaveCompleted = true;
         DisposeSaveIterator();
         if (string.Equals(_phase, "failed", StringComparison.Ordinal))
         {
@@ -877,6 +919,12 @@ internal sealed class TestSaveAutomation
         if (!Context.IsMainPlayer)
         {
             mismatches.Add("mainPlayer");
+        }
+
+        if (_localSplitScreen?.Selected == true)
+        {
+            _localSplitScreen.VerifyHost();
+            allowMultiplayer = true;
         }
 
         if (!allowMultiplayer && Context.IsMultiplayer)

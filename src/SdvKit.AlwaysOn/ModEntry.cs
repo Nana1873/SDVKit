@@ -2,6 +2,7 @@
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewModdingAPI.Enums;
+using StardewModdingAPI.Utilities;
 using StardewValley;
 
 namespace SdvKit.AlwaysOn;
@@ -10,7 +11,8 @@ public sealed class ModEntry : Mod
 {
     private const int LabWindowWidth = 1280;
     private const int LabWindowHeight = 720;
-    private BackgroundRunGuard? _backgroundRun;
+    private PerScreen<BackgroundRunGuard>? _backgroundRuns;
+    private BackgroundRunGuard? BackgroundRun => _backgroundRuns?.Value;
     private StatusWriter? _statusWriter;
     private TestSaveAutomation? _testSave;
     private NetworkTwoAutomation? _networkTwo;
@@ -43,10 +45,13 @@ public sealed class ModEntry : Mod
             networkRole,
             SdvKit.Cli.LiveLab.NetworkTwoContract.HostRole,
             StringComparison.Ordinal);
-        _backgroundRun = new BackgroundRunGuard(
-            new SmapiBackgroundRunState(),
-            networkHost);
-        BackgroundOptionsReplacement.Install(_backgroundRun, Monitor);
+        _backgroundRuns = new PerScreen<BackgroundRunGuard>(() =>
+        {
+            var guard = new BackgroundRunGuard(new SmapiBackgroundRunState(), networkHost);
+            if (_gameLaunched) guard.Enable();
+            return guard;
+        });
+        BackgroundOptionsReplacement.Install(() => BackgroundRun, Monitor);
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
@@ -99,7 +104,16 @@ public sealed class ModEntry : Mod
                 ?? throw new InvalidOperationException(
                     "The AlwaysOn status path has no runtime directory."),
             () => _testSave,
-            () => _networkTwo);
+            () => _networkTwo,
+            screen => GameRunner.instance.ExecuteForInstances(current =>
+            {
+                if (ReferenceEquals(current, screen))
+                {
+                    ReviewVirtualCursor.Clear();
+                    if (BackgroundRun?.RestoreOriginalAndDisable().Succeeded != true)
+                        Monitor.Log("Could not confirm the departing local screen's option restoration.", LogLevel.Warn);
+                }
+            }));
         if (!ReviewVirtualCursor.TryInstall(Monitor, out string virtualCursorError))
         {
             Monitor.Log(virtualCursorError, LogLevel.Error);
@@ -111,8 +125,8 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
-                _backgroundRun.EnsureApplied();
-                TryHandleStopRequest();
+                BackgroundRun!.EnsureApplied();
+                if (Context.ScreenId == 0) TryHandleStopRequest();
             }
         };
         helper.Events.GameLoop.OneSecondUpdateTicked += (_, _) =>
@@ -121,23 +135,27 @@ public sealed class ModEntry : Mod
             {
                 // Wait through Stardew's immediate title-window initialization;
                 // the bounded helper applies the lab baseline only once.
-                EnsureLabWindowMode();
+                if (Context.ScreenId == 0) EnsureLabWindowMode();
                 // Rebind and reassert after the game's update too. During load,
                 // Stardew can replace options more than once after the load-stage
                 // notification and before a stable world is ready.
-                _backgroundRun.RecaptureAfterOptionsReplacement();
+                BackgroundRun!.RecaptureAfterOptionsReplacement();
                 WriteActiveStatus();
             }
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
             ReviewVirtualCursor.AfterGameUpdate();
-            _testSave?.OnUpdateTicked();
-            _networkTwo?.OnUpdateTicked();
+            _testSave?.UpdateLocalScreens();
+            if (Context.ScreenId == 0)
+            {
+                _testSave?.OnUpdateTicked();
+                _networkTwo?.OnUpdateTicked();
+            }
         };
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            _backgroundRun!.Enable();
+            BackgroundRun!.Enable();
             _gameLaunched = true;
             if (string.Equals(
                     Environment.GetEnvironmentVariable("SDVKIT_REVIEW_CONSOLE_BACKGROUND"),
@@ -154,23 +172,29 @@ public sealed class ModEntry : Mod
         {
             if (eventArgs.NewStage == LoadStage.Preloaded)
             {
-                _backgroundRun.RecaptureAfterOptionsReplacement();
+                BackgroundRun!.RecaptureAfterOptionsReplacement();
             }
         };
         helper.Events.GameLoop.SaveCreating += (_, _) =>
-            _testSave?.OnSaveCreating();
+        { if (Context.ScreenId == 0) _testSave?.OnSaveCreating(); };
         helper.Events.GameLoop.SaveCreated += (_, _) =>
-            _testSave?.OnSaveCreated();
+        { if (Context.ScreenId == 0) _testSave?.OnSaveCreated(); };
         helper.Events.GameLoop.SaveLoaded += (_, _) =>
-            _testSave?.OnSaveLoaded();
+        { if (Context.ScreenId == 0) _testSave?.OnSaveLoaded(); };
         helper.Events.GameLoop.Saving += (_, _) =>
-            _testSave?.OnSaving();
+        { if (Context.ScreenId == 0) _testSave?.OnSaving(); };
+        helper.Events.GameLoop.Saved += (_, _) =>
+        { if (Context.ScreenId == 0) _testSave?.OnSaved(); };
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
             ReviewVirtualCursor.Clear();
-            _backgroundRun.ResetAfterReturnToTitle();
-            _testSave?.OnReturnedToTitle();
-            _networkTwo?.OnReturnedToTitle();
+            if (Context.ScreenId == 0) BackgroundRun!.ResetAfterReturnToTitle();
+            else BackgroundRun!.RestoreOriginalAndDisable();
+            if (Context.ScreenId == 0)
+            {
+                _testSave?.OnReturnedToTitle();
+                _networkTwo?.OnReturnedToTitle();
+            }
             if (!_exitPrepared)
             {
                 WriteActiveStatus();
@@ -395,7 +419,15 @@ public sealed class ModEntry : Mod
         BackgroundRunRestoreResult restore;
         try
         {
-            restore = _backgroundRun!.RestoreOriginalAndDisable();
+            bool allRestored = true;
+            GameRunner.instance.ExecuteForInstances(_ =>
+            {
+                ReviewVirtualCursor.Clear();
+                allRestored &= BackgroundRun!.RestoreOriginalAndDisable().Succeeded;
+            });
+            restore = new BackgroundRunRestoreResult(allRestored, Game1.options.pauseWhenOutOfFocus,
+                _networkTwo?.IsHost == true ? Game1.options.enableServer : null,
+                _networkTwo?.IsHost == true ? Game1.options.ipConnectionsEnabled : null);
         }
         catch (Exception exception)
         {
@@ -425,7 +457,7 @@ public sealed class ModEntry : Mod
     {
         // Automation callbacks must not replace a terminal marker or report
         // restored settings as active after exit preparation.
-        if (_exitPrepared)
+        if (_exitPrepared || Context.ScreenId != 0)
         {
             return;
         }
@@ -481,7 +513,7 @@ public sealed class ModEntry : Mod
             message => Monitor.Log(message, LogLevel.Error));
     }
 
-    private static RuntimeSnapshotMarker CaptureRuntimeSnapshot()
+    internal static RuntimeSnapshotMarker CaptureRuntimeSnapshot()
     {
         DateTimeOffset observedAtUtc = DateTimeOffset.UtcNow;
         bool worldReady = Context.IsWorldReady;
@@ -525,7 +557,7 @@ public sealed class ModEntry : Mod
         {
             if (!_exitPrepared)
             {
-                _backgroundRun?.RestoreOriginalAndDisable();
+                BackgroundRun?.RestoreOriginalAndDisable();
             }
         }
         catch

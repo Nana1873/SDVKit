@@ -8,10 +8,10 @@ namespace SdvKit.AlwaysOn;
 internal static class BackgroundOptionsReplacement
 {
     private const string HarmonyId = "SDVKit.AlwaysOn.BackgroundOptionsReplacement";
-    private static BackgroundRunGuard? _guard;
+    private static Func<BackgroundRunGuard?>? _guard;
     private static IMonitor? _monitor;
 
-    public static void Install(BackgroundRunGuard guard, IMonitor monitor)
+    public static void Install(Func<BackgroundRunGuard?> guard, IMonitor monitor)
     {
         // FarmhandSlot.Activate replaces Options synchronously. Waiting for the
         // next validated update can leave an unfocused client paused in loading.
@@ -27,7 +27,7 @@ internal static class BackgroundOptionsReplacement
     {
         try
         {
-            _guard?.RecaptureAfterOptionsReplacement();
+            _guard?.Invoke()?.RecaptureAfterOptionsReplacement();
         }
         catch (Exception exception)
         {

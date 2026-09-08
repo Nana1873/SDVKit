@@ -494,7 +494,7 @@ public sealed class BackgroundRunGuardTests
             controlledStop,
             StringComparison.Ordinal);
         int restore = source.IndexOf(
-            "_backgroundRun!.RestoreOriginalAndDisable();",
+            "BackgroundRun!.RestoreOriginalAndDisable().Succeeded;",
             preparation,
             StringComparison.Ordinal);
         int exitPrepared = source.IndexOf(
@@ -519,7 +519,7 @@ public sealed class BackgroundRunGuardTests
         Assert.Contains("private void WriteActiveStatus()\n    {", source, StringComparison.Ordinal);
         int activeStatus = source.IndexOf("private void WriteActiveStatus()", StringComparison.Ordinal);
         int activeCapture = source.IndexOf("bool networkHost", activeStatus, StringComparison.Ordinal);
-        Assert.Contains("if (_exitPrepared)\n        {\n            return;\n        }",
+        Assert.Contains("if (_exitPrepared || Context.ScreenId != 0)\n        {\n            return;\n        }",
             source[activeStatus..activeCapture], StringComparison.Ordinal);
         Assert.DoesNotContain("GameRunner.instance.Exiting", source, StringComparison.Ordinal);
     }
@@ -576,7 +576,7 @@ public sealed class BackgroundRunGuardTests
             handler,
             StringComparison.Ordinal);
         int reassert = source.IndexOf(
-            "_backgroundRun.RecaptureAfterOptionsReplacement();",
+            "BackgroundRun!.RecaptureAfterOptionsReplacement();",
             handler,
             StringComparison.Ordinal);
         int status = source.IndexOf(

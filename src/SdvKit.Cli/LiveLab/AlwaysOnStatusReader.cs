@@ -346,6 +346,7 @@ internal static class AlwaysOnStatusReader
             or "failed";
         if (marker.SchemaVersion != TestSaveContract.SchemaVersion
             || !knownPhase
+            || (marker.LocalSplitScreen && marker.Mode != TestSaveContract.ReviewMode)
             || marker.WaitedTicks < 0
             || string.IsNullOrWhiteSpace(marker.ScenarioLogPath))
         {
@@ -392,7 +393,8 @@ internal static class AlwaysOnStatusReader
             marker.IdentityVerified,
             marker.WaitedTicks,
             marker.Message,
-            marker.ScenarioLogPath);
+            marker.ScenarioLogPath,
+            marker.LocalSplitScreen);
     }
 
     private static TestSaveStatusReport InvalidTestSave(string state) =>
