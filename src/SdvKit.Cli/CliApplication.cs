@@ -455,7 +455,7 @@ public static partial class CliApplication
         if (arguments.Count == 3 && IsHelp(arguments[2]))
         {
             output.WriteLine(CheckUsage);
-            output.WriteLine("Offline schema check of one mod root: manifest.json, CP 2.9.x content.json, and direct i18n/*.json.");
+            output.WriteLine("Offline schema check and locale comparison of one mod root: manifest.json, CP 2.9.x content.json, and direct i18n/*.json.");
             output.WriteLine("No recursive mod discovery, Include/FromFile resolution, build, or runtime validation.");
             return Success;
         }
@@ -480,7 +480,11 @@ public static partial class CliApplication
             {
                 output.WriteLine($"{problem.File} {problem.Field} [{problem.Code}]: {problem.Message}");
             }
-            output.WriteLine("Schema checks do not prove that patches apply in game or translations are complete.");
+            foreach (ProjectCheckProblem warning in report.Warnings)
+            {
+                output.WriteLine($"{warning.File} {warning.Field} [warning:{warning.Code}]: {warning.Message}");
+            }
+            output.WriteLine("Schema and locale checks do not prove that patches apply in game or translations render correctly.");
         }
         return report.Problems.Count == 0 ? Success : InspectionFailed;
     }

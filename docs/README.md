@@ -34,6 +34,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Create, inspect, package | `project` | No | C# mods or content packs; no live review |
 | Offline save inspection | `save sections/inspect` | Deliberately deferred | Explicit local file or registered single fixture; isolated copy, Stardew 1.6 |
 | Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, direct i18n; no game/network |
+| Locale key and placeholder comparison | `project check` | No | Direct top-level i18n files; see [i18n authoring](i18n-authoring.md) |
 | Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Local split-screen | Quoted `sdvkit split-screen join/leave/status` and native `screen=<id>` | Screen 0 only | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; [workflow](live-review.md#local-split-screen-review) |
