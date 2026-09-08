@@ -270,7 +270,7 @@ public sealed class ProjectReviewMcpTests
         ListToolsResult listed = await client.ListToolsAsync(
             new ListToolsRequestParams(),
             timeout.Token);
-        Assert.Equal(12, listed.Tools.Count);
+        Assert.Equal(13, listed.Tools.Count);
         Tool tool = Assert.Single(
             listed.Tools,
             candidate => string.Equals(
@@ -475,7 +475,8 @@ public sealed class ProjectReviewMcpTests
                     ProjectReviewMcpInventoryTools.ToolName,
                     ProjectReviewMcpMenuTools.ToolName,
                     ProjectReviewMcpShopTools.ToolName,
-                ProjectReviewMcpLogTools.ToolName,
+                    ProjectReviewMcpWorldTools.ToolName,
+                    ProjectReviewMcpLogTools.ToolName,
                     ProjectReviewMcpDiagnosticsTools.ModsToolName,
                     ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                     ProjectReviewMcpAssetTools.ModAssetKeysToolName,

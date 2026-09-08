@@ -61,6 +61,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 ProjectReviewMcpServer.RuntimeToolName,
                 ProjectReviewMcpScreenshotTools.CaptureToolName,
                 ProjectReviewMcpShopTools.ToolName,
+                ProjectReviewMcpWorldTools.ToolName,
             ],
             singleTools.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)

@@ -43,6 +43,7 @@ public sealed class ProjectReviewMcpDataTests
                 ProjectReviewMcpServer.RuntimeToolName,
                 ProjectReviewMcpScreenshotTools.CaptureToolName,
                 ProjectReviewMcpShopTools.ToolName,
+                ProjectReviewMcpWorldTools.ToolName,
             ],
             listed.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)

@@ -313,8 +313,12 @@ internal static class ProjectReviewMcpServer
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
-        if (reader.Topology == "single" && reader.Role is null) tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
-        if (reader.Topology == "single" && reader.Role is null) tools.Add(ProjectReviewMcpShopTools.Create(reader));
+        if (reader.Topology == "single" && reader.Role is null)
+        {
+            tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
+            tools.Add(ProjectReviewMcpShopTools.Create(reader));
+            tools.Add(ProjectReviewMcpWorldTools.Create(reader));
+        }
         runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
         if (cpRefreshPermission is not null)
         {
