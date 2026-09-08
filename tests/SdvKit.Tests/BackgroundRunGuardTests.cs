@@ -5,6 +5,30 @@ namespace SdvKit.Tests;
 public sealed class BackgroundRunGuardTests
 {
     [Fact]
+    public void SynchronousRejoinNotificationRebindsBeforeAnotherUpdateAndRetainsStopOriginal()
+    {
+        FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);
+        BackgroundRunGuard guard = new(state);
+        guard.Enable();
+        state.ReplaceOptions(pauseWhenOutOfFocus: false);
+        guard.ResetAfterReturnToTitle();
+
+        FakeOptions joinOptions = state.ReplaceOptions(pauseWhenOutOfFocus: true);
+        // The loadForNewGame postfix runs before the client can pause. No tick
+        // or periodic callback is available between replacement and this check.
+        guard.RecaptureAfterOptionsReplacement();
+        Assert.False(joinOptions.PauseWhenOutOfFocus);
+        Assert.Equal(1, joinOptions.SetCount);
+        Assert.True(guard.RestoreOriginalAndDisable().Succeeded);
+        Assert.True(joinOptions.PauseWhenOutOfFocus);
+
+        FakeOptions afterStop = state.ReplaceOptions(pauseWhenOutOfFocus: true);
+        guard.RecaptureAfterOptionsReplacement();
+        Assert.True(afterStop.PauseWhenOutOfFocus);
+        Assert.Equal(0, afterStop.SetCount);
+    }
+
+    [Fact]
     public void EnableCapturesOriginalAndAppliesFalse()
     {
         FakeBackgroundRunState state = new(pauseWhenOutOfFocus: true);

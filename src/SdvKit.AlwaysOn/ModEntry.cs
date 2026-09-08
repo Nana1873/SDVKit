@@ -46,6 +46,7 @@ public sealed class ModEntry : Mod
         _backgroundRun = new BackgroundRunGuard(
             new SmapiBackgroundRunState(),
             networkHost);
+        BackgroundOptionsReplacement.Install(_backgroundRun, Monitor);
         _statusWriter = new StatusWriter(launchId, statusPath);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
