@@ -598,6 +598,31 @@ public sealed class BackgroundRunGuardTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void OptionsReplacementHookCoversClientOptionsLoad()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SdvKit.AlwaysOn",
+            "BackgroundOptionsReplacement.cs"))
+            .ReplaceLineEndings("\n");
+
+        Assert.Contains(
+            "AccessTools.PropertySetter(typeof(Game1), nameof(Game1.options))",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "nameof(Game1.loadForNewGame)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_guard?.Invoke()?.RecaptureAfterOptionsReplacement();",
+            source,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

@@ -19,7 +19,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Fixed
 
 - Report the native drawn bounds for normal, question, and transitioning dialogue boxes, and avoid counting the player's backpack twice in crafting availability.
-- Keep an unfocused farmhand running when joining again replaces Stardew's options before the next update. The background guard captures the replacement's original settings immediately so clean stop can still restore them.
+- Keep an unfocused farmhand running when joining or client-options loading replaces Stardew's options before the next update. The background guard captures each replacement's original settings immediately so clean stop can still restore them.
 
 ### Changed
 
