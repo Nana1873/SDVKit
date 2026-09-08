@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- Explicitly join and leave one native local farmhand inside an owned single fixture review. Screen-selected console input, menu/runtime observations, and viewport captures keep each local player's state separate and reuse normal save, restart, stop, and reset.
+
 ### Fixed
 
 - Keep an unfocused farmhand running when joining again replaces Stardew's options before the next update. The background guard captures the replacement's original settings immediately so clean stop can still restore them.

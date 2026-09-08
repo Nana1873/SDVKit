@@ -56,7 +56,7 @@ public sealed class NetworkTwoAutomationSourceTests
     [Fact]
     public void CabinBuildUsesOnlyTheVerifiedStartingLocation()
     {
-        string source = ReadAutomationSource();
+        string source = ReadAutomationSource("ReviewFarmhandPreparation.cs");
 
         Assert.Contains("startingCabinLocations.Add(candidates[0]);", source);
         Assert.Contains("Game1.getFarm().BuildStartingCabins();", source);
@@ -231,7 +231,7 @@ public sealed class NetworkTwoAutomationSourceTests
             savedReturn,
             StringComparison.Ordinal);
         int cabinBuild = source.IndexOf(
-            "Game1.getFarm().BuildStartingCabins();",
+            "ReviewFarmhandPreparation.CreateSingleUnclaimedFarmhand();",
             strictEmpty,
             StringComparison.Ordinal);
 
@@ -273,7 +273,7 @@ public sealed class NetworkTwoAutomationSourceTests
         Assert.True(save > pairMethod);
     }
 
-    private static string ReadAutomationSource()
+    private static string ReadAutomationSource(string fileName = "NetworkTwoAutomation.cs")
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
@@ -282,7 +282,7 @@ public sealed class NetworkTwoAutomationSourceTests
                 directory.FullName,
                 "src",
                 "SdvKit.AlwaysOn",
-                "NetworkTwoAutomation.cs");
+                fileName);
             if (File.Exists(path))
             {
                 return File.ReadAllText(path).ReplaceLineEndings("\n");

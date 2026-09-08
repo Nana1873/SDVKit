@@ -88,6 +88,56 @@ Require `testSave.state=ready`, `phase=passed`, the expected Save/fixture IDs, a
 
 For a C# host/farmhand review, prepare that same baseline and start with `--topology network-2` (without `--test-save`). Confirm both exact roles, loaded target/build identity, and reciprocal joined-pair proof. Each role has a separate isolated profile.
 
+## Local split-screen review
+
+Start a single review with `--test-save` and require its exact fixture and target
+to be ready. Then explicitly opt that running review into local split-screen:
+
+```powershell
+& $sdvkit project review command "sdvkit split-screen join" --topology single --json
+& $sdvkit project review command "sdvkit split-screen status screen=0" --topology single --json
+& $sdvkit project review command "sdvkit split-screen status screen=1" --topology single --json
+```
+
+The native game runner creates one additional SMAPI screen and joins only the
+fixture's marked local farmhand. This reuses the single review's exact process,
+staging, work save, and stop/reset ownership; `network-2` uses two processes and
+cannot establish this behavior. Ordinary single reviews retain their single-player
+guard. Do not run this alongside another native multiplayer lab on the same port.
+
+Inspect the owned SMAPI log for the matching fixture, joined screen ID and farmer
+ID. Review status additionally reports `testSave.localSplitScreen=true` once
+selected. The `SDVKit local screen` log entry contains that screen's current runtime,
+player, menu report, and active screen IDs. Screen IDs can change after leaving
+and rejoining; use the reported IDs instead of assuming every farmhand is screen 1.
+`commandWritten=true` still proves only delivery.
+
+SMAPI's native `screen=<id>` command argument selects the screen for input,
+fixture navigation, screenshots, and explicitly selected mod commands:
+
+```powershell
+& $sdvkit project review command "sdvkit input press K screen=1" --topology single --json
+& $sdvkit project review command "sdvkit split-screen status screen=1" --topology single --json
+& $sdvkit project review command "sdvkit screenshot viewport local-journal-1 screen=1" --topology single --json
+```
+
+`K` is only an example mod binding. Inspect the menu before acting. Cursor,
+button/chord/gesture progress, and menu revisions are independent per screen.
+Viewport screenshots contain the selected screen's rectangle; use unique labels
+across both screens because they share the same isolated screenshot folder.
+Native text-event injection is unavailable while split-screen is active because
+the screens share a window. Typed CLI inspection and MCP remain bound to screen 0;
+use the screen-selected console path to observe or operate the farmhand.
+
+To close only the second screen, send `sdvkit split-screen leave` from screen 0.
+Require the confirmed removal log and inspect the host's retained state. A later
+`join` reuses the same marked farmhand. The host remains the only authority for
+fixture save and world mutations. Save through normal game behavior or the
+existing host fixture-save tool, confirm completion, stop, and restart the same
+`single --test-save` review. Explicitly `join` again to verify both farmers after
+reload. Finish with the usual single stop and reset; leaving one screen does not
+save or reset the fixture.
+
 ## Exercise behavior and collect evidence
 
 On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.

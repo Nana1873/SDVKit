@@ -34,7 +34,6 @@ internal static partial class ReviewVirtualCursor
     private sealed record PollSample(TextPoll? Text, CommandPoll? Command);
     private sealed record CommandPoll(PendingInput Pending, List<char> Queue, char Character);
     private sealed record TextPoll(PendingText Pending, List<char> Queue, char Character);
-    private static PendingText? _text;
     private static MethodInfo? _raiseText;
     private static FieldInfo? WindowField;
     private static FieldInfo? _characters;
@@ -46,6 +45,9 @@ internal static partial class ReviewVirtualCursor
 
     private static bool EnsureTextBinding()
     {
+        // Native text events use a shared window. Until delivery can be bound
+        // to one dispatcher, refuse text rather than forwarding it to peers.
+        if (Context.IsSplitScreen) return false;
         if (_textInstalled) return true;
         const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         FieldInfo? Field(string name, Type type)
@@ -97,12 +99,12 @@ internal static partial class ReviewVirtualCursor
         {
             EnsureInputOwner();
             error = "The text adapter is unavailable or another input action is pending.";
-            if (!_installed || _pending is not null || _text is not null || _mouse.HasPendingWheel || !EnsureTextBinding()) return false;
+            if (!_installed || Screen.Value.Pending is not null || Screen.Value.Text is not null || Screen.Value.Mouse.HasPendingWheel || !EnsureTextBinding()) return false;
             error = "Text requires a fresh supported selected field and exact dispatcher subscriber.";
             if (request.TextQuery is not { } query || !ReviewInputContract.ValidTextTarget(query)
                 || ReviewInputContract.ValidateText(query.Text) is not null || revision() != query.UiRevision
                 || !field(query.FieldId!.Value) || CaptureTextTarget() is not { } target) return false;
-            _text = new(request, target, revision, completed);
+            Screen.Value.Text = new(request, target, revision, completed);
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
@@ -117,7 +119,7 @@ internal static partial class ReviewVirtualCursor
 
     private static void ObserveTextLifetime()
     {
-        if (_text is not { } pending) return;
+        if (Screen.Value.Text is not { } pending) return;
         if (!pending.Target.IsCurrent() || Environment.TickCount64 - pending.StartedAt >= 10000)
             FinishText("The text target became unavailable or delivery exceeded its bounded lifetime.");
     }
@@ -141,7 +143,7 @@ internal static partial class ReviewVirtualCursor
         __state = null;
         lock (Sync)
         {
-            if (_text is not { } pending || !ReferenceEquals(__instance, pending.Target.Dispatcher)) return;
+            if (Screen.Value.Text is not { } pending || !ReferenceEquals(__instance, pending.Target.Dispatcher)) return;
             try
             {
                 if (!pending.Target.IsCurrent() || pending.Revision() != pending.Request.TextQuery!.UiRevision)
@@ -180,10 +182,10 @@ internal static partial class ReviewVirtualCursor
                 RemoveOwnedCharacter(__state);
                 FinishText("The dispatcher did not complete the queued character poll.");
             }
-            else if (ReferenceEquals(_text, __state.Pending))
+            else if (ReferenceEquals(Screen.Value.Text, __state.Pending))
             {
-                _text.Progress.ObservePoll(true);
-                if (_text.Progress.Complete) FinishText(null);
+                Screen.Value.Text.Progress.ObservePoll(true);
+                if (Screen.Value.Text.Progress.Complete) FinishText(null);
             }
         }
         return __exception;
@@ -194,7 +196,7 @@ internal static partial class ReviewVirtualCursor
         __state = null;
         lock (Sync)
         {
-            if (_pending is not { CommandTarget: { } target, CommandDelivered: false } pending
+            if (Screen.Value.Pending is not { CommandTarget: { } target, CommandDelivered: false } pending
                 || pending.Progress.Canceled || pending.Progress.StartTick is null
                 || !ReferenceEquals(__instance, target.Dispatcher)) return;
             try
@@ -244,8 +246,8 @@ internal static partial class ReviewVirtualCursor
 
     private static void FinishText(string? failure)
     {
-        if (_text is not { } pending) return;
-        _text = null;
+        if (Screen.Value.Text is not { } pending) return;
+        Screen.Value.Text = null;
         pending.Progress.Stop();
         pending.Completed(new(failure is null,
             failure ?? "Character events were delivered through the dispatcher; field acceptance and persistence require separate observation.",

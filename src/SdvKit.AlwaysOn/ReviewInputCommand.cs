@@ -7,6 +7,7 @@ using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
+using StardewModdingAPI.Utilities;
 using StardewValley;
 #endif
 
@@ -928,12 +929,22 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
 
 internal static partial class ReviewVirtualCursor
 {
+    private sealed class ScreenInputState
+    {
+        public ReviewVirtualMouseState Mouse { get; set; } = new();
+        public InputSample? ActiveSample { get; set; }
+        public bool WheelFailureReported { get; set; }
+        public InputState? InputOwner { get; set; }
+        public int BackgroundInputThroughTick { get; set; } = -1;
+        public PendingInput? Pending { get; set; }
+        public PendingText? Text { get; set; }
+    }
+    private static readonly PerScreen<ScreenInputState> Screen = new(() => new());
+
     private const string HarmonyId = "SDVKit.AlwaysOn.VirtualReviewCursor";
 
     private static readonly object Sync = new();
     private static bool _installed;
-    private static ReviewVirtualMouseState _mouse = new();
-    private static InputState? _inputOwner;
     private sealed record PendingInput(IInputHelper Helper, SButton[] Buttons, ReviewChordProgress Progress,
         string? Revision, Func<string?> CurrentRevision, Action<ReviewInputResult> Completed,
         object? Root, object? Player, string? Launch, string? Role, string? RequestId)
@@ -955,17 +966,13 @@ internal static partial class ReviewVirtualCursor
         public int? WheelBefore { get; set; }
         public int WheelDelta { get; set; }
     }
-    private static PendingInput? _pending;
-    private static InputSample? _activeSample;
     private static PropertyInfo? _buttonStates;
     private static FieldInfo? _pressedKeys;
     private static IMonitor? _monitor;
-    private static bool _wheelFailureReported;
-    private static int _backgroundInputThroughTick = -1;
 
     public static (int? X, int? Y) Position
     {
-        get { lock (Sync) { EnsureInputOwner(); return (_mouse.X, _mouse.Y); } }
+        get { lock (Sync) { EnsureInputOwner(); return (Screen.Value.Mouse.X, Screen.Value.Mouse.Y); } }
     }
 
     public static bool IsSet
@@ -975,7 +982,7 @@ internal static partial class ReviewVirtualCursor
             lock (Sync)
             {
                 EnsureInputOwner();
-                return _mouse.IsSet;
+                return Screen.Value.Mouse.IsSet;
             }
         }
     }
@@ -1079,14 +1086,14 @@ internal static partial class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (!_installed || _text is not null || _pending is not null)
+            if (!_installed || Screen.Value.Text is not null || Screen.Value.Pending is not null)
             {
                 error = "Virtual cursor input is unavailable because its process-local input patch was not installed.";
                 return false;
             }
 
             EnsureInputOwner();
-            _mouse.Set(uiX, uiY);
+            Screen.Value.Mouse.Set(uiX, uiY);
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
@@ -1100,7 +1107,7 @@ internal static partial class ReviewVirtualCursor
             EnsureInputOwner();
             FinishText("The review input was cleared before completion.");
             CancelChord("The review input was cleared before completion.");
-            if (_pending?.Progress.Gesture is null) _mouse.Clear();
+            if (Screen.Value.Pending?.Progress.Gesture is null) Screen.Value.Mouse.Clear();
             AllowBackgroundInputForNextTicks();
         }
     }
@@ -1113,11 +1120,11 @@ internal static partial class ReviewVirtualCursor
         {
             EnsureInputOwner();
             error = "The input adapter is unavailable or another input action is pending.";
-            if (!_installed || _text is not null || _pending is not null || _mouse.HasPendingWheel) return false;
-            if (gesture is null && buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())) && !_mouse.IsSet)
+            if (!_installed || Screen.Value.Text is not null || Screen.Value.Pending is not null || Screen.Value.Mouse.HasPendingWheel) return false;
+            if (gesture is null && buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())) && !Screen.Value.Mouse.IsSet)
             { error = "Set the virtual review cursor before pressing a mouse button."; return false; }
             if (buttons.Any(b => helper.IsDown(b) || helper.IsSuppressed(b))
-                || _pressedKeys?.GetValue(_inputOwner) is not HashSet<SButton> queued
+                || _pressedKeys?.GetValue(Screen.Value.InputOwner) is not HashSet<SButton> queued
                 || buttons.Any(queued.Contains))
             { error = "A chord member is already down, suppressed or externally queued."; return false; }
             if (revision is not null && currentRevision() != revision)
@@ -1131,7 +1138,7 @@ internal static partial class ReviewVirtualCursor
                 if (buttons.Length != 1 || duration != 1 || !EnsureTextBinding()
                     || (commandTarget = CaptureTextTarget()) is null || !buttons[0].TryGetKeyboard(out commandKey)) return false;
             }
-            _pending = new(helper, buttons, new(duration, gesture), revision, currentRevision, completed,
+            Screen.Value.Pending = new(helper, buttons, new(duration, gesture), revision, currentRevision, completed,
                 Game1.activeClickableMenu, Game1.player,
                 Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID"),
                 Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"), requestId)
@@ -1153,8 +1160,8 @@ internal static partial class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (_text?.Request.RequestId == requestId) FinishText("The request was canceled by its owner.");
-            if (_pending?.RequestId == requestId) CancelChord("The request was canceled by its owner.");
+            if (Screen.Value.Text?.Request.RequestId == requestId) FinishText("The request was canceled by its owner.");
+            if (Screen.Value.Pending?.RequestId == requestId) CancelChord("The request was canceled by its owner.");
         }
     }
 
@@ -1162,7 +1169,7 @@ internal static partial class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (_pending?.Progress.Gesture is null || _pending.RequestId != requestId) return false;
+            if (Screen.Value.Pending?.Progress.Gesture is null || Screen.Value.Pending.RequestId != requestId) return false;
             CancelChord("The gesture command failed before completion.");
             return true;
         }
@@ -1176,8 +1183,8 @@ internal static partial class ReviewVirtualCursor
         {
             EnsureInputOwner();
             ObserveTextLifetime();
-            if (_text is not null) AllowBackgroundInputForNextTicks();
-            if (!ReferenceEquals(__instance, _inputOwner) || _pending is not PendingInput chord) return;
+            if (Screen.Value.Text is not null) AllowBackgroundInputForNextTicks();
+            if (!ReferenceEquals(__instance, Screen.Value.InputOwner) || Screen.Value.Pending is not PendingInput chord) return;
             if (chord.Progress.AwaitingGameUpdate)
             {
                 // The prior common input sample has passed its game-update opportunity,
@@ -1189,8 +1196,8 @@ internal static partial class ReviewVirtualCursor
                     return;
                 }
             }
-            __state = new() { PreviousStates = _buttonStates!.GetValue(__instance), WheelSample = _mouse.WheelSample };
-            _activeSample = __state;
+            __state = new() { PreviousStates = _buttonStates!.GetValue(__instance), WheelSample = Screen.Value.Mouse.WheelSample };
+            Screen.Value.ActiveSample = __state;
             try
             {
                 AllowBackgroundInputForNextTicks();
@@ -1241,12 +1248,12 @@ internal static partial class ReviewVirtualCursor
                 if (chord.Progress.Remaining == 0) return;
                 if (chord.Progress.Position is { } position)
                 {
-                    _mouse.Set(position.X, position.Y);
+                    Screen.Value.Mouse.Set(position.X, position.Y);
                     if (chord.Progress.Gesture?.Action == ReviewInputContract.ScrollAction)
                     {
                         __state.WheelBefore = __instance.GetMouseState().ScrollWheelValue;
                         __state.WheelDelta = Math.Sign(chord.Progress.Gesture.Notches!.Value) * 120;
-                        if (!_mouse.TryQueueWheel(__state.WheelDelta))
+                        if (!Screen.Value.Mouse.TryQueueWheel(__state.WheelDelta))
                             CancelChord("The virtual wheel sample could not be queued.");
                         return;
                     }
@@ -1258,7 +1265,7 @@ internal static partial class ReviewVirtualCursor
             catch (Exception)
             {
                 __state.Owned.Rollback(b => ___CustomPressedKeys.Remove((SButton)b));
-                _mouse.CancelWheel();
+                Screen.Value.Mouse.CancelWheel();
                 CancelChord("The input update failed before the complete chord was applied.");
             }
         }
@@ -1269,8 +1276,8 @@ internal static partial class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            _activeSample = null;
-            if (__state is null || _pending is not PendingInput chord) return __exception;
+            Screen.Value.ActiveSample = null;
+            if (__state is null || Screen.Value.Pending is not PendingInput chord) return __exception;
             bool updated = __exception is null
                 && !ReferenceEquals(__state.PreviousStates, _buttonStates!.GetValue(__instance));
             bool consumed = __state.Owned.IsConsumed(b => ___CustomPressedKeys.Contains((SButton)b));
@@ -1278,7 +1285,7 @@ internal static partial class ReviewVirtualCursor
             {
                 // Only entries absent before this exact prefix and added by it are ours.
                 __state.Owned.Rollback(b => ___CustomPressedKeys.Remove((SButton)b));
-                _mouse.CancelWheel();
+                Screen.Value.Mouse.CancelWheel();
                 CancelChord("SMAPI did not complete the input sample; owned overrides were removed.");
                 if (chord.Progress.Gesture is null) FinishChord(false);
                 else chord.Progress.ObserveFailedInputSample(Game1.ticks);
@@ -1288,7 +1295,7 @@ internal static partial class ReviewVirtualCursor
                 bool downSample = chord.Progress.Remaining > 0;
                 bool valid = downSample
                     ? chord.Progress.Gesture.Action == ReviewInputContract.ScrollAction
-                        ? __state.WheelDelta != 0 && _mouse.WheelSample == __state.WheelSample + 1
+                        ? __state.WheelDelta != 0 && Screen.Value.Mouse.WheelSample == __state.WheelSample + 1
                             && (long)__instance.GetMouseState().ScrollWheelValue - __state.WheelBefore == __state.WheelDelta
                         : __state.Owned.Injected && chord.Buttons.All(b => chord.Helper.GetState(b)
                             == (chord.Progress.EdgeSamples == 0 ? SButtonState.Pressed : SButtonState.Held))
@@ -1319,27 +1326,27 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             ObserveTextLifetime();
-            if (_pending is not PendingInput pending || !pending.Progress.AwaitingGameUpdate) return;
+            if (Screen.Value.Pending is not PendingInput pending || !pending.Progress.AwaitingGameUpdate) return;
             if (pending.Progress.CompleteGameUpdate(out bool released)) FinishChord(released);
         }
     }
 
     private static void CancelChord(string failure)
     {
-        if (_pending is not PendingInput chord) return;
+        if (Screen.Value.Pending is not PendingInput chord) return;
         chord.Failure ??= failure;
         chord.Progress.Cancel();
-        _mouse.CancelWheel();
+        Screen.Value.Mouse.CancelWheel();
         AllowBackgroundInputForNextTicks();
     }
 
     private static void FinishChord(bool released)
     {
-        if (_pending is not PendingInput chord) return;
-        _pending = null;
+        if (Screen.Value.Pending is not PendingInput chord) return;
+        Screen.Value.Pending = null;
         bool success = !chord.Progress.Canceled && released
             && (chord.CommandTarget is null || chord.CommandDelivered);
-        if (!success && chord.Progress.Gesture is not null) _mouse.Clear();
+        if (!success && chord.Progress.Gesture is not null) Screen.Value.Mouse.Clear();
         chord.Completed(new(success,
             success ? "The complete chord was observed and released."
                 : chord.Failure ?? "Release could not be confirmed without suppressing external input.",
@@ -1347,15 +1354,15 @@ internal static partial class ReviewVirtualCursor
             Buttons: chord.Buttons.Select(b => b.ToString()).ToArray(),
             StartTick: chord.Progress.StartTick, EndTick: chord.Progress.EndTick, Released: released,
             CompletedSteps: chord.Progress.Gesture is not null ? chord.Progress.CompletedSteps : null,
-            FinalX: chord.Progress.Gesture is not null ? _mouse.X : null,
-            FinalY: chord.Progress.Gesture is not null ? _mouse.Y : null));
+            FinalX: chord.Progress.Gesture is not null ? Screen.Value.Mouse.X : null,
+            FinalY: chord.Progress.Gesture is not null ? Screen.Value.Mouse.Y : null));
     }
 
     public static void AllowBackgroundInputForNextTicks()
     {
         lock (Sync)
         {
-            _backgroundInputThroughTick = Game1.ticks + 4;
+            Screen.Value.BackgroundInputThroughTick = Game1.ticks + 4;
         }
     }
 
@@ -1364,7 +1371,7 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            if (!_installed || _text is not null || _pending is not null || !_mouse.TryQueueWheel(direction))
+            if (!_installed || Screen.Value.Text is not null || Screen.Value.Pending is not null || !Screen.Value.Mouse.TryQueueWheel(direction))
             {
                 error = "The virtual wheel requires a cursor, one pending notch at most, and an available cumulative counter range.";
                 return false;
@@ -1378,15 +1385,15 @@ internal static partial class ReviewVirtualCursor
 
     private static void EnsureInputOwner()
     {
-        if (!ReferenceEquals(_inputOwner, Game1.input))
+        if (!ReferenceEquals(Screen.Value.InputOwner, Game1.input))
         {
             FinishText("The input owner changed before text delivery completed.");
-            _inputOwner = Game1.input;
-            _mouse = new ReviewVirtualMouseState();
+            Screen.Value.InputOwner = Game1.input;
+            Screen.Value.Mouse = new ReviewVirtualMouseState();
             CancelChord("The input owner changed before release was confirmed.");
             FinishChord(false);
-            _wheelFailureReported = false;
-            _backgroundInputThroughTick = -1;
+            Screen.Value.WheelFailureReported = false;
+            Screen.Value.BackgroundInputThroughTick = -1;
         }
     }
 
@@ -1395,31 +1402,31 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            if (!ReferenceEquals(__instance, _inputOwner))
+            if (!ReferenceEquals(__instance, Screen.Value.InputOwner))
             {
                 return;
             }
 
-            var sample = _mouse.Apply(
+            var sample = Screen.Value.Mouse.Apply(
                 __result.X, __result.Y, __result.ScrollWheelValue,
                 Game1.uiViewport.Width, Game1.uiViewport.Height,
                 Game1.options?.uiScale ?? 1f, out bool wheelRejected,
-                consumeWheel: _pending?.Progress.Gesture is null || _activeSample is not null);
+                consumeWheel: Screen.Value.Pending?.Progress.Gesture is null || Screen.Value.ActiveSample is not null);
             if (wheelRejected)
             {
                 CancelChord("Virtual wheel input was canceled.");
-                if (_pending?.Progress.Gesture is null) _mouse.Clear();
+                if (Screen.Value.Pending?.Progress.Gesture is null) Screen.Value.Mouse.Clear();
                 sample.X = __result.X;
                 sample.Y = __result.Y;
-                if (!_wheelFailureReported)
+                if (!Screen.Value.WheelFailureReported)
                 {
                     _monitor?.Log("Virtual wheel input was canceled because the sampled cumulative counter exceeded its range; the consumed origin was retained.", LogLevel.Error);
-                    _wheelFailureReported = true;
+                    Screen.Value.WheelFailureReported = true;
                 }
             }
             else
             {
-                _wheelFailureReported = false;
+                Screen.Value.WheelFailureReported = false;
             }
             __result = new MouseState(
                 sample.X,
@@ -1438,7 +1445,7 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
-            if (_backgroundInputThroughTick >= Game1.ticks)
+            if (Screen.Value.BackgroundInputThroughTick >= Game1.ticks)
             {
                 __result = true;
             }

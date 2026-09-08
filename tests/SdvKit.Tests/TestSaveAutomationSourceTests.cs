@@ -113,7 +113,7 @@ public sealed class TestSaveAutomationSourceTests
             "private void StartDurableSave()",
             StringComparison.Ordinal);
         int multiplayerGuard = source.IndexOf(
-            "if (_allowMultiplayer)",
+            "if (_allowMultiplayer || _localSplitScreen?.Selected == true)",
             durableSave,
             StringComparison.Ordinal);
         int activeHost = source.IndexOf(

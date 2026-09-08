@@ -463,6 +463,27 @@ public sealed class AlwaysOnStatusReaderTests
         Assert.Equal("invalid", wrongPhase.TestSave?.State);
     }
 
+    [Theory]
+    [InlineData("review", true, false, "ready", true)]
+    [InlineData("review", false, false, "ready", false)]
+    [InlineData("scenario", true, false, "invalid", false)]
+    [InlineData("review", true, true, "mismatch", false)]
+    public void LocalScreenSelectionRetainsTheExactReviewFixtureBinding(
+        string mode, bool selected, bool wrongFixture, string state, bool reportedSelection)
+    {
+        using TemporaryDirectory temporary = new();
+        TestSaveLaunchState expected = TestSaveLaunch(temporary) with { Mode = mode };
+        TestSaveStatusMarker marker = TestSaveMarker(expected, "passed", true, 120) with
+        {
+            LocalSplitScreen = selected,
+            FixtureId = wrongFixture ? "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" : expected.Identity.FixtureId,
+        };
+        string path = WriteMarker(temporary, Process(), marker);
+        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(path, "launch-1", Process(), ObservedAt, expected);
+        Assert.Equal(state, report.TestSave?.State);
+        Assert.Equal(reportedSelection, report.TestSave?.LocalSplitScreen);
+    }
+
     private static OwnedProcessIdentity Process() =>
         new(4242, StartedAt, @"E:\Games\StardewModdingAPI.exe");
 

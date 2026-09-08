@@ -310,16 +310,17 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded menu/data/map/texture/audio/mod-assets transports";
+        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded menu/data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
+        "Usage: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
         IMonitor monitor,
         string runtimePath,
         Func<TestSaveAutomation?> testSave,
-        Func<NetworkTwoAutomation?> networkTwo)
+        Func<NetworkTwoAutomation?> networkTwo,
+        Action<Game1> prepareScreenExit)
     {
         ArgumentNullException.ThrowIfNull(helper);
         ArgumentNullException.ThrowIfNull(monitor);
@@ -334,9 +335,11 @@ internal static class ReviewCommand
 
         var screenshotRuntime = new StardewReviewScreenshotRuntime();
         var dataSource = new StardewReviewDataSource(helper);
-        var menuCommand = new ReviewMenuCommand();
-        var inputRuntime = new StardewReviewInputRuntime(helper, menuCommand.CurrentRevision, menuCommand.CurrentContinuity, menuCommand.CurrentViewport, menuCommand.CurrentTextField);
-        helper.Events.Display.MenuChanged += (_, e) => menuCommand.ObserveRoot(e.NewMenu);
+        var menuCommands = new StardewModdingAPI.Utilities.PerScreen<ReviewMenuCommand>(() => new());
+        var inputRuntimes = new StardewModdingAPI.Utilities.PerScreen<StardewReviewInputRuntime>(() => new(helper,
+            menuCommands.Value.CurrentRevision, menuCommands.Value.CurrentContinuity,
+            menuCommands.Value.CurrentViewport, menuCommands.Value.CurrentTextField));
+        helper.Events.Display.MenuChanged += (_, e) => menuCommands.Value.ObserveRoot(e.NewMenu);
         var mapSource = new StardewReviewMapSource(helper);
         var textureSource = new StardewReviewTextureSource(helper);
         var audioSource = new StardewReviewAudioSource(helper);
@@ -353,7 +356,26 @@ internal static class ReviewCommand
             HelpText,
             (_, arguments) =>
             {
-                if (arguments.Length > 0
+                if (Context.IsSplitScreen && (testSave() is not { } owned
+                    || !owned.TryVerifyReviewFixture(out _, out _)))
+                {
+                    monitor.Log("SDVKit requires the exact owned local screen before dispatching a split-screen command.", LogLevel.Error);
+                    return;
+                }
+                if (arguments.Length > 0 && arguments[0] == "split-screen")
+                {
+                    try
+                    {
+                        TestSaveAutomation fixture = testSave()
+                            ?? throw new InvalidOperationException("Local split-screen requires an owned disposable fixture review.");
+                        fixture.HandleLocalSplitScreen(arguments, monitor, menuCommands.Value, prepareScreenExit);
+                    }
+                    catch (Exception exception)
+                    {
+                        monitor.Log($"SDVKit local split-screen rejected: {exception.GetBaseException().Message}", LogLevel.Error);
+                    }
+                }
+                else if (arguments.Length > 0
                     && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))
                 {
                     ReviewScreenshotCommand.Handle(
@@ -367,7 +389,7 @@ internal static class ReviewCommand
                 {
                     ReviewInputCommand.Handle(
                         arguments,
-                        inputRuntime,
+                        inputRuntimes.Value,
                         runtimePath,
                         monitor);
                 }
@@ -383,11 +405,11 @@ internal static class ReviewCommand
                 }
                 else if (arguments.Length > 0 && arguments[0] == "shop")
                 {
-                    ReviewShopCommand.Handle(arguments, runtimePath, monitor, menuCommand);
+                    ReviewShopCommand.Handle(arguments, runtimePath, monitor, menuCommands.Value);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {
-                    menuCommand.Handle(arguments, runtimePath, monitor);
+                    menuCommands.Value.Handle(arguments, runtimePath, monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "data", StringComparison.Ordinal))
@@ -549,8 +571,10 @@ internal sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime
         {
             GraphicsDevice graphicsDevice = Game1.graphics.GraphicsDevice;
             PresentationParameters presentation = graphicsDevice.PresentationParameters;
-            int width = presentation.BackBufferWidth;
-            int height = presentation.BackBufferHeight;
+            Rectangle bounds = Context.IsSplitScreen ? Game1.game1.localMultiplayerWindow
+                : new Rectangle(0, 0, presentation.BackBufferWidth, presentation.BackBufferHeight);
+            int width = bounds.Width;
+            int height = bounds.Height;
             if (width <= 0 || height <= 0)
             {
                 error = "the graphics backbuffer has invalid dimensions";
@@ -558,7 +582,7 @@ internal sealed class StardewReviewScreenshotRuntime : IReviewScreenshotRuntime
             }
 
             var pixels = new Color[checked(width * height)];
-            graphicsDevice.GetBackBufferData(pixels);
+            graphicsDevice.GetBackBufferData(bounds, pixels, 0, pixels.Length);
             using var texture = new Texture2D(
                 graphicsDevice,
                 width,

@@ -71,7 +71,7 @@ For a functional or visual check, start a persistent review:
 & $sdvkit project review stop --json
 ```
 
-See [live reviews](docs/live-review.md) for disposable worlds, companions, screenshots, and local host/farmhand testing. [Native MCP](docs/mcp.md) connects an agent to an already-running review.
+See [live reviews](docs/live-review.md) for disposable worlds, companions, screenshots, and local host/farmhand testing, including [two local screens in one process](docs/live-review.md#local-split-screen-review). [Native MCP](docs/mcp.md) connects an agent to an already-running review.
 
 ## Choose a workflow
 

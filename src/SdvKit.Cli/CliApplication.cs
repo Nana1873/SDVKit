@@ -1830,6 +1830,7 @@ public static partial class CliApplication
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
         output.WriteLine("Asset inspection requires single; menu inspection and network console commands support explicit roles.");
+        output.WriteLine("Local split-screen: in a single --test-save review, send sdvkit split-screen join/leave/status; use native screen=<id> console selection.");
     }
 
     private static void WriteProjectReviewMcpUsage(TextWriter output)
@@ -1910,6 +1911,7 @@ public static partial class CliApplication
     {
         output.WriteLine(
             "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):");
+        output.WriteLine("  sdvkit split-screen join|leave|status (single --test-save review; append native screen=<id> to select a local screen)");
         output.WriteLine("  sdvkit screenshot <label>");
         output.WriteLine("  sdvkit screenshot viewport <label>");
         output.WriteLine("  sdvkit input press <SButton>");

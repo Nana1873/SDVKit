@@ -1517,7 +1517,7 @@ internal sealed class StardewReviewFixtureRuntime(
             Context.IsMainPlayer,
             fixtureId,
             "single",
-            "The exact live single-player review fixture was freshly verified.",
+            "The exact live review fixture and current local player were freshly verified.",
             Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID")?.Trim(),
             "single",
             Constants.SaveFolderName);
