@@ -17,7 +17,25 @@ internal sealed record LocalPlayerValues(
     float Stamina,
     float MaxStamina,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? SelectedSlot,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] SelectedItemValues? SelectedItem);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] SelectedItemValues? SelectedItem,
+    FishingRodValues? Fishing = null);
+
+// Instantaneous observations, not a catch history or an automatic fishing controller.
+internal sealed record FishingRodValues(
+    bool TimingCast,
+    bool Casting,
+    bool BobberInAir,
+    bool Fishing,
+    bool Nibbling,
+    bool Hit,
+    bool PullingOut,
+    bool CatchReady,
+    bool FromFishPond,
+    float BobberTileX,
+    float BobberTileY,
+    float BiteMilliseconds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? CatchItemId,
+    int CatchQuantity);
 
 internal sealed record SelectedItemValues(
     string QualifiedItemId,
@@ -40,7 +58,15 @@ internal static class LocalPlayerSnapshotContract
         && float.IsFinite(values.MaxStamina)
         && values.SelectedSlot is null or >= 0
         && (values.SelectedItem is null
-            || values.SelectedSlot is not null && ItemValid(values.SelectedItem));
+            || values.SelectedSlot is not null && ItemValid(values.SelectedItem))
+        && (values.Fishing is null || values.SelectedItem is not null && FishingValid(values.Fishing));
+
+    private static bool FishingValid(FishingRodValues rod) =>
+        float.IsFinite(rod.BobberTileX)
+        && float.IsFinite(rod.BobberTileY)
+        && float.IsFinite(rod.BiteMilliseconds)
+        && rod.CatchQuantity >= 0
+        && (rod.CatchItemId is null || ItemValid(new SelectedItemValues(rod.CatchItemId, 1, null)));
 
     private static bool ItemValid(SelectedItemValues item) =>
         !string.IsNullOrWhiteSpace(item.QualifiedItemId)

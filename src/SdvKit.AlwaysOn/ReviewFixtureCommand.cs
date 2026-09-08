@@ -59,6 +59,9 @@ internal sealed record ReviewFixtureEnterRequest(string Building)
 internal sealed record ReviewFixtureFarmRequest()
     : ReviewFixtureRequest(RequiresMainPlayer: false);
 
+internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial)
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
 internal static class ReviewFixtureArguments
 {
     internal const string Usage =
@@ -67,7 +70,7 @@ internal static class ReviewFixtureArguments
         + "object ensure <alias-or-id> <qualified-item-id> | "
         + "object clear-owned <alias-or-id> | "
         + "animal ensure <alias-or-id> <animal-kind> | "
-        + "enter <alias-or-id> | enter greenhouse | farm";
+        + "enter <alias-or-id> | enter greenhouse | farm | fishing prepare [--skip-tutorial]";
     internal const string AliasError =
         "A fixture alias must contain 1-32 lowercase ASCII letters, digits, '-' or '_' and start with a letter.";
     internal const string BuildingError =
@@ -87,7 +90,12 @@ internal static class ReviewFixtureArguments
             return false;
         }
 
-        if (arguments.Count == 2
+        if ((arguments.Count == 3 || arguments.Count == 4 && arguments[3] == "--skip-tutorial")
+            && arguments[1] == "fishing" && arguments[2] == "prepare")
+        {
+            request = new ReviewFixtureFishingRequest(arguments.Count == 4);
+        }
+        else if (arguments.Count == 2
             && string.Equals(arguments[1], "status", StringComparison.Ordinal))
         {
             request = new ReviewFixtureStatusRequest();
@@ -541,6 +549,8 @@ internal interface IReviewFixtureRuntime
 
     ReviewFixtureResult Farm(ReviewFixtureAccess access);
 
+    ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial);
+
     void BeginNavigation(
         ReviewFixtureAccess access,
         ReviewFixtureRequest request,
@@ -604,6 +614,7 @@ internal static class ReviewFixtureOperation
                 animal.Kind),
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
+            ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial),
             _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
         };
         return new ReviewFixtureExecution(access, result);
@@ -1413,7 +1424,7 @@ internal static class ReviewFixtureTransportCommand
     }
 }
 
-internal sealed class StardewReviewFixtureRuntime(
+internal sealed partial class StardewReviewFixtureRuntime(
     Func<TestSaveAutomation?> testSave,
     Func<NetworkTwoAutomation?> networkTwo,
     Func<long> getNewMultiplayerId) : IReviewFixtureRuntime

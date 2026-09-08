@@ -53,6 +53,33 @@ remains in force (Stardew 1.6.15–<1.7 and SMAPI 4.5–<5, including its file-v
 check). A slice schema version is not a declaration that another game version
 has been tested.
 
+## Fishing observations
+
+The additive optional `localPlayer.data.fishing` object describes the currently
+selected `FishingRod`, including an idle rod. It is null when no rod is selected;
+older producers may omit it. All fields are required when the object is present.
+CLI status and the existing `stardew_runtime_get` MCP tool expose the same data.
+
+| Field | Meaning |
+| --- | --- |
+| `timingCast`, `casting`, `bobberInAir` | Current rod cast flags. |
+| `fishing`, `nibbling`, `hit`, `pullingOut`, `catchReady` | Direct rod flags; they may overlap and are not a derived phase machine. |
+| `fromFishPond` | The rod's fish-pond flag. |
+| `bobberTileX`, `bobberTileY` | Finite bobber pixel position divided by 64; meaningful during the cast, not a promised valid fishing tile while idle. |
+| `biteMilliseconds` | Current finite rod bite timer; zero/negative transitional values are retained. |
+| `catchItemId`, `catchQuantity` | Qualified caught item and nonnegative quantity while `catchReady`; otherwise null and zero. A ready catch does not prove inventory pickup. |
+
+Observations share the existing role, timestamp and freshness contract. They do
+not hook, reroll, finish or collect a catch. The normal one-second publication can
+miss short events, particularly the nibble window; polling cannot establish a
+complete catch history. Overhauls which replace the vanilla rod path may leave
+these fields idle or use different semantics. Use their supported APIs for
+provider-specific tests. Mod-specific counters, seeded probability comparisons
+and third-party internals remain the mod test's responsibility.
+
+Use [fishing preparation](lab-reference.md#fishing-preparation) to position an
+owned disposable main player without a separate helper mod.
+
 ## Field contract
 
 All `data` values describe **one observation**, at runtime `observedAtUtc`.

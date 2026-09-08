@@ -80,8 +80,43 @@ Each row below is an AlwaysOn game-console line, quoted as the text argument to 
 | `sdvkit fixture enter <alias-or-id>` | Any verified role; natural entry to an owned interior |
 | `sdvkit fixture enter greenhouse` | Any verified role; exact loaded Greenhouse's natural entry |
 | `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
+| `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
 
 Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only delivery; require the AlwaysOn result and direct effect evidence.
+
+### Fishing preparation
+
+This console-only fixture action replaces the bank-search and rod-preparation
+helpers needed during Clearer Waters development. It requires the verified main
+player/host, an idle movable player, no menu/event/fade, an outdoor map no larger
+than 512x512, and enough empty inventory slots. It finds a standing position with
+the game's farmer collision check and natural fishable water two tiles away;
+building fish ponds are excluded. It does not clear obstacles or change maps.
+
+An already selected rod is retained, including its bait and tackle. Otherwise a
+Bamboo Pole is placed in an empty slot and selected. One additional empty catch
+slot is required. The player is positioned and faced toward the reported water.
+No existing inventory item is overwritten. With `--skip-tutorial` only, an empty
+fish collection gets one Sunfish entry to bypass the forced first-fish tutorial;
+the result explicitly reports this synthetic prerequisite. No catch callback or
+inventory fish is created. Omitting the flag preserves tutorial behavior.
+
+```powershell
+& $sdvkit project review command 'sdvkit fixture farm' --topology single --json
+& $sdvkit project review command 'sdvkit fixture fishing prepare --skip-tutorial' --topology single --json
+& $sdvkit project review status --topology single --json
+& $sdvkit project review command 'sdvkit input press C' --topology single --json
+```
+
+Require the AlwaysOn `Fishing prepared` result in the isolated SMAPI log and
+check the reported player location/selected rod before casting. Preparation is
+not evidence of a successful cast or catch. Read the additive
+[fishing snapshot](runtime-state.md#fishing-observations) during play. The normal
+one-second sample can miss a short nibble; it is not an automatic bite responder.
+Natural bite timing, selection, minigame, landing and inventory pickup still need
+their own evidence. This command neither saves nor resets; use the normal final
+stop/reset workflow. Farmhands are rejected for preparation but can read their
+own fishing state. No new MCP fixture-mutation tool is added.
 
 ### Building and animal preparation
 

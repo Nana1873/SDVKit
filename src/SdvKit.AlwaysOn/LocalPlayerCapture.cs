@@ -2,6 +2,7 @@
 using System.Globalization;
 using SdvKit.Cli.LiveLab;
 using StardewValley;
+using StardewValley.Tools;
 
 namespace SdvKit.AlwaysOn;
 
@@ -36,7 +37,15 @@ internal static class LocalPlayerCapture
                 item is null ? null : new SelectedItemValues(
                     item.QualifiedItemId,
                     item.Stack,
-                    item is StardewValley.Object obj ? obj.Quality : null));
+                    item is StardewValley.Object obj ? obj.Quality : null),
+                item is FishingRod rod ? new FishingRodValues(
+                    rod.isTimingCast, rod.isCasting, rod.castedButBobberStillInAir,
+                    rod.isFishing, rod.isNibbling, rod.hit, rod.pullingOutOfWater,
+                    rod.fishCaught, rod.fromFishPond,
+                    rod.bobber.Value.X / 64f, rod.bobber.Value.Y / 64f,
+                    rod.timeUntilFishingBite,
+                    rod.fishCaught ? rod.whichFish?.QualifiedItemId : null,
+                    rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null);
             return LocalPlayerSnapshotContract.ValuesValid(values)
                 ? new LocalPlayerSnapshot(LocalPlayerSnapshotContract.SchemaVersion, "available", null, values)
                 : LocalPlayerSnapshotContract.WithoutData("error", "invalidValues");
