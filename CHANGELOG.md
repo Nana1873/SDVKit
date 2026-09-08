@@ -8,6 +8,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - Compare direct locale files with `default.json` during `project check`, including SMAPI-compatible placeholder names and non-blocking fallback warnings.
 - Inspect every slot in the complete bounded player backpack through `project review inventory` and default single-review `stardew_inventory_get`, with explicit empty/unavailable slots and fresh capture/revision identities.
+- Inspect a complete bounded current-location rectangle of live tilled soil, ordinary crops, and data-backed vanilla machines through `project review world` and default single-review `stardew_world_area_get`, with explicit missing, unsupported, unavailable, replacement, and state-change evidence.
 - Prepare a natural fishing bank and rod in an owned disposable single/host review, with an explicit first-fish tutorial bypass. Runtime status and the existing MCP runtime tool now expose selected-rod cast, bite and catch observations without a mod-specific helper.
 - Explicitly join and leave one native local farmhand inside an owned single fixture review. Screen-selected console input, menu/runtime observations, and viewport captures keep each local player's state separate and reuse normal save, restart, stop, and reset.
 

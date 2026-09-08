@@ -411,6 +411,10 @@ internal static class ReviewCommand
                 {
                     ReviewInventoryCommand.Handle(arguments, runtimePath, monitor);
                 }
+                else if (arguments.Length > 0 && arguments[0] == "world")
+                {
+                    ReviewWorldCommand.Handle(arguments, runtimePath, monitor);
+                }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {
                     menuCommands.Value.Handle(arguments, runtimePath, monitor);

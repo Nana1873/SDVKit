@@ -111,6 +111,13 @@ It requires no input opt-in. Unsupported shop semantics are explicitly unavailab
 the tool neither purchases items nor infers a successful purchase from a price.
 Network servers do not advertise this single-review capability.
 
+The same default single-review profile exposes
+`stardew_world_area_get { "x": 60, "y": 12, "width": 8, "height": 8 }`.
+It returns the same complete bounded crop, tilled-soil, and ordinary-machine
+capture as [`project review world`](world-inspection.md), with explicit missing,
+unsupported, and unavailable states. It sends no input and grants no world
+mutation. Network-role servers do not advertise it.
+
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
 `farmhand` for `network-2`. Every server exposes five read-only observation tools:

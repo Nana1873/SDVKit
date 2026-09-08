@@ -18,6 +18,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Inspect active inventory, shop, or public mod-menu controls | [Menu inspection](menu-inspection.md) |
 | Observe supported Gold-shop offers, money and inventory | [Shop inspection](shop-inspection.md) |
 | Inspect every bounded backpack slot without opening a menu | [Inventory inspection](inventory-inspection.md) |
+| Inspect bounded live crops, soil, and machines | [World inspection](world-inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
@@ -44,6 +45,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; explicit bounded vanilla adapters and partial custom coverage |
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
 | Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | World-ready single, screen 0; every empty/occupied/unavailable slot, no menu or mutation; [contract](inventory-inspection.md) |
+| Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | World-ready single/screen 0; complete in-map rectangle of at most 256 tiles; [contract](world-inspection.md) |
 | Original shop purchase authoring recipe | Existing check/build/package, ready review, shop/menu/diagnostics and process-local input | Optional matching observation and opt-in input tools | Single disposable world; original SeedShop Stone offer, deliberate config failure and observed money/stock/inventory deltas; [recipe and limits](shop-authoring.md) |
 | Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
 | World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
