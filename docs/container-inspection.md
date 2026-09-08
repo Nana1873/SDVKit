@@ -69,6 +69,10 @@ quality and qualified ID in the enclosing content revision. This distinction is
 based on the installed Stardew 1.6.15 implementation, whose vanilla types do not
 override that method. Items implemented by another assembly are explicit
 `itemDataUnavailable`, because their stacking semantics are not assumed.
+Runtime type, name, and `orderData` are each bounded to 256 characters with no
+control characters before hashing. Exceeding a bound makes that item
+unavailable; values are never truncated. Native null and empty `orderData`
+remain distinct.
 
 All identities are comparison tokens, never native object handles. Opaque
 continuity fields do not reveal object data and are meaningful only within the

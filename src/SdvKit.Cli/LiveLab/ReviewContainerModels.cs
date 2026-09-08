@@ -11,6 +11,7 @@ internal static class ReviewContainerContract
     public const int MaximumContainerSlots = 72;
     public const int MaximumResponseBytes = 96 * 1024;
     public const int StandardChestCapacity = 36;
+    public const int MaximumStackingTextLength = 256;
 
     public static string ResponsePath(string runtimePath, string requestId) =>
         Path.Combine(runtimePath, $"review-container-{requestId}.json");
@@ -31,10 +32,20 @@ internal static class ReviewContainerContract
     public static string OpaqueIdentity(string launchId, string identityScope, string kind, long observationId) =>
         Hash(launchId, identityScope, kind, observationId.ToString(CultureInfo.InvariantCulture));
 
-    public static string NativeItemRevision(string instanceIdentity, string runtimeType,
-        int maximumStackSize, string name, uint? packedColor, string? orderData) => Hash(instanceIdentity,
-            runtimeType, maximumStackSize.ToString(CultureInfo.InvariantCulture), name,
-            packedColor?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, orderData ?? string.Empty);
+    public static bool TryNativeItemRevision(string instanceIdentity, string? runtimeType,
+        int maximumStackSize, string? name, uint? packedColor, string? orderData, out string revision)
+    {
+        revision = string.Empty;
+        if (!ReviewInventoryContract.IsRevision(instanceIdentity) || !TextValid(runtimeType, MaximumStackingTextLength)
+            || maximumStackSize <= 0 || !TextValid(name, MaximumStackingTextLength)
+            || orderData is not null && !TextValid(orderData, MaximumStackingTextLength, allowEmpty: true)) return false;
+        revision = Hash(instanceIdentity, runtimeType!, maximumStackSize.ToString(CultureInfo.InvariantCulture), name!,
+            packedColor?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            orderData is null ? "null" : "value", orderData ?? string.Empty);
+        return true;
+    }
+
+    public static string UnavailableItemRevision(string instanceIdentity) => Hash(instanceIdentity, "unavailable");
 
     public static string SelectionIdentity(string launchId, string identityScope, string backingIdentity,
         string playerId, string locationName, int tileX, int tileY, string chestItemId) => Hash(
@@ -139,8 +150,8 @@ internal static class ReviewContainerContract
         && data.Container.Slots.All(slot => slot.State != "unavailable")
         && data.HeldItem.State != "unavailable";
 
-    private static bool TextValid(string? value, int maximum) => value is { Length: > 0 } && value.Length <= maximum
-        && !value.Any(char.IsControl);
+    private static bool TextValid(string? value, int maximum, bool allowEmpty = false) => value is not null
+        && (allowEmpty || value.Length > 0) && value.Length <= maximum && !value.Any(char.IsControl);
 
     private static string Hash(params string[] values)
     {

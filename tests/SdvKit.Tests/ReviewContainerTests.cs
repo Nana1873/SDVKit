@@ -64,18 +64,22 @@ public sealed class ReviewContainerTests
     public void NativeItemRevisionCoversEveryInstalledVanillaStackComparisonInput()
     {
         string instance = ReviewContainerContract.OpaqueIdentity(Launch, Scope, "item", 1);
-        string Baseline() => ReviewContainerContract.NativeItemRevision(instance,
-            "StardewValley.Object", 999, "Stone", null, null);
-        Assert.NotEqual(Baseline(), ReviewContainerContract.NativeItemRevision(instance,
+        string Baseline() => NativeRevision(instance, "StardewValley.Object", 999, "Stone", null, null);
+        Assert.NotEqual(Baseline(), NativeRevision(instance,
             "StardewValley.Objects.ColoredObject", 999, "Stone", null, null));
-        Assert.NotEqual(Baseline(), ReviewContainerContract.NativeItemRevision(instance,
-            "StardewValley.Object", 1, "Stone", null, null));
-        Assert.NotEqual(Baseline(), ReviewContainerContract.NativeItemRevision(instance,
+        Assert.NotEqual(Baseline(), NativeRevision(instance, "StardewValley.Object", 1, "Stone", null, null));
+        Assert.NotEqual(Baseline(), NativeRevision(instance,
             "StardewValley.Object", 999, "Flavored Stone", null, null));
-        Assert.NotEqual(Baseline(), ReviewContainerContract.NativeItemRevision(instance,
+        Assert.NotEqual(Baseline(), NativeRevision(instance,
             "StardewValley.Object", 999, "Stone", 0xff00ffff, null));
-        Assert.NotEqual(Baseline(), ReviewContainerContract.NativeItemRevision(instance,
+        Assert.NotEqual(Baseline(), NativeRevision(instance,
             "StardewValley.Object", 999, "Stone", null, "order-a"));
+        Assert.NotEqual(Baseline(), NativeRevision(instance,
+            "StardewValley.Object", 999, "Stone", null, string.Empty));
+        Assert.False(ReviewContainerContract.TryNativeItemRevision(instance, "StardewValley.Object", 999,
+            new string('x', 257), null, null, out _));
+        Assert.False(ReviewContainerContract.TryNativeItemRevision(instance, "StardewValley.Object", 999,
+            "Stone", null, new string('x', 257), out _));
     }
 
     [Fact]
@@ -259,8 +263,16 @@ public sealed class ReviewContainerTests
         int maximumStackSize = 999, string name = "Item", uint? packedColor = null, string? orderData = null)
     {
         string instance = ReviewContainerContract.OpaqueIdentity(Launch, scope, "item", observationId);
-        return new(instance, ReviewContainerContract.NativeItemRevision(instance,
+        return new(instance, NativeRevision(instance,
             "StardewValley.Object", maximumStackSize, name, packedColor, orderData));
+    }
+
+    private static string NativeRevision(string instance, string runtimeType, int maximumStackSize,
+        string name, uint? packedColor, string? orderData)
+    {
+        Assert.True(ReviewContainerContract.TryNativeItemRevision(instance, runtimeType, maximumStackSize,
+            name, packedColor, orderData, out string revision));
+        return revision;
     }
 
     private static ReviewContainerReport Report(string captureId = Capture) => new(1, "ready", null, Launch,

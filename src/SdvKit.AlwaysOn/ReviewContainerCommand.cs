@@ -144,17 +144,16 @@ internal static class ReviewContainerCommand
         {
             if (item.GetType().Assembly != typeof(Item).Assembly)
                 throw new InvalidOperationException("Mod item stacking semantics are outside the supported family.");
-            available = true;
-            return new(instance, ReviewContainerContract.NativeItemRevision(instance,
+            available = ReviewContainerContract.TryNativeItemRevision(instance,
                 item.GetType().FullName ?? item.GetType().Name, item.maximumStackSize(), item.Name,
                 item is ColoredObject colored ? colored.color.Value.PackedValue : null,
-                item is StardewObject obj ? obj.orderData.Value : null));
+                item is StardewObject obj ? obj.orderData.Value : null, out string revision);
+            return new(instance, available ? revision : ReviewContainerContract.UnavailableItemRevision(instance));
         }
         catch (Exception)
         {
             available = false;
-            return new(instance, ReviewContainerContract.NativeItemRevision(instance,
-                "unavailable", 0, "unavailable", null, null));
+            return new(instance, ReviewContainerContract.UnavailableItemRevision(instance));
         }
     }
 
