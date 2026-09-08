@@ -316,6 +316,7 @@ internal static class ProjectReviewMcpServer
         if (reader.Topology == "single" && reader.Role is null)
         {
             tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
+            tools.Add(ProjectReviewMcpContainerTools.Create(reader));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
             tools.Add(ProjectReviewMcpWorldTools.Create(reader));
         }

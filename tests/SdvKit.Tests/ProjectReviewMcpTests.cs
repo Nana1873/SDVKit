@@ -473,6 +473,7 @@ public sealed class ProjectReviewMcpTests
                     ProjectReviewMcpTextureTools.GetToolName,
                     ProjectReviewMcpTextureTools.PreviewToolName,
                     ProjectReviewMcpInventoryTools.ToolName,
+                    ProjectReviewMcpContainerTools.ToolName,
                     ProjectReviewMcpMenuTools.ToolName,
                     ProjectReviewMcpShopTools.ToolName,
                     ProjectReviewMcpWorldTools.ToolName,

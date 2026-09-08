@@ -170,6 +170,8 @@ internal sealed class ReviewMenuCapture
 
     private long Id(object instance) => _identities.GetValue(instance, _ => new(++_nextId)).Value;
 
+    internal long ObservationId(object instance) => Id(instance);
+
     private static bool Intersects(ReviewMenuRectangle a, ReviewMenuRectangle b) =>
         a.Width > 0 && a.Height > 0 && b.Width > 0 && b.Height > 0
         && (long)a.X < (long)b.X + b.Width && (long)b.X < (long)a.X + a.Width

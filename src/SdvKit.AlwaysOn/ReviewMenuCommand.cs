@@ -147,6 +147,8 @@ internal sealed class ReviewMenuCommand
     internal string? CurrentIdentityScope() => _capture.Capture(_source,
         Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "", DateTimeOffset.UtcNow).IdentityScope;
 
+    internal long CurrentObservationId(object instance) => _capture.ObservationId(instance);
+
     internal string? CurrentRevision() => CaptureRevision(false);
     internal string? CurrentContinuity() => CaptureRevision(true);
     internal string CurrentViewport() => ReviewMenuCapture.ViewportRevision(_source);
