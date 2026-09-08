@@ -45,6 +45,102 @@ public sealed class ProjectCheckerTests : IDisposable
         Assert.Equal(before, Snapshot());
     }
 
+    [Fact]
+    public void LocaleKeysAndPlaceholdersAreComparedWithoutBlockingFallback()
+    {
+        Create();
+        Write("i18n/default.json", "{\"complete\":\"Hello {{name}}\",\"missing\":\"Missing\",\"extra-default\":\"Default\"}");
+        Write("i18n/de.json", "{\"complete\":\"Hallo {{ NAME }}\",\"extra-locale\":\"Zusatz\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("passed", result.Status);
+        Assert.Contains(result.Warnings, problem => problem.Code == "missingLocaleKey"
+            && problem.File == "i18n/de.json" && problem.Field == "/missing");
+        Assert.Contains(result.Warnings, problem => problem.Code == "extraLocaleKey"
+            && problem.File == "i18n/de.json" && problem.Field == "/extra-locale");
+        Assert.Empty(result.Problems);
+    }
+
+    [Fact]
+    public void PlaceholderNamesAreCaseInsensitiveButMismatchesFailWithExactKey()
+    {
+        Create();
+        Write("i18n/default.json", "{\"greeting\":\"Hello {{name}} {{season}}\",\"literal\":\"Use {single} and {{not a token!}}\"}");
+        Write("i18n/de.json", "{\"greeting\":\"Hallo {{name}} {{year}}\",\"literal\":\"Nutze {single} und {{not a token!}}\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        ProjectCheckProblem problem = Assert.Single(result.Problems, item => item.Code == "placeholderMismatch");
+        Assert.Equal("i18n/de.json", problem.File);
+        Assert.Equal("/greeting", problem.Field);
+        Assert.Contains("default=[name, season]", problem.Message, StringComparison.Ordinal);
+        Assert.Contains("locale=[name, year]", problem.Message, StringComparison.Ordinal);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void RepeatedAndReorderedTokensAreComparedAsSupportedNames()
+    {
+        Create();
+        Write("i18n/default.json", "{\"text\":\"{{name}} / {{name}} / {{ season }}\"}");
+        Write("i18n/de.json", "{\"text\":\"{{SEASON}} / {{name}}\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Empty(result.Problems);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void UnsupportedDoubleBraceExpressionsRemainLiteralButSpacesOnlyTokensAreMatched()
+    {
+        Create();
+        Write("i18n/default.json", "{\"literal\":\"{{choice: one}}\",\"empty-token\":\"Value {{   }}\"}");
+        Write("i18n/de.json", "{\"literal\":\"{{choice: two}}\",\"empty-token\":\"Value\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Single(result.Problems, problem => problem.Code == "placeholderMismatch"
+            && problem.Field == "/empty-token");
+        Assert.DoesNotContain(result.Problems, problem => problem.Field == "/literal");
+    }
+
+    [Fact]
+    public void CaseInsensitiveDuplicateKeysAndEmptyTranslationsFailClosed()
+    {
+        Create();
+        Write("i18n/default.json", "{\"Greeting\":\"Hello\",\"greeting\":\"Other\",\"Tokenized\":\"Hello {{name}}\"}");
+        Write("i18n/de.json", "{\"Greeting\":\"\",\"Tokenized\":\"\"}");
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Contains(result.Problems, problem => problem.Code == "duplicateLocaleKey"
+            && problem.File == "i18n/default.json");
+        Assert.Contains(result.Problems, problem => problem.Code == "placeholderMismatch"
+            && problem.File == "i18n/de.json" && problem.Field == "/Tokenized");
+        Assert.Equal("failed", result.Status);
+    }
+
+    [Fact]
+    public void MissingLocaleWarningIsPresentInJsonWithoutChangingExitStatus()
+    {
+        Create();
+        Write("i18n/default.json", "{\"hello\":\"Hello\"}");
+        Write("i18n/de.json", "{}");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        int exit = CliApplication.Run(["project", "check", root, "--json"], output, error);
+
+        Assert.Equal(0, exit);
+        Assert.Equal("", error.ToString());
+        using JsonDocument json = JsonDocument.Parse(output.ToString());
+        Assert.Equal("passed", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(1, json.RootElement.GetProperty("warnings").GetArrayLength());
+        Assert.Equal("missingLocaleKey", json.RootElement.GetProperty("warnings")[0].GetProperty("code").GetString());
+    }
+
     [Theory]
     [InlineData("Version", "1.2.3-beta.2", true)]
     [InlineData("Version", "%ProjectVersion%", true)]

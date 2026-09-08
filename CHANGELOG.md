@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Compare direct locale files with `default.json` during `project check`, including SMAPI-compatible placeholder names and non-blocking fallback warnings.
 - Prepare a natural fishing bank and rod in an owned disposable single/host review, with an explicit first-fish tutorial bypass. Runtime status and the existing MCP runtime tool now expose selected-rod cast, bite and catch observations without a mod-specific helper.
 - Explicitly join and leave one native local farmhand inside an owned single fixture review. Screen-selected console input, menu/runtime observations, and viewport captures keep each local player's state separate and reuse normal save, restart, stop, and reset.
 

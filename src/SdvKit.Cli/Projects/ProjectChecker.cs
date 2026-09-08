@@ -15,7 +15,8 @@ internal sealed record ProjectCheckReport(
     string Status,
     string SchemaSource,
     IReadOnlyList<ProjectCheckedFile> Files,
-    IReadOnlyList<ProjectCheckProblem> Problems);
+    IReadOnlyList<ProjectCheckProblem> Problems,
+    IReadOnlyList<ProjectCheckProblem> Warnings);
 
 internal static class ProjectChecker
 {
@@ -25,12 +26,18 @@ internal static class ProjectChecker
         AllowTrailingCommas = true,
         CommentHandling = JsonCommentHandling.Skip,
     };
+    // This is the token matcher used by SMAPI 4.5.2's Translation.FormatText.
+    // Keep it deliberately narrower than arbitrary Content Patcher expressions.
+    private static readonly Regex TranslationToken = new(
+        @"{{([ \w\.\-]+)}}", RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
 
     public static ProjectCheckReport Check(string path)
     {
         string root = path;
         var files = new List<ProjectCheckedFile>();
         var problems = new List<ProjectCheckProblem>();
+        var warnings = new List<ProjectCheckProblem>();
         try
         {
             root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -44,7 +51,7 @@ internal static class ProjectChecker
             }
             else
             {
-                CheckRoot(root, files, problems);
+                CheckRoot(root, files, problems, warnings);
             }
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or SecurityException
@@ -53,10 +60,11 @@ internal static class ProjectChecker
             problems.Add(new("pathUnreadable", ".", "", "The selected project directory could not be read."));
         }
 
-        return new(1, root, problems.Count == 0 ? "passed" : "failed", SchemaCommit, files, problems);
+        return new(1, root, problems.Count == 0 ? "passed" : "failed", SchemaCommit, files, problems, warnings);
     }
 
-    private static void CheckRoot(string root, List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems)
+    private static void CheckRoot(string root, List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems,
+        List<ProjectCheckProblem> warnings)
     {
         JsonNode? manifest = CheckFile(root, "manifest.json", "manifest", files, problems);
         if (manifest is JsonObject obj && obj["ContentPackFor"] is JsonObject provider)
@@ -101,11 +109,106 @@ internal static class ProjectChecker
             problems.Add(new("fileNotFound", "i18n/default.json", "", "An i18n directory requires default.json."));
         }
 
+        var translationsByFile = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
         foreach (string file in translationFiles)
         {
-            CheckFile(root, "i18n/" + Path.GetFileName(file), "i18n", files, problems);
+            string relative = "i18n/" + Path.GetFileName(file);
+            if (CheckFile(root, relative, "i18n", files, problems) is JsonObject translation
+                && files.Any(checkedFile => string.Equals(checkedFile.File, relative, StringComparison.OrdinalIgnoreCase))
+                && !problems.Any(problem => string.Equals(problem.File, relative, StringComparison.OrdinalIgnoreCase)))
+            {
+                translationsByFile[relative] = translation;
+            }
+        }
+
+        if (translationsByFile.TryGetValue("i18n/default.json", out JsonObject? defaultTranslation))
+        {
+            AddCaseInsensitiveDuplicateKeys(defaultTranslation, "i18n/default.json", problems);
+            foreach ((string file, JsonObject translation) in translationsByFile
+                .Where(pair => !string.Equals(pair.Key, "i18n/default.json", StringComparison.OrdinalIgnoreCase)))
+            {
+                CompareTranslation(defaultTranslation, translation, file, warnings, problems);
+            }
         }
     }
+
+    private static void CompareTranslation(JsonObject defaultTranslation, JsonObject translation, string file,
+        List<ProjectCheckProblem> warnings, List<ProjectCheckProblem> problems)
+    {
+        AddCaseInsensitiveDuplicateKeys(translation, file, problems);
+        Dictionary<string, (string Key, string Value)> defaults = TranslationEntries(defaultTranslation);
+        Dictionary<string, (string Key, string Value)> locale = TranslationEntries(translation);
+
+        foreach ((string normalizedKey, (string key, string value)) in defaults)
+        {
+            if (!locale.ContainsKey(normalizedKey))
+            {
+                warnings.Add(new("missingLocaleKey", file, "/" + JsonPointer(key),
+                    $"Locale is missing key '{key}'; SMAPI will use its locale/default fallback."));
+                continue;
+            }
+
+            IReadOnlyList<string> expectedTokens = ExtractTokens(value);
+            IReadOnlyList<string> actualTokens = ExtractTokens(locale[normalizedKey].Value);
+            if (!expectedTokens.SequenceEqual(actualTokens, StringComparer.OrdinalIgnoreCase))
+            {
+                problems.Add(new("placeholderMismatch", file, "/" + JsonPointer(locale[normalizedKey].Key),
+                    $"Placeholder names differ from default.json: default=[{string.Join(", ", expectedTokens)}], "
+                    + $"locale=[{string.Join(", ", actualTokens)}]."));
+            }
+        }
+
+        foreach ((string normalizedKey, (string key, _)) in locale)
+        {
+            if (!defaults.ContainsKey(normalizedKey))
+            {
+                warnings.Add(new("extraLocaleKey", file, "/" + JsonPointer(key),
+                    $"Locale defines extra key '{key}' which is not present in default.json."));
+            }
+        }
+    }
+
+    private static void AddCaseInsensitiveDuplicateKeys(JsonObject translation, string file,
+        List<ProjectCheckProblem> problems)
+    {
+        foreach (IGrouping<string, string> group in translation.Select(pair => pair.Key)
+            .Where(key => !string.Equals(key, "$schema", StringComparison.Ordinal))
+            .GroupBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1))
+        {
+            string first = group.First();
+            problems.Add(new("duplicateLocaleKey", file, "/" + JsonPointer(first),
+                $"Keys are case-insensitively duplicated ({string.Join(", ", group)}); SMAPI treats locale keys without case distinction."));
+        }
+    }
+
+    private static Dictionary<string, (string Key, string Value)> TranslationEntries(JsonObject translation)
+    {
+        var entries = new Dictionary<string, (string Key, string Value)>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, JsonNode? node) in translation)
+        {
+            if (string.Equals(key, "$schema", StringComparison.Ordinal)
+                || node is not JsonValue value
+                || !value.TryGetValue(out string? text)
+                || text is null)
+            {
+                continue;
+            }
+
+            entries[key] = (key, text);
+        }
+
+        return entries;
+    }
+
+    private static string[] ExtractTokens(string value) => TranslationToken.Matches(value)
+        .Select(match => match.Groups[1].Value.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static string JsonPointer(string value) => value.Replace("~", "~0", StringComparison.Ordinal)
+        .Replace("/", "~1", StringComparison.Ordinal);
 
     internal static IReadOnlyList<ProjectCheckProblem> CheckPatchFile(string root, string relative, bool include)
     {
