@@ -10,6 +10,11 @@ namespace SdvKit.AlwaysOn;
 
 internal sealed class StardewReviewMenuSource : IReviewMenuSource
 {
+    private const int MaximumDialogueText = 8192;
+    private const int MaximumDialogueChoices = 64;
+    private const int MaximumCraftingRecipes = 128;
+    private const int MaximumRecipeIngredients = 64;
+    private const int MaximumRecipeOutputs = 16;
     public object? Root => Game1.activeClickableMenu;
     public float UiScale => Game1.options.uiScale;
     public float Zoom => Game1.options.zoomLevel;
@@ -27,6 +32,8 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         int scanned = 0;
         string adapter = "publicBase";
         int? tab = null, scroll = null;
+        MenuDialogueObservation? dialogue = null;
+        MenuCraftingObservation? crafting = null;
         if (type == typeof(NamingMenu))
         {
             adapter = "namingMenu";
@@ -78,12 +85,70 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
             Add(shop.downArrow, "scrollDown");
             Add(shop.scrollBar, "scrollBar");
         }
+        else if (type == typeof(DialogueBox))
+        {
+            adapter = "dialogueBox";
+            var dialogueBox = (DialogueBox)menu;
+            string text = dialogueBox.getCurrentString() ?? "";
+            bool dialogueTruncated = text.Length > MaximumDialogueText;
+            var choices = new List<MenuDialogueChoiceObservation>();
+            Response[] responses = dialogueBox.responses ?? [];
+            for (int index = 0; index < Math.Min(responses.Length, MaximumDialogueChoices); index++)
+            {
+                Response response = responses[index];
+                ClickableComponent? component = dialogueBox.responseCC is { Count: > 0 } && index < dialogueBox.responseCC.Count
+                    ? dialogueBox.responseCC[index] : null;
+                if (component is null)
+                {
+                    continue;
+                }
+                choices.Add(new(component, response.responseKey ?? "", Bound(response.responseText, 1024),
+                    component.myID, new(component.bounds.X, component.bounds.Y, component.bounds.Width, component.bounds.Height),
+                    component.visible, ReferenceEquals(component, menu.currentlySnappedComponent)));
+            }
+            dialogue = new(Bound(text, MaximumDialogueText), dialogueBox.selectedResponse, choices);
+            if (responses.Length > MaximumDialogueChoices)
+            {
+                dialogueTruncated = true;
+            }
+            truncated |= dialogueTruncated;
+        }
+        else if (type == typeof(CraftingPage))
+        {
+            adapter = "craftingPage";
+            var craftingPage = (CraftingPage)menu;
+            var recipes = new List<MenuCraftingRecipeObservation>();
+            if (craftingPage.currentCraftingPage >= 0 && craftingPage.currentCraftingPage < craftingPage.pagesOfCraftingRecipes.Count)
+            {
+                foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in craftingPage.pagesOfCraftingRecipes[craftingPage.currentCraftingPage]
+                    .Take(MaximumCraftingRecipes + 1))
+                {
+                    if (recipes.Count >= MaximumCraftingRecipes)
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    recipes.Add(new(component, Bound(recipe.name, 256), Bound(recipe.DisplayName, 1024),
+                        recipe.doesFarmerHaveIngredientsInInventory(Game1.player.Items),
+                        Math.Max(0, recipe.getCraftableCount(Game1.player.Items)),
+                        recipe.recipeList.Take(MaximumRecipeIngredients)
+                            .Select(pair => new ReviewCraftingIngredient(Bound(pair.Key, 256), Math.Max(1, pair.Value))).ToArray(),
+                        recipe.itemToProduce.Take(MaximumRecipeOutputs).Select(item => Bound(item, 256)).ToArray()));
+                    if (recipe.recipeList.Count > MaximumRecipeIngredients || recipe.itemToProduce.Count > MaximumRecipeOutputs)
+                    {
+                        truncated = true;
+                    }
+                }
+            }
+            crafting = new(craftingPage.currentCraftingPage, recipes);
+        }
         Add(menu.upperRightCloseButton, "close");
         AddList(menu.allClickableComponents, "publicComponent");
         Child(menu.GetChildMenu(), "child");
         return new(type.FullName ?? type.Name, adapter, adapter != "publicBase",
             new(menu.xPositionOnScreen, menu.yPositionOnScreen, menu.width, menu.height),
-            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField);
+            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField,
+            dialogue, crafting);
 
         void Child(IClickableMenu? child, string relationship)
         {
@@ -123,6 +188,8 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                 Add(list[index], kind);
             }
         }
+        static string Bound(string? value, int maximum) => string.IsNullOrEmpty(value)
+            ? "" : value.Length <= maximum ? value : value[..maximum];
     }
 }
 

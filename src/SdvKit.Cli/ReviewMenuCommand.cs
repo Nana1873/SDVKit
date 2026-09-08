@@ -13,7 +13,7 @@ public static partial class CliApplication
         if (arguments.Count == 4 && IsHelp(arguments[3]))
         {
             output.WriteLine(ReviewMenuUsage);
-            output.WriteLine("Read fresh bounded menu geometry, active pages and public controls from the exact world-ready role. Vanilla inventory/shop adapters; unknown mod menus expose partial public base fields. No clicks or inferred selection/hover/clickability. IDs last only for the observed root-menu lifetime within one launch.");
+            output.WriteLine("Read fresh bounded menu geometry, active pages and public controls from the exact world-ready role. Vanilla inventory, shop, dialogue/question and crafting adapters; unknown mod menus expose partial public base fields. No clicks or inferred selection/hover/clickability. IDs last only for the observed root-menu lifetime within one launch.");
             return Success;
         }
         if (!TryParseReviewMenu(arguments, out string topology, out string? role))

@@ -9,10 +9,19 @@ internal sealed record MenuComponentObservation(object Instance, string Kind, in
     ReviewMenuRectangle Bounds, bool VisibleFlag, bool ControllerFocused);
 internal sealed record MenuChildObservation(object Instance, string Relationship);
 internal sealed record MenuTextFieldObservation(object Instance, object Dispatcher, object? Subscriber, bool Selected, bool Available, ReviewMenuRectangle Bounds);
+internal sealed record MenuDialogueChoiceObservation(object Instance, string Key, string Text, int ControllerId,
+    ReviewMenuRectangle Bounds, bool VisibleFlag, bool ControllerFocused);
+internal sealed record MenuDialogueObservation(string Text, int? CurrentChoice,
+    IReadOnlyList<MenuDialogueChoiceObservation> Choices);
+internal sealed record MenuCraftingRecipeObservation(object Component, string RecipeId, string DisplayName,
+    bool Available, int CraftableCount, IReadOnlyList<ReviewCraftingIngredient> Ingredients,
+    IReadOnlyList<string> Outputs);
+internal sealed record MenuCraftingObservation(int CurrentPage, IReadOnlyList<MenuCraftingRecipeObservation> Recipes);
 internal sealed record MenuObservation(string Type, string Adapter, bool Supported,
     ReviewMenuRectangle Bounds, int? CurrentTab, int? ScrollIndex,
     IReadOnlyList<MenuComponentObservation> Components, IReadOnlyList<MenuChildObservation> Children,
-    bool ScanTruncated = false, string Assembly = "UnknownAssembly", MenuTextFieldObservation? TextField = null);
+    bool ScanTruncated = false, string Assembly = "UnknownAssembly", MenuTextFieldObservation? TextField = null,
+    MenuDialogueObservation? Dialogue = null, MenuCraftingObservation? Crafting = null);
 internal interface IReviewMenuSource
 {
     object? Root { get; }
@@ -155,7 +164,13 @@ internal sealed class ReviewMenuCapture
                 observed.CurrentTab, observed.ScrollIndex,
                 Array.AsReadOnly(components.OrderBy(c => c.Id).ToArray()),
                 observed.TextField is { } field ? new(Id(field.Instance), Id(field.Dispatcher),
-                    field.Subscriber is null ? null : Id(field.Subscriber), field.Selected, field.Available, field.Bounds) : null));
+                    field.Subscriber is null ? null : Id(field.Subscriber), field.Selected, field.Available, field.Bounds) : null,
+                observed.Dialogue is { } dialogue ? new(dialogue.Text, dialogue.CurrentChoice,
+                    dialogue.Choices.Select(choice => new ReviewDialogueChoice(Id(choice.Instance), choice.Key,
+                        choice.Text, choice.ControllerId, choice.Bounds, choice.VisibleFlag, choice.ControllerFocused)).ToArray()) : null,
+                observed.Crafting is { } crafting ? new(crafting.CurrentPage,
+                    crafting.Recipes.Select(recipe => new ReviewCraftingRecipe(recipe.RecipeId, recipe.DisplayName,
+                        Id(recipe.Component), recipe.Available, recipe.CraftableCount, recipe.Ingredients, recipe.Outputs)).ToArray()) : null));
             foreach (MenuChildObservation child in observed.Children.Take(ReviewMenuContract.MaximumNodes + 1))
             {
                 Visit(child.Instance, menuId, child.Relationship, depth + 1);

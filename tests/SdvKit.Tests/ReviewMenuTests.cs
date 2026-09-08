@@ -375,6 +375,35 @@ public sealed class ReviewMenuTests
         Assert.True(result.IsError);
     }
 
+    [Fact]
+    public async Task NativeToolPreservesDialogueAndCraftingObservations()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        var dialogue = new ReviewDialogueObservation("Choose", 1,
+            [new ReviewDialogueChoice(2, "yes", "Yes", 11, Bounds, true, true)]);
+        var crafting = new ReviewCraftingObservation(0,
+            [new ReviewCraftingRecipe("Stone", "Stone", 3, true, 2,
+                [new ReviewCraftingIngredient("390", 1)], ["390"])]);
+        ReviewMenuReport report = new ReviewMenuCapture().Capture(new Source(), Launch, DateTimeOffset.UtcNow)
+            with
+        {
+            Menus = [new ReviewMenuNode(1, null, "root", "DialogueBox", "StardewValley", "dialogueBox",
+                    "declaredFields", Bounds, null, null, [], null, dialogue, null),
+                    new ReviewMenuNode(4, null, "root", "CraftingPage", "StardewValley", "craftingPage",
+                        "declaredFields", Bounds, null, 0, [], null, null, crafting)]
+        };
+        McpServerTool tool = ProjectReviewMcpMenuTools.Create(reader, _ => report);
+        var options = new McpServerOptions { ServerInfo = new Implementation { Name = "menu-test", Version = "1" }, ToolCollection = [tool] };
+        await using McpTestClient harness = await McpTestClient.StartAsync(options);
+
+        CallToolResult result = await harness.Client.CallToolAsync(ProjectReviewMcpMenuTools.ToolName,
+            new Dictionary<string, object?>(), cancellationToken: harness.Token);
+        JsonElement json = Assert.IsType<JsonElement>(result.StructuredContent);
+        Assert.Equal("yes", json.GetProperty("menus")[0].GetProperty("dialogue").GetProperty("choices")[0].GetProperty("key").GetString());
+        Assert.Equal("Stone", json.GetProperty("menus")[1].GetProperty("crafting").GetProperty("recipes")[0].GetProperty("recipeId").GetString());
+    }
+
     private static MenuComponentObservation Component(object instance) => new(instance, "publicComponent", 7, Bounds, true, false);
     private sealed class Source : IReviewMenuSource
     {
