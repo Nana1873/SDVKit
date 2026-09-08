@@ -34,6 +34,8 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         int? tab = null, scroll = null;
         MenuDialogueObservation? dialogue = null;
         MenuCraftingObservation? crafting = null;
+        var menuBounds = new ReviewMenuRectangle(menu.xPositionOnScreen, menu.yPositionOnScreen,
+            menu.width, menu.height);
         var limitations = new List<string>();
         if (type == typeof(NamingMenu))
         {
@@ -90,6 +92,10 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         {
             adapter = "dialogueBox";
             var dialogueBox = (DialogueBox)menu;
+            menuBounds = ReviewMenuCapture.DialogueBounds(dialogueBox.transitioning,
+                dialogueBox.transitionX, dialogueBox.transitionY, dialogueBox.transitionWidth,
+                dialogueBox.transitionHeight, dialogueBox.isQuestion, dialogueBox.x, dialogueBox.y,
+                dialogueBox.width, dialogueBox.height, dialogueBox.heightForQuestions);
             string text = dialogueBox.getCurrentString() ?? "";
             if (text.Length > MaximumDialogueText) limitations.Add("dialogueTextTruncated");
             var choices = new List<MenuDialogueChoiceObservation>();
@@ -153,8 +159,12 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                     }
                     if ((recipe.DisplayName?.Length ?? 0) > 1024) limitations.Add("craftingDisplayNameTruncated");
                     recipes.Add(new(component, recipeId, Bound(recipe.DisplayName, 1024),
-                        availabilityAvailable ? recipe.doesFarmerHaveIngredientsInInventory(Game1.player.Items) : null,
-                        availabilityAvailable ? recipe.getCraftableCount(Game1.player.Items) : null,
+                        availabilityAvailable
+                            ? recipe.doesFarmerHaveIngredientsInInventory()
+                            : null,
+                        availabilityAvailable
+                            ? recipe.getCraftableCount((IList<Item>)null!)
+                            : null,
                         ingredients.Select(pair => new ReviewCraftingIngredient(pair.Key, pair.Value)).ToArray(),
                         outputs));
                     if (recipe.recipeList.Count > MaximumRecipeIngredients || recipe.itemToProduce.Count > MaximumRecipeOutputs)
@@ -169,7 +179,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         AddList(menu.allClickableComponents, "publicComponent");
         Child(menu.GetChildMenu(), "child");
         return new(type.FullName ?? type.Name, adapter, adapter != "publicBase",
-            new(menu.xPositionOnScreen, menu.yPositionOnScreen, menu.width, menu.height),
+            menuBounds,
             tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField,
             dialogue, crafting, limitations);
 

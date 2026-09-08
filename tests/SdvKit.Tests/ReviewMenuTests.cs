@@ -511,6 +511,39 @@ public sealed class ReviewMenuTests
     }
 
     [Fact]
+    public void DialogueBoundsFollowNativeNormalQuestionAndTransitionRectangles()
+    {
+        Assert.Equal(new ReviewMenuRectangle(40, 504, 1200, 152),
+            ReviewMenuCapture.DialogueBounds(false, 1, 2, 3, 4,
+                false, 40, 504, 1200, 152, 216));
+        Assert.Equal(new ReviewMenuRectangle(40, 440, 1200, 216),
+            ReviewMenuCapture.DialogueBounds(false, 1, 2, 3, 4,
+                true, 40, 504, 1200, 152, 216));
+        Assert.Equal(new ReviewMenuRectangle(100, 200, 300, 400),
+            ReviewMenuCapture.DialogueBounds(true, 100, 200, 300, 400,
+                true, 40, 504, 1200, 152, 216));
+
+        var source = new Source();
+        object dialogueRoot = source.Add("DialogueBox", "dialogueBox");
+        source.Root = dialogueRoot;
+        source.Nodes[dialogueRoot] = source.Nodes[dialogueRoot] with
+        {
+            Bounds = ReviewMenuCapture.DialogueBounds(true, 100, 200, 300, 400,
+                false, 40, 504, 1200, 152, 216)
+        };
+        var capture = new ReviewMenuCapture();
+        ReviewMenuReport first = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        source.Nodes[dialogueRoot] = source.Nodes[dialogueRoot] with
+        {
+            Bounds = ReviewMenuCapture.DialogueBounds(true, 101, 200, 300, 400,
+                false, 40, 504, 1200, 152, 216)
+        };
+
+        Assert.NotEqual(first.UiRevision,
+            capture.Capture(source, Launch, DateTimeOffset.UtcNow).UiRevision);
+    }
+
+    [Fact]
     public void StableMenuIdentitiesAreAcceptedExactlyOrRejectedWithoutShortening()
     {
         string exact = new('x', 128);

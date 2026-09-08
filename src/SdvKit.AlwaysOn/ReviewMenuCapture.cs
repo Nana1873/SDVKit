@@ -49,6 +49,15 @@ internal sealed class ReviewMenuCapture
         return value is not null && value.Length > 0 && value.Length <= maximum;
     }
 
+    internal static ReviewMenuRectangle DialogueBounds(bool transitioning,
+        int transitionX, int transitionY, int transitionWidth, int transitionHeight,
+        bool isQuestion, int x, int y, int width, int height, int heightForQuestions) =>
+        transitioning
+            ? new(transitionX, transitionY, transitionWidth, transitionHeight)
+            : isQuestion
+                ? new(x, y - (heightForQuestions - height), width, heightForQuestions)
+                : new(x, y, width, height);
+
     internal void Reset()
     {
         _root = null;
