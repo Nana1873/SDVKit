@@ -108,6 +108,17 @@ Coordinates are an example, not a known button location: inspect the current vie
 
 Mouse input uses only the process-local virtual cursor. Set it before mouse-button or `MouseWheelUp`/`MouseWheelDown` presses; wheel input also needs an active menu. Never move the physical pointer, focus the game, or use desktop automation to substitute for review input. A successful injection still requires a separate check of the intended effect.
 
+### Close a menu
+
+For routine autonomous menu tests, prefer keyboard or process-local mouse input. Reserve controller buttons for tests explicitly exercising controller behavior: a synthetic controller press can temporarily report a connected controller when no physical controller is connected, then return to disconnected on a later sample.
+
+1. Read the current menu through `project review menu` or `stardew_menu_get`. If inspection does not support that menu, inspect a fresh viewport screenshot instead. Do not send a close input when the intended menu is already closed.
+2. Send one `Escape` press, or click the observed visible close button once through the process-local virtual cursor. Use current geometry and a fresh `uiRevision` for bounded clicks; do not guess coordinates or hold/repeat the close input.
+3. Wait for input completion, then read the menu again (or inspect a fresh viewport screenshot). An input acknowledgement proves delivery/release, not that the intended menu closed.
+4. Stop when the intended menu is closed. A returned parent menu is a separate state, not permission for another close press. If the same menu remains, inspect its supported close behavior before choosing another action. Do not blindly retry, cycle through controller buttons, or continue an uncertain action; an unexpected inventory menu is a result to record and investigate.
+
+This is agent guidance, not a change to controller simulation or proof that menu-close regressions are fixed.
+
 ### Input behavior
 
 The adapter supplies one mouse snapshot before SMAPI derives helper state and input events. SMAPI retains ownership of button transitions and event dispatch. UI coordinates are scaled to raw screen pixels; SMAPI's cursor properties use its normal zoom/world-coordinate conversion.

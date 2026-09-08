@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Changed
+
+- Autonomous review guidance and MCP input descriptions prefer one Escape press or one observed close-button click for routine menu closing, followed by fresh menu evidence before further input. Controller input remains available for explicit controller tests; no runtime input behavior has changed.
+
 ## [0.9.0] - 2026-09-08
 
 ### Added

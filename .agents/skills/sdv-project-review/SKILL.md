@@ -42,6 +42,8 @@ Use fresh non-overwriting screenshot labels. Accept only a confirmed PNG under t
 
 An acknowledged input operation still needs an effect check. Unknown action completion (`mayHaveRun`) or a timeout must not trigger a blind repeat. Inspect current state, preserve the first failure, and retry only the understood affected check when safe. An externally disturbed observation is inconclusive, not automatically a product defect.
 
+For routine menu closing, inspect the current menu, then send one `Escape` press or one process-local click on its observed visible close button. Wait for completion and inspect the menu again before any further input; if menu inspection is unsupported, inspect a fresh viewport screenshot. Stop when the intended menu is closed, even if a parent menu remains. Do not send repeated close presses or switch to controller buttons as a blind fallback. Reserve controller input for explicit controller-behavior tests; synthetic controller presses can cause connection/disconnection transitions. See [menu closing](../../../docs/live-review.md#close-a-menu) for the workflow.
+
 ## Finish and report
 
 Follow [stop/restart/reset semantics](../../../docs/live-review.md#finish-or-test-persistence). Preserve the work save between the two halves of a persistence test. Confirm final stop and applicable reset before claiming completion; network stop deliberately retains staging until reset.
