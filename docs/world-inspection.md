@@ -47,9 +47,12 @@ interpreted. The report preserves `readyForHarvest` and
   `-1` or `0`.
 
 Contradictory or out-of-range combinations are `unavailable`, not normalized.
-Input uses `lastInputItem`; output uses `heldObject`. Both reuse the shared
-bounded item facts (`qualifiedItemId`, positive `stack`, and object `quality`
-when applicable). A missing item and unreadable item facts are distinct.
+Input preserves `lastInputItem`; this is the last input for which the machine
+produced output and may remain present while the machine is idle, so it is not
+claimed as the item currently being consumed. Output uses `heldObject`. Both
+reuse the shared bounded item facts (`qualifiedItemId`, positive `stack`, and
+object `quality` when applicable). A missing item and unreadable item facts are
+distinct.
 
 ## Freshness and identity
 

@@ -127,6 +127,22 @@ public sealed class ReviewWorldTests
     }
 
     [Fact]
+    public void IdleMachineMayRetainHistoricalLastInput()
+    {
+        ReviewWorldMachine machine = Machine("idle", -1, Absent()) with
+        {
+            Input = Available("(O)330", 1, 0),
+        };
+        ReviewWorldTile tile = Missing(0, 0) with
+        {
+            ObjectState = "machine",
+            ObjectQualifiedItemId = machine.QualifiedItemId,
+            Machine = machine,
+        };
+        Assert.True(ReviewWorldContract.DataValid(Data(new(0, 0, 1, 1), [tile])));
+    }
+
+    [Fact]
     public void UnsupportedAndUnavailableObjectsStayDistinctFromMissing()
     {
         ReviewWorldTile[] tiles =

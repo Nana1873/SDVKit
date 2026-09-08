@@ -117,15 +117,14 @@ internal static class ReviewWorldCommand
             ReviewWorldItemObservation output = ReadItem(obj.heldObject.Value);
             bool hasOutput = output.State != "absent";
             bool ready = obj.readyForHarvest.Value;
-            int minutes = obj.minutesUntilReady.Value;
+            int minutes = obj.MinutesUntilReady;
             string? state = !hasOutput && !ready && minutes is >= -1 and <= 0 ? "idle"
                 : hasOutput && !ready && minutes > 0 ? "processing"
                 : hasOutput && ready && minutes is >= -1 and <= 0 ? "ready"
                 : null;
             if (state is null || minutes > ReviewWorldContract.MaximumMachineMinutes)
                 return new(x, y, soil, "unavailable", "worldObjectPropertiesUnavailable", qualifiedId, null);
-            ReviewWorldItemObservation input = state == "idle"
-                ? new("absent", null, null) : ReadItem(obj.lastInputItem.Value);
+            ReviewWorldItemObservation input = ReadItem(obj.lastInputItem.Value);
             string instance = Identity(obj);
             string revision = Revision(instance, qualifiedId!, state,
                 ready.ToString(), minutes.ToString(CultureInfo.InvariantCulture),
