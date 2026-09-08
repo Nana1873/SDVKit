@@ -1,6 +1,6 @@
 # SDVKit
 
-A Windows toolkit for developing Stardew Valley mods, with an isolated live test lab.
+An agent-first Windows toolkit for developing Stardew Valley mods, with an isolated live test lab.
 
 - **Build mods:** inspect projects, create a SMAPI mod or Content Patcher pack, build, and package it.
 - **Test in game:** smoke-test a mod or keep a review running with selected companions, disposable worlds, screenshots, and optional agent control.
@@ -8,6 +8,30 @@ A Windows toolkit for developing Stardew Valley mods, with an isolated live test
 [Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Roadmap](https://github.com/Nana1873/SDVKit/issues/84)
 
 This documentation follows `main`. For a published package, use the [documentation at its release tag](https://github.com/Nana1873/SDVKit/tree/v0.9.0) (latest release: **v0.9.0**).
+
+## Set up with your agent
+
+Ask your coding agent to install SDVKit and prepare your workspace. Replace the two folder placeholders below: the install folder holds the portable tools; the workspace folder holds your mod projects and isolated live lab. Choose folders outside your game installation, normal `Mods`, and `Saves` directories.
+
+```text
+Set up SDVKit from https://github.com/Nana1873/SDVKit for my Stardew Valley mod work.
+
+Install folder: <choose a tools folder>
+Workspace / lab folder: <choose a mod-development folder>
+
+Download the latest published Windows-x64 release and its SHA-256 sidecar,
+verify the checksum, and extract it into a fresh versioned install directory.
+Follow that release's README and documentation to check the required .NET SDK
+and existing Stardew Valley / SMAPI installation.
+Use the workspace as the lab root, with new mod sources under workspaces/<ModName>/
+and generated build/test data under the owning project's or lab's ignored .sdvkit/.
+Keep existing mod projects at their selected paths and normal saves and Mods untouched.
+Finish setup by running --help and doctor --json; report the installed version,
+absolute executable path, lab root, and any missing prerequisites. Leave game
+launches and MCP connections for a requested mod review.
+```
+
+The agent can use the CLI for mod development and [connect MCP to an active review](docs/mcp.md) when needed. See the [workspace layout](docs/toolkit.md#choose-a-mod-workspace) for several mods sharing one lab, or follow the manual installation steps below.
 
 ## Requirements
 
