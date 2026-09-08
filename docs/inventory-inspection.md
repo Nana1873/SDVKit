@@ -42,14 +42,16 @@ Each slot contains `slot`, `state`, `reason`, and `item`. `empty` has no item.
 `Item.Stack`, and nullable non-negative `quality`. Quality is read only for the
 standard Stardew `Object` family; `null` means that this supported fact is not
 applicable to that item type. `unavailable` with reason `itemDataUnavailable`
-means an item occupied the slot but one of its supported getters failed, so no
-partial item facts are returned for that slot.
+means an item occupied the slot but one of its supported getters failed or
+returned an invalid ID, stack, or quality, so no partial item facts are returned
+for that slot.
 
-Invalid IDs, stacks, qualities, player values, indices, inconsistent slot
-counts, responses larger than 64 KiB, and capacities above 144 make the capture
-unavailable. The response must also remain within the five-second freshness
-window and the same launch, process, target/build, fixture, player, and
-world-ready binding through the final status read. Exit `3` or MCP
+Malformed received reports containing invalid item facts, player values,
+indices, inconsistent slot counts, responses larger than 64 KiB, or capacities
+above 144 are rejected as unavailable rather than trusted. The response must
+also remain within the five-second freshness window and the same launch,
+process, target/build, fixture, player, and world-ready binding through the
+final status read. Exit `3` or MCP
 `isError=true` means the result is unavailable; no last-known inventory is
 substituted.
 
