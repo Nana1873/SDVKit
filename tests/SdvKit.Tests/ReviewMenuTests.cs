@@ -400,11 +400,59 @@ public sealed class ReviewMenuTests
         CallToolResult result = await harness.Client.CallToolAsync(ProjectReviewMcpMenuTools.ToolName,
             new Dictionary<string, object?>(), cancellationToken: harness.Token);
         JsonElement json = Assert.IsType<JsonElement>(result.StructuredContent);
+        using JsonDocument declaredSchema = JsonDocument.Parse(tool.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.True(declaredSchema.RootElement.GetProperty("properties").GetProperty("menus").GetProperty("items")
+            .GetProperty("properties").TryGetProperty("dialogue", out _));
+        Assert.True(declaredSchema.RootElement.GetProperty("properties").GetProperty("menus").GetProperty("items")
+            .GetProperty("properties").TryGetProperty("crafting", out _));
+        Assert.Equal(JsonValueKind.Array, json.GetProperty("menus")[0].GetProperty("dialogue").GetProperty("choices").ValueKind);
+        Assert.Equal(JsonValueKind.Array, json.GetProperty("menus")[1].GetProperty("crafting").GetProperty("recipes").ValueKind);
         Assert.Equal("yes", json.GetProperty("menus")[0].GetProperty("dialogue").GetProperty("choices")[0].GetProperty("key").GetString());
         Assert.Equal("Stone", json.GetProperty("menus")[1].GetProperty("crafting").GetProperty("recipes")[0].GetProperty("recipeId").GetString());
     }
 
+    [Fact]
+    public void CaptureTracksDialogueTextChoiceAndCraftingPageChanges()
+    {
+        var source = new Source();
+        object dialogueRoot = source.Add("DialogueBox", "dialogueBox");
+        object choice = new();
+        source.Root = dialogueRoot;
+        source.Nodes[dialogueRoot] = source.Nodes[dialogueRoot] with
+        {
+            Dialogue = new MenuDialogueObservation("First page", 1,
+                [new MenuDialogueChoiceObservation(choice, "one", "One", 10, Bounds, true, true)])
+        };
+        var capture = new ReviewMenuCapture();
+        ReviewMenuReport first = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.Equal("First page", first.Menus[0].Dialogue!.Text);
+        Assert.Equal("one", first.Menus[0].Dialogue!.Choices[0].Key);
+
+        source.Nodes[dialogueRoot] = source.Nodes[dialogueRoot] with
+        {
+            Dialogue = source.Nodes[dialogueRoot].Dialogue! with { Text = "Second page", CurrentChoice = 0 }
+        };
+        ReviewMenuReport changed = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.NotEqual(first.UiRevision, changed.UiRevision);
+        Assert.Equal(0, changed.Menus[0].Dialogue!.CurrentChoice);
+
+        object craftingRoot = source.Add("CraftingPage", "craftingPage");
+        object recipeComponent = new();
+        source.Root = craftingRoot;
+        source.Nodes[craftingRoot] = source.Nodes[craftingRoot] with
+        {
+            Crafting = new MenuCraftingObservation(0,
+                [new MenuCraftingRecipeObservation(recipeComponent, "Stone", "Stone", null, null,
+                    [new ReviewCraftingIngredient("390", 1)], ["390"])])
+        };
+        ReviewMenuReport craftingFirst = capture.Capture(source, Launch, DateTimeOffset.UtcNow);
+        Assert.Null(craftingFirst.Menus[0].Crafting!.Recipes[0].Available);
+        source.Nodes[craftingRoot] = source.Nodes[craftingRoot] with { Crafting = new MenuCraftingObservation(1, []) };
+        Assert.NotEqual(craftingFirst.UiRevision, capture.Capture(source, Launch, DateTimeOffset.UtcNow).UiRevision);
+    }
+
     private static MenuComponentObservation Component(object instance) => new(instance, "publicComponent", 7, Bounds, true, false);
+
     private sealed class Source : IReviewMenuSource
     {
         public float UiScale { get; set; } = 1f;

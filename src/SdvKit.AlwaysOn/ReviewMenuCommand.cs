@@ -34,6 +34,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         int? tab = null, scroll = null;
         MenuDialogueObservation? dialogue = null;
         MenuCraftingObservation? crafting = null;
+        var limitations = new List<string>();
         if (type == typeof(NamingMenu))
         {
             adapter = "namingMenu";
@@ -90,7 +91,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
             adapter = "dialogueBox";
             var dialogueBox = (DialogueBox)menu;
             string text = dialogueBox.getCurrentString() ?? "";
-            bool dialogueTruncated = text.Length > MaximumDialogueText;
+            if (text.Length > MaximumDialogueText) limitations.Add("dialogueTextTruncated");
             var choices = new List<MenuDialogueChoiceObservation>();
             Response[] responses = dialogueBox.responses ?? [];
             for (int index = 0; index < Math.Min(responses.Length, MaximumDialogueChoices); index++)
@@ -100,24 +101,33 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                     ? dialogueBox.responseCC[index] : null;
                 if (component is null)
                 {
+                    limitations.Add("dialogueChoiceControlUnavailable");
                     continue;
                 }
-                choices.Add(new(component, response.responseKey ?? "", Bound(response.responseText, 1024),
+                string key = response.responseKey ?? "";
+                if (key.Length > 128)
+                {
+                    limitations.Add("dialogueChoiceKeyUnavailable");
+                    continue;
+                }
+                if ((response.responseText?.Length ?? 0) > 1024) limitations.Add("dialogueChoiceTextTruncated");
+                choices.Add(new(component, key, Bound(response.responseText, 1024),
                     component.myID, new(component.bounds.X, component.bounds.Y, component.bounds.Width, component.bounds.Height),
                     component.visible, ReferenceEquals(component, menu.currentlySnappedComponent)));
             }
             dialogue = new(Bound(text, MaximumDialogueText), dialogueBox.selectedResponse, choices);
             if (responses.Length > MaximumDialogueChoices)
             {
-                dialogueTruncated = true;
+                limitations.Add("dialogueChoiceLimit");
             }
-            truncated |= dialogueTruncated;
         }
         else if (type == typeof(CraftingPage))
         {
             adapter = "craftingPage";
             var craftingPage = (CraftingPage)menu;
             var recipes = new List<MenuCraftingRecipeObservation>();
+            bool availabilityAvailable = craftingPage._materialContainers is null || craftingPage._materialContainers.Count == 0;
+            if (!availabilityAvailable) limitations.Add("craftingAvailabilityUnavailable");
             if (craftingPage.currentCraftingPage >= 0 && craftingPage.currentCraftingPage < craftingPage.pagesOfCraftingRecipes.Count)
             {
                 foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in craftingPage.pagesOfCraftingRecipes[craftingPage.currentCraftingPage]
@@ -128,19 +138,27 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                         truncated = true;
                         break;
                     }
-                    recipes.Add(new(component, Bound(recipe.name, 256), Bound(recipe.DisplayName, 1024),
-                        recipe.doesFarmerHaveIngredientsInInventory(Game1.player.Items),
-                        Math.Max(0, recipe.getCraftableCount(Game1.player.Items)),
+                    if (recipe.name is null or { Length: > 256 }
+                        || recipe.itemToProduce.Any(item => item is null or { Length: > 256 })
+                        || recipe.recipeList.Any(pair => pair.Key is null or { Length: > 256 } || pair.Value <= 0))
+                    {
+                        limitations.Add("craftingRecipeIdentityUnavailable");
+                        continue;
+                    }
+                    if ((recipe.DisplayName?.Length ?? 0) > 1024) limitations.Add("craftingDisplayNameTruncated");
+                    recipes.Add(new(component, recipe.name, Bound(recipe.DisplayName, 1024),
+                        availabilityAvailable ? recipe.doesFarmerHaveIngredientsInInventory(Game1.player.Items) : null,
+                        availabilityAvailable ? recipe.getCraftableCount(Game1.player.Items) : null,
                         recipe.recipeList.Take(MaximumRecipeIngredients)
-                            .Select(pair => new ReviewCraftingIngredient(Bound(pair.Key, 256), Math.Max(1, pair.Value))).ToArray(),
-                        recipe.itemToProduce.Take(MaximumRecipeOutputs).Select(item => Bound(item, 256)).ToArray()));
+                            .Select(pair => new ReviewCraftingIngredient(pair.Key, pair.Value)).ToArray(),
+                        recipe.itemToProduce.Take(MaximumRecipeOutputs).ToArray()));
                     if (recipe.recipeList.Count > MaximumRecipeIngredients || recipe.itemToProduce.Count > MaximumRecipeOutputs)
                     {
                         truncated = true;
                     }
                 }
             }
-            crafting = new(craftingPage.currentCraftingPage, recipes);
+            crafting = new(Math.Max(0, craftingPage.currentCraftingPage), recipes);
         }
         Add(menu.upperRightCloseButton, "close");
         AddList(menu.allClickableComponents, "publicComponent");
@@ -148,7 +166,7 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         return new(type.FullName ?? type.Name, adapter, adapter != "publicBase",
             new(menu.xPositionOnScreen, menu.yPositionOnScreen, menu.width, menu.height),
             tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField,
-            dialogue, crafting);
+            dialogue, crafting, limitations);
 
         void Child(IClickableMenu? child, string relationship)
         {

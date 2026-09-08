@@ -31,8 +31,8 @@ internal static class ProjectReviewMcpMenuTools
               "adapter":{"enum":["publicBase","gameMenu","inventoryPage","inventoryMenu","shopMenu","namingMenu","dialogueBox","craftingPage"]},
               "coverage":{"enum":["declaredFields","partial"]},"bounds":{"$ref":"#/$defs/rectangle"},
               "currentTab":{"type":["integer","null"]},"scrollIndex":{"type":["integer","null"]},
-              "dialogue":{"type":"object","additionalProperties":false,"required":["text","currentChoice","choices"],"properties":{"text":{"type":"string","maxLength":8192},"currentChoice":{"type":["integer","null"]},"choices":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["id","key","text","controllerId","bounds","visibleFlag","controllerFocused"],"properties":{"id":{"type":"integer","minimum":1},"key":{"type":"string","maxLength":128},"text":{"type":"string","maxLength":1024},"controllerId":{"type":"integer"},"bounds":{"$ref":"#/$defs/rectangle"},"visibleFlag":{"type":"boolean"},"controllerFocused":{"type":"boolean"}}}}},
-              "crafting":{"type":"object","additionalProperties":false,"required":["currentPage","recipes"],"properties":{"currentPage":{"type":"integer","minimum":0},"recipes":{"type":"array","maxItems":128,"items":{"type":"object","additionalProperties":false,"required":["recipeId","displayName","componentId","available","craftableCount","ingredients","outputs"],"properties":{"recipeId":{"type":"string","maxLength":256},"displayName":{"type":"string","maxLength":1024},"componentId":{"type":"integer"},"available":{"type":"boolean"},"craftableCount":{"type":"integer","minimum":0},"ingredients":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,"required":["itemId","quantity"],"properties":{"itemId":{"type":"string","maxLength":256},"quantity":{"type":"integer","minimum":1}}}},"outputs":{"type":"array","maxItems":16,"items":{"type":"string","maxLength":256}}}}}}},
+              "dialogue":{"type":"object","additionalProperties":true},
+              "crafting":{"type":"object","additionalProperties":true},
               "textField":{"type":"object","additionalProperties":false,"required":["id","dispatcherId","subscriberId","selected","available","bounds"],"properties":{
                 "id":{"type":"integer","minimum":1},"dispatcherId":{"type":"integer","minimum":1},"subscriberId":{"type":["integer","null"],"minimum":1},
                 "selected":{"type":"boolean"},"available":{"type":"boolean"},"bounds":{"$ref":"#/$defs/rectangle"}}},
@@ -42,7 +42,7 @@ internal static class ProjectReviewMcpMenuTools
                   "id":{"type":"integer","minimum":1},"controllerId":{"type":"integer"},
                   "kind":{"enum":["tab","equipment","portrait","trashCan","organize","junimoNote","inventorySlot","saleRow","scrollUp","scrollDown","scrollBar","close","publicComponent"]},
                   "bounds":{"$ref":"#/$defs/rectangle"},"visibleFlag":{"type":"boolean"},
-                  "intersectsViewport":{"type":"boolean"},"controllerFocused":{"type":"boolean"}}}}}}}}},
+                  "intersectsViewport":{"type":"boolean"},"controllerFocused":{"type":"boolean"}}}}}}}},
          "$defs":{"rectangle":{"type":"object","additionalProperties":false,"required":["x","y","width","height"],
            "properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}}}
         """).RootElement.Clone();

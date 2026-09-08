@@ -14,14 +14,15 @@ internal sealed record MenuDialogueChoiceObservation(object Instance, string Key
 internal sealed record MenuDialogueObservation(string Text, int? CurrentChoice,
     IReadOnlyList<MenuDialogueChoiceObservation> Choices);
 internal sealed record MenuCraftingRecipeObservation(object Component, string RecipeId, string DisplayName,
-    bool Available, int CraftableCount, IReadOnlyList<ReviewCraftingIngredient> Ingredients,
+    bool? Available, int? CraftableCount, IReadOnlyList<ReviewCraftingIngredient> Ingredients,
     IReadOnlyList<string> Outputs);
 internal sealed record MenuCraftingObservation(int CurrentPage, IReadOnlyList<MenuCraftingRecipeObservation> Recipes);
 internal sealed record MenuObservation(string Type, string Adapter, bool Supported,
     ReviewMenuRectangle Bounds, int? CurrentTab, int? ScrollIndex,
     IReadOnlyList<MenuComponentObservation> Components, IReadOnlyList<MenuChildObservation> Children,
     bool ScanTruncated = false, string Assembly = "UnknownAssembly", MenuTextFieldObservation? TextField = null,
-    MenuDialogueObservation? Dialogue = null, MenuCraftingObservation? Crafting = null);
+    MenuDialogueObservation? Dialogue = null, MenuCraftingObservation? Crafting = null,
+    IReadOnlyList<string>? Limitations = null);
 internal interface IReviewMenuSource
 {
     object? Root { get; }
@@ -120,6 +121,10 @@ internal sealed class ReviewMenuCapture
             if (observed.ScanTruncated)
             {
                 Limit("componentScanLimit");
+            }
+            foreach (string limitation in observed.Limitations ?? [])
+            {
+                Limit(limitation);
             }
             string type = observed.Type;
             string assembly = observed.Assembly;

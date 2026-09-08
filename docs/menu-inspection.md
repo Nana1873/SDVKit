@@ -7,6 +7,12 @@ visibility, and focus. A `craftingPage` node reports the current page and
 visible recipe IDs, display names, component IDs, ingredient IDs/quantities,
 outputs, ingredient availability, and craftable count.
 
+Availability and craftable count are `null` with the explicit
+`craftingAvailabilityUnavailable` limitation when the native page exposes
+material containers that SDVKit cannot safely aggregate without changing game
+state. Invalid or overlong stable recipe/choice identities are omitted with a
+limitation rather than truncated into a new identity.
+
 Dialogue and crafting values are observations only; they do not select,
 activate, or infer clickability. Text is bounded and localized display text is
 not a stable identity. Unsupported menu subclasses retain `publicBase` partial
