@@ -19,6 +19,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Observe supported Gold-shop offers, money and inventory | [Shop inspection](shop-inspection.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
+| Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
@@ -55,6 +56,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
 | Fixture building / animal ensure | Quoted review console command | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
 | Fixture object ensure / clear | Quoted review console command | No | Owned disposable world; single or host only |
+| Fishing preparation / rod observation | Quoted fixture command / runtime status | Observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
 | Fixture save | No standalone fixture-save console command | `stardew_fixture_save` | Owned disposable world; single or host; MCP fixture opt-in |
 
 `network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role selection is fixed at server startup. Narrow CLI title/loading exceptions do not bypass MCP's own readiness checks.

@@ -5,6 +5,37 @@ namespace SdvKit.Tests;
 
 public sealed class ReviewFixtureCommandTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FishingPreparationRequiresFreshHostOwnership(bool skipTutorial)
+    {
+        string[] args = skipTutorial
+            ? ["fixture", "fishing", "prepare", "--skip-tutorial"]
+            : ["fixture", "fishing", "prepare"];
+        var request = Assert.IsType<ReviewFixtureFishingRequest>(Parse(args));
+        Assert.Equal(skipTutorial, request.SkipTutorial);
+        var runtime = new FakeRuntime();
+        Assert.True(ReviewFixtureOperation.Execute(request, runtime).Succeeded);
+        Assert.Equal(1, runtime.Dispatches);
+        runtime.Access = runtime.Access with { CanMutate = false, Role = "farmhand" };
+        Assert.False(ReviewFixtureOperation.Execute(request, runtime).Succeeded);
+        runtime.Access = runtime.Access with { Succeeded = false };
+        Assert.False(ReviewFixtureOperation.Execute(request, runtime).Succeeded);
+        Assert.Equal(1, runtime.Dispatches);
+        Assert.Equal(3, runtime.Verifications);
+    }
+
+    [Theory]
+    [InlineData("fixture", "fishing")]
+    [InlineData("fixture", "fishing", "cast")]
+    [InlineData("fixture", "fishing", "prepare", "true")]
+    [InlineData("fixture", "fishing", "prepare", "--skip-tutorial", "extra")]
+    public void FishingPreparationRejectsImplicitOrUnknownActions(params string[] args)
+    {
+        Assert.False(ReviewFixtureArguments.TryParse(args, out _, out _));
+    }
+
     [Fact]
     public void ParserAcceptsTheExactFixtureSurface()
     {
@@ -1259,6 +1290,8 @@ public sealed class ReviewFixtureCommandTests
             string building) => Dispatched();
 
         public ReviewFixtureResult Farm(ReviewFixtureAccess access) => Dispatched();
+
+        public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial) => Dispatched();
 
         public void BeginNavigation(
             ReviewFixtureAccess access,

@@ -6,6 +6,35 @@ namespace SdvKit.Tests;
 
 public sealed class LocalPlayerSnapshotTests
 {
+    private static readonly JsonSerializerOptions WriterOptions = new(LiveLabJsonOptions.CamelCase)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private static readonly FishingRodValues Rod = new(
+        false, false, false, true, true, false, false, false, false, 5, 6, 0, null, 0);
+
+    [Fact]
+    public void FishingObservationSurvivesStatusReadWithoutRequiringAnActiveCatch()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Fishing = Rod } };
+        Assert.Equal(Rod, Read(temporary, Runtime(player)).Runtime?.LocalPlayer?.Data?.Fishing);
+        Assert.Null(Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Data?.Fishing);
+    }
+
+    [Fact]
+    public void InvalidFishingValuesFailClosed()
+    {
+        foreach (var rod in new[] { Rod with { BobberTileX = float.NaN },
+            Rod with { BiteMilliseconds = float.PositiveInfinity }, Rod with { CatchQuantity = -1 },
+            Rod with { CatchItemId = "not-qualified" } })
+        {
+            Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Fishing = rod }));
+        }
+        Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Fishing = Rod, SelectedItem = null }));
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 9, 5, 10, 0, 0, TimeSpan.Zero);
     private static readonly OwnedProcessIdentity Process = new(1234, Now.AddMinutes(-1), @"C:\Game\StardewModdingAPI.exe");
 
@@ -177,6 +206,39 @@ public sealed class LocalPlayerSnapshotTests
         AlwaysOnStatusReport result = AlwaysOnStatusReader.Read(path, "launch", Process, Now);
         Assert.Equal("invalid", result.State);
         Assert.Null(result.Runtime);
+    }
+
+    [Fact]
+    public void MissingFishingSliceIsBackwardCompatibleButPartialSliceIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Fishing = Rod } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
+        var data = payload["runtime"]!["localPlayer"]!["data"]!.AsObject();
+        data.Remove("fishing");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("ready", AlwaysOnStatusReader.Read(path, "launch", Process, Now).Runtime?.State);
+
+        Read(temporary, Runtime(player));
+        payload = JsonNode.Parse(File.ReadAllText(path))!;
+        payload["runtime"]!["localPlayer"]!["data"]!["fishing"]!.AsObject().Remove("catchReady");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("invalid", AlwaysOnStatusReader.Read(path, "launch", Process, Now).State);
+    }
+
+    [Fact]
+    public void IdleRodRetainsRequiredNullCatchWithTheGameWritersNullOmission()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Fishing = Rod } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        var marker = new AlwaysOnStatusMarker(1, "launch", Process.ProcessId, Process.StartTimeUtc,
+                    "active", 600, false, false, Now, Runtime: Runtime(player));
+        File.WriteAllText(path, JsonSerializer.Serialize(marker, WriterOptions));
+        Assert.Equal(Rod, AlwaysOnStatusReader.Read(path, "launch", Process, Now).Runtime?.LocalPlayer?.Data?.Fishing);
     }
 
     private static AlwaysOnStatusReport Read(TemporaryDirectory temporary, RuntimeSnapshotMarker runtime,

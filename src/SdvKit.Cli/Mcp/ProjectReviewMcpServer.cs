@@ -107,6 +107,27 @@ internal static class ProjectReviewMcpServer
                 "stamina": { "type": "number", "description": "Finite single-precision game value." },
                 "maxStamina": { "type": "number", "description": "Finite single-precision game value." },
                 "selectedSlot": { "type": ["integer", "null"], "minimum": 0, "maximum": 2147483647 },
+                "fishing": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["timingCast", "casting", "bobberInAir", "fishing", "nibbling", "hit", "pullingOut", "catchReady", "fromFishPond", "bobberTileX", "bobberTileY", "biteMilliseconds", "catchItemId", "catchQuantity"],
+                  "properties": {
+                    "timingCast": { "type": "boolean" },
+                    "casting": { "type": "boolean" },
+                    "bobberInAir": { "type": "boolean" },
+                    "fishing": { "type": "boolean" },
+                    "nibbling": { "type": "boolean" },
+                    "hit": { "type": "boolean" },
+                    "pullingOut": { "type": "boolean" },
+                    "catchReady": { "type": "boolean" },
+                    "fromFishPond": { "type": "boolean" },
+                    "bobberTileX": { "type": "number" },
+                    "bobberTileY": { "type": "number" },
+                    "biteMilliseconds": { "type": "number" },
+                    "catchItemId": { "type": ["string", "null"], "minLength": 4, "maxLength": 256 },
+                    "catchQuantity": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+                  }
+                },
                 "selectedItem": {
                   "type": ["object", "null"],
                   "additionalProperties": false,

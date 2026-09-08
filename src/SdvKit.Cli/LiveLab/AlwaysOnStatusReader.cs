@@ -53,11 +53,14 @@ internal static class AlwaysOnStatusReader
         {
             if (type.Type == typeof(LocalPlayerSnapshot)
                 || type.Type == typeof(LocalPlayerValues)
-                || type.Type == typeof(SelectedItemValues))
+                || type.Type == typeof(SelectedItemValues)
+                || type.Type == typeof(FishingRodValues))
             {
                 foreach (JsonPropertyInfo property in type.Properties)
                 {
-                    property.IsRequired = true;
+                    // The additive fishing observation is absent in older support mods.
+                    property.IsRequired = !(type.Type == typeof(LocalPlayerValues)
+                        && property.Name == "fishing");
                 }
             }
         });
