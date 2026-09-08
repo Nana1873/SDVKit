@@ -18,6 +18,37 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewMcpServeDispatchesExactLocalScreenOnlyForSingle()
+    {
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, refresh, _) =>
+        {
+            Assert.Equal("single", topology);
+            Assert.Null(role);
+            Assert.Equal(1, screenId);
+            Assert.True(input);
+            Assert.False(fixture);
+            Assert.False(world);
+            Assert.False(refresh);
+            return 0;
+        };
+        var result = RunWithProjectReviewMcp(runner,
+            "project", "review", "mcp", "serve", "--screen", "1", "--allow-input");
+        Assert.Equal(0, result.ExitCode);
+
+        foreach (string[] invalid in new[]
+        {
+            new[] { "project", "review", "mcp", "serve", "--screen", "-1" },
+            new[] { "project", "review", "mcp", "serve", "--screen", "invalid" },
+            new[] { "project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host", "--screen", "1" },
+        })
+        {
+            var rejected = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+                throw new InvalidOperationException("Invalid screen selection dispatched."), invalid);
+            Assert.Equal(2, rejected.ExitCode);
+        }
+    }
+
     [Theory]
     [InlineData("--mod", "Test.Pack", "--json")]
     [InlineData("--json", "--topology", "single", "--mod", "Test.Pack")]
@@ -1209,6 +1240,7 @@ public sealed class CliApplicationTests
         ProjectReviewMcpCommandRunner mcpRunner = (
             topology,
             role,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -1219,6 +1251,7 @@ public sealed class CliApplicationTests
             called = true;
             Assert.Equal("single", topology);
             Assert.Null(role);
+            Assert.Null(screenId);
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.False(allowWorldActions);
@@ -1248,6 +1281,7 @@ public sealed class CliApplicationTests
         ProjectReviewMcpCommandRunner mcpRunner = (
             topology,
             role,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -1257,6 +1291,7 @@ public sealed class CliApplicationTests
         {
             Assert.Equal(NetworkTwoContract.Topology, topology);
             Assert.Equal(expectedRole, role);
+            Assert.Null(screenId);
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.False(allowWorldActions);
@@ -1287,6 +1322,7 @@ public sealed class CliApplicationTests
         ProjectReviewMcpCommandRunner mcpRunner = (
             topology,
             role,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -1296,6 +1332,7 @@ public sealed class CliApplicationTests
         {
             Assert.Equal(LiveLabState.SingleTopology, topology);
             Assert.Null(role);
+            Assert.Null(screenId);
             Assert.False(allowInput);
             Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
@@ -1320,10 +1357,11 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeDispatchesOnlyExplicitWorldActionOptIn()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, root, input, fixture, world, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, root, input, fixture, world, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
+            Assert.Null(screenId);
             Assert.Equal(Environment.CurrentDirectory, root);
             Assert.False(input);
             Assert.False(fixture);
@@ -1344,9 +1382,20 @@ public sealed class CliApplicationTests
     [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "host")]
     public void ProjectReviewMcpWorldActionsRejectDuplicateValueAndNetworkOptIns(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"),
             ["project", "review", "mcp", "serve", .. suffix]);
+        Assert.Equal(2, exitCode);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("7")]
+    public void ProjectReviewMcpWorldActionsRejectEveryLocalScreenBinding(string screenId)
+    {
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+            throw new InvalidOperationException("Screen-bound world opt-in dispatched"),
+            "project", "review", "mcp", "serve", "--screen", screenId, "--allow-world-actions");
         Assert.Equal(2, exitCode);
     }
 
@@ -1360,6 +1409,7 @@ public sealed class CliApplicationTests
         ProjectReviewMcpCommandRunner mcpRunner = (
             actualTopology,
             actualRole,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -1369,6 +1419,7 @@ public sealed class CliApplicationTests
         {
             Assert.Equal(topology, actualTopology);
             Assert.Equal(role, actualRole);
+            Assert.Null(screenId);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
             Assert.False(allowCpRefresh);
@@ -1397,10 +1448,11 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeForwardsSeparateCpRefreshOptIn()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, _, input, fixture, world, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
+            Assert.Null(screenId);
             Assert.False(input);
             Assert.False(fixture);
             Assert.False(world);
@@ -1420,7 +1472,7 @@ public sealed class CliApplicationTests
     [InlineData("--allow-cp-refresh", "--topology", "network-2", "--role", "host")]
     public void ProjectReviewMcpCpRefreshRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"), ["project", "review", "mcp", "serve", .. suffix]);
         Assert.Equal(2, exitCode);
     }
@@ -1431,6 +1483,7 @@ public sealed class CliApplicationTests
         ProjectReviewMcpCommandRunner mcpRunner = (
             topology,
             role,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -1440,6 +1493,7 @@ public sealed class CliApplicationTests
         {
             Assert.Equal(LiveLabState.SingleTopology, topology);
             Assert.Null(role);
+            Assert.Null(screenId);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
             Assert.False(allowCpRefresh);
@@ -1618,7 +1672,7 @@ public sealed class CliApplicationTests
     [InlineData("mcp", "serve", "--help")]
     public void McpHelpExplainsRoleAndOptInsWithoutStartingServer(params string[] suffix)
     {
-        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _, _) =>
+        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("MCP must not start for help.");
         (int exitCode, string output, string error) = RunWithProjectReviewMcp(
             runner, ["project", "review", .. suffix]);

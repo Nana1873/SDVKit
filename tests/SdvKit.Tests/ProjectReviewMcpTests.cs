@@ -58,6 +58,136 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal("(O)388", snapshot.Runtime.LocalPlayer?.Data?.SelectedItem?.QualifiedItemId);
     }
 
+    [Fact]
+    public void LocalScreenBindingFreezesFarmerAndContextAcrossNumericIdReuse()
+    {
+        using TemporaryDirectory temporary = new();
+        const string firstContext = "11111111111111111111111111111111";
+        string contextId = firstContext;
+        string farmerId = "202";
+        int dispatches = 0;
+        ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, 1, command =>
+        {
+            dispatches++;
+            WriteScreenBindingResponse(temporary, command, farmerId, contextId);
+            return WrittenCommand(temporary.Path);
+        });
+
+        ProjectReviewMcpRuntimeSnapshot first = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+        Assert.Equal(new ProjectReviewMcpScreen(1, "202", firstContext), first.Screen);
+        Assert.Equal("202", first.Runtime.LocalPlayer?.Data?.PlayerId);
+
+        contextId = "22222222222222222222222222222222";
+        ProjectReviewMcpReadResult reusedId = reader.Read();
+        Assert.False(reusedId.Succeeded);
+        Assert.Equal("reviewScreenBindingChanged", reusedId.ErrorCode);
+        Assert.Equal(2, dispatches);
+
+        contextId = firstContext;
+        farmerId = "303";
+        ProjectReviewMcpReadResult replacedFarmer = reader.Read();
+        Assert.False(replacedFarmer.Succeeded);
+        Assert.Equal("reviewScreenBindingChanged", replacedFarmer.ErrorCode);
+    }
+
+    [Fact]
+    public void LocalScreenBindingRequiresSelectedSplitScreenAndFreshExactLaunch()
+    {
+        using TemporaryDirectory absent = new();
+        var process = new OwnedProcessIdentity(4242, StartedAt,
+            Path.Combine(absent.Path, "StardewModdingAPI.exe"));
+        PrepareReadyReview(absent, process, ObservedAt, withTestSave: true);
+        ProjectReviewMcpRuntimeReader absentReader = new(absent.Path, LiveLabState.SingleTopology,
+            role: null, new FakeProcessHost(LabProcessInspectStatus.Running), () => ObservedAt.AddSeconds(1),
+            screenId: 1, screenBindingSend: _ => throw new InvalidOperationException("No dispatch is allowed."));
+        Assert.Equal("reviewScreenUnavailable", absentReader.Read().ErrorCode);
+
+        using TemporaryDirectory stale = new();
+        ProjectReviewMcpRuntimeReader staleReader = CreateReadyLocalScreenReview(stale, 1, command =>
+        {
+            WriteScreenBindingResponse(stale, command, "202", "11111111111111111111111111111111",
+                launchId: "22222222222222222222222222222222", observedAt: ObservedAt);
+            return WrittenCommand(stale.Path);
+        });
+        ProjectReviewMcpReadResult staleResult = staleReader.Read();
+        Assert.False(staleResult.Succeeded);
+        Assert.Equal("screenBindingResponseInvalid", staleResult.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("202", "101")]
+    [InlineData("0202", "202")]
+    public void LocalScreenBindingRejectsFarmerRuntimeMismatchAndNonCanonicalIdentity(
+        string farmerId,
+        string runtimePlayerId)
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, 1, command =>
+        {
+            WriteScreenBindingResponse(temporary, command, farmerId,
+                "11111111111111111111111111111111", runtimePlayerId: runtimePlayerId);
+            return WrittenCommand(temporary.Path);
+        });
+        Assert.Equal("screenBindingResponseInvalid", reader.Read().ErrorCode);
+    }
+
+    [Fact]
+    public void LocalScreenBindingResponseRequiresExactIdentityMembers()
+    {
+        using TemporaryDirectory temporary = new();
+        const string requestId = "33333333333333333333333333333333";
+        WriteScreenBindingResponse(temporary,
+            $"sdvkit screen-binding request {requestId} {LaunchId} screen=1",
+            "202", "11111111111111111111111111111111");
+        string path = ReviewScreenBindingContract.ResponsePath(
+            LiveLabPaths.Resolve(temporary.Path).RuntimePath, requestId);
+        string json = File.ReadAllText(path);
+        Assert.Throws<InvalidDataException>(() => ProjectReviewMcpRuntimeReader.DeserializeScreenBinding(
+            System.Text.Encoding.UTF8.GetBytes(json.Replace("\"screenId\":1,", string.Empty,
+                StringComparison.Ordinal))));
+        Assert.Throws<InvalidDataException>(() => ProjectReviewMcpRuntimeReader.DeserializeScreenBinding(
+            System.Text.Encoding.UTF8.GetBytes(json.Replace(
+                "\"contextId\":\"11111111111111111111111111111111\"",
+                "\"contextId\":\"11111111111111111111111111111111\",\"contextId\":\"11111111111111111111111111111111\"",
+                StringComparison.Ordinal))));
+    }
+
+    [Fact]
+    public void LocalScreenServerDoesNotAdvertiseUnportedDomainsOrSharedWindowText()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, 1, command =>
+        {
+            WriteScreenBindingResponse(temporary, command, "202", "11111111111111111111111111111111");
+            return WrittenCommand(temporary.Path);
+        });
+        Assert.True(reader.Read().Succeeded);
+        var input = new ProjectReviewMcpInputSession(
+            reader,
+            LiveLabPaths.Resolve(temporary.Path).RuntimePath,
+            (_, _) => throw new InvalidOperationException("No action should run while listing tools."));
+        McpServerOptions options = ProjectReviewMcpServer.CreateOptions(
+            reader,
+            runData: _ => throw new InvalidOperationException("Unported Data must stay absent."),
+            inputSession: input,
+            runWorldAction: (_, _) => throw new InvalidOperationException(
+                "Screen-bound world action must stay absent."));
+        string[] names = options.ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
+
+        Assert.Contains(ProjectReviewMcpServer.RuntimeToolName, names);
+        Assert.Contains(ProjectReviewMcpMenuTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpScreenshotTools.CaptureToolName, names);
+        Assert.Contains(ProjectReviewMcpInputTools.PressToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpInputTools.TextToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpDataTools.AssetsToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpInventoryTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpContainerTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpShopTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpWorldTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpWorldActionTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpCpTools.DiagnoseToolName, names);
+    }
+
     [Theory]
     [InlineData(NetworkTwoContract.HostRole, HostLaunchId, "Farm", 930)]
     [InlineData(NetworkTwoContract.FarmhandRole, FarmhandLaunchId, "FarmHouse", 940)]
@@ -808,11 +938,69 @@ public sealed class ProjectReviewMcpTests
             () => nowUtc ?? ObservedAt.AddSeconds(1));
     }
 
+    private static ProjectReviewMcpRuntimeReader CreateReadyLocalScreenReview(
+        TemporaryDirectory temporary,
+        int screenId,
+        Func<string, LiveLabCommandResult> send)
+    {
+        var process = new OwnedProcessIdentity(4242, StartedAt,
+            Path.Combine(temporary.Path, "StardewModdingAPI.exe"));
+        PrepareReadyReview(temporary, process, ObservedAt, withTestSave: true, localSplitScreen: true);
+        return new ProjectReviewMcpRuntimeReader(
+            temporary.Path,
+            LiveLabState.SingleTopology,
+            role: null,
+            new FakeProcessHost(LabProcessInspectStatus.Running),
+            () => ObservedAt.AddSeconds(1),
+            screenId,
+            send,
+            TimeSpan.Zero);
+    }
+
+    private static void WriteScreenBindingResponse(
+        TemporaryDirectory temporary,
+        string command,
+        string farmerId,
+        string contextId,
+        string? launchId = null,
+        DateTimeOffset? observedAt = null,
+        string? runtimePlayerId = null)
+    {
+        string[] tokens = command.Split(' ');
+        Assert.Equal(["sdvkit", "screen-binding", "request"], tokens[..3]);
+        Assert.Equal("screen=1", tokens[^1]);
+        string requestId = tokens[3];
+        DateTimeOffset capturedAt = observedAt ?? ObservedAt.AddSeconds(1);
+        var response = new ReviewScreenBindingResponse(
+            1,
+            requestId,
+            new ReviewScreenBindingReport(
+                1,
+                launchId ?? tokens[4],
+                "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                1,
+                farmerId,
+                contextId,
+                capturedAt,
+                new RuntimeSnapshotMarker(1, true, "fall", 8, 3, 1010, "FarmHouse", 7, 9,
+                    true, capturedAt, LocalPlayerSnapshotTests.Player(runtimePlayerId ?? farmerId))));
+        string path = ReviewScreenBindingContract.ResponsePath(
+            LiveLabPaths.Resolve(temporary.Path).RuntimePath,
+            requestId);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(response, LiveLabJsonOptions.CamelCase));
+    }
+
+    private static LiveLabCommandResult WrittenCommand(string labRoot) => new(
+        0,
+        new ProjectReviewCommandReport(1, null, labRoot, "running", null, true, [], []));
+
     private static void PrepareReadyReview(
         TemporaryDirectory temporary,
         OwnedProcessIdentity process,
         DateTimeOffset observedAt,
-        bool withTestSave = false)
+        bool withTestSave = false,
+        bool localSplitScreen = false)
     {
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         ProjectReviewPreparedArtifact target = ProjectReviewStagerTests.Artifact(
@@ -852,7 +1040,8 @@ public sealed class ProjectReviewMcpTests
                 IdentityVerified: true,
                 WaitedTicks: 0,
                 "Exact review fixture loaded.",
-                paths.TestSaveScenarioLogPath);
+                paths.TestSaveScenarioLogPath,
+                LocalSplitScreen: localSplitScreen);
         }
 
         var state = new LiveLabState(

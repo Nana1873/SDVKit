@@ -70,6 +70,9 @@ internal static class ProjectReviewScreenshotService
         Action<TimeSpan>? delay = null,
         TimeSpan? responseTimeout = null,
         Func<DateTimeOffset>? utcNow = null,
+        int? screenId = null,
+        string? screenFarmerId = null,
+        string? screenContextId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -108,7 +111,7 @@ internal static class ProjectReviewScreenshotService
         string responsePath = ReviewScreenshotContract.ResponsePath(
             paths.RuntimePath,
             requestId);
-        string command = BuildCommand(requestId, query);
+        string command = SelectScreen(BuildCommand(requestId, query), screenId, screenFarmerId, screenContextId);
         DateTimeOffset requestedAtUtc = clock().ToUniversalTime();
         ProjectReviewResponseTransportResult<ReviewScreenshotResponseEnvelope> transported =
             ProjectReviewResponseTransport.Execute(
@@ -212,6 +215,17 @@ internal static class ProjectReviewScreenshotService
                 "screenshotPngInvalid",
                 $"The exact isolated screenshot could not be validated ({exception.GetType().Name})."));
         }
+    }
+
+    internal static string SelectScreen(string command, int? screenId,
+        string? farmerId = null, string? contextId = null)
+    {
+        if (screenId is null) return command;
+        if (screenId is < 0) throw new ArgumentOutOfRangeException(nameof(screenId));
+        if (farmerId is null && contextId is null) return $"{command} screen={screenId.Value}";
+        if (string.IsNullOrWhiteSpace(farmerId) || !ReviewTransportToken.IsRequestId(contextId!))
+            throw new ArgumentException("The exact screen farmer and context identity are required together.");
+        return $"{command} binding={contextId} farmer={farmerId} screen={screenId.Value}";
     }
 
     internal static string BuildCommand(

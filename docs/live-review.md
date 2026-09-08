@@ -126,8 +126,19 @@ button/chord/gesture progress, and menu revisions are independent per screen.
 Viewport screenshots contain the selected screen's rectangle; use unique labels
 across both screens because they share the same isolated screenshot folder.
 Native text-event injection is unavailable while split-screen is active because
-the screens share a window. Typed CLI inspection and MCP remain bound to screen 0;
-use the screen-selected console path to observe or operate the farmhand.
+the screens share a window. Start a typed MCP client for an exact current screen,
+or use the same selector for CLI menu inspection:
+
+```powershell
+& $sdvkit project review menu --topology single --screen 1 --json
+& $sdvkit project review mcp serve --topology single --screen 1 --allow-input
+```
+
+The server returns its frozen `screenId`, `farmerId`, and opaque `contextId` in
+`stardew_runtime_get`. It dispatches runtime, menu, viewport screenshot, and
+permitted process-local input to that screen. Leaving/rejoining invalidates the
+old client even if Stardew reuses a numeric ID; start a new client for the newly
+reported context. Screen-bound MCP omits the text tool.
 
 To close only the second screen, send `sdvkit split-screen leave` from screen 0.
 Require the confirmed removal log and inspect the host's retained state. A later

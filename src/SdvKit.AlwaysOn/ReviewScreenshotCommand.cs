@@ -310,7 +310,7 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded inventory/menu/data/map/texture/audio/mod-assets transports";
+        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded screen/inventory/menu/data/map/texture/audio/mod-assets transports";
     private const string Usage =
         "Usage: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit inventory ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
@@ -356,6 +356,15 @@ internal static class ReviewCommand
             HelpText,
             (_, arguments) =>
             {
+                if (!ReviewScreenBindingCommand.TryValidateDispatch(
+                        arguments,
+                        testSave(),
+                        out arguments,
+                        out string bindingError))
+                {
+                    monitor.Log($"SDVKit screen-bound dispatch rejected: {bindingError}", LogLevel.Error);
+                    return;
+                }
                 if (Context.IsSplitScreen && (testSave() is not { } owned
                     || !owned.TryVerifyReviewFixture(out _, out _)))
                 {
@@ -374,6 +383,11 @@ internal static class ReviewCommand
                     {
                         monitor.Log($"SDVKit local split-screen rejected: {exception.GetBaseException().Message}", LogLevel.Error);
                     }
+                }
+                else if (arguments.Length > 0
+                    && string.Equals(arguments[0], "screen-binding", StringComparison.Ordinal))
+                {
+                    ReviewScreenBindingCommand.Handle(arguments, runtimePath, testSave(), monitor);
                 }
                 else if (arguments.Length > 0
                     && string.Equals(arguments[0], "screenshot", StringComparison.Ordinal))

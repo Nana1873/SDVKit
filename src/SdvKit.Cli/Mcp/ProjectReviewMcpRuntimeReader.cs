@@ -12,6 +12,11 @@ internal sealed record ProjectReviewMcpTestSave(
     string FixtureId,
     string SaveId);
 
+internal sealed record ProjectReviewMcpScreen(
+    int ScreenId,
+    string FarmerId,
+    string ContextId);
+
 internal sealed record ProjectReviewMcpRuntime(
     int SchemaVersion,
     bool WorldReady,
@@ -42,7 +47,9 @@ internal sealed record ProjectReviewMcpRuntimeSnapshot(
     [property: JsonIgnore]
     long? ForegroundWindowHandle,
     [property: JsonIgnore]
-    int? ForegroundProcessId);
+    int? ForegroundProcessId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ProjectReviewMcpScreen? Screen = null);
 
 internal sealed record ProjectReviewMcpReadResult(
     ProjectReviewMcpRuntimeSnapshot? Snapshot,
@@ -58,7 +65,8 @@ internal sealed record ProjectReviewMcpVerifiedContext(
     AlwaysOnStatusReport AlwaysOn,
     string? Role,
     ProjectReviewMcpTestSave? TestSave,
-    bool AllTargetsReady);
+    bool AllTargetsReady,
+    ReviewScreenBindingReport? ScreenBinding = null);
 
 internal sealed record ProjectReviewMcpContextResult(
     ProjectReviewMcpVerifiedContext? Context,
@@ -70,11 +78,29 @@ internal sealed record ProjectReviewMcpContextResult(
 
 internal sealed class ProjectReviewMcpRuntimeReader
 {
+    private static readonly ReviewResponseJson ScreenBindingResponseJson = new("review-screen binding");
+    private static readonly HashSet<string> ScreenBindingEnvelopeFields =
+        ["schemaVersion", "requestId", "report"];
+    private static readonly HashSet<string> ScreenBindingReportFields =
+        ["schemaVersion", "launchId", "fixtureId", "screenId", "farmerId", "contextId", "observedAtUtc", "runtime"];
+    private static readonly HashSet<string> ScreenBindingRuntimeFields =
+        ["schemaVersion", "worldReady", "season", "dayOfMonth", "year", "timeOfDay", "locationId", "tileX", "tileY", "menuOpen", "observedAtUtc", "localPlayer"];
+    private static readonly System.Text.Json.JsonSerializerOptions ScreenBindingJson = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = false,
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+        MaxDepth = 8,
+    };
     private readonly string _projectRoot;
     private readonly string _topology;
     private readonly string? _role;
     private readonly ILabProcessHost _processHost;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly int? _screenId;
+    private readonly Func<string, LiveLabCommandResult>? _screenBindingSend;
+    private readonly TimeSpan? _screenBindingTimeout;
+    private readonly object _screenBindingSync = new();
+    private ProjectReviewMcpScreen? _boundScreen;
     internal LiveLabOperationLock? HeldOperationLock { get; init; }
     internal string? ReconcileConfigUniqueId { get; init; }
 
@@ -83,6 +109,22 @@ internal sealed class ProjectReviewMcpRuntimeReader
     internal string Topology => _topology;
 
     internal string? Role => _role;
+
+    internal int? ScreenId => _screenId;
+
+    internal ProjectReviewMcpScreen? BoundScreen
+    {
+        get { lock (_screenBindingSync) return _boundScreen; }
+    }
+
+    internal string SelectCommand(string command)
+    {
+        if (_screenId is not int screenId) return command;
+        ProjectReviewMcpScreen? bound = BoundScreen;
+        return bound is null
+            ? $"{command} screen={screenId}"
+            : $"{command} binding={bound.ContextId} farmer={bound.FarmerId} screen={screenId}";
+    }
 
     public ProjectReviewMcpRuntimeReader(
         string projectRoot,
@@ -102,7 +144,10 @@ internal sealed class ProjectReviewMcpRuntimeReader
         string topology,
         string? role,
         ILabProcessHost? processHost = null,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        int? screenId = null,
+        Func<string, LiveLabCommandResult>? screenBindingSend = null,
+        TimeSpan? screenBindingTimeout = null)
     {
         _projectRoot = ProjectPathCanonicalizer.CanonicalizeExistingDirectory(
             Path.GetFullPath(projectRoot));
@@ -116,14 +161,30 @@ internal sealed class ProjectReviewMcpRuntimeReader
         _role = role;
         _processHost = processHost ?? new WindowsLabProcessHost();
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        if (screenId is < 0
+            || screenId is not null && (!string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal) || role is not null))
+        {
+            throw new ArgumentException("A local screen can be selected only for a single review and must be non-negative.");
+        }
+        _screenId = screenId;
+        _screenBindingSend = screenBindingSend;
+        _screenBindingTimeout = screenBindingTimeout;
     }
 
     public ProjectReviewMcpReadResult Read()
     {
         ProjectReviewMcpContextResult result = ReadContext();
-        return result.Succeeded
-            ? CreateSnapshot(result.Context!)
-            : Failure(result.ErrorCode!, result.ErrorMessage!);
+        if (!result.Succeeded)
+            return Failure(result.ErrorCode!, result.ErrorMessage!);
+        ProjectReviewMcpVerifiedContext context = result.Context!;
+        if (_screenId is not null)
+        {
+            ProjectReviewMcpContextResult selected = ReadSelectedScreen(context);
+            if (!selected.Succeeded)
+                return Failure(selected.ErrorCode!, selected.ErrorMessage!);
+            context = selected.Context!;
+        }
+        return CreateSnapshot(context);
     }
 
     internal ProjectReviewMcpContextResult ReadContext()
@@ -339,7 +400,22 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 "AlwaysOn has not confirmed the exact active target build.");
         }
 
-        RuntimeSnapshotReport? runtime = alwaysOn.Runtime;
+        RuntimeSnapshotReport? runtime = context.ScreenBinding is { } selected
+            ? new RuntimeSnapshotReport(
+                "ready",
+                selected.Runtime.SchemaVersion,
+                selected.Runtime.WorldReady,
+                selected.Runtime.Season,
+                selected.Runtime.DayOfMonth,
+                selected.Runtime.Year,
+                selected.Runtime.TimeOfDay,
+                selected.Runtime.LocationId,
+                selected.Runtime.TileX,
+                selected.Runtime.TileY,
+                selected.Runtime.MenuOpen,
+                selected.Runtime.ObservedAtUtc,
+                selected.Runtime.LocalPlayer)
+            : alwaysOn.Runtime;
         if (runtime is null
             || !string.Equals(runtime.State, "ready", StringComparison.Ordinal)
             || runtime.SchemaVersion != RuntimeSnapshotContract.SchemaVersion
@@ -380,9 +456,92 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 alwaysOn.Tick!.Value,
                 alwaysOn.ObservedAtUtc!.Value,
                 alwaysOn.ForegroundWindowHandle,
-                alwaysOn.ForegroundProcessId),
+                alwaysOn.ForegroundProcessId,
+                context.ScreenBinding is null ? null : new ProjectReviewMcpScreen(
+                    context.ScreenBinding.ScreenId,
+                    context.ScreenBinding.FarmerId,
+                    context.ScreenBinding.ContextId)),
             null,
             null);
+    }
+
+    private ProjectReviewMcpContextResult ReadSelectedScreen(ProjectReviewMcpVerifiedContext context)
+    {
+        if (context.TestSave is null || context.AlwaysOn.TestSave?.LocalSplitScreen != true)
+            return ContextFailure("reviewScreenUnavailable", "The owned review has no selected local split-screen context.");
+
+        string requestId = Guid.NewGuid().ToString("N");
+        string command = SelectCommand($"sdvkit screen-binding request {requestId} {context.State.LaunchId}");
+        string runtimePath = ProjectReviewInputService.RuntimePath(_projectRoot, _topology, _role);
+        DateTimeOffset started = _utcNow().ToUniversalTime();
+        ProjectReviewResponseTransportResult<ReviewScreenBindingResponse> result =
+            ProjectReviewResponseTransport.Execute(
+                command,
+                ReviewScreenBindingContract.ResponsePath(runtimePath, requestId),
+                ReviewScreenBindingContract.MaximumResponseBytes,
+                "screenBinding",
+                "review-screen binding",
+                _projectRoot,
+                DeserializeScreenBinding,
+                response => response.SchemaVersion == ReviewScreenBindingContract.SchemaVersion
+                    && response.RequestId == requestId
+                    && ValidScreenBinding(response.Report, context, started, _utcNow().ToUniversalTime()),
+                responseTimeout: _screenBindingTimeout,
+                send: _screenBindingSend);
+        if (result.Response is null)
+            return ContextFailure(result.Problems.Count == 0 ? "reviewScreenUnavailable" : result.Problems[0].Code,
+                "The exact selected local screen could not be observed.");
+
+        ReviewScreenBindingReport report = result.Response.Report;
+        var observed = new ProjectReviewMcpScreen(report.ScreenId, report.FarmerId, report.ContextId);
+        lock (_screenBindingSync)
+        {
+            _boundScreen ??= observed;
+            if (_boundScreen != observed)
+                return ContextFailure("reviewScreenBindingChanged",
+                    "The selected local screen or farmer context changed; start a newly bound client.");
+        }
+        return new ProjectReviewMcpContextResult(context with { ScreenBinding = report }, null, null);
+    }
+
+    private bool ValidScreenBinding(ReviewScreenBindingReport? report, ProjectReviewMcpVerifiedContext context,
+        DateTimeOffset started, DateTimeOffset now) => report is not null
+        && report.SchemaVersion == ReviewScreenBindingContract.SchemaVersion
+        && report.LaunchId == context.State.LaunchId
+        && report.FixtureId == context.TestSave!.FixtureId
+        && report.ScreenId == _screenId
+        && long.TryParse(report.FarmerId, System.Globalization.NumberStyles.AllowLeadingSign,
+            System.Globalization.CultureInfo.InvariantCulture, out long farmerId)
+        && farmerId != 0
+        && report.FarmerId == farmerId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        && ReviewTransportToken.IsRequestId(report.ContextId)
+        && report.ObservedAtUtc.Offset == TimeSpan.Zero
+        && report.ObservedAtUtc >= started
+        && report.ObservedAtUtc <= now.AddSeconds(5)
+        && now - report.ObservedAtUtc <= TimeSpan.FromSeconds(5)
+        && report.Runtime is not null
+        && report.Runtime.SchemaVersion == RuntimeSnapshotContract.SchemaVersion
+        && report.Runtime.ObservedAtUtc.Offset == TimeSpan.Zero
+        && report.Runtime.ObservedAtUtc >= started
+        && report.Runtime.ObservedAtUtc <= now.AddSeconds(5)
+        && now - report.Runtime.ObservedAtUtc <= TimeSpan.FromSeconds(5)
+        && LocalPlayerSnapshotContract.TryRead(
+            report.Runtime.LocalPlayer,
+            report.Runtime.WorldReady,
+            out LocalPlayerSnapshot localPlayer)
+        && localPlayer is { Availability: "available", Data: { } player }
+        && player.PlayerId == report.FarmerId;
+
+    internal static ReviewScreenBindingResponse? DeserializeScreenBinding(byte[] bytes)
+    {
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(bytes,
+            new System.Text.Json.JsonDocumentOptions { MaxDepth = 8 });
+        System.Text.Json.JsonElement root = document.RootElement;
+        ScreenBindingResponseJson.RequireExactObject(root, ScreenBindingEnvelopeFields);
+        System.Text.Json.JsonElement report = root.GetProperty("report");
+        ScreenBindingResponseJson.RequireExactObject(report, ScreenBindingReportFields);
+        ScreenBindingResponseJson.RequireExactObject(report.GetProperty("runtime"), ScreenBindingRuntimeFields);
+        return System.Text.Json.JsonSerializer.Deserialize<ReviewScreenBindingResponse>(bytes, ScreenBindingJson);
     }
 
     private static bool HasExactSingleBinding(

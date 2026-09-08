@@ -39,14 +39,14 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Locale key and placeholder comparison | `project check` | No | Direct top-level i18n files; see [i18n authoring](i18n-authoring.md) |
 | Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
-| Local split-screen | Quoted `sdvkit split-screen join/leave/status` and native `screen=<id>` | Screen 0 only | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; [workflow](live-review.md#local-split-screen-review) |
+| Local split-screen | Quoted `sdvkit split-screen join/leave/status`, native `screen=<id>`, and `project review menu --screen <id>` | Exact startup `--screen <id>` for runtime/menu/viewport/input | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; screen/farmer/context binding invalidates on leave or replacement; shared-window text input unavailable; [workflow](live-review.md#local-split-screen-review) |
 | Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
-| Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
-| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
+| Runtime and selected-mod diagnostics | `project review status`; quoted split-screen status for local IDs | Runtime, review, mods tools | Active single, fixed host/farmhand role, or exact owned local screen where supported |
+| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single, fixed host/farmhand, or exact owned local screen; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
-| Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | World-ready single, screen 0; every empty/occupied/unavailable slot, no menu or mutation; [contract](inventory-inspection.md) |
-| Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | World-ready single/screen 0; complete in-map rectangle of at most 256 tiles; [contract](world-inspection.md) |
-| Selected regular vanilla chest and both sides | `project review container` | `stardew_container_get` | World-ready single, screen 0; exact open 36-slot wooden/stone chest, player/chest slots and held item, no mutation; [contract](container-inspection.md) |
+| Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | CLI: world-ready single, screen 0; MCP: unbound single; every empty/occupied/unavailable slot, no menu or mutation; [contract](inventory-inspection.md) |
+| Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | CLI: world-ready single/screen 0; MCP: unbound single; complete in-map rectangle of at most 256 tiles; [contract](world-inspection.md) |
+| Selected regular vanilla chest and both sides | `project review container` | `stardew_container_get` | CLI: world-ready single/screen 0; MCP: unbound single; exact open 36-slot wooden/stone chest, player/chest slots and held item, no mutation; [contract](container-inspection.md) |
 | One adjacent crop/soil or machine interaction | `project review interact` | `stardew_world_interact`, separate `--allow-world-actions` | Exact owned disposable single-player review; fresh target and inventory revisions; completion is dispatch evidence only; [contract](world-interaction.md) |
 | Original shop purchase authoring recipe | Existing check/build/package, ready review, shop/menu/diagnostics and process-local input | Optional matching observation and opt-in input tools | Single disposable world; original SeedShop Stone offer, deliberate config failure and observed money/stock/inventory deltas; [recipe and limits](shop-authoring.md) |
 | Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
@@ -58,15 +58,15 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Canonical structured Data | `project review data` | Data tools | Active single review |
 | Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
 | Audio and observed mod assets | `project review audio/mod-assets` | Audio/mod-asset tools | Active single review; CLI-parity bounds, observed-only asset coverage, no audio or asset export |
-| Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role; map needs loaded world; viewport can diagnose title/loading state through CLI |
-| Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role; MCP requires `--allow-input`; gestures require an active menu and fresh UI revision; legacy mouse presses require a virtual cursor, legacy wheel also a menu; text requires an exact available NamingMenu field and fresh UI revision |
+| Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role or exact local screen; map needs loaded world; viewport is cropped to the selected local screen |
+| Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role or exact local screen; MCP requires `--allow-input`; screen-bound MCP omits shared-window text; gestures require an active menu and fresh UI revision |
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
 | Fixture building / animal ensure | Quoted review console command | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
 | Fixture object ensure / clear | Quoted review console command | No | Owned disposable world; single or host only |
 | Fishing preparation / rod observation | Quoted fixture command / runtime status | Observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
 | Fixture save | No standalone fixture-save console command | `stardew_fixture_save` | Owned disposable world; single or host; MCP fixture opt-in |
 
-`network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role selection is fixed at server startup. Narrow CLI title/loading exceptions do not bypass MCP's own readiness checks.
+`network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role or local-screen selection is fixed at server startup. Narrow CLI title/loading exceptions do not bypass MCP's own readiness checks.
 
 ## Read a result
 

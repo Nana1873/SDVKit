@@ -1,16 +1,16 @@
 # Native MCP for an active review
 
-Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`. Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
+Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`; for local split-screen, obtain the current IDs through the [screen-selected status command](live-review.md#local-split-screen-review). Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
 
 [Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Audio and mod assets](#audio-and-observed-mod-assets) · [Content Patcher](#content-patcher-diagnosis-and-opt-in-refresh) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [World interactions](#opt-in-world-interactions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
 
-| Startup profile | single | host | farmhand |
-| --- | --- | --- | --- |
-| Default observation/evidence | 28 tools | 6 tools | 6 tools |
-| Add `--allow-input` | +9 | +9 | +9 |
-| Add `--allow-fixture-actions` | +6 | +6 | +3 |
-| Add `--allow-world-actions` | +1 | Unsupported | Unsupported |
-| Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported |
+| Startup profile | single | local screen | host | farmhand |
+| --- | --- | --- | --- | --- |
+| Default observation/evidence | 28 tools | 6 tools | 6 tools | 6 tools |
+| Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
+| Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
+| Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
 
@@ -24,13 +24,20 @@ both roles:
 & $sdvkit project review mcp serve --topology single
 & $sdvkit project review mcp serve --topology network-2 --role host
 & $sdvkit project review mcp serve --topology network-2 --role farmhand
+& $sdvkit project review mcp serve --topology single --screen 0
+& $sdvkit project review mcp serve --topology single --screen 1
 & $sdvkit project review mcp serve --topology single --allow-fixture-actions
 & $sdvkit project review mcp serve --topology single --allow-world-actions
 & $sdvkit project review mcp serve --topology network-2 --role host --allow-fixture-actions
 ```
 
 Omitting `--topology` selects `single`. A role is rejected for `single`, while
-`network-2` requires exactly one `--role host` or `--role farmhand`. Duplicate,
+`network-2` requires exactly one `--role host` or `--role farmhand`. An owned
+local split-screen fixture review instead accepts one current non-negative `--screen` ID.
+Startup observes and freezes that screen's numeric ID, farmer ID, and concrete
+game-context identity. Leaving or replacing it invalidates the server even if
+the numeric ID is reused; start a new client from a newly reported screen.
+Separate server processes are required for simultaneous local players. Duplicate,
 missing, or unknown option values are usage errors. The command deliberately has
 no `--json`, HTTP, TCP, relay, secret, or Python mode. Protocol frames are the
 only stdout output; bounded startup diagnostics use stderr. Closing the client's
@@ -38,6 +45,8 @@ stdin ends the child server process. Input tools are absent by default. Add the
 granular `--allow-input` startup flag only when that client is explicitly
 authorized to exercise process-local review input; the flag does not authorize
 fixture changes, arbitrary console text, or future action families.
+Native text input is not advertised by a screen-bound server because local
+screens share one window. Other explicitly enabled input remains screen-local.
 
 `--allow-fixture-actions` is a granular capability grant, not a general action
 or input switch. Without it, no `stardew_fixture_*` tool is advertised. With it,
@@ -126,32 +135,34 @@ watcher, general console command or network refresh tool is added. Follow the
 
 ## Default observation and screenshots
 
-Single-review servers additionally expose `stardew_inventory_get {}` for a
+Unbound single-review servers additionally expose `stardew_inventory_get {}` for a
 fresh read-only capture of the [complete bounded backpack](inventory-inspection.md)
 without opening a menu. It returns every slot plus request and visible-fact
 revision identities; neither is a durable item-instance handle. Unsupported or
-incomplete item data is explicit, and network servers do not advertise this
-single-review capability.
+incomplete item data is explicit. Network and local-screen servers do not
+advertise this capability; screen-local inventory inspection is deferred to its
+own port.
 
-Single-review servers additionally expose `stardew_container_get {}` for a
+Unbound single-review servers additionally expose `stardew_container_get {}` for a
 fresh read-only capture of the [selected supported vanilla chest](container-inspection.md),
 both inventory sides, and any menu-held item. Its selection identity binds the
 open menu and placed chest; its content revision also binds the exposed item
-facts. It never opens, searches, sorts, or mutates a chest, and network servers
-do not advertise it.
+facts. It never opens, searches, sorts, or mutates a chest, and network and
+local-screen servers do not advertise it.
 
-Single-review servers also expose `stardew_shop_get {}` for a fresh
+Unbound single-review servers also expose `stardew_shop_get {}` for a fresh
 read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).
 It requires no input opt-in. Unsupported shop semantics are explicitly unavailable;
 the tool neither purchases items nor infers a successful purchase from a price.
-Network servers do not advertise this single-review capability.
+Network and local-screen servers do not advertise this single-review capability.
 
-The same default single-review profile exposes
+The same unbound single-review profile exposes
 `stardew_world_area_get { "x": 60, "y": 12, "width": 8, "height": 8 }`.
 It returns the same complete bounded crop, tilled-soil, and ordinary-machine
 capture as [`project review world`](world-inspection.md), with explicit missing,
 unsupported, and unavailable states. It sends no input and grants no world
-mutation. Network-role servers do not advertise it.
+mutation. Network-role and local-screen servers do not advertise it;
+screen-local world and container inspection is deferred to its own port.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
@@ -402,12 +413,15 @@ A physical key still down at release cannot be reported as released and is never
 suppressed. Cancellation sends one request-bound cancellation on the existing
 owned console channel, drains the bounded action, and does not retry it.
 
-Each call is bound to the role selected at server startup, takes a closed JSON
+Each call is bound to the role or exact local-screen context selected at server startup, takes a closed JSON
 object, acquires the role-local cross-process action lock without queueing,
 revalidates the exact review and published foreground-window identity before
 dispatch, waits for one request-ID-bound, fresh, create-new AlwaysOn
 acknowledgement, and accepts it only after a later AlwaysOn status timestamp and
-game tick preserve that same binding. A request is never retried after console
+game tick preserve that same binding. Screen-bound calls additionally repeat the
+screen/farmer/context observation; a departure or replacement releases the
+departing screen's pending input through the existing split-screen cleanup and
+blocks further calls rather than retargeting. A request is never retried after console
 delivery is possible. If cancellation arrives after a valid acknowledgement,
 the result retains that acknowledgement, sets `cancellationRequested` to
 `true`, reports an error, and still completes the post-action binding check.

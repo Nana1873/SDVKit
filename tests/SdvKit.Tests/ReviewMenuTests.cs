@@ -300,6 +300,21 @@ public sealed class ReviewMenuTests
         Assert.Equal(expected, CliApplication.TryParseReviewMenu(("project review menu " + args).Split(' '), out _, out _));
 
     [Fact]
+    public void CliArgumentsAcceptOnlyBoundedSingleScreenSelection()
+    {
+        Assert.True(CliApplication.TryParseReviewMenu(
+            "project review menu --screen 1 --json".Split(' '), out string topology, out string? role, out int? screen));
+        Assert.Equal("single", topology);
+        Assert.Null(role);
+        Assert.Equal(1, screen);
+        Assert.True(CliApplication.TryParseReviewMenu(
+            "project review menu --screen 4 --json".Split(' '), out _, out _, out int? rejoinedScreen));
+        Assert.Equal(4, rejoinedScreen);
+        Assert.False(CliApplication.TryParseReviewMenu(
+            "project review menu --topology network-2 --role host --screen 1 --json".Split(' '), out _, out _, out _));
+    }
+
+    [Fact]
     public void MissingDuplicateAndUnknownFieldsAreRejected()
     {
         var report = new ReviewMenuCapture().Capture(new Source(), Launch, DateTimeOffset.UtcNow);

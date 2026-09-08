@@ -84,6 +84,9 @@ internal static class ProjectReviewInputService
         Action<TimeSpan>? delay = null,
         TimeSpan? responseTimeout = null,
         Func<DateTimeOffset>? utcNow = null,
+        int? screenId = null,
+        string? screenFarmerId = null,
+        string? screenContextId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -119,7 +122,8 @@ internal static class ProjectReviewInputService
             string responsePath = ReviewInputContract.ResponsePath(
                 actionPaths.RuntimePath,
                 requestId);
-            string command = BuildCommand(requestId, query);
+            string command = ProjectReviewScreenshotService.SelectScreen(
+                BuildCommand(requestId, query), screenId, screenFarmerId, screenContextId);
             DateTimeOffset requestedAtUtc = now();
             ProjectReviewResponseTransportResult<ReviewInputResponseEnvelope> transported =
                 ProjectReviewResponseTransport.Execute(
@@ -147,7 +151,8 @@ internal static class ProjectReviewInputService
                         ? () =>
                         {
                             DispatchCancellation(() => ProjectReviewService.ExecuteCommand(
-                                $"sdvkit input cancel {requestId}", topology, role, labRoot, inputSender));
+                                ProjectReviewScreenshotService.SelectScreen($"sdvkit input cancel {requestId}", screenId,
+                                    screenFarmerId, screenContextId), topology, role, labRoot, inputSender));
                         }
             : null);
 

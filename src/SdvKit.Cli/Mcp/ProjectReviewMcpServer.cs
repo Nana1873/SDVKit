@@ -59,6 +59,16 @@ internal static class ProjectReviewMcpServer
                 "saveId": { "type": "string" }
               }
             },
+            "screen": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["screenId", "farmerId", "contextId"],
+              "properties": {
+                "screenId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+                "farmerId": { "type": "string", "pattern": "^-?[1-9][0-9]*$" },
+                "contextId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+              }
+            },
             "runtime": {
               "type": "object",
               "additionalProperties": false,
@@ -149,6 +159,7 @@ internal static class ProjectReviewMcpServer
         string projectRoot,
         string topology,
         string? role,
+        int? screenId,
         bool allowInput,
         bool allowFixtureActions,
         bool allowWorldActions,
@@ -159,12 +170,25 @@ internal static class ProjectReviewMcpServer
         var reader = new ProjectReviewMcpRuntimeReader(
             projectRoot,
             topology,
-            role);
+            role,
+            screenId: screenId);
+        ProjectReviewMcpReadResult selectedPreflight = reader.Read();
+        if (!selectedPreflight.Succeeded)
+        {
+            error.WriteLine(
+                $"SDVKit MCP startup failed [{selectedPreflight.ErrorCode}]: {selectedPreflight.ErrorMessage}");
+            return OperationFailed;
+        }
         ProjectReviewMcpContextResult preflight = reader.ReadContext();
         if (!preflight.Succeeded)
         {
-            error.WriteLine(
-                $"SDVKit MCP startup failed [{preflight.ErrorCode}]: {preflight.ErrorMessage}");
+            error.WriteLine($"SDVKit MCP startup failed [{preflight.ErrorCode}]: {preflight.ErrorMessage}");
+            return OperationFailed;
+        }
+
+        if (screenId is not null && (allowFixtureActions || allowWorldActions || allowCpRefresh))
+        {
+            error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions, world interactions, or CP refresh.");
             return OperationFailed;
         }
 
@@ -188,31 +212,31 @@ internal static class ProjectReviewMcpServer
             return OperationFailed;
         }
 
-        ProjectReviewMcpDataQueryRunner? runData = string.Equals(
+        ProjectReviewMcpDataQueryRunner? runData = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
                 ? query => ProjectReviewDataService.Execute(query, projectRoot)
                 : null;
-        ProjectReviewMcpMapQueryRunner? runMap = string.Equals(
+        ProjectReviewMcpMapQueryRunner? runMap = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
                 ? query => ProjectReviewMapService.Execute(query, projectRoot)
                 : null;
-        ProjectReviewMcpTextureQueryRunner? runTexture = string.Equals(
+        ProjectReviewMcpTextureQueryRunner? runTexture = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
                 ? query => ProjectReviewTextureService.Execute(query, projectRoot)
                 : null;
-        ProjectReviewMcpAudioQueryRunner? runAudio = string.Equals(
+        ProjectReviewMcpAudioQueryRunner? runAudio = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
                 ? query => ProjectReviewAudioService.Execute(query, projectRoot)
                 : null;
-        ProjectReviewMcpModAssetQueryRunner? runModAsset = string.Equals(
+        ProjectReviewMcpModAssetQueryRunner? runModAsset = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
             StringComparison.Ordinal)
@@ -227,6 +251,9 @@ internal static class ProjectReviewMcpServer
                     projectRoot,
                     topology,
                     role,
+                    screenId: screenId,
+                    screenFarmerId: reader.BoundScreen?.FarmerId,
+                    screenContextId: reader.BoundScreen?.ContextId,
                     cancellationToken: token))
             : null;
         ProjectReviewMcpFixtureQueryRunner? runFixture = allowFixtureActions
@@ -327,7 +354,9 @@ internal static class ProjectReviewMcpServer
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
-        if (reader.Topology == "single" && reader.Role is null)
+        if (reader.Topology == "single"
+            && reader.Role is null
+            && reader.ScreenId is null)
         {
             tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
             tools.Add(ProjectReviewMcpContainerTools.Create(reader));
@@ -340,33 +369,40 @@ internal static class ProjectReviewMcpServer
             runCpRefresh ??= (pack, provider, files, asset, key, permission) => ProjectReviewCpRefresh.Execute(
                 reader.ProjectRoot, permission.Staging.Target.SourceRoot, pack, provider, files, asset, key, expectedContext: permission);
         }
-        tools.AddRange(ProjectReviewMcpCpTools.Create(reader, runCpDiagnosis, runCpRefresh, cpRefreshPermission));
+        if (reader.ScreenId is null)
+            tools.AddRange(ProjectReviewMcpCpTools.Create(reader, runCpDiagnosis, runCpRefresh, cpRefreshPermission));
         runScreenshot ??= (query, cancellationToken) =>
             ProjectReviewScreenshotService.Execute(
                 query,
                 reader.Topology,
                 reader.Role,
                 reader.ProjectRoot,
+                screenId: reader.ScreenId,
+                screenFarmerId: reader.BoundScreen?.FarmerId,
+                screenContextId: reader.BoundScreen?.ContextId,
                 cancellationToken: cancellationToken);
         tools.AddRange(ProjectReviewMcpScreenshotTools.Create(reader, runScreenshot));
-        if (runData is not null)
+        if (runData is not null && reader.ScreenId is null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
         }
         if (runMap is not null
             && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null)
+            && reader.Role is null
+            && reader.ScreenId is null)
         {
             tools.AddRange(ProjectReviewMcpMapTools.Create(reader, runMap));
         }
         if (runTexture is not null
             && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null)
+            && reader.Role is null
+            && reader.ScreenId is null)
         {
             tools.AddRange(ProjectReviewMcpTextureTools.Create(reader, runTexture));
         }
         if (reader.Topology == LiveLabState.SingleTopology
             && reader.Role is null
+            && reader.ScreenId is null
             && runAudio is not null
             && runModAsset is not null)
         {
@@ -374,7 +410,7 @@ internal static class ProjectReviewMcpServer
         }
         if (inputSession is not null)
         {
-            tools.AddRange(ProjectReviewMcpInputTools.Create(inputSession));
+            tools.AddRange(ProjectReviewMcpInputTools.Create(inputSession, allowText: reader.ScreenId is null));
         }
         if (runFixture is not null)
         {
@@ -384,7 +420,10 @@ internal static class ProjectReviewMcpServer
                 topology,
                 role));
         }
-        if (runWorldAction is not null && reader.Topology == LiveLabState.SingleTopology && reader.Role is null)
+        if (runWorldAction is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null
+            && reader.ScreenId is null)
             tools.Add(ProjectReviewMcpWorldActionTools.Create(runWorldAction));
 
         return new McpServerOptions
@@ -396,7 +435,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.9.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data, map, and texture tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data, map, and texture tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")

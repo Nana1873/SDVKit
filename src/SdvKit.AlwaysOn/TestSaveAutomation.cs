@@ -30,6 +30,15 @@ internal sealed class TestSaveAutomation
     private OwnedLocalSplitScreen? _localSplitScreen;
     internal void UpdateLocalScreens() => _localSplitScreen?.OnUpdateTicked();
 
+    internal void VerifyCurrentLocalScreen()
+    {
+        if (_localSplitScreen?.Selected != true)
+            throw new InvalidOperationException("An explicitly selected local split-screen review is required.");
+        if (!TryVerifyReviewFixture(out _, out string reason))
+            throw new InvalidOperationException(reason);
+        _localSplitScreen.VerifyCurrentPlayer();
+    }
+
     internal void HandleLocalSplitScreen(string[] arguments, IMonitor monitor, ReviewMenuCommand menu,
         Action<Game1> prepareScreenExit)
     {

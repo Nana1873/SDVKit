@@ -56,6 +56,7 @@ internal delegate LiveLabCommandResult ProjectReviewModAssetCommandRunner(
 internal delegate int ProjectReviewMcpCommandRunner(
     string topology,
     string? role,
+    int? screenId,
     string labRoot,
     bool allowInput,
     bool allowFixtureActions,
@@ -131,14 +132,16 @@ public static partial class CliApplication
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-cp-refresh]";
+    private const string ReviewMcpScreenUsage =
+        "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input]";
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_inventory_get, stardew_container_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_world_area_get, stardew_cp_diagnose";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; unbound single additionally: stardew_inventory_get, stardew_container_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_world_area_get, stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
-        "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
+        "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel; screen-bound servers omit shared-window text";
     private const string ReviewMcpFixtureDescription =
-        "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role";
+        "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role; unsupported with --screen";
     private const string ReviewMcpWorldActionDescription =
         "       --allow-world-actions additionally exposes only: stardew_world_interact for the exact owned disposable single-player review";
     private const string LabSingleUsage =
@@ -257,6 +260,7 @@ public static partial class CliApplication
         runProjectReviewMcp ??= (
             topology,
             role,
+            screenId,
             labRoot,
             allowInput,
             allowFixtureActions,
@@ -267,6 +271,7 @@ public static partial class CliApplication
                 labRoot,
                 topology,
                 role,
+                screenId,
                 allowInput,
                 allowFixtureActions,
                 allowWorldActions,
@@ -719,6 +724,7 @@ public static partial class CliApplication
                 arguments,
                 out string? mcpTopology,
                 out string? mcpRole,
+                out int? mcpScreenId,
                 out bool allowInput,
                 out bool allowFixtureActions,
                 out bool allowWorldActions,
@@ -727,6 +733,7 @@ public static partial class CliApplication
             return runProjectReviewMcp(
                 mcpTopology!,
                 mcpRole,
+                mcpScreenId,
                 Environment.CurrentDirectory,
                 allowInput,
                 allowFixtureActions,
@@ -1348,6 +1355,7 @@ public static partial class CliApplication
         IReadOnlyList<string> arguments,
         out string? topology,
         out string? role,
+        out int? screenId,
         out bool allowInput,
         out bool allowFixtureActions,
         out bool allowWorldActions,
@@ -1355,6 +1363,7 @@ public static partial class CliApplication
     {
         topology = LiveLabState.SingleTopology;
         role = null;
+        screenId = null;
         allowInput = false;
         allowFixtureActions = false;
         allowWorldActions = false;
@@ -1368,6 +1377,7 @@ public static partial class CliApplication
 
         var topologyCount = 0;
         var roleCount = 0;
+        var screenCount = 0;
         var allowInputCount = 0;
         var allowFixtureActionsCount = 0;
         var allowWorldActionsCount = 0;
@@ -1421,6 +1431,14 @@ public static partial class CliApplication
                 roleCount++;
                 role = value;
             }
+            else if (string.Equals(option, "--screen", StringComparison.Ordinal)
+                && int.TryParse(value, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int parsedScreen)
+                && parsedScreen >= 0)
+            {
+                screenCount++;
+                screenId = parsedScreen;
+            }
             else
             {
                 return false;
@@ -1429,20 +1447,23 @@ public static partial class CliApplication
 
         if (topologyCount > 1
             || roleCount > 1
+            || screenCount > 1
             || allowInputCount > 1
             || allowFixtureActionsCount > 1
             || allowWorldActionsCount > 1
             || allowCpRefreshCount > 1
+            || screenId is not null && (allowFixtureActions || allowWorldActions || allowCpRefresh)
             || (allowCpRefresh || allowWorldActions) && topology != LiveLabState.SingleTopology)
         {
             return false;
         }
 
         return string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
-            ? roleCount == 0
+            ? roleCount == 0 && (screenCount == 0 || screenId is not null)
             : string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
                 && topologyCount == 1
                 && roleCount == 1
+                && screenCount == 0
                 && NetworkTwoContract.IsRole(role!);
     }
 
@@ -1881,6 +1902,7 @@ public static partial class CliApplication
     private static void WriteProjectReviewMcpUsage(TextWriter output)
     {
         output.WriteLine(ReviewMcpSingleUsage.TrimStart());
+        output.WriteLine(ReviewMcpScreenUsage.TrimStart());
         output.WriteLine(ReviewMcpNetworkUsage.TrimStart());
         output.WriteLine(ReviewMcpToolsDescription.TrimStart());
         output.WriteLine(ReviewMcpInputDescription.TrimStart());
@@ -1888,7 +1910,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMcpWorldActionDescription.TrimStart());
         output.WriteLine("--allow-cp-refresh separately exposes stardew_cp_refresh for the exact startup single root CP 2.9.1 pack; input and fixture opt-ins never authorize refresh.");
         output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
-        output.WriteLine("The role is fixed at startup. Closing stdin stops this server; stdout contains only MCP frames.");
+        output.WriteLine("The role or exact observed local screen and farmer context is fixed at startup. A departed/rejoined screen requires a new server. Closing stdin stops this server; stdout contains only MCP frames.");
     }
 
     private static void WriteProjectReviewDataUsage(TextWriter output)
