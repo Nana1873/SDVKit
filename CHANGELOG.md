@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep an unfocused farmhand running when joining again replaces Stardew's options before the next update. The background guard captures the replacement's original settings immediately so clean stop can still restore them.
+
 ### Changed
 
 - Autonomous review guidance and MCP input descriptions prefer one Escape press or one observed close-button click for routine menu closing, followed by fresh menu evidence before further input. Controller input remains available for explicit controller tests; no runtime input behavior has changed.
