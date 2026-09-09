@@ -23,7 +23,6 @@ internal static class ProjectReviewInventoryService
         ReviewInventoryReport Failure(string code) => new(ReviewInventoryContract.SchemaVersion,
             "unavailable", code, null, reader.Topology, reader.Role, clock(), null);
         cancellationToken.ThrowIfCancellationRequested();
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("inventoryTopologyUnsupported");
         ProjectReviewMcpReadResult before = reader.Read();
         if (!before.Succeeded) return Failure(before.ErrorCode!);
         if (!before.Snapshot!.Runtime.WorldReady) return Failure("inventoryWorldNotReady");
@@ -33,7 +32,7 @@ internal static class ProjectReviewInventoryService
             string requestId = Guid.NewGuid().ToString("N");
             DateTimeOffset started = clock();
             ProjectReviewResponseTransportResult<ReviewInventoryResponseEnvelope> result = ProjectReviewResponseTransport.Execute(
-                $"sdvkit inventory {requestId} {before.Snapshot.LaunchId}",
+                reader.SelectCommand($"sdvkit inventory {requestId} {before.Snapshot.LaunchId}"),
                 ReviewInventoryContract.ResponsePath(runtimePath, requestId), ReviewInventoryContract.MaximumResponseBytes,
                 "inventory", "review-inventory", reader.ProjectRoot, DeserializeResponse,
                 response => response.SchemaVersion == ReviewInventoryContract.SchemaVersion && response.RequestId == requestId
@@ -84,8 +83,8 @@ internal static class ProjectReviewInventoryService
     internal static bool ValidResponse(ReviewInventoryReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         string requestId, DateTimeOffset started, DateTimeOffset now) => report is not null
         && report.SchemaVersion == ReviewInventoryContract.SchemaVersion
-        && report.LaunchId == expected.LaunchId && report.Topology == "single" && report.Topology == expected.Topology
-        && report.Role is null && expected.Role is null && report.CapturedAtUtc.Offset == TimeSpan.Zero
+        && report.LaunchId == expected.LaunchId && report.Topology == expected.Topology
+        && report.Role == expected.Role && report.CapturedAtUtc.Offset == TimeSpan.Zero
         && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
         && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
         && (report.State == "ready" ? report.ErrorCode is null && report.Data is { } data

@@ -22,7 +22,7 @@ internal static class ProjectReviewMcpWorldTools
          "properties":{
           "schemaVersion":{"const":1},"state":{"enum":["ready","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
-          "topology":{"const":"single"},"role":{"type":"null"},
+          "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},
           "capturedAtUtc":{"type":"string","format":"date-time"},
           "data":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,
             "required":["locationName","locationInstanceId","playerId","captureTick","area","complete","tiles"],
@@ -68,7 +68,7 @@ internal static class ProjectReviewMcpWorldTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Read one complete bounded row-major rectangle of current-location tilled soil, crops, and ordinary data-backed vanilla machines from an exact world-ready single review. Missing, unsupported, and unavailable object state is explicit. Instance identities detect replacement within the process; revisions change with exposed state. No mutation.",
+            Description = "Read one complete bounded row-major rectangle of current-location tilled soil, crops, and ordinary data-backed vanilla machines as observed by the exact selected world-ready role or local screen. Shared or replicated world state is reported through that selection without peer fallback. Missing, unsupported, and unavailable object state is explicit. Instance identities detect replacement within the process; revisions change with exposed state. No mutation.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

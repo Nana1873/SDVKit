@@ -8,12 +8,26 @@ public static partial class CliApplication
         IReadOnlyList<string> Operands,
         int Offset,
         int Limit,
-        int? FrameIndex);
+        int? FrameIndex,
+        string Topology,
+        string? Role,
+        int? ScreenId);
 
     private static bool TryParseReviewQueryOptions(
         IReadOnlyList<string> arguments,
         bool allowPagination,
         bool allowFrame,
+        int defaultLimit,
+        int maximumLimit,
+        out ReviewQueryOptions options)
+        => TryParseReviewQueryOptions(arguments, allowPagination, allowFrame, allowSelection: false,
+            defaultLimit, maximumLimit, out options);
+
+    private static bool TryParseReviewQueryOptions(
+        IReadOnlyList<string> arguments,
+        bool allowPagination,
+        bool allowFrame,
+        bool allowSelection,
         int defaultLimit,
         int maximumLimit,
         out ReviewQueryOptions options)
@@ -24,6 +38,9 @@ public static partial class CliApplication
         var offset = 0;
         int limit = allowPagination ? defaultLimit : 1;
         int? frameIndex = null;
+        string topology = LiveLabState.SingleTopology;
+        string? role = null;
+        int? screenId = null;
         var operandsAtEndMarker = -1;
         for (var index = 4; index < arguments.Count; index++)
         {
@@ -46,7 +63,7 @@ public static partial class CliApplication
             {
                 continue;
             }
-            if (argument is not ("--topology" or "--offset" or "--limit" or "--frame")
+            if (argument is not ("--topology" or "--role" or "--screen" or "--offset" or "--limit" or "--frame")
                 || ++index >= arguments.Count)
             {
                 return false;
@@ -56,10 +73,19 @@ public static partial class CliApplication
             switch (argument)
             {
                 case "--topology":
-                    if (value != LiveLabState.SingleTopology)
+                    if (value is not (LiveLabState.SingleTopology or NetworkTwoContract.Topology))
                     {
                         return false;
                     }
+                    topology = value;
+                    break;
+                case "--role":
+                    if (!allowSelection || !NetworkTwoContract.IsRole(value)) return false;
+                    role = value;
+                    break;
+                case "--screen":
+                    if (!allowSelection || !TryParseNonNegative(value, out int parsedScreen)) return false;
+                    screenId = parsedScreen;
                     break;
                 case "--offset":
                     if (!allowPagination || !TryParseNonNegative(value, out offset))
@@ -90,7 +116,14 @@ public static partial class CliApplication
         {
             return false;
         }
-        options = new ReviewQueryOptions(operands, offset, limit, frameIndex);
+        if (!allowSelection && (topology != LiveLabState.SingleTopology || role is not null || screenId is not null)
+            || allowSelection && (topology == LiveLabState.SingleTopology
+                ? role is not null
+                : topology != NetworkTwoContract.Topology || role is null || screenId is not null))
+        {
+            return false;
+        }
+        options = new ReviewQueryOptions(operands, offset, limit, frameIndex, topology, role, screenId);
         return true;
     }
 }

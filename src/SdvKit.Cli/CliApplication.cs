@@ -35,7 +35,10 @@ internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
 
 internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
     ReviewDataQuery query,
-    string labRoot);
+    string labRoot,
+    string topology,
+    string? role,
+    int? screenId);
 
 internal delegate LiveLabCommandResult ProjectReviewMapCommandRunner(
     ReviewMapQuery query,
@@ -88,11 +91,11 @@ public static partial class CliApplication
     private const string ReviewResetUsage =
         "       sdvkit project review reset --topology <single|network-2> --json";
     private const string ReviewDataAssetsUsage =
-        "       sdvkit project review data assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
+        "       sdvkit project review data assets [--offset <n>] [--limit <1-100>] [--topology <single|network-2>] [--role <host|farmhand>] [--screen <id>] --json";
     private const string ReviewDataKeysUsage =
-        "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+        "       sdvkit project review data keys <asset> [--offset <n>] [--limit <1-100>] [--topology <single|network-2>] [--role <host|farmhand>] [--screen <id>] --json";
     private const string ReviewDataGetUsage =
-        "       sdvkit project review data get <asset> <key> [--topology single] --json";
+        "       sdvkit project review data get <asset> <key> [--topology <single|network-2>] [--role <host|farmhand>] [--screen <id>] --json";
     private const string ReviewMapAssetsUsage =
         "       sdvkit project review map assets [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewMapGetUsage =
@@ -138,7 +141,7 @@ public static partial class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; unbound single additionally: stardew_inventory_get, stardew_container_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_world_area_get, stardew_cp_diagnose";
+        "       all MCP topologies/selections: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture, stardew_inventory_get, stardew_container_get, stardew_world_area_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; unbound single additionally: stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel; screen-bound servers omit shared-window text";
     private const string ReviewMcpFixtureDescription =
@@ -250,8 +253,10 @@ public static partial class CliApplication
 
         runProjectReviewConsole ??= (command, topology, role, labRoot) =>
             ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
-        runProjectReviewData ??= (query, labRoot) =>
-            ProjectReviewDataService.Execute(query, labRoot);
+        runProjectReviewData ??= (query, labRoot, topology, role, screenId) =>
+            ProjectReviewDataService.Execute(
+                query,
+                new ProjectReviewMcpRuntimeReader(labRoot, topology, role, screenId: screenId));
         runProjectReviewMap ??= (query, labRoot) =>
             ProjectReviewMapService.Execute(query, labRoot);
         runProjectReviewTexture ??= (query, labRoot) =>
@@ -828,7 +833,12 @@ public static partial class CliApplication
             return Success;
         }
 
-        if (!TryParseProjectReviewData(arguments, out ReviewDataQuery? query))
+        if (!TryParseProjectReviewData(
+                arguments,
+                out ReviewDataQuery? query,
+                out string? topology,
+                out string? role,
+                out int? screenId))
         {
             WriteProjectReviewDataUsage(error);
             return UsageError;
@@ -836,16 +846,25 @@ public static partial class CliApplication
 
         LiveLabCommandResult result = runProjectReviewData(
             query!,
-            Environment.CurrentDirectory);
+            Environment.CurrentDirectory,
+            topology!,
+            role,
+            screenId);
         WriteJson(output, result.Report);
         return result.ExitCode;
     }
 
     private static bool TryParseProjectReviewData(
         IReadOnlyList<string> arguments,
-        out ReviewDataQuery? query)
+        out ReviewDataQuery? query,
+        out string? topology,
+        out string? role,
+        out int? screenId)
     {
         query = null;
+        topology = null;
+        role = null;
+        screenId = null;
         if (arguments.Count < 5
             || !string.Equals(arguments[0], "project", StringComparison.Ordinal)
             || !string.Equals(arguments[1], "review", StringComparison.Ordinal)
@@ -868,6 +887,7 @@ public static partial class CliApplication
                 arguments,
                 listOperation,
                 allowFrame: false,
+                allowSelection: true,
                 ReviewDataContract.DefaultPageLimit,
                 ReviewDataContract.MaximumPageLimit,
                 out ReviewQueryOptions options))
@@ -897,6 +917,9 @@ public static partial class CliApplication
             operands.Count > 1 ? operands[1] : null,
             offset,
             limit);
+        topology = options.Topology;
+        role = options.Role;
+        screenId = options.ScreenId;
         return true;
     }
 
@@ -1902,9 +1925,9 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review data --help        Canonical structured Data.");
         output.WriteLine("  sdvkit project review menu --help        Read-only active menus for the selected role.");
         output.WriteLine("  sdvkit project review shop --help        Read-only SeedShop Gold evidence (single only).");
-        output.WriteLine("  sdvkit project review inventory --help   Read-only complete bounded backpack (single only).");
-        output.WriteLine("  sdvkit project review world --help       Read-only crop, soil, and machine area (single only).");
-        output.WriteLine("  sdvkit project review container --help   Read-only selected regular vanilla chest (single only).");
+        output.WriteLine("  sdvkit project review inventory --help   Read-only selected-player bounded backpack.");
+        output.WriteLine("  sdvkit project review world --help       Read-only selected-role crop, soil, and machine area.");
+        output.WriteLine("  sdvkit project review container --help   Read-only selected-role regular vanilla chest.");
         output.WriteLine("  sdvkit project review container-transfer --help  Exact bounded native chest transfer (unbound single only).");
         output.WriteLine("  sdvkit project review interact --help    One revision-bound native world action (owned test save only).");
         output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
@@ -1943,7 +1966,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewDataKeysUsage.TrimStart());
         output.WriteLine(ReviewDataGetUsage.TrimStart());
         output.WriteLine(
-            "Queries require an active owned single review and return only canonical installed Data assets after the active SMAPI content pipeline.");
+            "Queries require the selected active owned review and return process-shared canonical installed Data assets after the active SMAPI content pipeline; --screen validates the exact local binding but does not create a screen-local Data cache.");
         output.WriteLine(
             "For an operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }

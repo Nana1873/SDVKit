@@ -227,12 +227,8 @@ internal static class ProjectReviewMcpServer
             return OperationFailed;
         }
 
-        ProjectReviewMcpDataQueryRunner? runData = screenId is null && string.Equals(
-            topology,
-            LiveLabState.SingleTopology,
-            StringComparison.Ordinal)
-                ? query => ProjectReviewDataService.Execute(query, projectRoot)
-                : null;
+        ProjectReviewMcpDataQueryRunner runData = query =>
+            ProjectReviewDataService.Execute(query, reader);
         ProjectReviewMcpMapQueryRunner? runMap = screenId is null && string.Equals(
             topology,
             LiveLabState.SingleTopology,
@@ -380,16 +376,16 @@ internal static class ProjectReviewMcpServer
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
+        tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
+        tools.Add(ProjectReviewMcpContainerTools.Create(reader));
+        tools.Add(ProjectReviewMcpWorldTools.Create(reader));
         if (reader.Topology == "single"
             && reader.Role is null
             && reader.ScreenId is null)
         {
-            tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
-            tools.Add(ProjectReviewMcpContainerTools.Create(reader));
             if (containerTransferEnabled)
                 tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer!));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
-            tools.Add(ProjectReviewMcpWorldTools.Create(reader));
         }
         runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
         if (cpRefreshPermission is not null)
@@ -410,7 +406,7 @@ internal static class ProjectReviewMcpServer
                 screenContextId: reader.BoundScreen?.ContextId,
                 cancellationToken: cancellationToken);
         tools.AddRange(ProjectReviewMcpScreenshotTools.Create(reader, runScreenshot));
-        if (runData is not null && reader.ScreenId is null)
+        if (runData is not null)
         {
             tools.AddRange(ProjectReviewMcpDataTools.Create(reader, runData));
         }
@@ -463,7 +459,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "0.9.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection and one screenshot capture tool are available for every topology; canonical Data, map, and texture tools remain single-only. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection, one screenshot capture, player-local backpack and chest reads, role-local world reads, and process-shared canonical Data reads are available for every valid selection. Data selection validates freshness and identity but does not create a role- or screen-local cache. Shop, map, texture, audio, mod-asset, Content Patcher, and mutation capabilities retain their narrower gates. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")

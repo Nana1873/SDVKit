@@ -15,7 +15,7 @@ internal static class ProjectReviewMcpInventoryTools
          "properties":{
           "schemaVersion":{"const":1},"state":{"enum":["ready","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
-          "topology":{"const":"single"},"role":{"type":"null"},
+          "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},
           "capturedAtUtc":{"type":"string","format":"date-time"},
           "data":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,
             "required":["captureId","inventoryRevision","playerId","capacity","selectedSlot","complete","limitations","slots"],
@@ -49,7 +49,7 @@ internal static class ProjectReviewMcpInventoryTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Read every bounded backpack slot for the exact world-ready player in an owned single review. Slots are explicitly empty, occupied, or unavailable. The capture ID is request-scoped; inventoryRevision compares the visible supported facts within the launch and is not an item-instance handle. Read-only and does not require a menu.",
+            Description = "Read every bounded backpack slot for the exact selected world-ready player in an owned review role or local screen. There is no peer-player fallback. Slots are explicitly empty, occupied, or unavailable. The capture ID is request-scoped; inventoryRevision compares the visible supported facts within the launch and is not an item-instance handle. Read-only and does not require a menu.",
             InputSchema = JsonDocument.Parse("""{"type":"object","additionalProperties":false}""").RootElement.Clone(),
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

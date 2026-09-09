@@ -1,11 +1,14 @@
 # Inspect live crops, soil, and machines
 
 Use `project review world` or native `stardew_world_area_get` to capture one
-explicit rectangle in the current location of an exact, world-ready `single`
-review. Both surfaces are read-only and return the same typed report.
+explicit rectangle in the current location observed by an exact world-ready
+single player, network role, or local screen. Both surfaces are read-only and
+return the same typed report without granting interaction rights.
 
 ```powershell
 & $sdvkit project review world 60 12 8 8 --topology single --json
+& $sdvkit project review world 60 12 8 8 --topology network-2 --role host --json
+& $sdvkit project review world 60 12 8 8 --topology single --screen 1 --json
 ```
 
 The four operands are `x y width height`. Width and height are each 1-32 tiles,

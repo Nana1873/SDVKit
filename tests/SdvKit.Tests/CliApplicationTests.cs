@@ -728,7 +728,7 @@ public sealed class CliApplicationTests
     {
         ReviewDataQuery? received = null;
         string? receivedLabRoot = null;
-        ProjectReviewDataCommandRunner runner = (query, labRoot) =>
+        ProjectReviewDataCommandRunner runner = (query, labRoot, _, _, _) =>
         {
             received = query;
             receivedLabRoot = labRoot;
@@ -792,6 +792,34 @@ public sealed class CliApplicationTests
     }
 
     [Theory]
+    [InlineData("single", null, "1", 1)]
+    [InlineData("network-2", "host", null, null)]
+    [InlineData("network-2", "farmhand", null, null)]
+    public void ProjectReviewDataForwardsTheExactOwnedSelection(
+        string expectedTopology,
+        string? expectedRole,
+        string? screenArgument,
+        int? expectedScreen)
+    {
+        string[] selection = screenArgument is not null
+            ? ["--topology", expectedTopology, "--screen", screenArgument]
+            : ["--topology", expectedTopology, "--role", expectedRole!];
+        ProjectReviewDataCommandRunner runner = (_, _, topology, role, screenId) =>
+        {
+            Assert.Equal(expectedTopology, topology);
+            Assert.Equal(expectedRole, role);
+            Assert.Equal(expectedScreen, screenId);
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        };
+
+        (int exitCode, _, string error) = RunWithProjectReviewData(runner,
+            ["project", "review", "data", "assets", .. selection, "--json"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Theory]
     [InlineData("project", "review", "data")]
     [InlineData("project", "review", "data", "unknown", "--json")]
     [InlineData("project", "review", "data", "assets")]
@@ -806,7 +834,7 @@ public sealed class CliApplicationTests
     [InlineData("project", "review", "data", "get", "Data/Buildings", "Barn", "--json", "--json")]
     public void ProjectReviewDataSyntaxErrorsUseTheExactDataUsage(params string[] arguments)
     {
-        ProjectReviewDataCommandRunner runner = (_, _) =>
+        ProjectReviewDataCommandRunner runner = (_, _, _, _, _) =>
             throw new InvalidOperationException("Review-data should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReviewData(
@@ -835,7 +863,7 @@ public sealed class CliApplicationTests
     public void ProjectReviewDataHelpListsOnlyTheBoundedSingleSurface(
         params string[] suffix)
     {
-        ProjectReviewDataCommandRunner runner = (_, _) =>
+        ProjectReviewDataCommandRunner runner = (_, _, _, _, _) =>
             throw new InvalidOperationException("Review-data should not run.");
 
         (int exitCode, string output, string error) = RunWithProjectReviewData(
@@ -847,8 +875,9 @@ public sealed class CliApplicationTests
         Assert.Contains("data assets", output, StringComparison.Ordinal);
         Assert.Contains("data keys <asset>", output, StringComparison.Ordinal);
         Assert.Contains("data get <asset> <key>", output, StringComparison.Ordinal);
-        Assert.Contains("active owned single review", output, StringComparison.Ordinal);
-        Assert.DoesNotContain("network-2", output, StringComparison.Ordinal);
+        Assert.Contains("selected active owned review", output, StringComparison.Ordinal);
+        Assert.Contains("process-shared", output, StringComparison.Ordinal);
+        Assert.Contains("network-2", output, StringComparison.Ordinal);
     }
 
     [Fact]

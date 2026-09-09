@@ -35,19 +35,22 @@ internal static class ReviewWorldCommand
         }
         var area = new ReviewWorldArea(x, y, width, height);
         string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
+        string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
+        role = string.IsNullOrWhiteSpace(role) ? null : role;
+        string topology = role is null ? "single" : "network-2";
         ReviewWorldReport Failure(string code) => new(1, "unavailable", code, launch,
-            "single", null, DateTimeOffset.UtcNow, null);
+            topology, role, DateTimeOffset.UtcNow, null);
         ReviewWorldReport report;
         try
         {
             string? queryProblem = ReviewWorldContract.QueryProblem(area);
             report = Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") != "1" || args[2] != launch
-                || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
+                || role is not null && !NetworkTwoContract.IsRole(role)
                     ? Failure("worldReviewBindingInvalid")
                     : queryProblem is not null ? Failure(queryProblem)
                     : !Context.IsWorldReady || Game1.exitToTitle || Game1.currentLocation is null
                         ? Failure("worldNotReady")
-                        : Capture(launch, area);
+                        : Capture(launch, area, topology, role);
         }
         catch (Exception)
         {
@@ -68,10 +71,14 @@ internal static class ReviewWorldCommand
         }
     }
 
-    internal static ReviewWorldReport Capture(string launch, ReviewWorldArea area)
+    internal static ReviewWorldReport Capture(
+        string launch,
+        ReviewWorldArea area,
+        string topology = "single",
+        string? role = null)
     {
         ReviewWorldReport Failure(string code) => new(1, "unavailable", code, launch,
-            "single", null, DateTimeOffset.UtcNow, null);
+            topology, role, DateTimeOffset.UtcNow, null);
         GameLocation location = Game1.currentLocation;
         string locationName = location.NameOrUniqueName;
         if (string.IsNullOrWhiteSpace(locationName) || locationName.Length > ReviewWorldContract.MaximumLocationLength)
@@ -96,7 +103,7 @@ internal static class ReviewWorldCommand
             Game1.player.UniqueMultiplayerID.ToString(System.Globalization.CultureInfo.InvariantCulture),
             Game1.ticks, area, true, tiles.AsReadOnly());
         return ReviewWorldContract.DataValid(values)
-            ? new(1, "ready", null, launch, "single", null, DateTimeOffset.UtcNow, values)
+            ? new(1, "ready", null, launch, topology, role, DateTimeOffset.UtcNow, values)
             : Failure("worldValuesInvalid");
     }
 

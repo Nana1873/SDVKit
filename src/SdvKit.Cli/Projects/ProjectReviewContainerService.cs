@@ -23,7 +23,6 @@ internal static class ProjectReviewContainerService
         ReviewContainerReport Failure(string code) => new(ReviewContainerContract.SchemaVersion,
             "unavailable", code, null, reader.Topology, reader.Role, clock(), null);
         cancellationToken.ThrowIfCancellationRequested();
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("containerTopologyUnsupported");
         ProjectReviewMcpReadResult before = reader.Read();
         if (!before.Succeeded) return Failure(before.ErrorCode!);
         if (!before.Snapshot!.Runtime.WorldReady) return Failure("containerWorldNotReady");
@@ -33,7 +32,7 @@ internal static class ProjectReviewContainerService
             string requestId = Guid.NewGuid().ToString("N");
             DateTimeOffset started = clock();
             ProjectReviewResponseTransportResult<ReviewContainerResponseEnvelope> result = ProjectReviewResponseTransport.Execute(
-                $"sdvkit container {requestId} {before.Snapshot.LaunchId}",
+                reader.SelectCommand($"sdvkit container {requestId} {before.Snapshot.LaunchId}"),
                 ReviewContainerContract.ResponsePath(runtimePath, requestId), ReviewContainerContract.MaximumResponseBytes,
                 "container", "review-container", reader.ProjectRoot, DeserializeResponse,
                 response => response.SchemaVersion == ReviewContainerContract.SchemaVersion && response.RequestId == requestId
@@ -108,13 +107,14 @@ internal static class ProjectReviewContainerService
     internal static bool ValidResponse(ReviewContainerReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         string requestId, DateTimeOffset started, DateTimeOffset now) => report is not null
         && report.SchemaVersion == ReviewContainerContract.SchemaVersion
-        && report.LaunchId == expected.LaunchId && report.Topology == "single" && report.Topology == expected.Topology
-        && report.Role is null && expected.Role is null && report.CapturedAtUtc.Offset == TimeSpan.Zero
+        && report.LaunchId == expected.LaunchId && report.Topology == expected.Topology
+        && report.Role == expected.Role && report.CapturedAtUtc.Offset == TimeSpan.Zero
         && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
         && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
         && (report.State == "ready" ? report.ErrorCode is null && report.Data is { } data
                 && data.CaptureId == requestId && ReviewContainerContract.DataValid(data, expected.LaunchId)
                 && data.PlayerId == expected.Runtime.LocalPlayer?.Data?.PlayerId
+                && data.LocationName == expected.Runtime.LocationId
             : report.State == "unavailable" && report.Data is null && report.ErrorCode is
                 ("containerReviewBindingInvalid" or "containerWorldNotReady" or "containerCaptureFailed"
                 or "containerResponseLimit" or "containerMenuUnsupported" or "containerBackingAmbiguous"

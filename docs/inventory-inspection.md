@@ -1,18 +1,19 @@
 # Inspect the complete bounded backpack
 
 Use `project review inventory --json` or native `stardew_inventory_get {}` in a
-world-ready owned single [review](live-review.md). The read runs on Stardew's
-main thread and captures every slot in the selected local player's current
+world-ready owned [review](live-review.md). The read runs on Stardew's main
+thread and captures every slot in the exact selected player's current
 backpack. It does not require or open a menu, send input, move an item, scan a
 save, or add work to the periodic runtime status.
 
 ```powershell
 & $sdvkit project review inventory --topology single --json
+& $sdvkit project review inventory --topology network-2 --role host --json
+& $sdvkit project review inventory --topology single --screen 1 --json
 ```
 
-The MCP tool is present in the default single-review observation profile and
-requires no action opt-in. Network roles and local screen IDs other than screen
-0 are outside this version.
+The MCP tool is present for every valid single, network-role, or local-screen
+selection and requires no action opt-in. It never falls back to a peer player.
 
 ## Fields and bounds
 
@@ -57,7 +58,7 @@ substituted.
 
 ## Compare a quantity change
 
-1. Confirm the exact target, owned single review, player, and disposable-world
+1. Confirm the exact target, owned review selection, player, and disposable-world
    identity with `project review status`.
 2. Capture the backpack and record `launchId`, `playerId`, `captureId`,
    `inventoryRevision`, and the relevant slot facts.

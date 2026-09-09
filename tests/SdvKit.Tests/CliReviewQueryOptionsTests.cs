@@ -27,7 +27,7 @@ public sealed class CliReviewQueryOptionsTests
             output,
             error,
             () => throw new InvalidOperationException("Discovery must not run."),
-            runProjectReviewData: (_, _) => Unexpected(),
+            runProjectReviewData: (_, _, _, _, _) => Unexpected(),
             runProjectReviewAudio: (_, _) => Unexpected(),
             runProjectReviewMap: (_, _) => Unexpected(),
             runProjectReviewTexture: (_, _) => Unexpected(),
@@ -54,7 +54,7 @@ public sealed class CliReviewQueryOptionsTests
             output,
             error,
             () => throw new InvalidOperationException("Discovery must not run."),
-            runProjectReviewData: (query, _) =>
+            runProjectReviewData: (query, _, _, _, _) =>
             {
                 received = query;
                 return new LiveLabCommandResult(0, new { state = "ready" });

@@ -259,7 +259,7 @@ internal static class ProjectReviewMcpDataTools
     {
         public override Tool ProtocolTool { get; } = Tool(
             AssetsToolName,
-            "List one bounded page of installed canonical Stardew Data assets and complete coverage metadata.",
+            "List one bounded page of process-shared installed canonical Stardew Data assets and complete coverage metadata after validating the selected review role or local screen.",
             AssetsInputSchema,
             AssetsOutputSchema);
 
@@ -319,7 +319,7 @@ internal static class ProjectReviewMcpDataTools
     {
         public override Tool ProtocolTool { get; } = Tool(
             KeysToolName,
-            "List one bounded page of stable keys for one canonical Stardew Data asset.",
+            "List one bounded page of stable keys for one process-shared canonical Stardew Data asset after validating the selected review role or local screen.",
             KeysInputSchema,
             KeysOutputSchema);
 
@@ -387,7 +387,7 @@ internal static class ProjectReviewMcpDataTools
     {
         public override Tool ProtocolTool { get; } = Tool(
             RecordToolName,
-            "Read one exact canonical Stardew Data record by its stable internal key.",
+            "Read one exact process-shared canonical Stardew Data record by its stable internal key after validating the selected review role or local screen.",
             RecordInputSchema,
             RecordOutputSchema);
 

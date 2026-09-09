@@ -10,6 +10,107 @@ namespace SdvKit.Tests;
 [Collection(NativeWindowsProcessGroup.Name)]
 public sealed class ProjectReviewMcpDataTests
 {
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void NetworkCatalogAddsOwnedReadsAndDataWithoutSingleOnlyOrActionFamilies(string role)
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, role);
+        string[] names = ProjectReviewMcpServer.CreateOptions(reader, _ => throw new InvalidOperationException())
+            .ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
+
+        Assert.Contains(ProjectReviewMcpInventoryTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpContainerTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpWorldTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.AssetsToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.KeysToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.RecordToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpShopTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpMapTools.AssetsToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpTextureTools.AssetsToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpCpTools.DiagnoseToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpWorldActionTools.ToolName, names);
+    }
+
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void CanonicalDataDispatchUsesTheExactSelectedNetworkRole(string role)
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, role);
+        var query = new ReviewDataQuery(ReviewDataContract.AssetsOperation, null, null, 0, 2);
+        string? dispatched = null;
+        string selectedVersion = role + "-selected";
+
+        LiveLabCommandResult result = ProjectReviewDataService.Execute(query, reader,
+            responseTimeout: TimeSpan.Zero,
+            send: command =>
+            {
+                dispatched = command;
+                string requestId = command.Split(' ')[2];
+                string runtimePath = ProjectReviewInputService.RuntimePath(temporary.Path,
+                    NetworkTwoContract.Topology, role);
+                ReviewDataReport report = Assert.IsType<ReviewDataReport>(Ready(query).Report) with
+                {
+                    GameVersion = selectedVersion,
+                };
+                string peerRole = role == NetworkTwoContract.HostRole
+                    ? NetworkTwoContract.FarmhandRole
+                    : NetworkTwoContract.HostRole;
+                string peerRuntimePath = ProjectReviewInputService.RuntimePath(temporary.Path,
+                    NetworkTwoContract.Topology, peerRole);
+                File.WriteAllText(ReviewDataContract.ResponsePath(peerRuntimePath, requestId),
+                    JsonSerializer.Serialize(new ReviewDataResponseEnvelope(1, requestId,
+                        report with { GameVersion = "wrong-peer" }), LiveLabJsonOptions.CamelCase));
+                File.WriteAllText(ReviewDataContract.ResponsePath(runtimePath, requestId),
+                    JsonSerializer.Serialize(new ReviewDataResponseEnvelope(1, requestId, report),
+                        LiveLabJsonOptions.CamelCase));
+                return new LiveLabCommandResult(0,
+                    new ProjectReviewCommandReport(1, role, temporary.Path, "ready", null, true, [], []));
+            });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(selectedVersion, Assert.IsType<ReviewDataReport>(result.Report).GameVersion);
+        Assert.StartsWith("sdvkit data ", dispatched, StringComparison.Ordinal);
+        Assert.DoesNotContain("screen=", dispatched, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CanonicalDataDispatchValidatesButDoesNotLocalizeASelectedScreen()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyLocalScreenReview(
+            temporary, 1, command =>
+            {
+                ProjectReviewMcpTests.WriteScreenBindingResponse(temporary, command, "202",
+                    "11111111111111111111111111111111");
+                return new LiveLabCommandResult(0,
+                    new ProjectReviewCommandReport(1, null, temporary.Path, "ready", null, true, [], []));
+            });
+        var query = new ReviewDataQuery(ReviewDataContract.AssetsOperation, null, null, 0, 2);
+        string? dispatched = null;
+        LiveLabCommandResult result = ProjectReviewDataService.Execute(query, reader,
+            responseTimeout: TimeSpan.Zero,
+            send: command =>
+            {
+                dispatched = command;
+                string requestId = command.Split(' ')[2];
+                ReviewDataReport report = Assert.IsType<ReviewDataReport>(Ready(query).Report);
+                File.WriteAllText(ReviewDataContract.ResponsePath(
+                        LiveLabPaths.Resolve(temporary.Path).RuntimePath, requestId),
+                    JsonSerializer.Serialize(new ReviewDataResponseEnvelope(1, requestId, report),
+                        LiveLabJsonOptions.CamelCase));
+                return new LiveLabCommandResult(0,
+                    new ProjectReviewCommandReport(1, null, temporary.Path, "ready", null, true, [], []));
+            });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(" binding=11111111111111111111111111111111 farmer=202 screen=1", dispatched,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task OfficialClientListsAndCallsTheThreeCanonicalDataTools()
     {

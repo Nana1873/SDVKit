@@ -291,9 +291,9 @@ public sealed class ReviewContainerTransferTests
         }
         ReviewContainerSide player = Side("player", 12, playerStack, 1), chest = Side("container", 36, chestStack, 2);
         ReviewObservedItem held = new("empty", null, null, null);
-        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "FarmHouse", tileX, 7, "(BC)130");
+        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "Farm", tileX, 7, "(BC)130");
         return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, "101",
-            "FarmHouse", tileX, 7, "(BC)130", player, chest, held, true, []);
+            "Farm", tileX, 7, "(BC)130", player, chest, held, true, []);
     }
 
     private static ProjectReviewMcpRuntimeSnapshot Snapshot(string launch)
@@ -301,7 +301,7 @@ public sealed class ReviewContainerTransferTests
         DateTimeOffset now = DateTimeOffset.UtcNow;
         return new(1, launch, "single", null, now,
             new("Nana.Target", "1.0.0", Revision), new(new string('f', 32), "SDVKit_1"),
-            new(1, true, "spring", 1, 1, 600, "FarmHouse", 7, 7, true), 1, now, 1, Environment.ProcessId);
+            new(1, true, "spring", 1, 1, 600, "Farm", 7, 7, true), 1, now, 1, Environment.ProcessId);
     }
 
     private static LiveLabCommandResult Sent(string root) => new(0,

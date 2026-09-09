@@ -25,7 +25,6 @@ internal static class ProjectReviewWorldService
         cancellationToken.ThrowIfCancellationRequested();
         string? queryProblem = ReviewWorldContract.QueryProblem(area);
         if (queryProblem is not null) return Failure(queryProblem);
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("worldTopologyUnsupported");
         ProjectReviewMcpReadResult before = reader.Read();
         if (!before.Succeeded) return Failure(before.ErrorCode!);
         if (!before.Snapshot!.Runtime.WorldReady) return Failure("worldNotReady");
@@ -39,6 +38,7 @@ internal static class ProjectReviewWorldService
             DateTimeOffset started = clock();
             string line = string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"sdvkit world {requestId} {before.Snapshot.LaunchId} {area.X} {area.Y} {area.Width} {area.Height}");
+            line = reader.SelectCommand(line);
             ProjectReviewResponseTransportResult<ReviewWorldResponseEnvelope> result = ProjectReviewResponseTransport.Execute(
                 line, ReviewWorldContract.ResponsePath(runtimePath, requestId), ReviewWorldContract.MaximumResponseBytes,
                 "world", "review-world", reader.ProjectRoot, DeserializeResponse,
@@ -118,8 +118,8 @@ internal static class ProjectReviewWorldService
     internal static bool ValidResponse(ReviewWorldReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         ReviewWorldArea expectedArea, DateTimeOffset started, DateTimeOffset now) =>
         report is not null && report.SchemaVersion == 1
-        && report.LaunchId == expected.LaunchId && report.Topology == "single" && report.Topology == expected.Topology
-        && report.Role is null && expected.Role is null && report.CapturedAtUtc.Offset == TimeSpan.Zero
+        && report.LaunchId == expected.LaunchId && report.Topology == expected.Topology
+        && report.Role == expected.Role && report.CapturedAtUtc.Offset == TimeSpan.Zero
         && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
         && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
         && (report.State == "ready" ? report.ErrorCode is null && ReviewWorldContract.DataValid(report.Data)

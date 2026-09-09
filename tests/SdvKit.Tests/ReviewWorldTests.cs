@@ -267,27 +267,49 @@ public sealed class ReviewWorldTests
         Assert.Equal("worldResponseInvalid", result.ErrorCode);
     }
 
-    [Fact]
-    public void NetworkInvalidAreaAndCancellationDoNotSend()
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void NetworkUsesTheSelectedRoleWhileInvalidAreaAndCancellationDoNotSend(string role)
     {
         using TemporaryDirectory temporary = new();
-        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host");
-        Assert.Equal("worldTopologyUnsupported", ProjectReviewWorldService.Execute(reader, new(0, 0, 1, 1),
-            _ => throw new InvalidOperationException("Must not send.")).ErrorCode);
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, role);
+        ProjectReviewMcpRuntimeSnapshot selected = reader.Read().Snapshot!;
+        ReviewWorldReport ready = ProjectReviewWorldService.Execute(reader, new(0, 0, 1, 1), command =>
+        {
+            string requestId = command.Split(' ')[2];
+            ReviewWorldReport report = Report() with
+            {
+                LaunchId = selected.LaunchId,
+                Topology = selected.Topology,
+                Role = selected.Role,
+                Data = Data(new(0, 0, 1, 1), [Missing(0, 0)]) with
+                {
+                    LocationName = selected.Runtime.LocationId!,
+                    PlayerId = selected.Runtime.LocalPlayer!.Data!.PlayerId,
+                },
+            };
+            string runtimePath = ProjectReviewInputService.RuntimePath(temporary.Path, selected.Topology, selected.Role);
+            File.WriteAllText(ReviewWorldContract.ResponsePath(runtimePath, requestId),
+                JsonSerializer.Serialize(new ReviewWorldResponseEnvelope(1, requestId, report), JsonOptions));
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+        Assert.Equal("ready", ready.State);
+        Assert.Equal(role, ready.Role);
         Assert.Equal("worldAreaLimit", ProjectReviewWorldService.Execute(reader, new(0, 0, 32, 32),
             _ => throw new InvalidOperationException("Must not send.")).ErrorCode);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => ProjectReviewWorldService.Execute(reader, new(0, 0, 1, 1),
             _ => throw new InvalidOperationException("Must not send."), cancellationToken: cancellation.Token));
-        Assert.DoesNotContain(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
+        Assert.Contains(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
             tool => tool.ProtocolTool.Name == ProjectReviewMcpWorldTools.ToolName);
     }
 
     [Theory]
     [InlineData("--help", 0)]
     [InlineData("0 0 1 1 --json --json", 2)]
-    [InlineData("0 0 1 1 --topology network-2 --json", 2)]
+    [InlineData("0 0 1 1 --topology network-2 --role host --json", 3)]
     [InlineData("0 0 32 32 --json", 2)]
     [InlineData("0 0 1 1 --mutate --json", 2)]
     public void CliRoutingRejectsMutationAndUnsupportedScope(string suffix, int expected)
@@ -295,7 +317,15 @@ public sealed class ReviewWorldTests
         using var output = new StringWriter();
         using var error = new StringWriter();
         Assert.Equal(expected, CliApplication.Run(("project review world " + suffix).Split(' '), output, error));
-        Assert.Contains("project review world", expected == 0 ? output.ToString() : error.ToString(), StringComparison.Ordinal);
+        if (expected == 3)
+        {
+            Assert.Contains("\"state\":", output.ToString(), StringComparison.Ordinal);
+            Assert.Equal(string.Empty, error.ToString());
+        }
+        else
+        {
+            Assert.Contains("project review world", expected == 0 ? output.ToString() : error.ToString(), StringComparison.Ordinal);
+        }
     }
 
     [Theory]

@@ -1,6 +1,6 @@
 # Inspect active game content
 
-Use this reference to query the final SMAPI content pipeline of an already-running, load-confirmed **single** review. Start with the [live guide](live-review.md#start-a-review). Examples use the executable variable from [installation](../README.md#install).
+Use this reference to query the final SMAPI content pipeline of an already-running, load-confirmed review. Canonical Data supports an exact single player, network role, or local screen; the remaining asset families stay single-only. Start with the [live guide](live-review.md#start-a-review). Examples use the executable variable from [installation](../README.md#install).
 
 Choose [Data](#read-canonical-data-definitions), [maps](#inspect-active-map-structure), [textures](#inspect-canonical-textures-safely), [audio](#inspect-active-audio-metadata), or [observed mod assets](#inspect-observed-mod-owned-asset-namespaces). All five families are also available through [MCP](mcp.md); maps and textures include their own typed metadata and checked preview surface, while audio and mod assets retain the CLI selections and bounds.
 
@@ -12,19 +12,21 @@ For operands beginning with `-` or matching option names, put all options before
 
 ## Read canonical Data definitions
 
-While an exact `single` review is running and its target identity is load-confirmed, the `data` subcommands provide bounded read-only access to every canonical structured `Data/*` definition asset shipped by the installed Stardew version. The game-side reader discovers the installed `Content/Data` asset names independently instead of relying on a maintained allowlist, then loads each asset through SMAPI's live game-content pipeline. The returned values therefore include the content packs and edits active in that exact review process; localized physical siblings aren't treated as separate canonical identities.
+While an exact selected review is running and its target identity is load-confirmed, the `data` subcommands provide bounded read-only access to every canonical structured `Data/*` definition asset shipped by the installed Stardew version. The game-side reader discovers the installed `Content/Data` asset names independently instead of relying on a maintained allowlist, then loads each asset through SMAPI's live game-content pipeline. The returned values therefore include the content packs and edits active in that exact review process; localized physical siblings aren't treated as separate canonical identities.
 
 ```powershell
 & $sdvkit project review data assets --offset 0 --limit 100 --topology single --json
 & $sdvkit project review data keys "Data/Buildings" --offset 0 --limit 50 --topology single --json
 & $sdvkit project review data get "Data/Buildings" "Barn" --topology single --json
+& $sdvkit project review data get "Data/Buildings" "Barn" --topology network-2 --role farmhand --json
+& $sdvkit project review data get "Data/Buildings" "Barn" --topology single --screen 1 --json
 ```
 
 `assets` reports the running game and file versions, each canonical asset name, loaded .NET data type, shape, and key kind. Its coverage object is complete only when every discovered asset is classified and safely queryable, with zero `unknown`, `unclassified`, and `unsupported` entries. Dictionaries use their canonical string or integer keys, lists use canonical zero-based indexes, and a singleton has the one explicit key `singleton`. `keys` returns those identities in deterministic order and never substitutes localized display values. `get` returns exactly one record with its canonical asset and key; object members are sorted deterministically in the JSON while source array order is retained.
 
 Asset and string-key lookup accepts case differences plus small space, hyphen, underscore, slash, and backslash separator differences. Normalization collisions are ambiguous and fail closed; an exact canonical key remains selectable. A missing canonical `Data/*` name is reported as unavailable in the running game version, separately from a name outside that namespace. Load failures, unsupported key types, unsafe or oversized records, reparse points, stale responses, mismatched requests, and unknown or colliding identities are returned as bounded problems rather than guessed results.
 
-Pages default to 50 entries and accept 1-100; offsets are non-negative. Asset and key tokens, one record, and the complete response are size-bounded. There is no unbounded full-dump default, no mutation operation, no network-topology variant, and no new public RPC or generic reflection surface. Each request reuses the existing exact review lock, process, staging, target-load, console-input, and cleanup checks.
+Pages default to 50 entries and accept 1-100; offsets are non-negative. Asset and key tokens, one record, and the complete response are size-bounded. There is no unbounded full-dump default, mutation operation, new public RPC, or generic reflection surface. Network and screen selectors validate the exact client binding, while the active SMAPI Data pipeline remains process-shared rather than a fabricated per-player cache. Each request reuses the existing exact review lock, process, staging, target-load, console-input, and cleanup checks.
 
 ## Inspect active map structure
 

@@ -156,33 +156,101 @@ public sealed class ReviewInventoryTests
         Assert.Equal(expected, result.ErrorCode);
     }
 
-    [Fact]
-    public void NetworkAndCancellationDoNotDispatchOrExposeTheTool()
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void NetworkDispatchesTheSelectedRoleAndCancellationStillStopsBeforeDispatch(string role)
     {
         using TemporaryDirectory temporary = new();
-        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host");
-        Assert.Equal("inventoryTopologyUnsupported", ProjectReviewInventoryService.Execute(reader,
-            _ => throw new InvalidOperationException("Must not send.")).ErrorCode);
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, role);
+        ProjectReviewMcpRuntimeSnapshot selected = reader.Read().Snapshot!;
+        ReviewInventoryReport ready = ProjectReviewInventoryService.Execute(reader, command =>
+        {
+            string requestId = command.Split(' ')[2];
+            ReviewInventoryReport report = Report(requestId) with
+            {
+                LaunchId = selected.LaunchId,
+                Topology = selected.Topology,
+                Role = selected.Role,
+                Data = Values([new(0, "occupied", null, new("(O)388", 5, 0)),
+                    new(1, "empty", null, null)], playerId: selected.Runtime.LocalPlayer!.Data!.PlayerId,
+                    captureId: requestId),
+            };
+            ReviewInventoryValues data = report.Data!;
+            report = report with
+            {
+                Data = data with
+                {
+                    InventoryRevision = ReviewInventoryContract.Revision(selected.LaunchId,
+                        data.PlayerId, data.Capacity, data.SelectedSlot, data.Slots),
+                },
+            };
+            string runtimePath = ProjectReviewInputService.RuntimePath(temporary.Path, selected.Topology, selected.Role);
+            File.WriteAllText(ReviewInventoryContract.ResponsePath(runtimePath, requestId),
+                JsonSerializer.Serialize(new ReviewInventoryResponseEnvelope(1, requestId, report), JsonOptions));
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+        Assert.Equal("ready", ready.State);
+        Assert.Equal(role, ready.Role);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => ProjectReviewInventoryService.Execute(reader,
             _ => throw new InvalidOperationException("Must not send."), cancellationToken: cancellation.Token));
-        Assert.DoesNotContain(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
+        Assert.Contains(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
             tool => tool.ProtocolTool.Name == ProjectReviewMcpInventoryTools.ToolName);
+    }
+
+    [Fact]
+    public void LocalScreenReplacementDuringResponseFailsClosed()
+    {
+        using TemporaryDirectory temporary = new();
+        int bindingReads = 0;
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyLocalScreenReview(
+            temporary, 1, command =>
+            {
+                bindingReads++;
+                ProjectReviewMcpTests.WriteScreenBindingResponse(temporary, command,
+                    bindingReads == 1 ? "202" : "303",
+                    bindingReads == 1
+                        ? "11111111111111111111111111111111"
+                        : "22222222222222222222222222222222");
+                return Sent(temporary.Path);
+            });
+        ReviewInventoryReport result = ProjectReviewInventoryService.Execute(reader, command =>
+        {
+            string requestId = command.Split(' ')[2];
+            Publish(temporary.Path, requestId, Report(requestId) with
+            {
+                Data = Values([new(0, "occupied", null, new("(O)388", 5, 0)),
+                    new(1, "empty", null, null)], playerId: "202", captureId: requestId),
+            });
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+
+        Assert.Equal("reviewBindingChanged", result.ErrorCode);
+        Assert.Equal(2, bindingReads);
     }
 
     [Theory]
     [InlineData("--help", 0)]
     [InlineData("--json --json", 2)]
-    [InlineData("--topology network-2 --role host --json", 2)]
+    [InlineData("--topology network-2 --role host --json", 3)]
     [InlineData("--set 0 1 --json", 2)]
-    public void CliRoutingIsReadOnlyAndSingleOnly(string suffix, int expected)
+    public void CliRoutingIsReadOnlyAndAcceptsOwnedSelections(string suffix, int expected)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
         Assert.Equal(expected, CliApplication.Run(("project review inventory " + suffix).Split(' '), output, error));
-        Assert.Contains("project review inventory", expected == 0 ? output.ToString() : error.ToString(),
-            StringComparison.Ordinal);
+        if (expected == 3)
+        {
+            Assert.Contains("\"state\":", output.ToString(), StringComparison.Ordinal);
+            Assert.Equal(string.Empty, error.ToString());
+        }
+        else
+        {
+            Assert.Contains("project review inventory", expected == 0 ? output.ToString() : error.ToString(),
+                StringComparison.Ordinal);
+        }
     }
 
     [Fact]

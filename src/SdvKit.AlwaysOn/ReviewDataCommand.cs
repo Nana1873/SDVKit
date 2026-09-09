@@ -1020,13 +1020,14 @@ internal static class ReviewDataCommand
         }
 
         ReviewDataReport report;
-        bool singleReview = string.Equals(
+        string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
+        role = string.IsNullOrWhiteSpace(role) ? null : role;
+        bool selectedReview = string.Equals(
                 Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW"),
                 "1",
                 StringComparison.Ordinal)
-            && string.IsNullOrWhiteSpace(
-                Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"));
-        if (!singleReview)
+            && (role is null || NetworkTwoContract.IsRole(role));
+        if (!selectedReview)
         {
             string operation = arguments.Length > 2
                 ? arguments[2]
@@ -1036,7 +1037,7 @@ internal static class ReviewDataCommand
                 source,
                 new ReviewDataProblem(
                     "dataReviewTopologyUnsupported",
-                    "Review-data queries require an active owned single project review."));
+                    "Review-data queries require an active owned project review role or local screen."));
         }
         else if (!TryParse(
                 arguments,

@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | local screen | host | farmhand |
 | --- | --- | --- | --- | --- |
-| Default observation/evidence | 28 tools | 6 tools | 6 tools | 6 tools |
+| Default observation/evidence | 28 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
 | Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
@@ -136,20 +136,19 @@ watcher, general console command or network refresh tool is added. Follow the
 
 ## Default observation and screenshots
 
-Unbound single-review servers additionally expose `stardew_inventory_get {}` for a
+Every valid single, network-role, or local-screen server exposes `stardew_inventory_get {}` for a
 fresh read-only capture of the [complete bounded backpack](inventory-inspection.md)
 without opening a menu. It returns every slot plus request and visible-fact
 revision identities; neither is a durable item-instance handle. Unsupported or
-incomplete item data is explicit. Network and local-screen servers do not
-advertise this capability; screen-local inventory inspection is deferred to its
-own port.
+incomplete item data is explicit. The player is the exact selected role or screen;
+there is no peer-player fallback.
 
-Unbound single-review servers additionally expose `stardew_container_get {}` for a
+Every valid selection also exposes `stardew_container_get {}` for a
 fresh read-only capture of the [selected supported vanilla chest](container-inspection.md),
 both inventory sides, and any menu-held item. Its selection identity binds the
 open menu and placed chest; its content revision also binds the exposed item
-facts. It never opens, searches, sorts, or mutates a chest, and network and
-local-screen servers do not advertise it.
+facts. The open menu, local player, location, and placed chest must all match the
+selected role or screen. It never opens, searches, sorts, or mutates a chest.
 
 Unbound single-review servers also expose `stardew_shop_get {}` for a fresh
 read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).
@@ -157,13 +156,13 @@ It requires no input opt-in. Unsupported shop semantics are explicitly unavailab
 the tool neither purchases items nor infers a successful purchase from a price.
 Network and local-screen servers do not advertise this single-review capability.
 
-The same unbound single-review profile exposes
+Every valid selection exposes
 `stardew_world_area_get { "x": 60, "y": 12, "width": 8, "height": 8 }`.
 It returns the same complete bounded crop, tilled-soil, and ordinary-machine
 capture as [`project review world`](world-inspection.md), with explicit missing,
 unsupported, and unavailable states. It sends no input and grants no world
-mutation. Network-role and local-screen servers do not advertise it;
-screen-local world and container inspection is deferred to its own port.
+mutation. Shared or replicated world state is captured through the selected
+role or screen without falling back to a peer.
 
 The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
@@ -223,8 +222,9 @@ instead of being returned as untrusted inventory data.
 
 ## Canonical Data
 
-A server bound to `single` additionally exposes these three canonical Data
-tools:
+Every valid single, network-role, or local-screen server exposes these three
+canonical Data tools. Selection is revalidated before and after each request,
+but Data is process-shared and SDVKit does not invent a role- or screen-local cache:
 
 - `stardew_data_assets_list` takes optional `offset` and `limit` values and maps
   directly to `project review data assets`. It returns the canonical inventory,
@@ -542,8 +542,9 @@ reported as not loaded or mismatched; instead, they require a valid role-local
 loaded-mod snapshot captured through SMAPI's public mod registry. They never
 infer loaded state by scanning a mod directory and only validate the exact
 SDVKit-owned isolated staging tree. Each Data call then delegates to the same
-canonical Data service used by the CLI, which revalidates the exact single review before
-sending its bounded request to the existing game-side reader. There is no second
+canonical Data service used by the CLI, which revalidates the exact selected
+review role or local screen before and after sending its bounded request to the
+existing game-side reader. There is no second
 inventory, serializer, mailbox, or lifecycle. Network-2 additionally requires both exact
 role states and processes, identical staged target/build/fixture/save bindings,
 and returns only the role fixed at server startup. The lock is released before
