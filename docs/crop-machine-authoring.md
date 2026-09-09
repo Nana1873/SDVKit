@@ -173,6 +173,14 @@ harvest item is `(O)400`, verify the selected watering can and its remaining
 water, and use fresh world and inventory revisions for each native action:
 
 ```powershell
+& $sdvkit project review command "recipe_probe_prepare_crop" `
+    --topology single --json
+& $sdvkit project review command "recipe_probe_report" `
+    --topology single --json
+
+# Read the completed RecipeProbe report from the isolated SMAPI console.
+$x = [int](Read-Host 'Fresh reported crop tile X')
+$y = [int](Read-Host 'Fresh reported crop tile Y')
 $world = & $sdvkit project review world $x $y 1 1 `
     --topology single --json | ConvertFrom-Json
 $inventory = & $sdvkit project review inventory `
@@ -193,6 +201,16 @@ select an empty backpack slot through process-local input, and call
 `harvest` with the fresh crop and inventory revisions. Require the same regrowing
 crop to become not-ready and exactly one `(O)400` to appear in the backpack.
 
+```powershell
+& $sdvkit project review command "recipe_probe_mature" `
+    --topology single --json
+# Perform the revision-bound native harvest described above, then:
+& $sdvkit project review command "recipe_probe_prepare_machine" `
+    --topology single --json
+& $sdvkit project review command "recipe_probe_report" `
+    --topology single --json
+```
+
 Place an empty Keg separately, select that actually harvested Strawberry, and
 call `machineInsert` with fresh machine and inventory revisions. With the wrong
 rule, the observed acceptance run consumed the Strawberry but the same Keg used
@@ -201,6 +219,13 @@ For the bounded shortcut, `recipe_probe_advance` calls native `minutesElapsed`
 only on that exact marked processing Keg; label the time advance synthetic and
 prove the resulting ready Wine through fresh public state. CP diagnosis alone is
 not this outcome proof.
+
+```powershell
+& $sdvkit project review command "recipe_probe_advance" `
+    --topology single --json
+& $sdvkit project review command "recipe_probe_report" `
+    --topology single --json
+```
 
 Stop and reset before switching source. Require exact PID absence, empty staged
 artifacts/mailboxes, acquirable retained locks, no unexpected reparse point, and
@@ -273,6 +298,11 @@ equals the observed Cola backpack slot, and click its center with the same fresh
 `uiRevision`:
 
 ```powershell
+& $sdvkit project review command "recipe_probe_prepare_chest" `
+    --topology single --json
+& $sdvkit project review command "recipe_probe_report" `
+    --topology single --json
+# Open the freshly reported chest with one process-local X press, then inspect it.
 $menu = & $sdvkit project review menu --topology single --json | ConvertFrom-Json
 $container = & $sdvkit project review container --topology single --json |
     ConvertFrom-Json
@@ -303,6 +333,13 @@ Save through `stardew_fixture_save` on a server started with
 same target/provider/helper selection and test save, rebind only the player
 position to the existing marked chest, open it natively, and read it again through
 CLI and MCP. The chest must still contain exactly two Cola before final reset.
+
+```powershell
+& $sdvkit project review command "recipe_probe_bind_chest" `
+    --topology single --json
+& $sdvkit project review command "recipe_probe_report" `
+    --topology single --json
+```
 
 Finish with one close input if a menu remains open, selected-mod diagnostics,
 `project review stop`, and `project review reset`. Repeat the preflight cleanup
