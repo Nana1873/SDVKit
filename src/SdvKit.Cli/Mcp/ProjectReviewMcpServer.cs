@@ -373,6 +373,10 @@ internal static class ProjectReviewMcpServer
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
+        bool containerTransferEnabled = runContainerTransfer is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null
+            && reader.ScreenId is null;
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
@@ -382,8 +386,8 @@ internal static class ProjectReviewMcpServer
         {
             tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
             tools.Add(ProjectReviewMcpContainerTools.Create(reader));
-            if (runContainerTransfer is not null)
-                tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer));
+            if (containerTransferEnabled)
+                tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer!));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
             tools.Add(ProjectReviewMcpWorldTools.Create(reader));
         }
@@ -469,7 +473,7 @@ internal static class ProjectReviewMcpServer
                 + (runWorldAction is null
                     ? "World interactions are disabled. "
                     : "World interactions were separately enabled for this exact owned disposable single-player review; they require fresh world and inventory revisions and are never retried. ")
-                + (runContainerTransfer is null
+                + (!containerTransferEnabled
                     ? "Container transfers are disabled. "
                     : "Container transfers were separately enabled for this exact owned unbound disposable single-player review; they require fresh container and item revisions and are never retried. ")
                 + (cpRefreshPermission is null

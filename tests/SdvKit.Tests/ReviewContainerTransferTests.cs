@@ -11,6 +11,28 @@ public sealed class ReviewContainerTransferTests
     private static readonly string Launch = new('a', 32);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    [Fact]
+    public void UnboundSinglePlayerServerAdvertisesOptedInTransferTool()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(
+            temporary,
+            withTestSave: true);
+
+        var options = ProjectReviewMcpServer.CreateOptions(
+            reader,
+            runContainerTransfer: (_, _) => throw new InvalidOperationException(
+                "No transfer should run while listing tools."));
+
+        Assert.Contains(
+            options.ToolCollection!,
+            tool => tool.ProtocolTool.Name == ProjectReviewMcpContainerTransferTools.ToolName);
+        Assert.Contains(
+            "Container transfers were separately enabled",
+            options.ServerInstructions,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("deposit", 0, 1, null)]
     [InlineData("withdraw", 35, 99, null)]
