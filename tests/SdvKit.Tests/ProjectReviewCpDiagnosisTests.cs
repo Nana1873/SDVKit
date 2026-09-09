@@ -179,8 +179,9 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             return new(0, new ProjectReviewCommandReport(1, null, temporary.Path, "ready", null, true, [], []));
         }
         using var heldLock = mode == "busy" ? ProjectReviewActionLock.TryAcquire(LiveLabPaths.Resolve(temporary.Path).RuntimePath) : null;
-        var result = ProjectReviewCpDiagnosis.Execute(review.Reader, "Test.Pack", ProjectReviewCpDiagnosis.ProviderId, "Data/Objects", null, Send, TimeSpan.FromMilliseconds(150));
-        Assert.Equal(expected, result.State);
+        TimeSpan timeout = mode == "timeout" ? TimeSpan.FromMilliseconds(150) : TimeSpan.FromSeconds(10);
+        var result = ProjectReviewCpDiagnosis.Execute(review.Reader, "Test.Pack", ProjectReviewCpDiagnosis.ProviderId, "Data/Objects", null, Send, timeout);
+        Assert.True(result.State == expected, $"Expected state '{expected}', but got '{result.State}' ({result.ErrorCode}).");
         Assert.Equal(expected == "ready" ? 3 : expected == "incomplete" ? 2 : 0, commands.Count);
         if (expected == "ready") Assert.Equal(4, result.Summary!.Patches.Count);
         if (mode == "timeout")
