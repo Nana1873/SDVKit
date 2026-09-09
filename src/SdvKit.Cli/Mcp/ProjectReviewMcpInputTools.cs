@@ -43,7 +43,8 @@ internal sealed record ProjectReviewMcpInputAcknowledgement(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? CompletedSteps = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalX = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FinalY = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DeliveredScalars = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DeliveredScalars = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? ExternalForegroundChanged = null);
 
 
 internal sealed class ProjectReviewMcpInputSession
@@ -202,7 +203,8 @@ internal sealed class ProjectReviewMcpInputSession
             ReviewInputResponseEnvelope response = executed.Response;
             ProjectReviewMcpReadResult after = WaitForPostActionStatus(
                 before.Snapshot!,
-                response);
+                response,
+                out bool externalForegroundChanged);
             if (!after.Succeeded)
             {
                 return ProjectReviewMcpInputInvocation.Error(
@@ -245,7 +247,8 @@ internal sealed class ProjectReviewMcpInputSession
                     response.StartTick,
                     response.EndTick,
                     response.Released, response.Modifiers, response.Count, response.Notches,
-                    response.EndX, response.EndY, response.CompletedSteps, response.FinalX, response.FinalY, response.DeliveredScalars),
+                    response.EndX, response.EndY, response.CompletedSteps, response.FinalX, response.FinalY, response.DeliveredScalars,
+                    externalForegroundChanged ? true : null),
                 cancellationRequested
                     ? FindProblem(executed.Problems, "inputCancellationNotConfirmed")
                         ?? FindProblem(executed.Problems, "inputRequestCanceled")
@@ -321,13 +324,28 @@ internal sealed class ProjectReviewMcpInputSession
         && string.Equals(before.Target.Version, after.Target.Version, StringComparison.Ordinal)
         && string.Equals(before.Target.BuildIdentity, after.Target.BuildIdentity, StringComparison.Ordinal)
         && string.Equals(before.SessionId, after.SessionId, StringComparison.Ordinal)
-        && before.ForegroundWindowHandle == after.ForegroundWindowHandle
+        && before.TestSave == after.TestSave
+        && before.Screen == after.Screen
+        && before.ReviewProcessId == after.ReviewProcessId
+        && before.PeerProcessId == after.PeerProcessId;
+
+    private static bool SameForeground(
+        ProjectReviewMcpRuntimeSnapshot before,
+        ProjectReviewMcpRuntimeSnapshot after) =>
+        before.ForegroundWindowHandle == after.ForegroundWindowHandle
         && before.ForegroundProcessId == after.ForegroundProcessId;
+
+    private static bool HasExternalForeground(ProjectReviewMcpRuntimeSnapshot snapshot) =>
+        snapshot.ReviewProcessId > 0
+        && snapshot.ForegroundProcessId != snapshot.ReviewProcessId
+        && snapshot.ForegroundProcessId != snapshot.PeerProcessId;
 
     private ProjectReviewMcpReadResult WaitForPostActionStatus(
         ProjectReviewMcpRuntimeSnapshot before,
-        ReviewInputResponseEnvelope response)
+        ReviewInputResponseEnvelope response,
+        out bool externalForegroundChanged)
     {
+        externalForegroundChanged = false;
         var stopwatch = Stopwatch.StartNew();
         while (true)
         {
@@ -335,13 +353,32 @@ internal sealed class ProjectReviewMcpInputSession
             if (after.Succeeded)
             {
                 ProjectReviewMcpRuntimeSnapshot snapshot = after.Snapshot!;
-                if (!SameBinding(before, snapshot)
-                    || !HasPublishedForeground(snapshot))
+                if (!SameBinding(before, snapshot))
                 {
                     return new ProjectReviewMcpReadResult(
                         null,
                         "inputBindingChanged",
-                        "The exact review or foreground-window binding changed while the bounded input action ran; do not retry it automatically.");
+                        "The exact review, target, fixture, role session or local-screen binding changed while the bounded input action ran; do not retry it automatically.");
+                }
+                if (!HasPublishedForeground(snapshot))
+                {
+                    return new ProjectReviewMcpReadResult(
+                        null,
+                        "inputForegroundUnavailable",
+                        "AlwaysOn no longer publishes a valid foreground observation; action completion is uncertain, not evidence of desktop control.");
+                }
+                if (!SameForeground(before, snapshot))
+                {
+                    // Window identity is diagnostic for unrelated desktop activity. A
+                    // transition involving either owned review process still fails closed.
+                    if (!HasExternalForeground(before) || !HasExternalForeground(snapshot))
+                    {
+                        return new ProjectReviewMcpReadResult(
+                            null,
+                            "inputForegroundChanged",
+                            "A foreground transition involving an owned review process was observed; action completion is uncertain, not evidence of focus takeover.");
+                    }
+                    externalForegroundChanged = true;
                 }
 
                 if (snapshot.StatusTick > before.StatusTick
@@ -355,6 +392,10 @@ internal sealed class ProjectReviewMcpInputSession
 
             if (stopwatch.Elapsed >= _postActionTimeout)
             {
+                if (!after.Succeeded)
+                {
+                    return after;
+                }
                 return new ProjectReviewMcpReadResult(
                     null,
                     "inputPostStateTimedOut",
@@ -477,6 +518,7 @@ internal static class ProjectReviewMcpInputTools
             "role": { "type": ["string", "null"], "enum": [null, "host", "farmhand"] },
             "observedAtUtc": { "type": "string", "format": "date-time" },
             "gameTick": { "type": "integer", "minimum": 0 },
+            "externalForegroundChanged": { "type": "boolean" },
             "action": { "type": "string", "enum": ["press", "cursorSet", "cursorClear", "wheel"] },
             "succeeded": { "type": "boolean" },
             "button": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9]{1,64}$" },

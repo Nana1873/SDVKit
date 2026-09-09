@@ -63,7 +63,7 @@ Use the extracted `$sdvkit` from one explicitly selected lab directory. Identify
 
 Use the existing [live-review sequence](live-review.md#prepare-the-lab), [inspection calls](inspection.md), and [MCP tools](mcp.md). Reuse one active review for compatible read-only checks and feature assertions. Do not restart between independent Data/map/texture/audio queries.
 
-For a persistence gate, save through the supported interface, confirm completion, stop, restart the same exact selection, and verify retained identities and values. For network-2, check host and farmhand separately. Preserve work state between those halves; reset only at the end. For input, observe actual UI effects, role binding, physical pointer and foreground stability, and relevant EOF cleanup.
+For a persistence gate, save through the supported interface, confirm completion, stop, restart the same exact selection, and verify retained identities and values. For network-2, check host and farmhand separately. Preserve work state between those halves; reset only at the end. For input, observe actual UI effects, role binding, physical pointer and foreground observations, and relevant EOF cleanup. Keep a stable desktop baseline separate from concurrent-use samples: deliberate physical mouse movement and switches between unrelated applications can coexist with successful process-local input. Record that activity and the acknowledgement's optional `externalForegroundChanged` diagnostic; changed before/after desktop samples alone cannot attribute movement or focus takeover to SDVKit. Include single, selected local screens, and both network roles when their shared input checks change.
 
 Final cleanup is mandatory: exact process exits, owned staging/mailbox/mount state, and applicable fixture reset. Compare protected-path evidence for gates that require it. Report an isolated-option restoration warning separately from a blocked exit or cleanup. Do not publish with unknown ownership, uncertain action completion, or an unexplained or SDVKit-caused protected-path change.
 
@@ -81,7 +81,7 @@ Record coordination, build, live checks, retries, and publication separately. Fi
 
 Reuse a passed gate only when the artifact, relevant environment, target/companions, baseline conditions, and binding assumptions still match. A planned restart intentionally changes launch IDs; verify their new exact bindings. Unresolved protected-path or cleanup evidence invalidates acceptance even if earlier feature checks passed.
 
-An externally disturbed input observation is inconclusive; inspect state and repeat that bounded check in stable conditions. An action timeout or `mayHaveRun=true` may mean the action executed: never repeat blindly. Fix the evidenced cause and repeat the affected gates; broaden only when the fix or uncertainty affects other results.
+An externally disturbed desktop observation is inconclusive about isolation; retain separately established UI effects and input release. Inspect state before selecting a fresh bounded check in stable conditions; do not replay the previous action. Unrelated read-only checks do not require the developer to stop using the computer. An action timeout or `mayHaveRun=true` may mean the action executed: never repeat blindly. Fix the evidenced cause and repeat the affected gates; broaden only when the fix or uncertainty affects other results.
 
 ## Publish and verify delivery
 
