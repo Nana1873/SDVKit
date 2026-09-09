@@ -21,7 +21,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeDispatchesExactLocalScreenOnlyForSingle()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, transfer, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
@@ -29,6 +29,7 @@ public sealed class CliApplicationTests
             Assert.True(input);
             Assert.False(fixture);
             Assert.False(world);
+            Assert.False(transfer);
             Assert.False(refresh);
             return 0;
         };
@@ -43,7 +44,7 @@ public sealed class CliApplicationTests
             new[] { "project", "review", "mcp", "serve", "--topology", "network-2", "--role", "host", "--screen", "1" },
         })
         {
-            var rejected = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+            var rejected = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
                 throw new InvalidOperationException("Invalid screen selection dispatched."), invalid);
             Assert.Equal(2, rejected.ExitCode);
         }
@@ -1245,6 +1246,7 @@ public sealed class CliApplicationTests
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             _) =>
         {
@@ -1255,6 +1257,7 @@ public sealed class CliApplicationTests
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.False(allowWorldActions);
+            Assert.False(allowContainerTransfer);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1286,6 +1289,7 @@ public sealed class CliApplicationTests
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             _) =>
         {
@@ -1295,6 +1299,7 @@ public sealed class CliApplicationTests
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.False(allowWorldActions);
+            Assert.False(allowContainerTransfer);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1327,6 +1332,7 @@ public sealed class CliApplicationTests
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             _) =>
         {
@@ -1337,6 +1343,7 @@ public sealed class CliApplicationTests
             Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
             Assert.False(allowWorldActions);
+            Assert.False(allowContainerTransfer);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return 0;
         };
@@ -1357,7 +1364,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeDispatchesOnlyExplicitWorldActionOptIn()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, root, input, fixture, world, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, root, input, fixture, world, transfer, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
@@ -1366,6 +1373,7 @@ public sealed class CliApplicationTests
             Assert.False(input);
             Assert.False(fixture);
             Assert.True(world);
+            Assert.False(transfer);
             Assert.False(refresh);
             return 0;
         };
@@ -1382,7 +1390,7 @@ public sealed class CliApplicationTests
     [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "host")]
     public void ProjectReviewMcpWorldActionsRejectDuplicateValueAndNetworkOptIns(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"),
             ["project", "review", "mcp", "serve", .. suffix]);
         Assert.Equal(2, exitCode);
@@ -1393,9 +1401,55 @@ public sealed class CliApplicationTests
     [InlineData("7")]
     public void ProjectReviewMcpWorldActionsRejectEveryLocalScreenBinding(string screenId)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Screen-bound world opt-in dispatched"),
             "project", "review", "mcp", "serve", "--screen", screenId, "--allow-world-actions");
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public void ProjectReviewMcpServeForwardsOnlyContainerTransferOptIn()
+    {
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, root, input, fixture, world, transfer, refresh, _) =>
+        {
+            Assert.Equal("single", topology);
+            Assert.Null(role);
+            Assert.Null(screenId);
+            Assert.Equal(Environment.CurrentDirectory, root);
+            Assert.False(input);
+            Assert.False(fixture);
+            Assert.False(world);
+            Assert.True(transfer);
+            Assert.False(refresh);
+            return 0;
+        };
+        var (exitCode, output, error) = RunWithProjectReviewMcp(runner,
+            "project", "review", "mcp", "serve", "--allow-container-transfer");
+        Assert.Equal(0, exitCode);
+        Assert.Empty(output);
+        Assert.Empty(error);
+    }
+
+    [Theory]
+    [InlineData("--allow-container-transfer", "--allow-container-transfer")]
+    [InlineData("--allow-container-transfer", "true")]
+    [InlineData("--allow-container-transfer", "--topology", "network-2", "--role", "host")]
+    public void ProjectReviewMcpContainerTransferRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
+    {
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
+            throw new InvalidOperationException("Invalid transfer opt-in dispatched"),
+            ["project", "review", "mcp", "serve", .. suffix]);
+        Assert.Equal(2, exitCode);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("7")]
+    public void ProjectReviewMcpContainerTransferRejectsEveryLocalScreenBinding(string screenId)
+    {
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
+            throw new InvalidOperationException("Screen-bound transfer opt-in dispatched"),
+            "project", "review", "mcp", "serve", "--screen", screenId, "--allow-container-transfer");
         Assert.Equal(2, exitCode);
     }
 
@@ -1414,6 +1468,7 @@ public sealed class CliApplicationTests
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             _) =>
         {
@@ -1425,6 +1480,7 @@ public sealed class CliApplicationTests
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
             Assert.False(allowWorldActions);
+            Assert.False(allowContainerTransfer);
             return 0;
         };
         var arguments = new List<string>
@@ -1448,7 +1504,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeForwardsSeparateCpRefreshOptIn()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, transfer, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
@@ -1456,6 +1512,7 @@ public sealed class CliApplicationTests
             Assert.False(input);
             Assert.False(fixture);
             Assert.False(world);
+            Assert.False(transfer);
             Assert.True(refresh);
             return 0;
         };
@@ -1472,13 +1529,13 @@ public sealed class CliApplicationTests
     [InlineData("--allow-cp-refresh", "--topology", "network-2", "--role", "host")]
     public void ProjectReviewMcpCpRefreshRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"), ["project", "review", "mcp", "serve", .. suffix]);
         Assert.Equal(2, exitCode);
     }
 
     [Fact]
-    public void ProjectReviewMcpServeForwardsBothExplicitOptIns()
+    public void ProjectReviewMcpServeForwardsAllIndependentSingleOptInsTogether()
     {
         ProjectReviewMcpCommandRunner mcpRunner = (
             topology,
@@ -1488,6 +1545,7 @@ public sealed class CliApplicationTests
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             _) =>
         {
@@ -1496,9 +1554,10 @@ public sealed class CliApplicationTests
             Assert.Null(screenId);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.True(allowInput);
-            Assert.False(allowCpRefresh);
+            Assert.True(allowCpRefresh);
             Assert.True(allowFixtureActions);
-            Assert.False(allowWorldActions);
+            Assert.True(allowWorldActions);
+            Assert.True(allowContainerTransfer);
             return 0;
         };
 
@@ -1509,7 +1568,10 @@ public sealed class CliApplicationTests
             "mcp",
             "serve",
             "--allow-input",
-            "--allow-fixture-actions");
+            "--allow-fixture-actions",
+            "--allow-world-actions",
+            "--allow-container-transfer",
+            "--allow-cp-refresh");
 
         Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, output);
@@ -1672,7 +1734,7 @@ public sealed class CliApplicationTests
     [InlineData("mcp", "serve", "--help")]
     public void McpHelpExplainsRoleAndOptInsWithoutStartingServer(params string[] suffix)
     {
-        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _, _, _) =>
+        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("MCP must not start for help.");
         (int exitCode, string output, string error) = RunWithProjectReviewMcp(
             runner, ["project", "review", .. suffix]);

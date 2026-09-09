@@ -438,6 +438,10 @@ internal static class ReviewCommand
                 {
                     ReviewContainerCommand.Handle(arguments, runtimePath, monitor, menuCommands.Value);
                 }
+                else if (arguments.Length > 0 && arguments[0] == "container-transfer")
+                {
+                    ReviewContainerTransferCommand.Handle(arguments, runtimePath, monitor, helper, menuCommands.Value, testSave);
+                }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {
                     menuCommands.Value.Handle(arguments, runtimePath, monitor);

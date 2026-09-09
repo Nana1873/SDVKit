@@ -77,9 +77,9 @@ remain distinct.
 All identities are comparison tokens, never native object handles. Opaque
 continuity fields do not reveal object data and are meaningful only within the
 reported launch/menu lifetime.
-A future transfer action must re-resolve the exact native menu/chest references
-and revalidate both fresh tokens immediately before mutation; a prior read never
-authorizes a transfer.
+The separate [container transfer](container-transfer.md) action re-resolves the
+exact native menu/chest references and revalidates both fresh tokens immediately
+before dispatch. A prior read by itself never authorizes a transfer.
 
 The player side is limited to 144 slots, the supported chest has exactly 36,
 and the response envelope is capped at 96 KiB. Reports must remain within five

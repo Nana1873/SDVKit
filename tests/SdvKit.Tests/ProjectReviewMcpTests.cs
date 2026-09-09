@@ -152,11 +152,13 @@ public sealed class ProjectReviewMcpTests
                 StringComparison.Ordinal))));
     }
 
-    [Fact]
-    public void LocalScreenServerDoesNotAdvertiseUnportedDomainsOrSharedWindowText()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void LocalScreenServerDoesNotAdvertiseUnportedDomainsOrSharedWindowText(int screenId)
     {
         using TemporaryDirectory temporary = new();
-        ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, 1, command =>
+        ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, screenId, command =>
         {
             WriteScreenBindingResponse(temporary, command, "202", "11111111111111111111111111111111");
             return WrittenCommand(temporary.Path);
@@ -171,7 +173,9 @@ public sealed class ProjectReviewMcpTests
             runData: _ => throw new InvalidOperationException("Unported Data must stay absent."),
             inputSession: input,
             runWorldAction: (_, _) => throw new InvalidOperationException(
-                "Screen-bound world action must stay absent."));
+                "Screen-bound world action must stay absent."),
+            runContainerTransfer: (_, _) => throw new InvalidOperationException(
+                "Screen-bound container transfer must stay absent."));
         string[] names = options.ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
 
         Assert.Contains(ProjectReviewMcpServer.RuntimeToolName, names);
@@ -185,7 +189,9 @@ public sealed class ProjectReviewMcpTests
         Assert.DoesNotContain(ProjectReviewMcpShopTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpWorldTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpWorldActionTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpContainerTransferTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpCpTools.DiagnoseToolName, names);
+        Assert.Contains("Container transfers are disabled.", options.ServerInstructions, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -968,7 +974,8 @@ public sealed class ProjectReviewMcpTests
     {
         string[] tokens = command.Split(' ');
         Assert.Equal(["sdvkit", "screen-binding", "request"], tokens[..3]);
-        Assert.Equal("screen=1", tokens[^1]);
+        Assert.StartsWith("screen=", tokens[^1], StringComparison.Ordinal);
+        int screenId = int.Parse(tokens[^1]["screen=".Length..], System.Globalization.CultureInfo.InvariantCulture);
         string requestId = tokens[3];
         DateTimeOffset capturedAt = observedAt ?? ObservedAt.AddSeconds(1);
         var response = new ReviewScreenBindingResponse(
@@ -978,7 +985,7 @@ public sealed class ProjectReviewMcpTests
                 1,
                 launchId ?? tokens[4],
                 "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                1,
+                screenId,
                 farmerId,
                 contextId,
                 capturedAt,
