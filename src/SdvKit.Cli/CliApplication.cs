@@ -133,7 +133,7 @@ public static partial class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_inventory_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_world_area_get, stardew_cp_diagnose";
+        "       all MCP topologies: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture; single additionally: stardew_inventory_get, stardew_container_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get, stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_world_area_get, stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string ReviewMcpFixtureDescription =
@@ -627,6 +627,11 @@ public static partial class CliApplication
         if (arguments.Count > 2 && arguments[2] == "world")
         {
             return RunProjectReviewWorld(arguments, output, error);
+        }
+
+        if (arguments.Count > 2 && arguments[2] == "container")
+        {
+            return RunProjectReviewContainer(arguments, output, error);
         }
 
         if (arguments.Count > 2 && arguments[2] == "menu")
@@ -1834,6 +1839,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review shop --help        Read-only SeedShop Gold evidence (single only).");
         output.WriteLine("  sdvkit project review inventory --help   Read-only complete bounded backpack (single only).");
         output.WriteLine("  sdvkit project review world --help       Read-only crop, soil, and machine area (single only).");
+        output.WriteLine("  sdvkit project review container --help   Read-only selected regular vanilla chest (single only).");
         output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");

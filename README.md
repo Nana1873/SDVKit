@@ -104,7 +104,7 @@ See [live reviews](docs/live-review.md) for disposable worlds, companions, scree
 | Create, inspect, package | `project` | C# mods and content packs; C# build |
 | Automated smoke | `project smoke` | Standalone C# mod; single or local host/farmhand |
 | Functional/visual review | `project review` | C# in either topology; content-pack target in single |
-| Inspect game content and current world | `project review data/map/texture/audio/mod-assets/world` | Active single review; typed MCP parity for each supported family |
+| Inspect game content, inventories, and current world | `project review data/map/texture/audio/mod-assets/inventory/container/world` | Active single review; typed MCP parity for each supported family |
 | Agent observation/actions | `project review mcp serve` | Single or one fixed host/farmhand role; actions opt in |
 
 The [capability matrix](docs/README.md#capability-matrix) lists fixture and role requirements.

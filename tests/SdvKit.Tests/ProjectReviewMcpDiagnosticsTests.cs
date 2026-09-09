@@ -49,6 +49,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
         Assert.Equal(
             [
+                ProjectReviewMcpContainerTools.ToolName,
                 ProjectReviewMcpCpTools.DiagnoseToolName,
                 ProjectReviewMcpDataTools.AssetsToolName,
                 ProjectReviewMcpDataTools.KeysToolName,

@@ -31,6 +31,7 @@ public sealed class ProjectReviewMcpDataTests
 
         Assert.Equal(
             [
+                ProjectReviewMcpContainerTools.ToolName,
                 ProjectReviewMcpCpTools.DiagnoseToolName,
                 ProjectReviewMcpDataTools.AssetsToolName,
                 ProjectReviewMcpDataTools.KeysToolName,

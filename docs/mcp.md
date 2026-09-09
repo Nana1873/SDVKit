@@ -105,6 +105,13 @@ revision identities; neither is a durable item-instance handle. Unsupported or
 incomplete item data is explicit, and network servers do not advertise this
 single-review capability.
 
+Single-review servers additionally expose `stardew_container_get {}` for a
+fresh read-only capture of the [selected supported vanilla chest](container-inspection.md),
+both inventory sides, and any menu-held item. Its selection identity binds the
+open menu and placed chest; its content revision also binds the exposed item
+facts. It never opens, searches, sorts, or mutates a chest, and network servers
+do not advertise it.
+
 Single-review servers also expose `stardew_shop_get {}` for a fresh
 read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).
 It requires no input opt-in. Unsupported shop semantics are explicitly unavailable;
