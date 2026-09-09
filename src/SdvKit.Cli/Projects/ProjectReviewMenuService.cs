@@ -51,7 +51,7 @@ internal static class ProjectReviewMenuService
             string requestId = Guid.NewGuid().ToString("N");
             DateTimeOffset started = clock();
             ProjectReviewResponseTransportResult<ReviewMenuResponseEnvelope> result = ProjectReviewResponseTransport.Execute(
-                $"sdvkit menu {requestId} {before.Snapshot.LaunchId}",
+                reader.SelectCommand($"sdvkit menu {requestId} {before.Snapshot.LaunchId}"),
                 ReviewMenuContract.ResponsePath(runtimePath, requestId), ReviewMenuContract.MaximumResponseBytes,
                 "menu", "review-menu", reader.ProjectRoot,
                 DeserializeResponse,
@@ -84,7 +84,8 @@ internal static class ProjectReviewMenuService
 
     internal static bool SameBinding(ProjectReviewMcpRuntimeSnapshot before, ProjectReviewMcpRuntimeSnapshot after) =>
         before.LaunchId == after.LaunchId && before.Topology == after.Topology && before.Role == after.Role
-        && before.Target == after.Target && before.TestSave == after.TestSave;
+        && before.Target == after.Target && before.TestSave == after.TestSave
+        && before.Screen == after.Screen;
 
     internal static ReviewMenuResponseEnvelope? DeserializeResponse(byte[] bytes)
     {

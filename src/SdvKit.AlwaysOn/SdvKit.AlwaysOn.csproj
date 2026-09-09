@@ -30,6 +30,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMenuModels.cs" Link="LiveLab\ReviewMenuModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewModAssetModels.cs" Link="LiveLab\ReviewModAssetModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenshotModels.cs" Link="LiveLab\ReviewScreenshotModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenBindingModels.cs" Link="LiveLab\ReviewScreenBindingModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTextureModels.cs" Link="LiveLab\ReviewTextureModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTexturePngValidator.cs" Link="LiveLab\ReviewTexturePngValidator.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTransportModels.cs" Link="LiveLab\ReviewTransportModels.cs" />

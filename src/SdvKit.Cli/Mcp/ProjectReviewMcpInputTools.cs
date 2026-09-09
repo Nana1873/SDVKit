@@ -499,11 +499,12 @@ internal static class ProjectReviewMcpInputTools
         """);
 
     public static IReadOnlyList<McpServerTool> Create(
-        ProjectReviewMcpInputSession session)
+        ProjectReviewMcpInputSession session,
+        bool allowText = true)
     {
         ArgumentNullException.ThrowIfNull(session);
-        return
-        [
+        var tools = new List<McpServerTool>
+        {
             new InputMcpTool(session, Tool(ClickToolName,
                 "Click an active menu at one UI coordinate once or twice, with separate press/release edges and optional Shift/Control/Alt modifiers; requires a current uiRevision.",
                 GestureInputSchema(ReviewInputContract.ClickAction), true, false), TryClick),
@@ -513,10 +514,6 @@ internal static class ProjectReviewMcpInputTools
             new InputMcpTool(session, Tool(DragToolName,
                 "Drag an active menu from x,y to endX,endY over 1-120 movement updates after the initial press, then release at the endpoint; requires a current uiRevision.",
                 GestureInputSchema(ReviewInputContract.DragAction), true, false), TryDrag),
-            new InputMcpTool(session,
-                Tool(TextToolName,
-                    "Deliver 1-256 BMP Unicode characters through the native text event queue to an exact selected NamingMenu TextBox from stardew_menu_get. Requires fresh uiRevision and textField.id; no controls, supplementary scalars, paste or secret fields. Delivery acknowledgement does not prove accepted or persisted text.",
-                    ParseSchema("""{"type":"object","additionalProperties":false,"required":["text","fieldId","uiRevision"],"properties":{"text":{"type":"string","minLength":1,"maxLength":256},"fieldId":{"type":"integer","minimum":1},"uiRevision":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}"""), true, false), TryText),
             new InputMcpTool(session,
                 Tool(ChordToolName,
                     "Press 1-8 buttons atomically for 1-120 input updates using a fresh stardew_menu_get uiRevision; acknowledge only after release. Ctrl+V is unsupported.",
@@ -557,7 +554,15 @@ internal static class ProjectReviewMcpInputTools
                     destructive: false,
                     idempotent: false),
                 TryWheel),
-        ];
+        };
+        if (allowText)
+        {
+            tools.Insert(3, new InputMcpTool(session,
+                Tool(TextToolName,
+                    "Deliver 1-256 BMP Unicode characters through the native text event queue to an exact selected NamingMenu TextBox from stardew_menu_get. Requires fresh uiRevision and textField.id; no controls, supplementary scalars, paste or secret fields. Delivery acknowledgement does not prove accepted or persisted text.",
+                    ParseSchema("""{"type":"object","additionalProperties":false,"required":["text","fieldId","uiRevision"],"properties":{"text":{"type":"string","minLength":1,"maxLength":256},"fieldId":{"type":"integer","minimum":1},"uiRevision":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}"""), true, false), TryText));
+        }
+        return tools;
     }
 
     private sealed class InputMcpTool(

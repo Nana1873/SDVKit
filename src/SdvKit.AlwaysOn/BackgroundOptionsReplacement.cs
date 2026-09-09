@@ -13,10 +13,11 @@ internal static class BackgroundOptionsReplacement
 
     public static void Install(Func<BackgroundRunGuard?> guard, IMonitor monitor)
     {
-        // FarmhandSlot.Activate replaces Options synchronously. Waiting for the
-        // next validated update can leave an unfocused client paused in loading.
-        var original = AccessTools.DeclaredMethod(typeof(Game1), nameof(Game1.loadForNewGame), new[] { typeof(bool) })
-            ?? throw new MissingMethodException(typeof(Game1).FullName, nameof(Game1.loadForNewGame));
+        // Stardew replaces Options during FarmhandSlot.Activate and again when
+        // ClientOptions_Load completes. Hook the setter so either replacement is
+        // rebound before an unfocused client can pause.
+        var original = AccessTools.PropertySetter(typeof(Game1), nameof(Game1.options))
+            ?? throw new MissingMethodException(typeof(Game1).FullName, $"set_{nameof(Game1.options)}");
         var postfix = AccessTools.DeclaredMethod(typeof(BackgroundOptionsReplacement), nameof(AfterLoad));
         new Harmony(HarmonyId).Patch(original, postfix: new HarmonyMethod(postfix));
         _guard = guard;

@@ -14,11 +14,12 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Dispatch one native adjacent watering, harvest, machine insertion, or machine collection through revision-bound `project review interact` and separately opted-in `stardew_world_interact`; completion remains distinct from freshly observed world and inventory effects.
 - Prepare a natural fishing bank and rod in an owned disposable single/host review, with an explicit first-fish tutorial bypass. Runtime status and the existing MCP runtime tool now expose selected-rod cast, bite and catch observations without a mod-specific helper.
 - Explicitly join and leave one native local farmhand inside an owned single fixture review. Screen-selected console input, menu/runtime observations, and viewport captures keep each local player's state separate and reuse normal save, restart, stop, and reset.
+- Bind a native MCP server and CLI menu inspection to one exact observed local screen, farmer, and game context. Runtime, menu, cropped viewport, and explicitly enabled process-local input remain screen-local; leave/rejoin invalidates the old binding, and shared-window text input stays unavailable.
 
 ### Fixed
 
 - Report the native drawn bounds for normal, question, and transitioning dialogue boxes, and avoid counting the player's backpack twice in crafting availability.
-- Keep an unfocused farmhand running when joining again replaces Stardew's options before the next update. The background guard captures the replacement's original settings immediately so clean stop can still restore them.
+- Keep an unfocused farmhand running when joining or client-options loading replaces Stardew's options before the next update. The background guard captures each replacement's original settings immediately so clean stop can still restore them.
 
 ### Changed
 
