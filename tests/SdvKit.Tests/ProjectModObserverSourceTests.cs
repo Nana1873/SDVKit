@@ -99,6 +99,19 @@ public sealed class ProjectModObserverSourceTests
         Assert.Contains($"\"{fileName}\"", packageScript, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ContainerTransferUsesOwnedNativeCapacityAndProcessLocalInputPaths()
+    {
+        string source = ReadSource("ReviewContainerTransferCommand.cs");
+        Assert.Contains("Context.ScreenId != 0", source, StringComparison.Ordinal);
+        Assert.Contains("TryVerifyReviewFixture", source, StringComparison.Ordinal);
+        Assert.Contains("Game1.player.couldInventoryAcceptThisItem(probe)", source, StringComparison.Ordinal);
+        Assert.Contains("Utility.addItemToThisInventoryList", source, StringComparison.Ordinal);
+        Assert.Contains("original.canStackWith(item)", source, StringComparison.Ordinal);
+        Assert.Contains("ReviewVirtualCursor.TryChord", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SendInput", source, StringComparison.Ordinal);
+    }
+
     public static TheoryData<string> AlwaysOnLinkedSourceFiles
     {
         get

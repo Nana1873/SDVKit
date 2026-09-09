@@ -10,6 +10,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
 | Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
@@ -571,3 +572,9 @@ refresh and exposes only the owned process ID and start time for same-process
 verification.
 `--allow-world-actions` separately wraps only the four revision-bound adjacent
 interactions documented above and is unsupported for network roles.
+Start an unbound single-review server with `--allow-container-transfer` only when the
+client should perform the bounded [native chest transfer](container-transfer.md).
+That independent grant exposes `stardew_container_transfer`; input, fixture,
+world-action, and CP-refresh grants do not imply it. Screen-bound and network-role
+servers reject the grant. Startup and every invocation remain bound to the exact
+owned disposable-world review selected at startup.

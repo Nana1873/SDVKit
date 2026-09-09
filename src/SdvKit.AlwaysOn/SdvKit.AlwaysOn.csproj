@@ -21,6 +21,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewInputModels.cs" Link="LiveLab\ReviewInputModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewInventoryModels.cs" Link="LiveLab\ReviewInventoryModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewContainerModels.cs" Link="LiveLab\ReviewContainerModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewContainerTransferModels.cs" Link="LiveLab\ReviewContainerTransferModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewFixtureModels.cs" Link="LiveLab\ReviewFixtureModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />

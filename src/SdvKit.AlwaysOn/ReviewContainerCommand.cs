@@ -55,7 +55,7 @@ internal static class ReviewContainerCommand
         }
     }
 
-    private static ReviewContainerReport Capture(string captureId, string launch, ReviewMenuCommand menuCommand)
+    internal static ReviewContainerReport Capture(string captureId, string launch, ReviewMenuCommand menuCommand)
     {
         ReviewContainerReport Failure(string code) => new(ReviewContainerContract.SchemaVersion,
             "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);

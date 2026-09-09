@@ -45,6 +45,22 @@ internal static class ReviewContainerContract
         return true;
     }
 
+    public static bool TryTransferItemFingerprint(string? qualifiedItemId, int? quality,
+        string? runtimeType, int maximumStackSize, string? name, uint? packedColor,
+        string? orderData, out string fingerprint)
+    {
+        fingerprint = string.Empty;
+        if (!TextValid(qualifiedItemId, MaximumStackingTextLength)
+            || !TextValid(runtimeType, MaximumStackingTextLength) || maximumStackSize <= 0
+            || !TextValid(name, MaximumStackingTextLength)
+            || orderData is not null && !TextValid(orderData, MaximumStackingTextLength, allowEmpty: true)) return false;
+        fingerprint = Hash(qualifiedItemId!, quality?.ToString(CultureInfo.InvariantCulture) ?? "null",
+            runtimeType!, maximumStackSize.ToString(CultureInfo.InvariantCulture), name!,
+            packedColor?.ToString(CultureInfo.InvariantCulture) ?? "null",
+            orderData is null ? "null" : "value", orderData ?? string.Empty);
+        return true;
+    }
+
     public static string UnavailableItemRevision(string instanceIdentity) => Hash(instanceIdentity, "unavailable");
 
     public static string SelectionIdentity(string launchId, string identityScope, string backingIdentity,

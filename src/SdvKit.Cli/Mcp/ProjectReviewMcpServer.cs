@@ -163,6 +163,7 @@ internal static class ProjectReviewMcpServer
         bool allowInput,
         bool allowFixtureActions,
         bool allowWorldActions,
+        bool allowContainerTransfer,
         bool allowCpRefresh,
         TextWriter error,
         CancellationToken cancellationToken = default)
@@ -186,9 +187,9 @@ internal static class ProjectReviewMcpServer
             return OperationFailed;
         }
 
-        if (screenId is not null && (allowFixtureActions || allowWorldActions || allowCpRefresh))
+        if (screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh))
         {
-            error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions, world interactions, or CP refresh.");
+            error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions, world interactions, container transfers, or CP refresh.");
             return OperationFailed;
         }
 
@@ -204,6 +205,20 @@ internal static class ProjectReviewMcpServer
         {
             error.WriteLine("SDVKit MCP startup failed [worldActionTestSaveRequired]: World interactions require the exact ready SDVKit-owned single-player test save.");
             return OperationFailed;
+        }
+
+        ProjectReviewMcpRuntimeSnapshot? transferPermission = null;
+        if (allowContainerTransfer)
+        {
+            ProjectReviewMcpReadResult permissionRead = reader.Read();
+            if (screenId is not null || preflight.Context!.TestSave is null || !permissionRead.Succeeded
+                || permissionRead.Snapshot!.TestSave is null || !permissionRead.Snapshot.Runtime.WorldReady
+                || topology != LiveLabState.SingleTopology || role is not null)
+            {
+                error.WriteLine("SDVKit MCP startup failed [containerTransferTestSaveRequired]: Container transfers require the exact ready owned unbound single disposable-world review.");
+                return OperationFailed;
+            }
+            transferPermission = permissionRead.Snapshot;
         }
 
         if (allowCpRefresh && ProjectReviewMcpCpTools.RefreshPermissionError(preflight.Context!) is { } cpError)
@@ -269,6 +284,11 @@ internal static class ProjectReviewMcpServer
             ? (query, token) => ProjectReviewWorldActionService.Execute(reader, query,
                 cancellationToken: token, expectedContext: preflight.Context)
             : null;
+        Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer =
+            allowContainerTransfer && topology == LiveLabState.SingleTopology && role is null && screenId is null
+                ? (query, token) => ProjectReviewContainerTransferService.Execute(query, reader,
+                    cancellationToken: token, expectedSnapshot: transferPermission)
+                : null;
         McpServerOptions options = CreateOptions(
             reader,
             runData,
@@ -281,6 +301,7 @@ internal static class ProjectReviewMcpServer
             runAudio: runAudio,
             runModAsset: runModAsset,
             runWorldAction: runWorldAction,
+            runContainerTransfer: runContainerTransfer,
             cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         var exitCode = 0;
         try
@@ -347,7 +368,8 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpCpDiagnosisRunner? runCpDiagnosis = null,
         ProjectReviewMcpCpRefreshRunner? runCpRefresh = null,
         ProjectReviewMcpVerifiedContext? cpRefreshPermission = null,
-        ProjectReviewMcpWorldActionRunner? runWorldAction = null)
+        ProjectReviewMcpWorldActionRunner? runWorldAction = null,
+        Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -360,6 +382,8 @@ internal static class ProjectReviewMcpServer
         {
             tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
             tools.Add(ProjectReviewMcpContainerTools.Create(reader));
+            if (runContainerTransfer is not null)
+                tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
             tools.Add(ProjectReviewMcpWorldTools.Create(reader));
         }
@@ -445,6 +469,9 @@ internal static class ProjectReviewMcpServer
                 + (runWorldAction is null
                     ? "World interactions are disabled. "
                     : "World interactions were separately enabled for this exact owned disposable single-player review; they require fresh world and inventory revisions and are never retried. ")
+                + (runContainerTransfer is null
+                    ? "Container transfers are disabled. "
+                    : "Container transfers were separately enabled for this exact owned unbound disposable single-player review; they require fresh container and item revisions and are never retried. ")
                 + (cpRefreshPermission is null
                     ? "CP refresh is disabled; input and fixture permissions do not authorize it. "
                     : "CP refresh was separately enabled for the exact startup launch and root pack. Select existing patch JSON files and one Data observation explicitly; retain incomplete receipts and never retry blindly. ")

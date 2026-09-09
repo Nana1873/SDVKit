@@ -61,6 +61,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     bool allowInput,
     bool allowFixtureActions,
     bool allowWorldActions,
+    bool allowContainerTransfer,
     bool allowCpRefresh,
     TextWriter error);
 
@@ -131,7 +132,7 @@ public static partial class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-cp-refresh]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-container-transfer] [--allow-cp-refresh]";
     private const string ReviewMcpScreenUsage =
         "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input]";
     private const string ReviewMcpNetworkUsage =
@@ -144,6 +145,8 @@ public static partial class CliApplication
         "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role; unsupported with --screen";
     private const string ReviewMcpWorldActionDescription =
         "       --allow-world-actions additionally exposes only: stardew_world_interact for the exact owned disposable single-player review";
+    private const string ReviewMcpContainerTransferDescription =
+        "       --allow-container-transfer additionally exposes only: stardew_container_transfer for the exact owned unbound disposable single-player review";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -265,6 +268,7 @@ public static partial class CliApplication
             allowInput,
             allowFixtureActions,
             allowWorldActions,
+            allowContainerTransfer,
             allowCpRefresh,
             mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
@@ -275,6 +279,7 @@ public static partial class CliApplication
                 allowInput,
                 allowFixtureActions,
                 allowWorldActions,
+                allowContainerTransfer,
                 allowCpRefresh,
                 mcpError)
                 .GetAwaiter().GetResult();
@@ -639,6 +644,11 @@ public static partial class CliApplication
             return RunProjectReviewWorld(arguments, output, error);
         }
 
+        if (arguments.Count > 2 && arguments[2] == "container-transfer")
+        {
+            return RunProjectReviewContainerTransfer(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "container")
         {
             return RunProjectReviewContainer(arguments, output, error);
@@ -728,6 +738,7 @@ public static partial class CliApplication
                 out bool allowInput,
                 out bool allowFixtureActions,
                 out bool allowWorldActions,
+                out bool allowContainerTransfer,
                 out bool allowCpRefresh))
         {
             return runProjectReviewMcp(
@@ -738,6 +749,7 @@ public static partial class CliApplication
                 allowInput,
                 allowFixtureActions,
                 allowWorldActions,
+                allowContainerTransfer,
                 allowCpRefresh,
                 error);
         }
@@ -1359,6 +1371,7 @@ public static partial class CliApplication
         out bool allowInput,
         out bool allowFixtureActions,
         out bool allowWorldActions,
+        out bool allowContainerTransfer,
         out bool allowCpRefresh)
     {
         topology = LiveLabState.SingleTopology;
@@ -1367,6 +1380,7 @@ public static partial class CliApplication
         allowInput = false;
         allowFixtureActions = false;
         allowWorldActions = false;
+        allowContainerTransfer = false;
         allowCpRefresh = false;
         if (arguments.Count < 4
             || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
@@ -1381,6 +1395,7 @@ public static partial class CliApplication
         var allowInputCount = 0;
         var allowFixtureActionsCount = 0;
         var allowWorldActionsCount = 0;
+        var allowContainerTransferCount = 0;
         var allowCpRefreshCount = 0;
         for (var index = 4; index < arguments.Count; index++)
         {
@@ -1411,6 +1426,12 @@ public static partial class CliApplication
             {
                 allowWorldActionsCount++;
                 allowWorldActions = true;
+                continue;
+            }
+            if (string.Equals(option, "--allow-container-transfer", StringComparison.Ordinal))
+            {
+                allowContainerTransferCount++;
+                allowContainerTransfer = true;
                 continue;
             }
 
@@ -1451,9 +1472,10 @@ public static partial class CliApplication
             || allowInputCount > 1
             || allowFixtureActionsCount > 1
             || allowWorldActionsCount > 1
+            || allowContainerTransferCount > 1
             || allowCpRefreshCount > 1
-            || screenId is not null && (allowFixtureActions || allowWorldActions || allowCpRefresh)
-            || (allowCpRefresh || allowWorldActions) && topology != LiveLabState.SingleTopology)
+            || screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh)
+            || (allowCpRefresh || allowWorldActions || allowContainerTransfer) && topology != LiveLabState.SingleTopology)
         {
             return false;
         }
@@ -1883,6 +1905,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review inventory --help   Read-only complete bounded backpack (single only).");
         output.WriteLine("  sdvkit project review world --help       Read-only crop, soil, and machine area (single only).");
         output.WriteLine("  sdvkit project review container --help   Read-only selected regular vanilla chest (single only).");
+        output.WriteLine("  sdvkit project review container-transfer --help  Exact bounded native chest transfer (unbound single only).");
         output.WriteLine("  sdvkit project review interact --help    One revision-bound native world action (owned test save only).");
         output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
@@ -1908,6 +1931,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMcpInputDescription.TrimStart());
         output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
         output.WriteLine(ReviewMcpWorldActionDescription.TrimStart());
+        output.WriteLine(ReviewMcpContainerTransferDescription.TrimStart());
         output.WriteLine("--allow-cp-refresh separately exposes stardew_cp_refresh for the exact startup single root CP 2.9.1 pack; input and fixture opt-ins never authorize refresh.");
         output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
         output.WriteLine("The role or exact observed local screen and farmer context is fixed at startup. A departed/rejoined screen requires a new server. Closing stdin stops this server; stdout contains only MCP frames.");
