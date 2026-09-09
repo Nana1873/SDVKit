@@ -1,0 +1,10 @@
+{
+  "Name": "SDVKit Recipe Probe",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Disposable issue 190 fixture for one observed harvest recipe workflow.",
+  "UniqueID": "SDVKit.RecipeProbe",
+  "EntryDll": "RecipeProbe.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
