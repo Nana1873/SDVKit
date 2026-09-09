@@ -110,10 +110,10 @@ pair passes. Commands time out instead of silently retrying, and full `stop`/`re
 semantics are unchanged.
 
 During the coordinated absence, normal pair status is intentionally not ready.
-The host's already-bound MCP client can continue read-only inspection, but a new
-host client cannot bind and input or fixture actions remain refused until the
-whole pair passes again. The farmhand client cannot read during the absence. A
-confirmed return to title rotates only the farmhand's
+The host's already-bound MCP client can continue `stardew_runtime_get`, but a new
+host client cannot bind and other pair-dependent reads, input, or fixture actions
+remain refused until the whole pair passes again. The farmhand client cannot read
+during the absence. A confirmed return to title rotates only the farmhand's
 role session: the old farmhand client remains rejected after rejoin, so start a
 new explicit `--role farmhand` MCP client. The host session remains stable. Console
 delivery and phase text do not prove behavior; verify host continuity, old-client

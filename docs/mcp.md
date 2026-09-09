@@ -559,9 +559,10 @@ existing game-side reader. There is no second
 inventory, serializer, mailbox, or lifecycle. Network-2 additionally requires both exact
 role states and processes, identical staged target/build/fixture/save bindings,
 and returns only the role fixed at server startup. During an exact farmhand
-leave/rejoin sequence, only the retained host context is readable. Its role
-session must remain unchanged; a rotated farmhand session invalidates all action
-and response bindings as well as runtime reads. The lock is released before MCP
+leave/rejoin sequence, only `stardew_runtime_get` remains readable through the
+retained host context; other pair-dependent reads remain refused. Its role session
+must remain unchanged; a rotated farmhand session invalidates all action and
+response bindings as well as runtime reads. The lock is released before MCP
 serialization.
 
 A mismatch returns a controlled tool error and no stale payload; Data and

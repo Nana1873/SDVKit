@@ -12,6 +12,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
 | Author a one-time inventory reward and prove native chest persistence | [Inventory and chest authoring recipe](inventory-container-authoring.md) |
 | Author a crop-to-machine CP rule and prove native effects through persistence | [Crop and machine authoring recipe](crop-machine-authoring.md) |
+| Author a per-player multiplayer mod and prove distinct role and screen state | [Multiplayer authoring recipe](multiplayer-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Accept an intentional staged config save without restarting | [Configuration reconciliation](live-review.md#accept-an-intentional-configuration-change) |
@@ -57,6 +58,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
 | Original inventory/chest persistence recipe | Existing check/build/package, inventory/container reads, diagnostics, exact transfer and fixture save/restart | Default observations plus separately granted transfer, fixture, and input tools | Owned disposable unbound single; wrong packaged quantity 12, corrected 10, native deposit/withdrawal and save/reload; [recipe and limits](inventory-container-authoring.md) |
 | Original crop-to-machine authoring recipe | Existing check/package, CP diagnosis, world/inventory/container reads, native world actions, fixture save and cleanup | Default observations plus separately granted world/fixture actions | Single/screen 0 disposable world; Strawberry harvest, corrected Keg output, two Cola and chest persistence; [recipe and retained limits](crop-machine-authoring.md) |
+| Original per-player multiplayer recipe | Existing check/build/package, role/screen-selected inventory, container, world, Data, menu, lifecycle, and fixture save | Default observations plus separately granted input and host/authority fixture tools | One owned network-2 host/farmhand pair and one owned two-screen local process; deliberate shared-player bug, distinct state, stale-binding rejection, save/reload, and exact chest observation; [recipe and limits](multiplayer-authoring.md) |
 | World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | `stardew_cp_diagnose` | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
