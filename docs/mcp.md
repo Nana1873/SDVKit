@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | local screen | host | farmhand |
 | --- | --- | --- | --- | --- |
-| Default observation/evidence | 28 tools | 12 tools | 12 tools | 12 tools |
+| Default observation/evidence | 30 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
 | Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
