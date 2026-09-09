@@ -42,7 +42,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Local split-screen | Quoted `sdvkit split-screen join/leave/status` and native `screen=<id>` | Screen 0 only | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; [workflow](live-review.md#local-split-screen-review) |
 | Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
 | Runtime and selected-mod diagnostics | `project review status` | Runtime, review, mods tools | Active single or fixed host/farmhand role |
-| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; explicit bounded vanilla adapters and partial custom coverage |
+| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single or fixed host/farmhand; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
 | Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | World-ready single, screen 0; every empty/occupied/unavailable slot, no menu or mutation; [contract](inventory-inspection.md) |
 | Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | World-ready single/screen 0; complete in-map rectangle of at most 256 tiles; [contract](world-inspection.md) |

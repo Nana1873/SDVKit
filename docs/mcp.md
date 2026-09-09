@@ -129,7 +129,7 @@ The role is fixed when the server starts and cannot be selected or changed in a
 tool call. `role` is `null` for `single` and exactly the configured `host` or
 `farmhand` for `network-2`. Every server exposes five read-only observation tools:
 
-- `stardew_menu_get {}` captures [bounded active-menu geometry and public controls](menu-inspection.md)
+- `stardew_menu_get {}` captures [bounded active-menu geometry and public controls](menu-inspection.md), including supported dialogue/question choices and crafting recipe facts.
   on demand. Inventory/shop adapters and partial custom base coverage share the
   exact world-ready role binding; this surface never sends input.
 

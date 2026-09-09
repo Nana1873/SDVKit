@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Inspect bounded vanilla dialogue/question and crafting menu text, choices, recipes, ingredients, outputs, and availability through the existing menu CLI and MCP read.
 - Compare direct locale files with `default.json` during `project check`, including SMAPI-compatible placeholder names and non-blocking fallback warnings.
 - Inspect every slot in the complete bounded player backpack through `project review inventory` and default single-review `stardew_inventory_get`, with explicit empty/unavailable slots and fresh capture/revision identities.
 - Inspect a complete bounded current-location rectangle of live tilled soil, ordinary crops, and data-backed vanilla machines through `project review world` and default single-review `stardew_world_area_get`, with explicit missing, unsupported, unavailable, replacement, and state-change evidence.
@@ -15,6 +16,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- Report the native drawn bounds for normal, question, and transitioning dialogue boxes, and avoid counting the player's backpack twice in crafting availability.
 - Keep an unfocused farmhand running when joining again replaces Stardew's options before the next update. The background guard captures the replacement's original settings immediately so clean stop can still restore them.
 
 ### Changed

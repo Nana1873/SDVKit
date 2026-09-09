@@ -10,6 +10,11 @@ namespace SdvKit.AlwaysOn;
 
 internal sealed class StardewReviewMenuSource : IReviewMenuSource
 {
+    private const int MaximumDialogueText = 8192;
+    private const int MaximumDialogueChoices = 64;
+    private const int MaximumCraftingRecipes = 128;
+    private const int MaximumRecipeIngredients = 64;
+    private const int MaximumRecipeOutputs = 16;
     public object? Root => Game1.activeClickableMenu;
     public float UiScale => Game1.options.uiScale;
     public float Zoom => Game1.options.zoomLevel;
@@ -27,6 +32,11 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
         int scanned = 0;
         string adapter = "publicBase";
         int? tab = null, scroll = null;
+        MenuDialogueObservation? dialogue = null;
+        MenuCraftingObservation? crafting = null;
+        var menuBounds = new ReviewMenuRectangle(menu.xPositionOnScreen, menu.yPositionOnScreen,
+            menu.width, menu.height);
+        var limitations = new List<string>();
         if (type == typeof(NamingMenu))
         {
             adapter = "namingMenu";
@@ -78,12 +88,100 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
             Add(shop.downArrow, "scrollDown");
             Add(shop.scrollBar, "scrollBar");
         }
+        else if (type == typeof(DialogueBox))
+        {
+            adapter = "dialogueBox";
+            var dialogueBox = (DialogueBox)menu;
+            menuBounds = ReviewMenuCapture.DialogueBounds(dialogueBox.transitioning,
+                dialogueBox.transitionX, dialogueBox.transitionY, dialogueBox.transitionWidth,
+                dialogueBox.transitionHeight, dialogueBox.isQuestion, dialogueBox.x, dialogueBox.y,
+                dialogueBox.width, dialogueBox.height, dialogueBox.heightForQuestions);
+            string text = dialogueBox.getCurrentString() ?? "";
+            if (text.Length > MaximumDialogueText) limitations.Add("dialogueTextTruncated");
+            var choices = new List<MenuDialogueChoiceObservation>();
+            Response[] responses = dialogueBox.responses ?? [];
+            for (int index = 0; index < Math.Min(responses.Length, MaximumDialogueChoices); index++)
+            {
+                Response response = responses[index];
+                ClickableComponent? component = dialogueBox.responseCC is { Count: > 0 } && index < dialogueBox.responseCC.Count
+                    ? dialogueBox.responseCC[index] : null;
+                if (component is null)
+                {
+                    limitations.Add("dialogueChoiceControlUnavailable");
+                    continue;
+                }
+                if (!ReviewMenuCapture.TryStableIdentity(response.responseKey, 128, out string key))
+                {
+                    limitations.Add("dialogueChoiceKeyUnavailable");
+                    continue;
+                }
+                if ((response.responseText?.Length ?? 0) > 1024) limitations.Add("dialogueChoiceTextTruncated");
+                choices.Add(new(component, key, Bound(response.responseText, 1024),
+                    component.myID, new(component.bounds.X, component.bounds.Y, component.bounds.Width, component.bounds.Height),
+                    component.visible, ReferenceEquals(component, menu.currentlySnappedComponent)));
+            }
+            dialogue = new(Bound(text, MaximumDialogueText), dialogueBox.selectedResponse, choices);
+            if (responses.Length > MaximumDialogueChoices)
+            {
+                limitations.Add("dialogueChoiceLimit");
+            }
+        }
+        else if (type == typeof(CraftingPage))
+        {
+            adapter = "craftingPage";
+            var craftingPage = (CraftingPage)menu;
+            var recipes = new List<MenuCraftingRecipeObservation>();
+            bool availabilityAvailable = craftingPage._materialContainers is null || craftingPage._materialContainers.Count == 0;
+            if (!availabilityAvailable) limitations.Add("craftingAvailabilityUnavailable");
+            int? currentPage = craftingPage.currentCraftingPage >= 0
+                && craftingPage.currentCraftingPage < craftingPage.pagesOfCraftingRecipes.Count
+                    ? craftingPage.currentCraftingPage
+                    : null;
+            if (currentPage is null) limitations.Add("craftingPageUnavailable");
+            if (currentPage is int page)
+            {
+                foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in craftingPage.pagesOfCraftingRecipes[page]
+                    .Take(MaximumCraftingRecipes + 1))
+                {
+                    if (recipes.Count >= MaximumCraftingRecipes)
+                    {
+                        limitations.Add("craftingCollectionLimit");
+                        break;
+                    }
+                    KeyValuePair<string, int>[] ingredients = recipe.recipeList.Take(MaximumRecipeIngredients).ToArray();
+                    string[] outputs = recipe.itemToProduce.Take(MaximumRecipeOutputs).ToArray();
+                    if (!ReviewMenuCapture.TryStableIdentity(recipe.name, 256, out string recipeId)
+                        || outputs.Any(item => !ReviewMenuCapture.TryStableIdentity(item, 256, out _))
+                        || ingredients.Any(pair => !ReviewMenuCapture.TryStableIdentity(pair.Key, 256, out _) || pair.Value <= 0))
+                    {
+                        limitations.Add("craftingRecipeIdentityUnavailable");
+                        continue;
+                    }
+                    if ((recipe.DisplayName?.Length ?? 0) > 1024) limitations.Add("craftingDisplayNameTruncated");
+                    recipes.Add(new(component, recipeId, Bound(recipe.DisplayName, 1024),
+                        availabilityAvailable
+                            ? recipe.doesFarmerHaveIngredientsInInventory()
+                            : null,
+                        availabilityAvailable
+                            ? recipe.getCraftableCount((IList<Item>)null!)
+                            : null,
+                        ingredients.Select(pair => new ReviewCraftingIngredient(pair.Key, pair.Value)).ToArray(),
+                        outputs));
+                    if (recipe.recipeList.Count > MaximumRecipeIngredients || recipe.itemToProduce.Count > MaximumRecipeOutputs)
+                    {
+                        limitations.Add("craftingCollectionLimit");
+                    }
+                }
+            }
+            crafting = new(currentPage, recipes);
+        }
         Add(menu.upperRightCloseButton, "close");
         AddList(menu.allClickableComponents, "publicComponent");
         Child(menu.GetChildMenu(), "child");
         return new(type.FullName ?? type.Name, adapter, adapter != "publicBase",
-            new(menu.xPositionOnScreen, menu.yPositionOnScreen, menu.width, menu.height),
-            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField);
+            menuBounds,
+            tab, scroll, components, children, truncated, type.Assembly.GetName().Name ?? "UnknownAssembly", textField,
+            dialogue, crafting, limitations);
 
         void Child(IClickableMenu? child, string relationship)
         {
@@ -123,7 +221,10 @@ internal sealed class StardewReviewMenuSource : IReviewMenuSource
                 Add(list[index], kind);
             }
         }
+        static string Bound(string? value, int maximum) => string.IsNullOrEmpty(value)
+            ? "" : value.Length <= maximum ? value : value[..maximum];
     }
+
 }
 
 internal sealed class ReviewMenuCommand

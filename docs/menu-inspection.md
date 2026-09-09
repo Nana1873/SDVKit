@@ -1,5 +1,27 @@
 # Inspect the active menu
 
+The active-menu reader has bounded public adapters for vanilla inventory,
+shop, dialogue/question, and crafting menus. A `dialogueBox` node reports the
+current rendered text plus response keys, text, controller IDs, bounds,
+visibility, and focus. A `craftingPage` node reports the current page and
+visible recipe IDs, display names, component IDs, ingredient IDs/quantities,
+outputs, ingredient availability, and craftable count.
+
+Availability and craftable count are `null` with the explicit
+`craftingAvailabilityUnavailable` limitation when the native page exposes
+material containers that SDVKit cannot safely aggregate without changing game
+state. Invalid or overlong stable recipe/choice identities are omitted with a
+limitation rather than truncated into a new identity.
+An unavailable crafting page is `null` with `craftingPageUnavailable`.
+Recipe, ingredient, and output bounds use `craftingCollectionLimit`; the
+limitation makes the report incomplete.
+
+Dialogue and crafting values are observations only; they do not select,
+activate, or infer clickability. Text is bounded and localized display text is
+not a stable identity. Unsupported menu subclasses retain `publicBase` partial
+coverage. Recipe and response lists are capped by the existing menu response
+limits and report incomplete coverage when truncated.
+
 Use `project review menu --json` or native `stardew_menu_get {}` during an exact,
 world-ready [review](live-review.md). Each call captures fresh state on the game
 thread through the existing request/response path. It does not reuse the runtime
