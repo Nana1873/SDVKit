@@ -434,7 +434,8 @@ internal static class AlwaysOnStatusReader
                 null,
                 null,
                 null,
-                expected.NetworkLogPath);
+                expected.NetworkLogPath,
+                null);
         }
 
         bool knownPhase = marker.Phase is "waitingForFixture"
@@ -445,12 +446,19 @@ internal static class AlwaysOnStatusReader
             or "selectingFarmhand"
             or "joining"
             or "joined"
+            or "rejoined"
+            or "leaveRequested"
+            or "departureArmed"
+            or "leaving"
+            or "waitingForFarmhand"
+            or "waitingForRejoin"
             or "passed"
             or "failed";
         if (marker.SchemaVersion != NetworkTwoContract.SchemaVersion
             || !knownPhase
             || marker.JoinedTicks < 0
-            || string.IsNullOrWhiteSpace(marker.NetworkLogPath))
+            || string.IsNullOrWhiteSpace(marker.NetworkLogPath)
+            || !ReviewTransportToken.IsRequestId(marker.SessionId))
         {
             return InvalidNetworkTwo("invalid");
         }
@@ -472,25 +480,33 @@ internal static class AlwaysOnStatusReader
             NetworkTwoContract.HostRole => marker.Phase is "waitingForTitle"
                 or "connecting"
                 or "selectingFarmhand"
-                or "joining",
+                or "joining"
+                or "leaveRequested"
+                or "leaving"
+                or "waitingForRejoin",
             NetworkTwoContract.FarmhandRole => marker.Phase is "waitingForFixture"
                 or "startingHost"
-                or "hosting",
+                or "hosting"
+                or "departureArmed"
+                or "waitingForFarmhand",
             _ => true,
         };
-        bool missingIdentity = (marker.Phase is "hosting" or "joined" or "passed")
+        bool missingIdentity = (marker.Phase is "hosting" or "joined" or "rejoined" or "departureArmed"
+            or "waitingForFarmhand" or "passed")
             && !marker.IdentityVerified;
         bool wrongFarmhandIdentity = string.Equals(
                 marker.Role,
                 NetworkTwoContract.FarmhandRole,
                 StringComparison.Ordinal)
-            && marker.Phase is "selectingFarmhand" or "joining" or "joined" or "passed"
+            && marker.Phase is "selectingFarmhand" or "joining" or "joined" or "rejoined"
+                or "leaveRequested" or "leaving" or "waitingForRejoin" or "passed"
             && marker.LocalPlayerId != expected.ExpectedFarmhandId;
         bool missingHostedFarmhandIdentity = string.Equals(
                 marker.Role,
                 NetworkTwoContract.HostRole,
                 StringComparison.Ordinal)
-            && marker.Phase is "hosting" or "joined" or "passed"
+            && marker.Phase is "hosting" or "joined" or "rejoined" or "departureArmed"
+                or "waitingForFarmhand" or "passed"
             && marker.RemotePlayerId is null or 0;
         bool incompletePass = string.Equals(marker.Phase, "passed", StringComparison.Ordinal)
             && (marker.JoinedTicks < NetworkTwoContract.RequiredJoinedTicks
@@ -532,11 +548,12 @@ internal static class AlwaysOnStatusReader
             marker.RemotePlayerId,
             marker.RemotePlayerName,
             marker.Message,
-            marker.NetworkLogPath);
+            marker.NetworkLogPath,
+            marker.SessionId);
     }
 
     private static NetworkTwoStatusReport InvalidNetworkTwo(string state) =>
-        new(state, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        new(state, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
     private static ProjectModStatusReport? ReadProjectMod(
         ProjectModStatusMarker? marker,

@@ -263,6 +263,50 @@ public sealed class ProjectReviewMcpFixtureTests
     }
 
     [Fact]
+    public async Task HostFixtureToolDoesNotDispatchDuringFarmhandDeparture()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.HostRole);
+        Assert.True(reader.Read().Succeeded);
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewMcpTests.RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatusPath,
+            "waitingForFarmhand");
+        ProjectReviewMcpTests.RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatusPath,
+            "waitingForRejoin",
+            identityVerified: false,
+            sessionId: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            worldReady: false);
+        var dispatches = 0;
+        await using McpTestClient client = await McpTestClient.StartAsync(
+            ProjectReviewMcpServer.CreateOptions(
+                reader,
+                runFixture: (_, _, _) =>
+                {
+                    dispatches++;
+                    throw new InvalidOperationException("Must not dispatch.");
+                }));
+
+        CallToolResult result = await client.Client.CallToolAsync(
+            ProjectReviewMcpFixtureTools.BuildingToolName,
+            new Dictionary<string, object?>
+            {
+                ["alias"] = "barn-a",
+                ["kind"] = "Deluxe Barn",
+                ["x"] = 16,
+                ["y"] = 20,
+            },
+            cancellationToken: client.Token);
+
+        Assert.True(result.IsError);
+        Assert.Contains("reviewPairNotReady", Text(result), StringComparison.Ordinal);
+        Assert.Equal(0, dispatches);
+    }
+
+    [Fact]
     public async Task FarmhandCatalogCannotDiscoverOrDispatchFixtureMutations()
     {
         using TemporaryDirectory temporary = new();

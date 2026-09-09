@@ -73,7 +73,10 @@ internal static class ProjectReviewFixtureService
         ProjectReviewMcpReadResult preflight;
         try
         {
-            preflight = new ProjectReviewMcpRuntimeReader(labRoot, topology, role).Read();
+            var reader = new ProjectReviewMcpRuntimeReader(labRoot, topology, role);
+            preflight = query.Operation == ReviewFixtureTransportContract.StatusOperation
+                ? reader.Read()
+                : reader.ReadForAction();
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {
@@ -195,7 +198,8 @@ internal static class ProjectReviewFixtureService
             && string.Equals(current.Topology, expected.Topology, StringComparison.Ordinal)
             && string.Equals(current.Role, expected.Role, StringComparison.Ordinal)
             && current.Target == expected.Target
-            && current.TestSave == expected.TestSave;
+            && current.TestSave == expected.TestSave
+            && string.Equals(current.SessionId, expected.SessionId, StringComparison.Ordinal);
     }
 
     internal static string BuildCommand(

@@ -84,8 +84,10 @@ public sealed class ModEntry : Mod
         }
 
         if (!NetworkTwoAutomation.TryCreate(
-                helper.DirectoryPath,
-                Monitor,
+            helper.DirectoryPath,
+            helper.Multiplayer,
+            ModManifest.UniqueID,
+            Monitor,
                 WriteActiveStatus,
                 () => _testSave?.Snapshot,
                 out _networkTwo,
@@ -96,6 +98,10 @@ public sealed class ModEntry : Mod
                 LogLevel.Error);
             _networkTwo?.LogInitializationFailure();
         }
+        helper.Events.Multiplayer.ModMessageReceived += (_, eventArgs) =>
+        {
+            if (Context.ScreenId == 0) _networkTwo?.OnModMessageReceived(eventArgs);
+        };
 
         ReviewCommand.Register(
             helper,
@@ -192,8 +198,8 @@ public sealed class ModEntry : Mod
             else BackgroundRun!.RestoreOriginalAndDisable();
             if (Context.ScreenId == 0)
             {
-                _testSave?.OnReturnedToTitle();
-                _networkTwo?.OnReturnedToTitle();
+                bool networkFarmhandDeparture = _networkTwo?.OnReturnedToTitle() == true;
+                if (!networkFarmhandDeparture) _testSave?.OnReturnedToTitle();
             }
             if (!_exitPrepared)
             {

@@ -585,7 +585,8 @@ public sealed class NetworkTwoLiveLabServiceTests
             RemotePlayerId: 202L,
             NetworkTwoContract.FarmhandName,
             "verified pair",
-            launch.NetworkLogPath);
+            launch.NetworkLogPath,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
     private static void WriteMarker(
         LiveLabPaths paths,

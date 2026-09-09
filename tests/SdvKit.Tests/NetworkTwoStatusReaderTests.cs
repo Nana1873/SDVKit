@@ -199,6 +199,63 @@ public sealed class NetworkTwoStatusReaderTests
         Assert.Equal("unexpected", unexpected.NetworkTwo?.State);
     }
 
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole, "departureArmed", true, "ready")]
+    [InlineData(NetworkTwoContract.HostRole, "waitingForFarmhand", true, "ready")]
+    [InlineData(NetworkTwoContract.FarmhandRole, "leaveRequested", true, "ready")]
+    [InlineData(NetworkTwoContract.FarmhandRole, "leaving", true, "ready")]
+    [InlineData(NetworkTwoContract.FarmhandRole, "waitingForRejoin", false, "ready")]
+    [InlineData(NetworkTwoContract.HostRole, "rejoined", true, "ready")]
+    [InlineData(NetworkTwoContract.FarmhandRole, "rejoined", true, "ready")]
+    [InlineData(NetworkTwoContract.HostRole, "leaveRequested", false, "invalid")]
+    [InlineData(NetworkTwoContract.FarmhandRole, "waitingForFarmhand", false, "invalid")]
+    public void LifecycleMarkerRequiresRoleSpecificPhaseAndIdentity(
+        string role,
+        string phase,
+        bool identityVerified,
+        string expectedState)
+    {
+        using TemporaryDirectory temporary = new();
+        NetworkTwoLaunchState expected = Launch(
+            temporary,
+            role,
+            role == NetworkTwoContract.FarmhandRole ? 202L : null);
+        NetworkTwoStatusMarker marker = Passed(
+            expected,
+            role == NetworkTwoContract.HostRole ? 101L : 202L,
+            role == NetworkTwoContract.HostRole ? 202L : 101L) with
+        {
+            Phase = phase,
+            IdentityVerified = identityVerified,
+        };
+
+        AlwaysOnStatusReport report = Read(WriteMarker(temporary, marker), expected);
+
+        Assert.Equal(expectedState, report.NetworkTwo?.State);
+    }
+
+    [Theory]
+    [InlineData(1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData(NetworkTwoContract.SchemaVersion, "")]
+    [InlineData(NetworkTwoContract.SchemaVersion, "not-a-session")]
+    public void MarkerRejectsOldSchemaOrInvalidSession(int schemaVersion, string sessionId)
+    {
+        using TemporaryDirectory temporary = new();
+        NetworkTwoLaunchState expected = Launch(
+            temporary,
+            NetworkTwoContract.HostRole,
+            expectedFarmhandId: null);
+        NetworkTwoStatusMarker marker = Passed(expected, 101L, 202L) with
+        {
+            SchemaVersion = schemaVersion,
+            SessionId = sessionId,
+        };
+
+        AlwaysOnStatusReport report = Read(WriteMarker(temporary, marker), expected);
+
+        Assert.Equal("invalid", report.NetworkTwo?.State);
+    }
+
     private static AlwaysOnStatusReport Read(
         string statusPath,
         NetworkTwoLaunchState expected) =>
@@ -243,7 +300,8 @@ public sealed class NetworkTwoStatusReaderTests
                 ? NetworkTwoContract.FarmhandName
                 : TestSaveContract.PlayerName,
             "verified pair",
-            expected.NetworkLogPath);
+            expected.NetworkLogPath,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
     private static string WriteMarker(
         TemporaryDirectory temporary,
