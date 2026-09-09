@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Fixed
+
+- Background MCP review input now tolerates foreground switches between unrelated applications while retaining exact review, player, and process checks. Acknowledgements flag observed external foreground changes; transitions involving either review process and uncertain completion still fail closed without replay.
+
 ## [0.10.0] - 2026-09-09
 
 ### Added

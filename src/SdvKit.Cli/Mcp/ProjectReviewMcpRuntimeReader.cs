@@ -53,7 +53,11 @@ internal sealed record ProjectReviewMcpRuntimeSnapshot(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? SessionId = null,
     [property: JsonIgnore]
-    bool NetworkPairPassed = true);
+    bool NetworkPairPassed = true,
+    [property: JsonIgnore]
+    int ReviewProcessId = 0,
+    [property: JsonIgnore]
+    int? PeerProcessId = null);
 
 internal sealed record ProjectReviewMcpReadResult(
     ProjectReviewMcpRuntimeSnapshot? Snapshot,
@@ -71,7 +75,8 @@ internal sealed record ProjectReviewMcpVerifiedContext(
     ProjectReviewMcpTestSave? TestSave,
     bool AllTargetsReady,
     ReviewScreenBindingReport? ScreenBinding = null,
-    bool NetworkPairPassed = true);
+    bool NetworkPairPassed = true,
+    int? PeerProcessId = null);
 
 internal sealed record ProjectReviewMcpContextResult(
     ProjectReviewMcpVerifiedContext? Context,
@@ -432,7 +437,10 @@ internal sealed class ProjectReviewMcpRuntimeReader
                     && ProjectModReady(
                         farmhandAlwaysOn,
                         verifiedFarmhandState.ProjectMod!),
-                NetworkPairPassed: pairPassed),
+                NetworkPairPassed: pairPassed,
+                PeerProcessId: selectHost
+                    ? verifiedFarmhandState.OwnedProcessIdentity.ProcessId
+                    : verifiedHostState.OwnedProcessIdentity.ProcessId),
             null,
             null);
     }
@@ -511,7 +519,9 @@ internal sealed class ProjectReviewMcpRuntimeReader
                     context.ScreenBinding.FarmerId,
                     context.ScreenBinding.ContextId),
                 context.Role is null ? null : alwaysOn.NetworkTwo?.SessionId,
-                context.NetworkPairPassed),
+                context.NetworkPairPassed,
+                state.OwnedProcessIdentity.ProcessId,
+                context.PeerProcessId),
             null,
             null);
     }

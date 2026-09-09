@@ -527,7 +527,7 @@ public sealed class ProjectReviewMcpInputTests
     }
 
     [Fact]
-    public void NewerStatusWithChangedForegroundBindingFailsClosed()
+    public void NewerStatusWithChangedReviewForegroundFailsClosed()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
@@ -558,7 +558,7 @@ public sealed class ProjectReviewMcpInputTests
 
         Assert.Null(result.Acknowledgement);
         Assert.True(result.ActionMayHaveRun);
-        Assert.Equal("inputBindingChanged", result.Problem?.Code);
+        Assert.Equal("inputForegroundChanged", result.Problem?.Code);
     }
 
     [Fact]

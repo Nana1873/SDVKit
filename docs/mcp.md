@@ -427,10 +427,16 @@ owned console channel, drains the bounded action, and does not retry it.
 
 Each call is bound to the role or exact local-screen context selected at server startup, takes a closed JSON
 object, acquires the role-local cross-process action lock without queueing,
-revalidates the exact review and published foreground-window identity before
+revalidates the exact review and a valid published foreground observation before
 dispatch, waits for one request-ID-bound, fresh, create-new AlwaysOn
 acknowledgement, and accepts it only after a later AlwaysOn status timestamp and
-game tick preserve that same binding. Screen-bound calls additionally repeat the
+game tick preserve that review binding. Changes between foreground windows outside
+both owned review processes are accepted and reported as
+`externalForegroundChanged: true` in the acknowledgement. A transition involving
+either review process still fails closed (`inputForegroundChanged`, or an earlier
+review-readiness refusal); missing foreground observations report
+`inputForegroundUnavailable`. These sampled observations do not prove continuous
+focus stability or attribute a focus change to SDVKit. Screen-bound calls additionally repeat the
 screen/farmer/context observation; a departure or replacement releases the
 departing screen's pending input through the existing split-screen cleanup and
 blocks further calls rather than retargeting. A request is never retried after console
@@ -441,6 +447,19 @@ Server EOF performs a bounded cursor/transient-input clear when this MCP session
 may have dispatched input; an unconfirmed cleanup makes the server exit
 nonzero. A successful acknowledgement proves only the bounded input operation;
 verify the intended target-mod effect separately.
+
+For concurrent desktop use, distinguish the validated action from the physical
+desktop observation. Moving the physical mouse or switching unrelated applications
+does not invalidate read-only inspection. Compare the selected player's UI before
+and after input, confirm virtual button release and EOF cleanup, and retain native
+logs. A changed physical cursor or foreground in a before/after sample is
+inconclusive about desktop isolation when the developer was active; it is not a
+mouse-capture or focus-takeover finding. Establish a separate stable baseline and
+record the user's activity when checking concurrent use. An actual isolation
+violation requires attributable evidence of SDVKit moving the physical pointer or
+taking focus. Review/session/screen failures remain distinct from this observation;
+any error saying the action may have run requires state inspection before another
+action, never automatic replay.
 
 ## Opt-in fixture actions
 
