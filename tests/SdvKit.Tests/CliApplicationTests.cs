@@ -1212,6 +1212,7 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             _) =>
         {
@@ -1220,6 +1221,7 @@ public sealed class CliApplicationTests
             Assert.Null(role);
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
+            Assert.False(allowWorldActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1249,6 +1251,7 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             _) =>
         {
@@ -1256,6 +1259,7 @@ public sealed class CliApplicationTests
             Assert.Equal(expectedRole, role);
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
+            Assert.False(allowWorldActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             Assert.False(allowInput);
             return 0;
@@ -1286,6 +1290,7 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             _) =>
         {
@@ -1294,6 +1299,7 @@ public sealed class CliApplicationTests
             Assert.False(allowInput);
             Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
+            Assert.False(allowWorldActions);
             Assert.Equal(Environment.CurrentDirectory, labRoot);
             return 0;
         };
@@ -1311,6 +1317,39 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, error);
     }
 
+    [Fact]
+    public void ProjectReviewMcpServeDispatchesOnlyExplicitWorldActionOptIn()
+    {
+        ProjectReviewMcpCommandRunner runner = (topology, role, root, input, fixture, world, refresh, _) =>
+        {
+            Assert.Equal("single", topology);
+            Assert.Null(role);
+            Assert.Equal(Environment.CurrentDirectory, root);
+            Assert.False(input);
+            Assert.False(fixture);
+            Assert.True(world);
+            Assert.False(refresh);
+            return 0;
+        };
+        var (exitCode, output, error) = RunWithProjectReviewMcp(runner,
+            "project", "review", "mcp", "serve", "--allow-world-actions");
+        Assert.Equal(0, exitCode);
+        Assert.Empty(output);
+        Assert.Empty(error);
+    }
+
+    [Theory]
+    [InlineData("--allow-world-actions", "--allow-world-actions")]
+    [InlineData("--allow-world-actions", "true")]
+    [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "host")]
+    public void ProjectReviewMcpWorldActionsRejectDuplicateValueAndNetworkOptIns(params string[] suffix)
+    {
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _) =>
+            throw new InvalidOperationException("Invalid opt-in dispatched"),
+            ["project", "review", "mcp", "serve", .. suffix]);
+        Assert.Equal(2, exitCode);
+    }
+
     [Theory]
     [InlineData("single", null)]
     [InlineData("network-2", "host")]
@@ -1324,6 +1363,7 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             _) =>
         {
@@ -1333,6 +1373,7 @@ public sealed class CliApplicationTests
             Assert.True(allowInput);
             Assert.False(allowCpRefresh);
             Assert.False(allowFixtureActions);
+            Assert.False(allowWorldActions);
             return 0;
         };
         var arguments = new List<string>
@@ -1356,12 +1397,13 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewMcpServeForwardsSeparateCpRefreshOptIn()
     {
-        ProjectReviewMcpCommandRunner runner = (topology, role, _, input, fixture, refresh, _) =>
+        ProjectReviewMcpCommandRunner runner = (topology, role, _, input, fixture, world, refresh, _) =>
         {
             Assert.Equal("single", topology);
             Assert.Null(role);
             Assert.False(input);
             Assert.False(fixture);
+            Assert.False(world);
             Assert.True(refresh);
             return 0;
         };
@@ -1378,7 +1420,7 @@ public sealed class CliApplicationTests
     [InlineData("--allow-cp-refresh", "--topology", "network-2", "--role", "host")]
     public void ProjectReviewMcpCpRefreshRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _) =>
+        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"), ["project", "review", "mcp", "serve", .. suffix]);
         Assert.Equal(2, exitCode);
     }
@@ -1392,6 +1434,7 @@ public sealed class CliApplicationTests
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             _) =>
         {
@@ -1401,6 +1444,7 @@ public sealed class CliApplicationTests
             Assert.True(allowInput);
             Assert.False(allowCpRefresh);
             Assert.True(allowFixtureActions);
+            Assert.False(allowWorldActions);
             return 0;
         };
 
@@ -1574,7 +1618,7 @@ public sealed class CliApplicationTests
     [InlineData("mcp", "serve", "--help")]
     public void McpHelpExplainsRoleAndOptInsWithoutStartingServer(params string[] suffix)
     {
-        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _) =>
+        ProjectReviewMcpCommandRunner runner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("MCP must not start for help.");
         (int exitCode, string output, string error) = RunWithProjectReviewMcp(
             runner, ["project", "review", .. suffix]);

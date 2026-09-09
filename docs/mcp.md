@@ -2,13 +2,14 @@
 
 Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`. Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
 
-[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Audio and mod assets](#audio-and-observed-mod-assets) · [Content Patcher](#content-patcher-diagnosis-and-opt-in-refresh) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
+[Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Audio and mod assets](#audio-and-observed-mod-assets) · [Content Patcher](#content-patcher-diagnosis-and-opt-in-refresh) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [World interactions](#opt-in-world-interactions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
 
 | Startup profile | single | host | farmhand |
 | --- | --- | --- | --- |
 | Default observation/evidence | 28 tools | 6 tools | 6 tools |
 | Add `--allow-input` | +9 | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | +6 | +3 |
+| Add `--allow-world-actions` | +1 | Unsupported | Unsupported |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported |
 
 Counts describe these profiles, not a universal client allowlist. Enable only the authorized families needed for the task. On a controlled startup/tool error, check review status and the named code; never reuse a stale payload. On uncertain action completion (`mayHaveRun`), inspect current state before deciding whether another action is safe.
@@ -24,6 +25,7 @@ both roles:
 & $sdvkit project review mcp serve --topology network-2 --role host
 & $sdvkit project review mcp serve --topology network-2 --role farmhand
 & $sdvkit project review mcp serve --topology single --allow-fixture-actions
+& $sdvkit project review mcp serve --topology single --allow-world-actions
 & $sdvkit project review mcp serve --topology network-2 --role host --allow-fixture-actions
 ```
 
@@ -42,6 +44,32 @@ or input switch. Without it, no `stardew_fixture_*` tool is advertised. With it,
 startup requires the exact selected role to be bound to a fresh SDVKit-owned
 disposable test save; a plain review or normal save is rejected. The flag never
 selects a save and never grants access to the normal Stardew `Saves` directory.
+
+## Opt-in world interactions
+
+`--allow-world-actions` advertises only `stardew_world_interact`, and startup
+requires the exact ready SDVKit-owned disposable single-player test save. Input,
+fixture, observation, and CP grants do not imply this permission. Each call must
+provide an exact target instance/revision from `stardew_world_area_get` and the
+complete current `inventoryRevision` from `stardew_inventory_get`.
+
+The closed action set is `water` for dry ordinary crop soil with the selected
+watering can, `harvest` for a ready ordinary hand-harvest crop with an empty hand
+(scythe-required crops are rejected),
+`machineInsert` for a natively accepted selected object and an idle ordinary
+data-backed machine, and `machineCollect` for a ready machine with an empty hand.
+The target must be the currently faced adjacent tile and visible in the current
+viewport. Immediately before its single process-local mouse sample, SDVKit
+rechecks ownership, player readiness, viewport/cursor binding, target identity
+and revision, inventory revision, selected tool/item, resources, and capacity.
+It never teleports, navigates, grows crops, completes machines, rewrites stacks,
+replays, or rolls back a native action.
+
+`state=completed` proves only that the one native input sample completed. Read
+world and inventory again to establish the effect. `dispatchState=notDispatched`
+is safe non-dispatch; `mayHaveRun` is uncertain and must be observed before any
+manual retry. Cancellation before dispatch cannot act; cancellation after the
+command write drains a retained response when possible and never retries.
 
 ## Content Patcher diagnosis and opt-in refresh
 
@@ -527,3 +555,5 @@ profile or review runtime, respectively; neither requires an action opt-in.
 `--allow-cp-refresh` separately wraps the selected root pack's bounded JSON
 refresh and exposes only the owned process ID and start time for same-process
 verification.
+`--allow-world-actions` separately wraps only the four revision-bound adjacent
+interactions documented above and is unsupported for network roles.

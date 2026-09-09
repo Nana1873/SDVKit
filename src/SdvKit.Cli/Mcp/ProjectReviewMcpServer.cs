@@ -151,6 +151,7 @@ internal static class ProjectReviewMcpServer
         string? role,
         bool allowInput,
         bool allowFixtureActions,
+        bool allowWorldActions,
         bool allowCpRefresh,
         TextWriter error,
         CancellationToken cancellationToken = default)
@@ -171,6 +172,13 @@ internal static class ProjectReviewMcpServer
         {
             error.WriteLine(
                 "SDVKit MCP startup failed [fixtureTestSaveRequired]: Fixture actions require the exact ready SDVKit-owned test save.");
+            return OperationFailed;
+        }
+
+        if (allowWorldActions && (topology != LiveLabState.SingleTopology || role is not null
+            || preflight.Context!.TestSave is null || !preflight.Context.AllTargetsReady))
+        {
+            error.WriteLine("SDVKit MCP startup failed [worldActionTestSaveRequired]: World interactions require the exact ready SDVKit-owned single-player test save.");
             return OperationFailed;
         }
 
@@ -230,6 +238,10 @@ internal static class ProjectReviewMcpServer
                 cancellationToken: token,
                 expectedSnapshot: expected)
             : null;
+        ProjectReviewMcpWorldActionRunner? runWorldAction = allowWorldActions
+            ? (query, token) => ProjectReviewWorldActionService.Execute(reader, query,
+                cancellationToken: token, expectedContext: preflight.Context)
+            : null;
         McpServerOptions options = CreateOptions(
             reader,
             runData,
@@ -241,6 +253,7 @@ internal static class ProjectReviewMcpServer
             role: role,
             runAudio: runAudio,
             runModAsset: runModAsset,
+            runWorldAction: runWorldAction,
             cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         var exitCode = 0;
         try
@@ -306,7 +319,8 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpModAssetQueryRunner? runModAsset = null,
         ProjectReviewMcpCpDiagnosisRunner? runCpDiagnosis = null,
         ProjectReviewMcpCpRefreshRunner? runCpRefresh = null,
-        ProjectReviewMcpVerifiedContext? cpRefreshPermission = null)
+        ProjectReviewMcpVerifiedContext? cpRefreshPermission = null,
+        ProjectReviewMcpWorldActionRunner? runWorldAction = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -370,6 +384,8 @@ internal static class ProjectReviewMcpServer
                 topology,
                 role));
         }
+        if (runWorldAction is not null && reader.Topology == LiveLabState.SingleTopology && reader.Role is null)
+            tools.Add(ProjectReviewMcpWorldActionTools.Create(runWorldAction));
 
         return new McpServerOptions
         {
@@ -387,6 +403,9 @@ internal static class ProjectReviewMcpServer
                 + (runFixture is null
                     ? "Fixture actions are disabled. "
                     : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
+                + (runWorldAction is null
+                    ? "World interactions are disabled. "
+                    : "World interactions were separately enabled for this exact owned disposable single-player review; they require fresh world and inventory revisions and are never retried. ")
                 + (cpRefreshPermission is null
                     ? "CP refresh is disabled; input and fixture permissions do not authorize it. "
                     : "CP refresh was separately enabled for the exact startup launch and root pack. Select existing patch JSON files and one Data observation explicitly; retain incomplete receipts and never retry blindly. ")

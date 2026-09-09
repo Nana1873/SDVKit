@@ -210,6 +210,10 @@ internal interface IReviewInputRuntime
         out string error)
     { error = "Chord input is unavailable."; return false; }
 
+    bool TryWorldPress(ReviewInputRequest request, Func<string?> validateDispatch,
+        Action<ReviewInputResult> completed, out string error)
+    { error = "Validated world input is unavailable."; return false; }
+
     bool TryText(ReviewInputRequest request, Action<ReviewInputResult> completed, out string error)
     { error = "Text input is unavailable."; return false; }
 
@@ -885,6 +889,21 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
             result => completed(result with { CanonicalButton = result.Buttons?[0] }), out error, request.RequestId);
     }
 
+    public bool TryWorldPress(ReviewInputRequest request, Func<string?> validateDispatch,
+        Action<ReviewInputResult> completed, out string error)
+    {
+        if (request.Kind != ReviewInputKind.Press || request.Button is null
+            || !Enum.TryParse(request.Button, out SButton button)
+            || button is not (SButton.MouseLeft or SButton.MouseRight))
+        {
+            error = "A world interaction requires exactly one native mouse action.";
+            return false;
+        }
+        return ReviewVirtualCursor.TryChord(helper.Input, [button], 1, null, currentRevision,
+            result => completed(result with { CanonicalButton = result.Buttons?[0] }), out error,
+            request.RequestId, validateDispatch: validateDispatch);
+    }
+
     public bool TryScroll(int direction, out string error)
     {
         if (!ReviewVirtualCursor.IsSet)
@@ -957,6 +976,7 @@ internal static partial class ReviewVirtualCursor
         public string? Continuity { get; init; }
         public Func<string?>? CurrentViewport { get; init; }
         public string? Viewport { get; init; }
+        public Func<string?>? ValidateDispatch { get; init; }
     }
     private sealed class InputSample
     {
@@ -1114,7 +1134,8 @@ internal static partial class ReviewVirtualCursor
 
     public static bool TryChord(IInputHelper helper, SButton[] buttons, int duration, string? revision,
         Func<string?> currentRevision, Action<ReviewInputResult> completed, out string error, string? requestId,
-        ReviewInputQuery? gesture = null, Func<string?>? currentContinuity = null, Func<string?>? currentViewport = null)
+        ReviewInputQuery? gesture = null, Func<string?>? currentContinuity = null, Func<string?>? currentViewport = null,
+        Func<string?>? validateDispatch = null)
     {
         lock (Sync)
         {
@@ -1148,7 +1169,8 @@ internal static partial class ReviewVirtualCursor
                 CurrentContinuity = currentContinuity,
                 Continuity = currentContinuity?.Invoke(),
                 CurrentViewport = currentViewport,
-                Viewport = currentViewport?.Invoke()
+                Viewport = currentViewport?.Invoke(),
+                ValidateDispatch = validateDispatch
             };
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
@@ -1219,6 +1241,12 @@ internal static partial class ReviewVirtualCursor
                         : "The UI context changed while input actions remained.");
                 }
                 if (chord.Progress.Remaining == 0 && chord.Progress.Gesture is null) return;
+                if (chord.Progress.StartTick is null && chord.ValidateDispatch is not null
+                    && !ReviewWorldActionDispatchGate.TryAuthorize(chord.ValidateDispatch, out string? dispatchProblem))
+                {
+                    CancelChord(dispatchProblem!);
+                    return;
+                }
 
                 // Read-only physical samples: never move the cursor, change focus or suppress a key.
                 KeyboardState keyboard = Keyboard.GetState();
