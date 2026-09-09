@@ -251,9 +251,9 @@ Offsets are non-negative 32-bit integers, limits default to 50 and stay within
 1-100, asset names are limited to 256 characters, and keys to 2,048. The record
 value retains its canonical JSON shape but remains subject to the existing 4 MiB
 record and 5 MiB response limits. All three tools return operation-specific closed
-envelopes and identical compact JSON text. They are deliberately absent from a
-`network-2` server; use the existing single-review CLI or MCP
-surface rather than inferring one role's game-content pipeline from the other.
+envelopes and identical compact JSON text. Network-role and local-screen reads
+validate the exact selected player context, while the canonical Data result
+remains process-shared.
 
 ## Maps and textures
 
