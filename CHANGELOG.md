@@ -4,6 +4,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-09
+
 ### Added
 
 - Inspect bounded vanilla dialogue/question and crafting menu text, choices, recipes, ingredients, outputs, and availability through the existing menu CLI and MCP read.
@@ -32,6 +34,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Extend bounded backpack, selected-chest, current-world, and canonical Data reads to an exact owned network role or local screen. Player/menu/world responses remain selection-bound, while canonical Data remains process-shared; shop, asset inspection, Content Patcher, and mutation grants keep their existing single-only boundaries.
 - The README leads with a copyable agent setup request that separates the portable install folder, mod workspace, and isolated lab data, and checks the selected release before a first review.
 - Autonomous review guidance and MCP input descriptions prefer one Escape press or one observed close-button click for routine menu closing, followed by fresh menu evidence before further input. Controller input remains available for explicit controller tests; no runtime input behavior has changed.
+
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a fresh directory and restart MCP clients against it. Bind each network-role or local-screen client to its exact current selection; create a fresh client after farmhand or screen replacement. Container transfers and world interactions require their separate startup opt-ins and fresh selections. Local split-screen reviews use an owned single test save; shared-window text input remains unavailable.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/211) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.9.0...v0.10.0)
 
 ## [0.9.0] - 2026-09-08
 
