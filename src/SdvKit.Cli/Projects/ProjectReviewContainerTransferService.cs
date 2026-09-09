@@ -85,24 +85,45 @@ internal static class ProjectReviewContainerTransferService
     }
 
     internal static bool Valid(ReviewContainerTransferReport? report, ProjectReviewMcpRuntimeSnapshot expected,
-        ReviewContainerTransferQuery query, DateTimeOffset now) => report is not null && report.SchemaVersion == 1
-        && report.LaunchId == expected.LaunchId && report.Topology == "single" && report.Role is null
-        && report.CapturedAtUtc <= now.AddSeconds(5) && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(15)
-        && (report.Data is null ? report.State == "refused" && report.ErrorCode is not null
-            : report.Data.Direction == query.Direction && report.Data.SourceSlot == query.SourceSlot
-                && report.Data.RequestedQuantity == query.Quantity && report.Data.QualifiedItemId == query.QualifiedItemId
-                && ReviewContainerContract.DataValid(report.Data.Before, expected.LaunchId)
-                && (report.Data.After is null || ReviewContainerContract.DataValid(report.Data.After, expected.LaunchId))
-                && report.Data.Outcome is "completed" or "refused" or "partial" or "uncertain"
-                && report.Data.ObservedQuantity is null or >= 0
-                && (!report.Data.Dispatched && report.Data.Outcome == "refused"
-                    ? report.State == "refused" && report.ErrorCode is not null
-                        && report.Data.ObservedQuantity == 0 && report.Data.After is null
-                    : report.Data.Before.SelectionIdentity == query.SelectionIdentity
-                        && report.Data.Before.ContainerRevision == query.ContainerRevision
-                        && (report.Data.Outcome == "completed" ? report.State == "completed" && report.ErrorCode is null
-                    && report.Data.Dispatched && report.Data.ObservedQuantity == query.Quantity && report.Data.After is not null
-                    : report.ErrorCode is not null)));
+        ReviewContainerTransferQuery query, DateTimeOffset now)
+    {
+        if (report is null || report.SchemaVersion != 1 || report.LaunchId != expected.LaunchId
+            || report.Topology != "single" || report.Role is not null
+            || report.CapturedAtUtc > now.AddSeconds(5) || now - report.CapturedAtUtc > TimeSpan.FromSeconds(15))
+            return false;
+        if (report.Data is not { } data)
+            return report.State == "refused" && report.ErrorCode is not null;
+        if (data.Direction != query.Direction
+            || data.SourceSide != ReviewContainerTransferContract.SourceSide(query.Direction)
+            || data.SourceSlot != query.SourceSlot || data.RequestedQuantity != query.Quantity
+            || data.QualifiedItemId != query.QualifiedItemId || report.State != data.Outcome
+            || data.Outcome is not ("completed" or "refused" or "partial" or "uncertain")
+            || !ReviewContainerContract.DataValid(data.Before, expected.LaunchId)
+            || data.After is not null && !ReviewContainerContract.DataValid(data.After, expected.LaunchId))
+            return false;
+        if (!data.Dispatched)
+            return data.Outcome == "refused" && report.ErrorCode is not null
+                && data.ObservedQuantity == 0 && data.After is null;
+        if (ReviewContainerTransferContract.ObservationProblem(query, data.Before) is not null)
+            return false;
+        if (data.Outcome == "uncertain")
+            return report.ErrorCode is not null && data.ObservedQuantity is null && data.After is null
+                && data.Limitations.Contains("afterObservationUnavailable", StringComparer.Ordinal);
+        if (data.After is not { } after || (report.ErrorCode is null) != (data.Outcome == "completed")
+            || after.SelectionIdentity != data.Before.SelectionIdentity
+            || !ReviewContainerTransferContract.Conserved(data.Before, after, query))
+            return false;
+        int observed = ReviewContainerTransferContract.ObservedQuantity(data.Before, after, query);
+        if (data.ObservedQuantity != observed || observed > query.Quantity)
+            return false;
+        return data.Outcome switch
+        {
+            "completed" => observed == query.Quantity,
+            "partial" => observed is > 0 && observed < query.Quantity,
+            "refused" => observed == 0,
+            _ => false,
+        };
+    }
 
     private static void RejectDuplicates(JsonElement value)
     {

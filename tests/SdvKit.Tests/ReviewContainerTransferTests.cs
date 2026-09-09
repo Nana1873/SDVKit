@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
@@ -7,7 +8,8 @@ namespace SdvKit.Tests;
 public sealed class ReviewContainerTransferTests
 {
     private static readonly string Revision = "sha256:" + new string('a', 64);
-    private static readonly string Launch = new('e', 32);
+    private static readonly string Launch = new('a', 32);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Theory]
     [InlineData("deposit", 0, 1, null)]
@@ -91,29 +93,40 @@ public sealed class ReviewContainerTransferTests
     public void CompletedResponseRequiresExactRequestedObservationAndAfterCapture()
     {
         ReviewContainerValues before = Values(new string('b', 32), 3, 0);
-        ReviewContainerValues after = Values(new string('c', 32), 1, 2);
-        var query = Query(selection: before.SelectionIdentity, container: before.ContainerRevision);
+        var query = QueryFrom(before, "deposit", 0, 2);
         var snapshot = Snapshot(Launch);
         var complete = new ReviewContainerTransferReport(1, "completed", null, Launch, "single", null,
             DateTimeOffset.UtcNow, new("deposit", "player", 0, 2, 2, "(O)390", true, false,
-                "completed", before, after, []));
+                "completed", before, Values(new string('b', 32), 1, 2), []));
         Assert.True(ProjectReviewContainerTransferService.Valid(complete, snapshot, query, DateTimeOffset.UtcNow));
         Assert.False(ProjectReviewContainerTransferService.Valid(complete with
         { Data = complete.Data! with { ObservedQuantity = 1 } }, snapshot, query, DateTimeOffset.UtcNow));
         Assert.False(ProjectReviewContainerTransferService.Valid(complete with
         { Data = complete.Data! with { After = null } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        { Data = complete.Data! with { After = before } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        { Data = complete.Data! with { After = Values(new string('d', 32), 1, 3) } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        { Data = complete.Data! with { After = Values(new string('d', 32), 1, 2) } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        { Data = complete.Data! with { SourceSide = "container" } }, snapshot, query, DateTimeOffset.UtcNow));
     }
 
     [Fact]
     public void PartialAndUncertainResponsesStayExplicit()
     {
         ReviewContainerValues before = Values(new string('b', 32), 3, 0);
-        var query = Query(selection: before.SelectionIdentity, container: before.ContainerRevision);
+        var query = QueryFrom(before, "deposit", 0, 2);
         var snapshot = Snapshot(Launch);
         var partial = new ReviewContainerTransferReport(1, "partial", "containerTransferPartial", Launch, "single", null,
             DateTimeOffset.UtcNow, new("deposit", "player", 0, 2, 1, "(O)390", true, true,
-                "partial", before, Values(new string('c', 32), 2, 1), []));
+                "partial", before, Values(new string('b', 32), 2, 1), []));
         Assert.True(ProjectReviewContainerTransferService.Valid(partial, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(partial with
+        { Data = partial.Data! with { ObservedQuantity = 2 } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(partial with
+        { State = "refused" }, snapshot, query, DateTimeOffset.UtcNow));
         Assert.True(ProjectReviewContainerTransferService.Valid(partial with
         {
             State = "uncertain",
@@ -121,6 +134,65 @@ public sealed class ReviewContainerTransferTests
             Data = partial.Data! with { Outcome = "uncertain", ObservedQuantity = null, After = null, Limitations = ["afterObservationUnavailable"] }
         },
             snapshot, query, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void ExecuteTurnsPostResponseBindingChangeIntoUncertainty()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ProjectReviewMcpRuntimeSnapshot expected = reader.Read().Snapshot!;
+        ReviewContainerValues before = Values(new string('b', 32), 3, 0);
+        ReviewContainerValues capturedBefore = before;
+        ReviewContainerTransferQuery query = QueryFrom(before, "deposit", 0, 2);
+        ReviewContainerTransferReport result = ProjectReviewContainerTransferService.Execute(query, reader, command =>
+        {
+            string[] parts = command.Split(' ');
+            if (parts[1] == "container")
+            {
+                capturedBefore = before with { CaptureId = parts[2] };
+                PublishContainer(temporary.Path, parts[2], capturedBefore);
+            }
+            else
+            {
+                Assert.Equal("container-transfer", parts[1]);
+                PublishTransfer(temporary.Path, parts[2], new(1, "completed", null, Launch, "single", null,
+                    DateTimeOffset.UtcNow, new("deposit", "player", 0, 2, 2, "(O)390", true, false,
+                        "completed", capturedBefore, Values(new string('b', 32), 1, 2), [])));
+                var store = new JsonLiveLabStateStore(LiveLabPaths.Resolve(temporary.Path).StatePath);
+                store.Write(store.Read()! with { LaunchId = new string('9', 32) });
+            }
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero, expectedSnapshot: expected);
+        Assert.True(result.State == "uncertain", $"{result.State}:{result.ErrorCode}");
+        Assert.Equal("containerTransferBindingChanged", result.ErrorCode);
+        Assert.Contains("postBindingChanged", result.Data!.Limitations);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExecuteTimeoutAndCancellationAfterDispatchRemainUncertain(bool cancelAfterDispatch)
+    {
+        using TemporaryDirectory temporary = new();
+        using var cancellation = new CancellationTokenSource();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ReviewContainerValues before = Values(new string('b', 32), 3, 0);
+        ReviewContainerTransferQuery query = QueryFrom(before, "deposit", 0, 2);
+        int cancellationSignals = 0;
+        ReviewContainerTransferReport result = ProjectReviewContainerTransferService.Execute(query, reader, command =>
+        {
+            string[] parts = command.Split(' ');
+            if (parts[1] == "container") PublishContainer(temporary.Path, parts[2], before with { CaptureId = parts[2] });
+            else if (parts[2] == "cancel") cancellationSignals++;
+            else if (cancelAfterDispatch) cancellation.Cancel();
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero, cancellationToken: cancellation.Token);
+        Assert.True(result.State == "uncertain", $"{result.State}:{result.ErrorCode}");
+        Assert.True(result.Data!.Dispatched);
+        Assert.Null(result.Data.After);
+        Assert.Equal(cancelAfterDispatch, result.Data.CancellationRequested);
+        Assert.Equal(cancelAfterDispatch ? 1 : 0, cancellationSignals);
     }
 
     [Theory]
@@ -195,8 +267,8 @@ public sealed class ReviewContainerTransferTests
         }
         ReviewContainerSide player = Side("player", 12, playerStack, 1), chest = Side("container", 36, chestStack, 2);
         ReviewObservedItem held = new("empty", null, null, null);
-        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "1", "FarmHouse", 7, 7, "(BC)130");
-        return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, "1",
+        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "FarmHouse", 7, 7, "(BC)130");
+        return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, "101",
             "FarmHouse", 7, 7, "(BC)130", player, chest, held, true, []);
     }
 
@@ -207,4 +279,19 @@ public sealed class ReviewContainerTransferTests
             new("Nana.Target", "1.0.0", Revision), new(new string('f', 32), "SDVKit_1"),
             new(1, true, "spring", 1, 1, 600, "FarmHouse", 7, 7, true), 1, now, 1, Environment.ProcessId);
     }
+
+    private static LiveLabCommandResult Sent(string root) => new(0,
+        new ProjectReviewCommandReport(1, null, root, "ready", null, true, [], []));
+
+    private static void PublishContainer(string root, string id, ReviewContainerValues values)
+    {
+        var report = new ReviewContainerReport(1, "ready", null, Launch, "single", null,
+            DateTimeOffset.UtcNow, values);
+        File.WriteAllText(ReviewContainerContract.ResponsePath(LiveLabPaths.Resolve(root).RuntimePath, id),
+            JsonSerializer.Serialize(new ReviewContainerResponseEnvelope(1, id, report), JsonOptions));
+    }
+
+    private static void PublishTransfer(string root, string id, ReviewContainerTransferReport report) =>
+        File.WriteAllText(ReviewContainerTransferContract.ResponsePath(LiveLabPaths.Resolve(root).RuntimePath, id),
+            JsonSerializer.Serialize(new ReviewContainerTransferResponseEnvelope(1, id, report), JsonOptions));
 }
