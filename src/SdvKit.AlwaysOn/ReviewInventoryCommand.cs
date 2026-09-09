@@ -51,7 +51,7 @@ internal static class ReviewInventoryCommand
         }
     }
 
-    private static ReviewInventoryReport Capture(string captureId, string launch)
+    internal static ReviewInventoryReport Capture(string captureId, string launch)
     {
         ReviewInventoryReport Failure(string code) => new(ReviewInventoryContract.SchemaVersion,
             "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);

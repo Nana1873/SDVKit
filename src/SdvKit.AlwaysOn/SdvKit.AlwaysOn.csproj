@@ -26,6 +26,7 @@
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewShopModels.cs" Link="LiveLab\ReviewShopModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewWorldModels.cs" Link="LiveLab\ReviewWorldModels.cs" />
+    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewWorldActionModels.cs" Link="LiveLab\ReviewWorldActionModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMenuModels.cs" Link="LiveLab\ReviewMenuModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewModAssetModels.cs" Link="LiveLab\ReviewModAssetModels.cs" />
     <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenshotModels.cs" Link="LiveLab\ReviewScreenshotModels.cs" />

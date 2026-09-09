@@ -68,7 +68,7 @@ internal static class ReviewWorldCommand
         }
     }
 
-    private static ReviewWorldReport Capture(string launch, ReviewWorldArea area)
+    internal static ReviewWorldReport Capture(string launch, ReviewWorldArea area)
     {
         ReviewWorldReport Failure(string code) => new(1, "unavailable", code, launch,
             "single", null, DateTimeOffset.UtcNow, null);
@@ -100,7 +100,7 @@ internal static class ReviewWorldCommand
             : Failure("worldValuesInvalid");
     }
 
-    private static ReviewWorldTile ReadObject(GameLocation location, Vector2 tile, int x, int y,
+    internal static ReviewWorldTile ReadObject(GameLocation location, Vector2 tile, int x, int y,
         ReviewWorldSoil? soil)
     {
         if (!location.Objects.TryGetValue(tile, out StardewObject? obj) || obj is null)
@@ -139,7 +139,7 @@ internal static class ReviewWorldCommand
         }
     }
 
-    private static ReviewWorldSoil ReadSoil(HoeDirt dirt)
+    internal static ReviewWorldSoil ReadSoil(HoeDirt dirt)
     {
         string instance = Identity(dirt);
         string? fertilizer = !dirt.HasFertilizer()

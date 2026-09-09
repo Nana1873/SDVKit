@@ -59,6 +59,7 @@ internal delegate int ProjectReviewMcpCommandRunner(
     string labRoot,
     bool allowInput,
     bool allowFixtureActions,
+    bool allowWorldActions,
     bool allowCpRefresh,
     TextWriter error);
 
@@ -129,7 +130,7 @@ public static partial class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-cp-refresh]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-cp-refresh]";
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
     private const string ReviewMcpToolsDescription =
@@ -138,6 +139,8 @@ public static partial class CliApplication
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel";
     private const string ReviewMcpFixtureDescription =
         "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_save as allowed for the selected role";
+    private const string ReviewMcpWorldActionDescription =
+        "       --allow-world-actions additionally exposes only: stardew_world_interact for the exact owned disposable single-player review";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =
@@ -257,6 +260,7 @@ public static partial class CliApplication
             labRoot,
             allowInput,
             allowFixtureActions,
+            allowWorldActions,
             allowCpRefresh,
             mcpError) =>
             ProjectReviewMcpServer.RunStdioAsync(
@@ -265,6 +269,7 @@ public static partial class CliApplication
                 role,
                 allowInput,
                 allowFixtureActions,
+                allowWorldActions,
                 allowCpRefresh,
                 mcpError)
                 .GetAwaiter().GetResult();
@@ -634,6 +639,11 @@ public static partial class CliApplication
             return RunProjectReviewContainer(arguments, output, error);
         }
 
+        if (arguments.Count > 2 && arguments[2] == "interact")
+        {
+            return RunProjectReviewWorldAction(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "menu")
         {
             return RunProjectReviewMenu(arguments, output, error);
@@ -711,6 +721,7 @@ public static partial class CliApplication
                 out string? mcpRole,
                 out bool allowInput,
                 out bool allowFixtureActions,
+                out bool allowWorldActions,
                 out bool allowCpRefresh))
         {
             return runProjectReviewMcp(
@@ -719,6 +730,7 @@ public static partial class CliApplication
                 Environment.CurrentDirectory,
                 allowInput,
                 allowFixtureActions,
+                allowWorldActions,
                 allowCpRefresh,
                 error);
         }
@@ -1338,12 +1350,14 @@ public static partial class CliApplication
         out string? role,
         out bool allowInput,
         out bool allowFixtureActions,
+        out bool allowWorldActions,
         out bool allowCpRefresh)
     {
         topology = LiveLabState.SingleTopology;
         role = null;
         allowInput = false;
         allowFixtureActions = false;
+        allowWorldActions = false;
         allowCpRefresh = false;
         if (arguments.Count < 4
             || !string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
@@ -1356,6 +1370,7 @@ public static partial class CliApplication
         var roleCount = 0;
         var allowInputCount = 0;
         var allowFixtureActionsCount = 0;
+        var allowWorldActionsCount = 0;
         var allowCpRefreshCount = 0;
         for (var index = 4; index < arguments.Count; index++)
         {
@@ -1380,6 +1395,12 @@ public static partial class CliApplication
             {
                 allowFixtureActionsCount++;
                 allowFixtureActions = true;
+                continue;
+            }
+            if (string.Equals(option, "--allow-world-actions", StringComparison.Ordinal))
+            {
+                allowWorldActionsCount++;
+                allowWorldActions = true;
                 continue;
             }
 
@@ -1410,8 +1431,9 @@ public static partial class CliApplication
             || roleCount > 1
             || allowInputCount > 1
             || allowFixtureActionsCount > 1
+            || allowWorldActionsCount > 1
             || allowCpRefreshCount > 1
-            || allowCpRefresh && topology != LiveLabState.SingleTopology)
+            || (allowCpRefresh || allowWorldActions) && topology != LiveLabState.SingleTopology)
         {
             return false;
         }
@@ -1840,6 +1862,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review inventory --help   Read-only complete bounded backpack (single only).");
         output.WriteLine("  sdvkit project review world --help       Read-only crop, soil, and machine area (single only).");
         output.WriteLine("  sdvkit project review container --help   Read-only selected regular vanilla chest (single only).");
+        output.WriteLine("  sdvkit project review interact --help    One revision-bound native world action (owned test save only).");
         output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
@@ -1862,6 +1885,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMcpToolsDescription.TrimStart());
         output.WriteLine(ReviewMcpInputDescription.TrimStart());
         output.WriteLine(ReviewMcpFixtureDescription.TrimStart());
+        output.WriteLine(ReviewMcpWorldActionDescription.TrimStart());
         output.WriteLine("--allow-cp-refresh separately exposes stardew_cp_refresh for the exact startup single root CP 2.9.1 pack; input and fixture opt-ins never authorize refresh.");
         output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
         output.WriteLine("The role is fixed at startup. Closing stdin stops this server; stdout contains only MCP frames.");
