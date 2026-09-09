@@ -15,7 +15,7 @@ internal static class ProjectReviewMcpContainerTools
          "properties":{
           "schemaVersion":{"const":1},"state":{"enum":["ready","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
-          "topology":{"const":"single"},"role":{"type":"null"},
+          "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},
           "capturedAtUtc":{"type":"string","format":"date-time"},
           "data":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,
             "required":["captureId","selectionIdentity","containerRevision","identityScope","backingIdentity","playerId","locationName","tileX","tileY","chestItemId","player","container","heldItem","complete","limitations"],
@@ -53,7 +53,7 @@ internal static class ProjectReviewMcpContainerTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Read both inventory sides and the held item for the exact open supported vanilla chest in an owned single review. selectionIdentity binds the open menu and native placed-chest reference; containerRevision additionally binds every item reference, the supported public facts, and vanilla stacking semantics. Tokens are comparison evidence, not action handles. Read-only and never opens or mutates a chest.",
+            Description = "Read both inventory sides and the held item for the exact open supported vanilla chest in the selected owned review role or local screen. The menu, local player, location, and placed chest must all belong to that selection; there is no peer fallback. selectionIdentity binds the open menu and native placed-chest reference; containerRevision additionally binds every item reference, the supported public facts, and vanilla stacking semantics. Tokens are comparison evidence, not action handles. Read-only and never opens or mutates a chest.",
             InputSchema = JsonDocument.Parse("""{"type":"object","additionalProperties":false}""").RootElement.Clone(),
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

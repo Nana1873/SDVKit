@@ -20,16 +20,19 @@ internal static class ReviewInventoryCommand
             return;
         }
         string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
+        string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
+        role = string.IsNullOrWhiteSpace(role) ? null : role;
+        string topology = role is null ? "single" : "network-2";
         ReviewInventoryReport Failure(string code) => new(ReviewInventoryContract.SchemaVersion,
-            "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);
+            "unavailable", code, launch, topology, role, DateTimeOffset.UtcNow, null);
         ReviewInventoryReport report;
         try
         {
             report = Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") != "1" || args[2] != launch
-                || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
+                || role is not null && !NetworkTwoContract.IsRole(role)
                     ? Failure("inventoryReviewBindingInvalid")
                     : !Context.IsWorldReady || Game1.exitToTitle ? Failure("inventoryWorldNotReady")
-                    : Capture(args[1], launch);
+                    : Capture(args[1], launch, topology, role);
         }
         catch (Exception)
         {
@@ -51,10 +54,14 @@ internal static class ReviewInventoryCommand
         }
     }
 
-    internal static ReviewInventoryReport Capture(string captureId, string launch)
+    internal static ReviewInventoryReport Capture(
+        string captureId,
+        string launch,
+        string topology = "single",
+        string? role = null)
     {
         ReviewInventoryReport Failure(string code) => new(ReviewInventoryContract.SchemaVersion,
-            "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);
+            "unavailable", code, launch, topology, role, DateTimeOffset.UtcNow, null);
         Farmer player = Game1.player;
         int capacity = player.Items.Count;
         int rawSelectedSlot = player.CurrentToolIndex;
@@ -82,7 +89,7 @@ internal static class ReviewInventoryCommand
             ReviewInventoryContract.Revision(launch, playerId, capacity, selectedSlot, slots),
             playerId, capacity, selectedSlot, complete, complete ? [] : ["itemDataUnavailable"], slots.AsReadOnly());
         return ReviewInventoryContract.DataValid(values, launch)
-            ? new(ReviewInventoryContract.SchemaVersion, "ready", null, launch, "single", null, DateTimeOffset.UtcNow, values)
+            ? new(ReviewInventoryContract.SchemaVersion, "ready", null, launch, topology, role, DateTimeOffset.UtcNow, values)
             : Failure("inventoryValuesInvalid");
     }
 }

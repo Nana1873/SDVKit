@@ -27,6 +27,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
+- Extend bounded backpack, selected-chest, current-world, and canonical Data reads to an exact owned network role or local screen. Player/menu/world responses remain selection-bound, while canonical Data remains process-shared; shop, asset inspection, Content Patcher, and mutation grants keep their existing single-only boundaries.
 - The README leads with a copyable agent setup request that separates the portable install folder, mod workspace, and isolated lab data, and checks the selected release before a first review.
 - Autonomous review guidance and MCP input descriptions prefer one Escape press or one observed close-button click for routine menu closing, followed by fresh menu evidence before further input. Controller input remains available for explicit controller tests; no runtime input behavior has changed.
 

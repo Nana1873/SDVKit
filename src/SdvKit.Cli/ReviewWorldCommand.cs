@@ -6,7 +6,7 @@ namespace SdvKit.Cli;
 public static partial class CliApplication
 {
     private const string ReviewWorldUsage =
-        "Usage: sdvkit project review world <x> <y> <width> <height> [--topology single] --json";
+        "Usage: sdvkit project review world <x> <y> <width> <height> [--topology <single|network-2>] [--role <host|farmhand>] [--screen <id>] --json";
 
     private static int RunProjectReviewWorld(IReadOnlyList<string> arguments, TextWriter output, TextWriter error)
     {
@@ -16,13 +16,14 @@ public static partial class CliApplication
             output.WriteLine("Read one complete row-major rectangle of live tilled soil, crops, and ordinary data-backed vanilla machines. Width/height are 1-32 and area is at most 256 tiles. Missing, unsupported, and unavailable object state stays explicit; no world mutation.");
             return Success;
         }
-        if (!TryParseWorldQuery(arguments, out ReviewWorldArea? area))
+        if (!TryParseWorldQuery(arguments, out ReviewWorldArea? area, out string topology,
+                out string? role, out int? screenId))
         {
             error.WriteLine(ReviewWorldUsage);
             return UsageError;
         }
         ReviewWorldReport report = ProjectReviewWorldService.Execute(
-            new ProjectReviewMcpRuntimeReader(Environment.CurrentDirectory), area!);
+            new ProjectReviewMcpRuntimeReader(Environment.CurrentDirectory, topology, role, screenId: screenId), area!);
         return WriteReviewWorldReport(report, output);
     }
 
@@ -32,28 +33,43 @@ public static partial class CliApplication
         return report.State == "ready" ? Success : InspectionFailed;
     }
 
-    private static bool TryParseWorldQuery(IReadOnlyList<string> arguments, out ReviewWorldArea? area)
+    private static bool TryParseWorldQuery(IReadOnlyList<string> arguments, out ReviewWorldArea? area,
+        out string topology, out string? role, out int? screenId)
     {
         area = null;
-        if (arguments.Count is < 8 or > 10 || arguments[2] != "world") return false;
+        topology = "single";
+        role = null;
+        screenId = null;
+        if (arguments.Count is < 8 or > 14 || arguments[2] != "world") return false;
         var operands = new List<string>();
-        var jsonCount = 0;
-        var topologyCount = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 3; index < arguments.Count; index++)
         {
-            if (arguments[index] == "--json") { jsonCount++; continue; }
-            if (arguments[index] == "--topology" && index + 1 < arguments.Count)
+            string option = arguments[index];
+            if (option == "--json")
             {
-                topologyCount++;
-                if (arguments[++index] != "single") return false;
+                if (!seen.Add(option)) return false;
                 continue;
             }
-            operands.Add(arguments[index]);
+            if (option is "--topology" or "--role" or "--screen")
+            {
+                if (!seen.Add(option) || ++index >= arguments.Count) return false;
+                string value = arguments[index];
+                if (option == "--topology") topology = value;
+                else if (option == "--role") role = value;
+                else if (!int.TryParse(value, System.Globalization.NumberStyles.None,
+                             System.Globalization.CultureInfo.InvariantCulture, out int parsed) || parsed < 0) return false;
+                else screenId = parsed;
+                continue;
+            }
+            operands.Add(option);
         }
-        if (jsonCount != 1 || topologyCount > 1 || operands.Count != 4
+        if (!seen.Contains("--json") || operands.Count != 4
             || !int.TryParse(operands[0], out int x) || !int.TryParse(operands[1], out int y)
             || !int.TryParse(operands[2], out int width) || !int.TryParse(operands[3], out int height))
             return false;
+        if (topology == "single" ? role is not null : topology != "network-2"
+            || role is null || !NetworkTwoContract.IsRole(role) || screenId is not null) return false;
         area = new(x, y, width, height);
         return ReviewWorldContract.QueryProblem(area) is null;
     }

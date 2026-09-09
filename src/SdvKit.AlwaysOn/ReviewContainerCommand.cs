@@ -24,16 +24,19 @@ internal static class ReviewContainerCommand
             return;
         }
         string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
+        string? role = Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE");
+        role = string.IsNullOrWhiteSpace(role) ? null : role;
+        string topology = role is null ? "single" : "network-2";
         ReviewContainerReport Failure(string code) => new(ReviewContainerContract.SchemaVersion,
-            "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);
+            "unavailable", code, launch, topology, role, DateTimeOffset.UtcNow, null);
         ReviewContainerReport report;
         try
         {
             report = Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") != "1" || args[2] != launch
-                || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
+                || role is not null && !NetworkTwoContract.IsRole(role)
                     ? Failure("containerReviewBindingInvalid")
                     : !Context.IsWorldReady || Game1.exitToTitle ? Failure("containerWorldNotReady")
-                    : Capture(args[1], launch, menuCommand);
+                    : Capture(args[1], launch, menuCommand, topology, role);
         }
         catch (Exception)
         {
@@ -55,10 +58,11 @@ internal static class ReviewContainerCommand
         }
     }
 
-    internal static ReviewContainerReport Capture(string captureId, string launch, ReviewMenuCommand menuCommand)
+    internal static ReviewContainerReport Capture(string captureId, string launch,
+        ReviewMenuCommand menuCommand, string topology = "single", string? role = null)
     {
         ReviewContainerReport Failure(string code) => new(ReviewContainerContract.SchemaVersion,
-            "unavailable", code, launch, "single", null, DateTimeOffset.UtcNow, null);
+            "unavailable", code, launch, topology, role, DateTimeOffset.UtcNow, null);
         ItemGrabMenu? menu = Game1.activeClickableMenu as ItemGrabMenu;
         Chest? chest = menu?.context as Chest;
         Farmer player = Game1.player;
@@ -103,7 +107,7 @@ internal static class ReviewContainerCommand
             location.NameOrUniqueName, tileX, tileY, chest.QualifiedItemId, playerSide, containerSide, held,
             complete, complete ? [] : ["itemDataUnavailable"]);
         return ReviewContainerContract.DataValid(values, launch)
-            ? new(ReviewContainerContract.SchemaVersion, "ready", null, launch, "single", null,
+            ? new(ReviewContainerContract.SchemaVersion, "ready", null, launch, topology, role,
                 DateTimeOffset.UtcNow, values)
             : Failure("containerValuesInvalid");
     }

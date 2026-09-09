@@ -155,7 +155,7 @@ public sealed class ProjectReviewMcpTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    public void LocalScreenServerDoesNotAdvertiseUnportedDomainsOrSharedWindowText(int screenId)
+    public void LocalScreenServerAdvertisesOwnedReadsButNotUnsupportedDomainsOrSharedWindowText(int screenId)
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, screenId, command =>
@@ -170,7 +170,7 @@ public sealed class ProjectReviewMcpTests
             (_, _) => throw new InvalidOperationException("No action should run while listing tools."));
         McpServerOptions options = ProjectReviewMcpServer.CreateOptions(
             reader,
-            runData: _ => throw new InvalidOperationException("Unported Data must stay absent."),
+            runData: _ => throw new InvalidOperationException("Data must not run while listing tools."),
             inputSession: input,
             runWorldAction: (_, _) => throw new InvalidOperationException(
                 "Screen-bound world action must stay absent."),
@@ -183,15 +183,21 @@ public sealed class ProjectReviewMcpTests
         Assert.Contains(ProjectReviewMcpScreenshotTools.CaptureToolName, names);
         Assert.Contains(ProjectReviewMcpInputTools.PressToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpInputTools.TextToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpDataTools.AssetsToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpInventoryTools.ToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpContainerTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.AssetsToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.KeysToolName, names);
+        Assert.Contains(ProjectReviewMcpDataTools.RecordToolName, names);
+        Assert.Contains(ProjectReviewMcpInventoryTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpContainerTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpShopTools.ToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpWorldTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpWorldTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpWorldActionTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpContainerTransferTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpCpTools.DiagnoseToolName, names);
         Assert.Contains("Container transfers are disabled.", options.ServerInstructions, StringComparison.Ordinal);
+        Assert.DoesNotContain(ProjectReviewMcpMapTools.AssetsToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpTextureTools.AssetsToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpAssetTools.AudioCuesToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpAssetTools.ModAssetsToolName, names);
     }
 
     [Theory]
@@ -498,12 +504,15 @@ public sealed class ProjectReviewMcpTests
             timeout.Token);
         Assert.Equal(
             [
+                ProjectReviewMcpContainerTools.ToolName,
+                ProjectReviewMcpInventoryTools.ToolName,
                 ProjectReviewMcpMenuTools.ToolName,
                 ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
                 ProjectReviewMcpScreenshotTools.CaptureToolName,
+                ProjectReviewMcpWorldTools.ToolName,
             ],
             listed.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)
@@ -944,7 +953,7 @@ public sealed class ProjectReviewMcpTests
             () => nowUtc ?? ObservedAt.AddSeconds(1));
     }
 
-    private static ProjectReviewMcpRuntimeReader CreateReadyLocalScreenReview(
+    internal static ProjectReviewMcpRuntimeReader CreateReadyLocalScreenReview(
         TemporaryDirectory temporary,
         int screenId,
         Func<string, LiveLabCommandResult> send)
@@ -963,7 +972,7 @@ public sealed class ProjectReviewMcpTests
             TimeSpan.Zero);
     }
 
-    private static void WriteScreenBindingResponse(
+    internal static void WriteScreenBindingResponse(
         TemporaryDirectory temporary,
         string command,
         string farmerId,

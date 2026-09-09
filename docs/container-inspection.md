@@ -1,7 +1,7 @@
 # Inspect the selected vanilla chest
 
 Use `project review container --json` or native `stardew_container_get {}` while
-a supported chest menu is already open in a world-ready owned single
+a supported chest menu is already open for the exact selected player in a world-ready owned
 [review](live-review.md). The on-demand read captures the backing chest, both
 inventory sides, and the menu-held item together on Stardew's main thread. It
 does not open a chest, send input, move or sort items, invoke callbacks, scan a
@@ -9,11 +9,13 @@ location, or inspect a save.
 
 ```powershell
 & $sdvkit project review container --topology single --json
+& $sdvkit project review container --topology network-2 --role farmhand --json
+& $sdvkit project review container --topology single --screen 1 --json
 ```
 
-The MCP tool is in the default single-review observation profile and needs no
-input opt-in. Network roles and local screen IDs other than screen 0 are outside
-this version.
+The MCP tool is in every valid single, network-role, or local-screen observation
+profile and needs no input opt-in. It requires the exact selected menu, player,
+location, and chest and never falls back to another player or open menu.
 
 ## Exact supported family
 

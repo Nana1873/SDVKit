@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Cli;
 
@@ -91,6 +92,76 @@ internal static class ProjectReviewDataService
                     : OperationFailed,
             report);
     }
+
+    public static LiveLabCommandResult Execute(
+        ReviewDataQuery query,
+        ProjectReviewMcpRuntimeReader reader,
+        IProjectReviewConsoleInputSender? inputSender = null,
+        Action<TimeSpan>? delay = null,
+        TimeSpan? responseTimeout = null,
+        Func<string, LiveLabCommandResult>? send = null)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(reader);
+        ReviewDataProblem? queryProblem = Validate(query);
+        if (queryProblem is not null) return Failure(query.Operation, queryProblem);
+
+        ProjectReviewMcpReadResult before = reader.Read();
+        if (!before.Succeeded)
+            return Failure(query.Operation, Problem(before.ErrorCode!, before.ErrorMessage!));
+        try
+        {
+            string requestId = Guid.NewGuid().ToString("N");
+            string runtimePath = ProjectReviewInputService.RuntimePath(
+                reader.ProjectRoot,
+                reader.Topology,
+                reader.Role);
+            string responsePath = ReviewDataContract.ResponsePath(runtimePath, requestId);
+            string command = reader.SelectCommand(BuildCommand(requestId, query));
+            ProjectReviewResponseTransportResult<ReviewDataResponseEnvelope> transported =
+                ProjectReviewResponseTransport.Execute(
+                    command,
+                    responsePath,
+                    ReviewDataContract.MaximumResponseBytes,
+                    "data",
+                    "review-data",
+                    reader.ProjectRoot,
+                    bytes => JsonSerializer.Deserialize<ReviewDataResponseEnvelope>(bytes, ResponseJsonOptions),
+                    envelope => ValidEnvelope(envelope, requestId, query),
+                    inputSender,
+                    delay,
+                    responseTimeout,
+                    topology: reader.Topology,
+                    role: reader.Role,
+                    send: send);
+            if (transported.Response is null)
+                return Failure(query.Operation, transported.Problems
+                    .Select(problem => Problem(problem.Code, problem.Message)).ToArray());
+
+            ProjectReviewMcpReadResult after = reader.Read();
+            if (!after.Succeeded || !ProjectReviewMenuService.SameBinding(before.Snapshot!, after.Snapshot!))
+                return Failure(query.Operation,
+                    Problem("reviewBindingChanged", "The selected review role or local screen changed during the Data read."));
+            ReviewDataReport report = transported.Response.Report;
+            return new LiveLabCommandResult(
+                report.Problems.Count == 0 && string.Equals(report.State, "ready", StringComparison.Ordinal)
+                    ? 0
+                    : OperationFailed,
+                report);
+        }
+        catch (Exception exception) when (IsControlledFailure(exception))
+        {
+            return Failure(query.Operation, Problem("dataReadUnavailable", exception.Message));
+        }
+    }
+
+    private static bool ValidEnvelope(ReviewDataResponseEnvelope envelope, string requestId, ReviewDataQuery query) =>
+        envelope.Report is not null
+        && envelope.Report.Problems is not null
+        && envelope.SchemaVersion == ReviewDataContract.SchemaVersion
+        && string.Equals(envelope.RequestId, requestId, StringComparison.Ordinal)
+        && envelope.Report.SchemaVersion == ReviewDataContract.SchemaVersion
+        && string.Equals(envelope.Report.Operation, query.Operation, StringComparison.Ordinal);
 
     internal static string BuildCommand(
         string requestId,

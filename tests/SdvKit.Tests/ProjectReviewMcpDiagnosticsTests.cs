@@ -94,12 +94,15 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
         Assert.Equal(
             [
+                ProjectReviewMcpContainerTools.ToolName,
+                ProjectReviewMcpInventoryTools.ToolName,
                 ProjectReviewMcpMenuTools.ToolName,
                 ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
                 ProjectReviewMcpScreenshotTools.CaptureToolName,
+                ProjectReviewMcpWorldTools.ToolName,
             ],
             networkTools.Tools.Select(tool => tool.Name)
                 .Order(StringComparer.Ordinal)

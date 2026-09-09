@@ -170,27 +170,56 @@ public sealed class ReviewContainerTests
         Assert.Equal(expected, result.ErrorCode);
     }
 
-    [Fact]
-    public void NetworkAndCliMutationShapesAreRejected()
+    [Theory]
+    [InlineData(NetworkTwoContract.HostRole)]
+    [InlineData(NetworkTwoContract.FarmhandRole)]
+    public void NetworkUsesTheSelectedPlayerAndCliMutationShapesStayRejected(string role)
     {
         using TemporaryDirectory temporary = new();
-        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host");
-        Assert.Equal("containerTopologyUnsupported", ProjectReviewContainerService.Execute(reader,
-            _ => throw new InvalidOperationException("Must not send.")).ErrorCode);
-        Assert.DoesNotContain(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, role);
+        ProjectReviewMcpRuntimeSnapshot selected = reader.Read().Snapshot!;
+        ReviewContainerReport ready = ProjectReviewContainerService.Execute(reader, command =>
+        {
+            string requestId = command.Split(' ')[2];
+            ReviewContainerReport report = Report(requestId) with
+            {
+                LaunchId = selected.LaunchId,
+                Topology = selected.Topology,
+                Role = selected.Role,
+                Data = Values(captureId: requestId,
+                    playerId: selected.Runtime.LocalPlayer!.Data!.PlayerId,
+                    locationName: selected.Runtime.LocationId!,
+                    launch: selected.LaunchId),
+            };
+            string runtimePath = ProjectReviewInputService.RuntimePath(temporary.Path, selected.Topology, selected.Role);
+            File.WriteAllText(ReviewContainerContract.ResponsePath(runtimePath, requestId),
+                JsonSerializer.Serialize(new ReviewContainerResponseEnvelope(1, requestId, report), JsonOptions));
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+        Assert.Equal("ready", ready.State);
+        Assert.Equal(role, ready.Role);
+        Assert.Contains(ProjectReviewMcpServer.CreateOptions(reader).ToolCollection!,
             tool => tool.ProtocolTool.Name == ProjectReviewMcpContainerTools.ToolName);
 
         foreach ((string suffix, int exit) in new[]
         {
-            ("--help", 0), ("--json --json", 2), ("--topology network-2 --role host --json", 2),
+            ("--help", 0), ("--json --json", 2), ("--topology network-2 --role host --json", 3),
             ("--take 0 --json", 2),
         })
         {
             using var output = new StringWriter();
             using var error = new StringWriter();
             Assert.Equal(exit, CliApplication.Run(("project review container " + suffix).Split(' '), output, error));
-            Assert.Contains("project review container", exit == 0 ? output.ToString() : error.ToString(),
-                StringComparison.Ordinal);
+            if (exit == 3)
+            {
+                Assert.Contains("\"state\":", output.ToString(), StringComparison.Ordinal);
+                Assert.Equal(string.Empty, error.ToString());
+            }
+            else
+            {
+                Assert.Contains("project review container", exit == 0 ? output.ToString() : error.ToString(),
+                    StringComparison.Ordinal);
+            }
         }
     }
 
@@ -228,7 +257,8 @@ public sealed class ReviewContainerTests
     private static ReviewContainerValues Values(string captureId = Capture, string scope = Scope,
         string playerId = "101", int tileX = 7, SelectedItemValues? playerItem = null,
         SelectedItemValues? containerItem = null, SelectedItemValues? held = null,
-        long containerObservationId = 2, string containerName = "Stone", long backingObservationId = 99)
+        long containerObservationId = 2, string containerName = "Stone", long backingObservationId = 99,
+        string launch = Launch, string locationName = "Farm")
     {
         ReviewContainerSide player = Side("player", 12, playerItem ?? new("(T)Axe", 1, null),
             Identity(scope, 1, maximumStackSize: 1));
@@ -237,14 +267,14 @@ public sealed class ReviewContainerTests
         ReviewObservedItem heldItem = held is null
             ? new("empty", null, null, null)
             : new("occupied", null, held, Identity(scope, 3));
-        string backing = ReviewContainerContract.OpaqueIdentity(Launch, scope, "chest", backingObservationId);
-        return WithRevisions(new(captureId, "", "", scope, backing, playerId, "Farm", tileX, 9, "(BC)130",
-            player, container, heldItem, true, []));
+        string backing = ReviewContainerContract.OpaqueIdentity(launch, scope, "chest", backingObservationId);
+        return WithRevisions(new(captureId, "", "", scope, backing, playerId, locationName, tileX, 9, "(BC)130",
+            player, container, heldItem, true, []), launch);
     }
 
-    private static ReviewContainerValues WithRevisions(ReviewContainerValues value)
+    private static ReviewContainerValues WithRevisions(ReviewContainerValues value, string launch = Launch)
     {
-        string selection = ReviewContainerContract.SelectionIdentity(Launch, value.IdentityScope,
+        string selection = ReviewContainerContract.SelectionIdentity(launch, value.IdentityScope,
             value.BackingIdentity, value.PlayerId, value.LocationName, value.TileX, value.TileY, value.ChestItemId);
         return value with
         {
