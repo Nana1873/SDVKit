@@ -7,6 +7,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
+| Author a multilingual SMAPI dialogue through fallback, controller, and reload proof | [Multilingual UI authoring recipe](multilingual-ui-authoring.md) |
 | Author a bounded vanilla Gold-shop offer and prove one purchase | [Shop purchase authoring recipe](shop-authoring.md) |
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
 | Author a one-time inventory reward and prove native chest persistence | [Inventory and chest authoring recipe](inventory-container-authoring.md) |
