@@ -59,6 +59,93 @@ public sealed class TestSaveAutomationSourceTests
     }
 
     [Fact]
+    public void ExactReviewReloadCanRevalidateAfterReturningToTitle()
+    {
+        string source = ReadAutomationSource();
+        int saveLoaded = source.IndexOf(
+            "public void OnSaveLoaded()",
+            StringComparison.Ordinal);
+        int reloadGuard = source.IndexOf(
+            "&& _awaitingReviewReload;",
+            saveLoaded,
+            StringComparison.Ordinal);
+        int consumeAuthorization = source.IndexOf(
+            "_awaitingReviewReload = false;",
+            reloadGuard,
+            StringComparison.Ordinal);
+        int verification = source.IndexOf(
+            "VerifyExactWorld();",
+            consumeAuthorization,
+            StringComparison.Ordinal);
+        int passed = source.IndexOf(
+            "Exact fixture reloaded and revalidated for interactive review.",
+            verification,
+            StringComparison.Ordinal);
+
+        Assert.True(saveLoaded >= 0);
+        Assert.True(reloadGuard > saveLoaded);
+        Assert.True(consumeAuthorization > reloadGuard);
+        Assert.True(verification > consumeAuthorization);
+        Assert.True(passed > verification);
+    }
+
+    [Fact]
+    public void ReturningToTitleAuthorizesOnlyAnIdleSingleReviewReloadAttempt()
+    {
+        string source = ReadAutomationSource();
+        int eligibility = source.IndexOf(
+            "private bool CanRevalidateReviewReload =>",
+            StringComparison.Ordinal);
+        int singleOnly = source.IndexOf(
+            "!_allowMultiplayer",
+            eligibility,
+            StringComparison.Ordinal);
+        int noLocalSplitScreen = source.IndexOf(
+            "_localSplitScreen?.Selected != true",
+            singleOnly,
+            StringComparison.Ordinal);
+        int noSaveIterator = source.IndexOf(
+            "_saveIterator is null",
+            noLocalSplitScreen,
+            StringComparison.Ordinal);
+        int noSaveCompletion = source.IndexOf(
+            "_reviewSaveCompletion is null",
+            noSaveIterator,
+            StringComparison.Ordinal);
+        int noBusySave = source.IndexOf(
+            "!IsSaveBusy;",
+            noSaveCompletion,
+            StringComparison.Ordinal);
+        int returnedToTitle = source.IndexOf(
+            "public void OnReturnedToTitle()",
+            noBusySave,
+            StringComparison.Ordinal);
+        int passedReview = source.IndexOf(
+            "if (IsPassedReview)",
+            returnedToTitle,
+            StringComparison.Ordinal);
+        int authorizeReload = source.IndexOf(
+            "_awaitingReviewReload = CanRevalidateReviewReload;",
+            passedReview,
+            StringComparison.Ordinal);
+        int failure = source.IndexOf(
+            "Stardew returned to title after the exact fixture was loaded for review.",
+            authorizeReload,
+            StringComparison.Ordinal);
+
+        Assert.True(eligibility >= 0);
+        Assert.True(singleOnly > eligibility);
+        Assert.True(noLocalSplitScreen > singleOnly);
+        Assert.True(noSaveIterator > noLocalSplitScreen);
+        Assert.True(noSaveCompletion > noSaveIterator);
+        Assert.True(noBusySave > noSaveCompletion);
+        Assert.True(returnedToTitle > noBusySave);
+        Assert.True(passedReview > returnedToTitle);
+        Assert.True(authorizeReload > passedReview);
+        Assert.True(failure > authorizeReload);
+    }
+
+    [Fact]
     public void FixtureCommandAuthorizationFreshlyVerifiesPassedReviewWorld()
     {
         string source = ReadAutomationSource();

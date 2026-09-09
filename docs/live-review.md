@@ -326,7 +326,14 @@ returned launch/role identity together; do not substitute a normal-player log.
 
 A real restart is required when accepting save/reload, persistence, join/resume, or lifecycle behavior. It is not automatically required for every content query or visual check.
 
-When persistence is in scope, save through the selected mod's supported interface or the authorized MCP `stardew_fixture_save` tool. Confirm completion, stop the exact process(es), then start the same target/topology/companions again and verify the saved state and identities. An acknowledgement of input or a serialized file alone does not prove reload behavior.
+An intentional return to title invalidates a passed single fixture review until
+Stardew loads the exact registered save again. That one reload attempt is
+revalidated from the live world identity before fixture commands or MCP fixture
+actions become available again; loading any other save remains a terminal
+failure. This supports native title-only settings such as language selection
+without weakening the fixture boundary.
+
+When persistence is in scope, save through the selected mod's supported interface or the authorized MCP `stardew_fixture_save` tool. The fixture tool drives Stardew's supported save iterator, but target mods should not assume that this path publishes their `GameLoop.Saved` handler; retain the completed fixture-save result and verify target state after `SaveLoaded` in a real restart. Stop the exact process(es), then start the same target/topology/companions again and verify the saved state and identities. An acknowledgement of input or a serialized file alone does not prove reload behavior.
 
 Always finish the owned session:
 

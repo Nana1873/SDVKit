@@ -64,6 +64,7 @@ internal sealed class TestSaveAutomation
     private IEnumerator<int>? _saveIterator;
     private bool _localSaveCompleted;
     private bool _saveReachedCompletion;
+    private bool _awaitingReviewReload;
     private DateTimeOffset? _saveOperationStartedAtUtc;
     private Action<bool, string>? _reviewSaveCompletion;
     private string? _message;
@@ -124,6 +125,13 @@ internal sealed class TestSaveAutomation
     private bool IsPassedReview =>
         string.Equals(_mode, TestSaveContract.ReviewMode, StringComparison.Ordinal)
         && string.Equals(_phase, "passed", StringComparison.Ordinal);
+
+    private bool CanRevalidateReviewReload =>
+        !_allowMultiplayer
+        && _localSplitScreen?.Selected != true
+        && _saveIterator is null
+        && _reviewSaveCompletion is null
+        && !IsSaveBusy;
 
     public static bool TryCreate(
         IMonitor monitor,
@@ -527,12 +535,17 @@ internal sealed class TestSaveAutomation
 
     public void OnSaveLoaded()
     {
-        if (_mode is not (TestSaveContract.ScenarioMode or TestSaveContract.ReviewMode)
-            || !string.Equals(_phase, "loading", StringComparison.Ordinal))
+        bool isInitialLoad = _mode is TestSaveContract.ScenarioMode or TestSaveContract.ReviewMode
+            && string.Equals(_phase, "loading", StringComparison.Ordinal);
+        bool isReviewReload = string.Equals(_mode, TestSaveContract.ReviewMode, StringComparison.Ordinal)
+            && string.Equals(_phase, "failed", StringComparison.Ordinal)
+            && _awaitingReviewReload;
+        if (!isInitialLoad && !isReviewReload)
         {
             return;
         }
 
+        _awaitingReviewReload = false;
         try
         {
             VerifyExactWorld();
@@ -540,7 +553,9 @@ internal sealed class TestSaveAutomation
             {
                 SetPhase(
                     "passed",
-                    "Exact fixture loaded for interactive review without scenario mutation.");
+                    isReviewReload
+                        ? "Exact fixture reloaded and revalidated for interactive review."
+                        : "Exact fixture loaded for interactive review without scenario mutation.");
                 return;
             }
 
@@ -599,6 +614,7 @@ internal sealed class TestSaveAutomation
         Game1.startingGameSeed = null;
         if (IsPassedReview)
         {
+            _awaitingReviewReload = CanRevalidateReviewReload;
             Fail("Stardew returned to title after the exact fixture was loaded for review.");
             return;
         }
