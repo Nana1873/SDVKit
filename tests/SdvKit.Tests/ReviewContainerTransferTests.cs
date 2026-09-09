@@ -107,8 +107,10 @@ public sealed class ReviewContainerTransferTests
         { Data = complete.Data! with { After = before } }, snapshot, query, DateTimeOffset.UtcNow));
         Assert.False(ProjectReviewContainerTransferService.Valid(complete with
         { Data = complete.Data! with { After = Values(new string('d', 32), 1, 3) } }, snapshot, query, DateTimeOffset.UtcNow));
-        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        Assert.True(ProjectReviewContainerTransferService.Valid(complete with
         { Data = complete.Data! with { After = Values(new string('d', 32), 1, 2) } }, snapshot, query, DateTimeOffset.UtcNow));
+        Assert.False(ProjectReviewContainerTransferService.Valid(complete with
+        { Data = complete.Data! with { After = Values(new string('d', 32), 1, 2, tileX: 8) } }, snapshot, query, DateTimeOffset.UtcNow));
         Assert.False(ProjectReviewContainerTransferService.Valid(complete with
         { Data = complete.Data! with { SourceSide = "container" } }, snapshot, query, DateTimeOffset.UtcNow));
     }
@@ -248,7 +250,7 @@ public sealed class ReviewContainerTransferTests
             values.ContainerRevision, source.Identity!.InstanceIdentity, source.Identity.ItemRevision);
     }
 
-    private static ReviewContainerValues Values(string scope, int playerStack, int chestStack)
+    private static ReviewContainerValues Values(string scope, int playerStack, int chestStack, int tileX = 7)
     {
         string launch = Launch;
         string backing = ReviewContainerContract.OpaqueIdentity(launch, scope, "chest", 99);
@@ -267,9 +269,9 @@ public sealed class ReviewContainerTransferTests
         }
         ReviewContainerSide player = Side("player", 12, playerStack, 1), chest = Side("container", 36, chestStack, 2);
         ReviewObservedItem held = new("empty", null, null, null);
-        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "FarmHouse", 7, 7, "(BC)130");
+        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "FarmHouse", tileX, 7, "(BC)130");
         return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, "101",
-            "FarmHouse", 7, 7, "(BC)130", player, chest, held, true, []);
+            "FarmHouse", tileX, 7, "(BC)130", player, chest, held, true, []);
     }
 
     private static ProjectReviewMcpRuntimeSnapshot Snapshot(string launch)

@@ -142,6 +142,18 @@ internal static class ReviewContainerTransferCommand
             }
             void Complete(ReviewInputResult result)
             {
+                if (Game1.activeClickableMenu is not ItemGrabMenu finalMenu
+                    || finalMenu.GetType() != typeof(ItemGrabMenu)
+                    || !ReferenceEquals(finalMenu.context, expectedChest) || finalMenu.heldItem is not null
+                    || !ReferenceEquals(finalMenu.sourceItem, expectedChest)
+                    || finalMenu.source != ItemGrabMenu.source_chest)
+                {
+                    Write(new(1, "uncertain", "containerTransferBindingChanged", launch, "single", null,
+                        DateTimeOffset.UtcNow, new(query.Direction, sourceSide, query.SourceSlot, query.Quantity,
+                            null, query.QualifiedItemId, true, result.ProblemCode is "inputChordInterrupted",
+                            "uncertain", before, null, ["afterObservationUnavailable"])));
+                    return;
+                }
                 ReviewContainerReport afterReport = ReviewContainerCommand.Capture(Guid.NewGuid().ToString("N"), launch, menuCommand);
                 ReviewContainerValues? after = afterReport.Data;
                 int? observed = after is null ? null : ReviewContainerTransferContract.ObservedQuantity(before, after, query);

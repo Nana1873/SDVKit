@@ -109,6 +109,8 @@ public sealed class ProjectModObserverSourceTests
         Assert.Contains("Utility.addItemToThisInventoryList", source, StringComparison.Ordinal);
         Assert.Contains("original.canStackWith(item)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewVirtualCursor.TryChord", source, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(finalMenu.context, expectedChest)", source, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(finalMenu.sourceItem, expectedChest)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SendInput", source, StringComparison.Ordinal);
     }
 

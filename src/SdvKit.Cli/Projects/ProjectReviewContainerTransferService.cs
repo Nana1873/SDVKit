@@ -110,7 +110,7 @@ internal static class ProjectReviewContainerTransferService
             return report.ErrorCode is not null && data.ObservedQuantity is null && data.After is null
                 && data.Limitations.Contains("afterObservationUnavailable", StringComparer.Ordinal);
         if (data.After is not { } after || (report.ErrorCode is null) != (data.Outcome == "completed")
-            || after.SelectionIdentity != data.Before.SelectionIdentity
+            || !SamePhysicalContainer(data.Before, after)
             || !ReviewContainerTransferContract.Conserved(data.Before, after, query))
             return false;
         int observed = ReviewContainerTransferContract.ObservedQuantity(data.Before, after, query);
@@ -124,6 +124,13 @@ internal static class ProjectReviewContainerTransferService
             _ => false,
         };
     }
+
+    private static bool SamePhysicalContainer(ReviewContainerValues before, ReviewContainerValues after) =>
+        after.PlayerId == before.PlayerId && after.LocationName == before.LocationName
+        && after.TileX == before.TileX && after.TileY == before.TileY
+        && after.ChestItemId == before.ChestItemId
+        && after.Player.Capacity == before.Player.Capacity
+        && after.Container.Capacity == before.Container.Capacity;
 
     private static void RejectDuplicates(JsonElement value)
     {
