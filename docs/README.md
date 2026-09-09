@@ -9,6 +9,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
 | Author a bounded vanilla Gold-shop offer and prove one purchase | [Shop purchase authoring recipe](shop-authoring.md) |
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
+| Author a one-time inventory reward and prove native chest persistence | [Inventory and chest authoring recipe](inventory-container-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
 | Refresh selected CP patches during a review | [CP refresh](cp-refresh.md) |
 | Accept an intentional staged config save without restarting | [Configuration reconciliation](live-review.md#accept-an-intentional-configuration-change) |
@@ -51,6 +52,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | One adjacent crop/soil or machine interaction | `project review interact` | `stardew_world_interact`, separate `--allow-world-actions` | Exact owned disposable single-player review; fresh target and inventory revisions; completion is dispatch evidence only; [contract](world-interaction.md) |
 | Original shop purchase authoring recipe | Existing check/build/package, ready review, shop/menu/diagnostics and process-local input | Optional matching observation and opt-in input tools | Single disposable world; original SeedShop Stone offer, deliberate config failure and observed money/stock/inventory deltas; [recipe and limits](shop-authoring.md) |
 | Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
+| Original inventory/chest persistence recipe | Existing check/build/package, inventory/container reads, diagnostics, exact transfer and fixture save/restart | Default observations plus separately granted transfer, fixture, and input tools | Owned disposable unbound single; wrong packaged quantity 12, corrected 10, native deposit/withdrawal and save/reload; [recipe and limits](inventory-container-authoring.md) |
 | World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
 | Selected Content Patcher diagnosis | `project review cp-diagnose` | `stardew_cp_diagnose` | Active single; explicit pack and CP 2.9.1 provider |
 | Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
