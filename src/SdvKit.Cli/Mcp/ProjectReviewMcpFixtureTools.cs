@@ -342,7 +342,9 @@ internal static class ProjectReviewMcpFixtureTools
                 return ValueTask.FromResult(Error($"Invalid arguments for {name}."));
             }
 
-            ProjectReviewMcpReadResult preflight = runtimeReader.Read();
+            ProjectReviewMcpReadResult preflight = query.Operation == ReviewFixtureTransportContract.StatusOperation
+                ? runtimeReader.Read()
+                : runtimeReader.ReadForAction();
             if (!preflight.Succeeded
                 || preflight.Snapshot?.TestSave is null
                 || !preflight.Snapshot.Runtime.WorldReady)

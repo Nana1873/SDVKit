@@ -31,7 +31,13 @@ internal static class ProjectReviewMcpServer
             },
             {
               "if": { "properties": { "topology": { "const": "network-2" } } },
-              "then": { "properties": { "role": { "enum": ["host", "farmhand"] } } }
+              "then": {
+                "required": ["sessionId"],
+                "properties": {
+                  "role": { "enum": ["host", "farmhand"] },
+                  "sessionId": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+                }
+              }
             }
           ],
           "properties": {
@@ -39,6 +45,7 @@ internal static class ProjectReviewMcpServer
             "launchId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
             "topology": { "type": "string", "enum": ["single", "network-2"] },
             "role": { "type": ["string", "null"], "enum": [null, "host", "farmhand"] },
+            "sessionId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
             "observedAtUtc": { "type": "string", "format": "date-time" },
             "target": {
               "type": "object",

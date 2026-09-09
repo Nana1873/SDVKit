@@ -66,7 +66,8 @@ public sealed class NetworkTwoSmokeServiceTests
             null,
             null,
             null,
-            "C:\\network.log");
+            "C:\\network.log",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         var alwaysOn = new AlwaysOnStatusReport(
             "active",
             1,

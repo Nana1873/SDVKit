@@ -2944,6 +2944,12 @@ public sealed class ProjectReviewServiceTests
     [InlineData("sdvkit input", false)]
     [InlineData("sdvkit input press", false)]
     [InlineData("sdvkit input press F8 extra", false)]
+    [InlineData("sdvkit network leave", true)]
+    [InlineData("sdvkit network join", true)]
+    [InlineData("sdvkit network status", true)]
+    [InlineData("sdvkit network", false)]
+    [InlineData("sdvkit network leave extra", false)]
+    [InlineData("sdvkit network reconnect", false)]
     [InlineData("sdvkit input press F-8", false)]
     [InlineData("sdvkit input cursor -1 0", false)]
     [InlineData("sdvkit input cursor 2147483648 0", false)]
@@ -3478,7 +3484,8 @@ public sealed class ProjectReviewServiceTests
                 networkPhase == "failed"
                     ? "Network review failed before join."
                     : "Network review has not joined yet.",
-                network.NetworkLogPath),
+                network.NetworkLogPath,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             ProjectMod: new ProjectModStatusMarker(
                 ProjectModContract.SchemaVersion,
                 ProjectModContract.LoadedPhase,

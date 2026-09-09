@@ -1921,7 +1921,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewResetUsage);
         output.WriteLine();
         output.WriteLine("Reference help:");
-        output.WriteLine("  sdvkit project review command --help     Console input, screenshots, and fixtures.");
+        output.WriteLine("  sdvkit project review command --help     Console input, screenshots, fixtures, and network lifecycle.");
         output.WriteLine("  sdvkit project review data --help        Canonical structured Data.");
         output.WriteLine("  sdvkit project review menu --help        Read-only active menus for the selected role.");
         output.WriteLine("  sdvkit project review shop --help        Read-only SeedShop Gold evidence (single only).");
@@ -2027,6 +2027,7 @@ public static partial class CliApplication
         output.WriteLine(
             "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):");
         output.WriteLine("  sdvkit split-screen join|leave|status (single --test-save review; append native screen=<id> to select a local screen)");
+        output.WriteLine("  sdvkit network leave|join|status (network-2; leave/join are farmhand-only and host-authorized)");
         output.WriteLine("  sdvkit screenshot <label>");
         output.WriteLine("  sdvkit screenshot viewport <label>");
         output.WriteLine("  sdvkit input press <SButton>");

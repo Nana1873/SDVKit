@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Menus;
 using StardewValley.Network;
@@ -26,9 +27,14 @@ internal sealed class NetworkTwoAutomation
     private readonly ConstructorInfo? _farmhandSlotConstructor;
     private readonly MethodInfo? _activateFarmhandSlot;
     private readonly FieldInfo? _startingCabinLocations;
-    private readonly DateTimeOffset _startedAtUtc = DateTimeOffset.UtcNow;
+    private readonly IMultiplayerHelper _multiplayerHelper;
+    private readonly string _modId;
 
     private string _phase;
+    private DateTimeOffset _operationStartedAtUtc = DateTimeOffset.UtcNow;
+    private string _sessionId = Guid.NewGuid().ToString("N");
+    private string? _lifecycleRequestId;
+    private bool _rejoinPending;
     private bool _identityVerified;
     private int _joinedTicks;
     private long? _localPlayerId;
@@ -51,7 +57,9 @@ internal sealed class NetworkTwoAutomation
         FieldInfo? availableFarmhands,
         ConstructorInfo? farmhandSlotConstructor,
         MethodInfo? activateFarmhandSlot,
-        FieldInfo? startingCabinLocations)
+        FieldInfo? startingCabinLocations,
+        IMultiplayerHelper multiplayerHelper,
+        string modId)
     {
         _launch = launch;
         _loadedBuildIdentity = loadedBuildIdentity;
@@ -65,6 +73,8 @@ internal sealed class NetworkTwoAutomation
         _farmhandSlotConstructor = farmhandSlotConstructor;
         _activateFarmhandSlot = activateFarmhandSlot;
         _startingCabinLocations = startingCabinLocations;
+        _multiplayerHelper = multiplayerHelper;
+        _modId = modId;
         _phase = string.Equals(
             launch.Role,
             NetworkTwoContract.HostRole,
@@ -96,12 +106,15 @@ internal sealed class NetworkTwoAutomation
         _remotePlayerId,
         _remotePlayerName,
         _message,
-        _launch.NetworkLogPath);
+        _launch.NetworkLogPath,
+        _sessionId);
 
     private bool IsTerminal => _phase is "passed" or "failed";
 
     public static bool TryCreate(
         string modDirectory,
+        IMultiplayerHelper multiplayerHelper,
+        string modId,
         IMonitor monitor,
         Action publishStatus,
         Func<TestSaveStatusMarker?> testSaveStatus,
@@ -116,6 +129,9 @@ internal sealed class NetworkTwoAutomation
         }
 
         ArgumentNullException.ThrowIfNull(monitor);
+        ArgumentNullException.ThrowIfNull(multiplayerHelper);
+        if (string.IsNullOrWhiteSpace(modId))
+            throw new ArgumentException("The AlwaysOn mod ID is required.", nameof(modId));
         ArgumentNullException.ThrowIfNull(publishStatus);
         ArgumentNullException.ThrowIfNull(testSaveStatus);
 
@@ -234,7 +250,9 @@ internal sealed class NetworkTwoAutomation
                 availableFarmhands,
                 farmhandSlotConstructor,
                 activateFarmhandSlot,
-                startingCabinLocations);
+                startingCabinLocations,
+                multiplayerHelper,
+                modId);
             reason = string.Empty;
             automation.Log(
                 "configured",
@@ -265,7 +283,9 @@ internal sealed class NetworkTwoAutomation
                     null,
                     null,
                     null,
-                    null)
+                    null,
+                    multiplayerHelper,
+                    modId)
                 {
                     _phase = "failed",
                     _message = reason,
@@ -321,7 +341,7 @@ internal sealed class NetworkTwoAutomation
         try
         {
             _foregroundWindow = WindowsForegroundWindowProbe.Observe();
-            if (DateTimeOffset.UtcNow - _startedAtUtc > OperationTimeout)
+            if (DateTimeOffset.UtcNow - _operationStartedAtUtc > OperationTimeout)
             {
                 Fail("The bounded network-2 game-side operation exceeded two minutes.");
                 return;
@@ -342,12 +362,23 @@ internal sealed class NetworkTwoAutomation
         }
     }
 
-    public void OnReturnedToTitle()
+    public bool OnReturnedToTitle()
     {
-        if (!IsTerminal)
+        if (NetworkTwoContract.IsExpectedFarmhandReturnToTitle(_launch.Role, _phase))
         {
-            Fail("Stardew returned to title before the exact network-2 workflow completed.");
+            _client = null;
+            _identityVerified = false;
+            _joinedTicks = 0;
+            _lifecycleRequestId = null;
+            _sessionId = Guid.NewGuid().ToString("N");
+            ResetOperationTimeout();
+            SetPhase("waitingForRejoin", "Farmhand returned to title; explicit rejoin is required.");
+            return true;
         }
+
+        Fail("Stardew returned to title outside the approved farmhand departure.");
+
+        return false;
     }
 
     private void UpdateHost()
@@ -399,11 +430,43 @@ internal sealed class NetworkTwoAutomation
             return;
         }
 
+        if (_phase is "departureArmed" or "waitingForFarmhand")
+        {
+            if (!TryVerifyHostLifecycleContext(out bool farmhandOnline))
+            {
+                throw new InvalidOperationException(
+                    "The host no longer matches the exact owned farmhand lifecycle context.");
+            }
+
+            bool exactPairVerified = _phase == "waitingForFarmhand"
+                && farmhandOnline
+                && TryVerifyJoinedPair();
+            string nextPhase = NetworkTwoContract.NextHostLifecyclePhase(
+                    _phase,
+                    farmhandOnline,
+                    exactPairVerified)
+                ?? throw new InvalidOperationException(
+                    "The host network lifecycle phase is invalid.");
+            if (nextPhase == "rejoined")
+            {
+                _joinedTicks = 0;
+                SetPhase("rejoined", "Host observed the exact rejoined farmhand.");
+            }
+            else if (nextPhase == "waitingForFarmhand" && _phase != nextPhase)
+            {
+                SetPhase("waitingForFarmhand", "Host retained the exact fixture while the farmhand is at title.");
+            }
+            return;
+        }
+
         ObserveJoinedTicks();
     }
 
     private void UpdateFarmhand()
     {
+        if (_phase is "leaveRequested" or "leaving" or "waitingForRejoin")
+            return;
+
         if (string.Equals(_phase, "waitingForTitle", StringComparison.Ordinal))
         {
             if (!IsUnobstructedTitle())
@@ -485,7 +548,11 @@ internal sealed class NetworkTwoAutomation
             }
 
             _joinedTicks = 0;
-            SetPhase("joined", "Farmhand observed the exact host and joined fixture.");
+            SetPhase(
+                _rejoinPending ? "rejoined" : "joined",
+                _rejoinPending
+                    ? "Farmhand observed the exact retained host and rejoined fixture."
+                    : "Farmhand observed the exact host and joined fixture.");
             return;
         }
 
@@ -494,7 +561,7 @@ internal sealed class NetworkTwoAutomation
 
     private void ObserveJoinedTicks()
     {
-        if (!string.Equals(_phase, "joined", StringComparison.Ordinal))
+        if (_phase is not ("joined" or "rejoined"))
         {
             return;
         }
@@ -512,6 +579,7 @@ internal sealed class NetworkTwoAutomation
 
         if (_joinedTicks >= NetworkTwoContract.RequiredJoinedTicks)
         {
+            _rejoinPending = false;
             SetPhase(
                 "passed",
                 $"Exact pair {_localPlayerName}/{_localPlayerId} and "
@@ -662,6 +730,160 @@ internal sealed class NetworkTwoAutomation
         return true;
     }
 
+    private bool TryVerifyHostLifecycleContext(out bool farmhandOnline)
+    {
+        farmhandOnline = false;
+        if (!IsHost
+            || !Context.IsWorldReady
+            || !Context.IsMultiplayer
+            || !Context.IsMainPlayer
+            || !Game1.IsServer
+            || !NetworkTwoContract.MatchesReviewSaveIdentity(
+                _launch.Role,
+                _launch.SaveId,
+                Constants.SaveFolderName,
+                Game1.uniqueIDForThisGame)
+            || !MatchesPlayer(Game1.player, NetworkTwoContract.HostRole, TestSaveContract.PlayerName)
+            || _remotePlayerId is null or 0)
+        {
+            return false;
+        }
+
+        List<Farmer> online = Game1.getOnlineFarmers().ToList();
+        if (online.Count is < 1 or > 2
+            || online.Any(player => player.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID
+                && player.UniqueMultiplayerID != _remotePlayerId))
+        {
+            return false;
+        }
+
+        Farmer? farmhand = online.SingleOrDefault(player => player.UniqueMultiplayerID == _remotePlayerId);
+        farmhandOnline = farmhand is not null;
+        return farmhand is null
+            || MatchesPlayer(farmhand, NetworkTwoContract.FarmhandRole, NetworkTwoContract.FarmhandName);
+    }
+
+    internal void HandleLifecycleCommand(string[] arguments)
+    {
+        if (arguments.Length != 2 || arguments[0] != "network"
+            || arguments[1] is not ("leave" or "join" or "status"))
+        {
+            throw new InvalidOperationException("Usage: sdvkit network leave|join|status");
+        }
+
+        if (arguments[1] == "status")
+        {
+            Log("status", $"phase={_phase}; session={_sessionId}; local={_localPlayerId}; remote={_remotePlayerId}");
+            _publishStatus();
+            return;
+        }
+
+        if (IsHost)
+            throw new InvalidOperationException("Only the exact farmhand role can leave or rejoin.");
+
+        if (arguments[1] == "leave")
+        {
+            if (_phase != "passed" || !TryVerifyJoinedPair())
+                throw new InvalidOperationException("Farmhand leave requires the exact passed joined pair.");
+            if (Game1.activeClickableMenu is not null || Game1.exitToTitle
+                || Game1.game1.IsSaving || SaveGame.IsProcessing || Game1.eventUp || Game1.fadeToBlack)
+            {
+                throw new InvalidOperationException("Farmhand leave requires an idle world with no menu, event, fade, or save.");
+            }
+
+            _lifecycleRequestId = Guid.NewGuid().ToString("N");
+            ResetOperationTimeout();
+            SetPhase("leaveRequested", "Farmhand requested an exact host-authorized departure.");
+            _multiplayerHelper.SendMessage(
+                new NetworkTwoLifecycleMessage
+                {
+                    Action = NetworkTwoLifecycleMessage.LeaveRequest,
+                    RequestId = _lifecycleRequestId,
+                },
+                NetworkTwoLifecycleMessage.MessageType,
+                modIDs: [_modId],
+                playerIDs: [_remotePlayerId!.Value]);
+            return;
+        }
+
+        if (_phase != "waitingForRejoin" || !IsUnobstructedTitle())
+            throw new InvalidOperationException("Farmhand rejoin requires the exact retained farmhand process at unobstructed title.");
+
+        _client = null;
+        _rejoinPending = true;
+        ResetOperationTimeout();
+        SetPhase("waitingForTitle", "Farmhand explicit rejoin requested for the retained exact identity.");
+    }
+
+    internal void OnModMessageReceived(ModMessageReceivedEventArgs eventArgs)
+    {
+        if (eventArgs.FromModID != _modId
+            || eventArgs.Type != NetworkTwoLifecycleMessage.MessageType)
+        {
+            return;
+        }
+
+        try
+        {
+            HandleLifecycleMessage(eventArgs);
+        }
+        catch (Exception exception) when (exception is InvalidDataException
+            or InvalidOperationException
+            or ArgumentException)
+        {
+            Fail($"Rejected network lifecycle message: {exception.Message}");
+        }
+    }
+
+    private void HandleLifecycleMessage(ModMessageReceivedEventArgs eventArgs)
+    {
+        NetworkTwoLifecycleMessage message = eventArgs.ReadAs<NetworkTwoLifecycleMessage>();
+        if (!ReviewTransportToken.IsRequestId(message.RequestId))
+            throw new InvalidDataException("The network lifecycle message request ID is invalid.");
+
+        if (IsHost && message.Action == NetworkTwoLifecycleMessage.LeaveRequest)
+        {
+            if (_phase != "passed" || !TryVerifyJoinedPair()
+                || eventArgs.FromPlayerID != _remotePlayerId
+                || Game1.game1.IsSaving || SaveGame.IsProcessing)
+            {
+                throw new InvalidOperationException("The host rejected a farmhand departure outside the exact passed pair.");
+            }
+
+            _lifecycleRequestId = message.RequestId;
+            ResetOperationTimeout();
+            SetPhase("departureArmed", "Host armed departure for the exact connected farmhand.");
+            _multiplayerHelper.SendMessage(
+                new NetworkTwoLifecycleMessage
+                {
+                    Action = NetworkTwoLifecycleMessage.LeaveApproved,
+                    RequestId = message.RequestId,
+                },
+                NetworkTwoLifecycleMessage.MessageType,
+                modIDs: [_modId],
+                playerIDs: [eventArgs.FromPlayerID]);
+            return;
+        }
+
+        if (!IsHost && message.Action == NetworkTwoLifecycleMessage.LeaveApproved)
+        {
+            if (_phase != "leaveRequested"
+                || eventArgs.FromPlayerID != _remotePlayerId
+                || !string.Equals(message.RequestId, _lifecycleRequestId, StringComparison.Ordinal)
+                || !TryVerifyJoinedPair()
+                || Game1.activeClickableMenu is not null || Game1.exitToTitle
+                || Game1.game1.IsSaving || SaveGame.IsProcessing || Game1.eventUp || Game1.fadeToBlack)
+            {
+                throw new InvalidOperationException("The farmhand rejected an unmatched host departure approval.");
+            }
+
+            SetPhase("leaving", "Host approved the exact farmhand departure; returning to title.");
+            Game1.exitToTitle = true;
+        }
+    }
+
+    private void ResetOperationTimeout() => _operationStartedAtUtc = DateTimeOffset.UtcNow;
+
     private bool MatchesPlayer(Farmer player, string role, string name) =>
         string.Equals(player.Name, name, StringComparison.Ordinal)
         && player.modData.TryGetValue(
@@ -761,5 +983,16 @@ internal sealed class NetworkTwoAutomation
         !Context.IsWorldReady
         && Game1.activeClickableMenu is TitleMenu
         && TitleMenu.subMenu is null;
+}
+
+internal sealed class NetworkTwoLifecycleMessage
+{
+    internal const string MessageType = "NetworkTwoLifecycle";
+    internal const string LeaveRequest = "leaveRequest";
+    internal const string LeaveApproved = "leaveApproved";
+
+    public string Action { get; set; } = string.Empty;
+
+    public string RequestId { get; set; } = string.Empty;
 }
 #endif

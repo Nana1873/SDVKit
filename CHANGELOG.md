@@ -19,6 +19,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Bind a native MCP server and CLI menu inspection to one exact observed local screen, farmer, and game context. Runtime, menu, cropped viewport, and explicitly enabled process-local input remain screen-local; leave/rejoin invalidates the old binding, and shared-window text input stays unavailable.
 - A runnable one-time inventory reward recipe connects deliberate packaged-quantity diagnosis, corrected delivery, native chest deposit/withdrawal, stale-selection refusal, isolated save/reload persistence, and verified cleanup.
 - Follow one reproducible Content Patcher crop-to-machine authoring recipe from a deliberate wrong item condition through native watering, harvest, Keg processing, MCP collection, chest quantities, save/reload, and exact isolated cleanup, with failed attempts and synthetic setup retained separately.
+- Explicitly leave and rejoin the exact network-2 farmhand while the host retains the owned fixture. An already-bound host MCP client retains read-only observation, the farmhand process remains at title, and rejoin rotates its role session so old MCP clients fail closed.
 
 ### Fixed
 

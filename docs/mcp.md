@@ -49,6 +49,17 @@ fixture changes, arbitrary console text, or future action families.
 Native text input is not advertised by a screen-bound server because local
 screens share one window. Other explicitly enabled input remains screen-local.
 
+A network-role server also freezes that role's opaque lifecycle session at
+startup. The host session remains valid during an exact coordinated farmhand
+departure, so its existing client can keep observing the retained world. A new
+host client cannot first bind during that exception, and input or fixture actions
+still require the exact passed pair. The
+farmhand session rotates when its process returns to title; its existing client
+is rejected both while absent and after rejoin, even if the launch, process, and
+farmer IDs are unchanged. Start a new farmhand client only after the pair passes
+again. Use the [CLI network lifecycle commands](live-review.md#leave-and-rejoin-the-network-farmhand);
+MCP cannot initiate leave or join.
+
 `--allow-fixture-actions` is a granular capability grant, not a general action
 or input switch. Without it, no `stardew_fixture_*` tool is advertised. With it,
 startup requires the exact selected role to be bound to a fresh SDVKit-owned
@@ -547,8 +558,11 @@ review role or local screen before and after sending its bounded request to the
 existing game-side reader. There is no second
 inventory, serializer, mailbox, or lifecycle. Network-2 additionally requires both exact
 role states and processes, identical staged target/build/fixture/save bindings,
-and returns only the role fixed at server startup. The lock is released before
-MCP serialization.
+and returns only the role fixed at server startup. During an exact farmhand
+leave/rejoin sequence, only the retained host context is readable. Its role
+session must remain unchanged; a rotated farmhand session invalidates all action
+and response bindings as well as runtime reads. The lock is released before MCP
+serialization.
 
 A mismatch returns a controlled tool error and no stale payload; Data and
 screenshot failures expose a bounded internal code rather than raw paths or

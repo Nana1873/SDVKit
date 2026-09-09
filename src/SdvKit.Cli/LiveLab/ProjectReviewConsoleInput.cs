@@ -26,7 +26,9 @@ internal static class ProjectReviewConsoleLine
             return false;
         }
 
-        return IsInputCommand(tokens) || IsViewportScreenshotCommand(tokens);
+        return IsInputCommand(tokens)
+            || IsViewportScreenshotCommand(tokens)
+            || IsNetworkLifecycleCommand(tokens);
     }
 
     public static string? ValidationError(string? line)
@@ -135,7 +137,12 @@ internal static class ProjectReviewConsoleLine
                 tokens[4],
                 ReviewScreenshotContract.ViewportMode,
                 StringComparison.Ordinal)
-            && IsScreenshotLabel(tokens[5]);
+                && IsScreenshotLabel(tokens[5]);
+
+    private static bool IsNetworkLifecycleCommand(IReadOnlyList<string> tokens) =>
+        tokens.Count == 3
+        && string.Equals(tokens[1], "network", StringComparison.Ordinal)
+        && tokens[2] is "leave" or "join" or "status";
 
     private static bool TryParseUnsignedCoordinate(string value) =>
         int.TryParse(

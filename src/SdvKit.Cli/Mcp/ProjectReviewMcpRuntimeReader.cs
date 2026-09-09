@@ -49,7 +49,11 @@ internal sealed record ProjectReviewMcpRuntimeSnapshot(
     [property: JsonIgnore]
     int? ForegroundProcessId,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    ProjectReviewMcpScreen? Screen = null);
+    ProjectReviewMcpScreen? Screen = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? SessionId = null,
+    [property: JsonIgnore]
+    bool NetworkPairPassed = true);
 
 internal sealed record ProjectReviewMcpReadResult(
     ProjectReviewMcpRuntimeSnapshot? Snapshot,
@@ -66,7 +70,8 @@ internal sealed record ProjectReviewMcpVerifiedContext(
     string? Role,
     ProjectReviewMcpTestSave? TestSave,
     bool AllTargetsReady,
-    ReviewScreenBindingReport? ScreenBinding = null);
+    ReviewScreenBindingReport? ScreenBinding = null,
+    bool NetworkPairPassed = true);
 
 internal sealed record ProjectReviewMcpContextResult(
     ProjectReviewMcpVerifiedContext? Context,
@@ -100,7 +105,9 @@ internal sealed class ProjectReviewMcpRuntimeReader
     private readonly Func<string, LiveLabCommandResult>? _screenBindingSend;
     private readonly TimeSpan? _screenBindingTimeout;
     private readonly object _screenBindingSync = new();
+    private readonly object _networkBindingSync = new();
     private ProjectReviewMcpScreen? _boundScreen;
+    private string? _boundNetworkSession;
     internal LiveLabOperationLock? HeldOperationLock { get; init; }
     internal string? ReconcileConfigUniqueId { get; init; }
 
@@ -185,6 +192,19 @@ internal sealed class ProjectReviewMcpRuntimeReader
             context = selected.Context!;
         }
         return CreateSnapshot(context);
+    }
+
+    internal ProjectReviewMcpReadResult ReadForAction()
+    {
+        ProjectReviewMcpReadResult result = Read();
+        if (result.Snapshot is { NetworkPairPassed: false })
+        {
+            return Failure(
+                "reviewPairNotReady",
+                "Actions require the exact joined and passed network-2 review pair.");
+        }
+
+        return result;
     }
 
     internal ProjectReviewMcpContextResult ReadContext()
@@ -351,25 +371,53 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 "The exact owned network-2 review fixture is not ready.");
         }
 
-        if (!NetworkTwoPairVerifier.IsPassed(
+        bool selectHost = string.Equals(
+            _role,
+            NetworkTwoContract.HostRole,
+            StringComparison.Ordinal);
+        bool pairPassed = NetworkTwoPairVerifier.IsPassed(
                 hostAlwaysOn,
                 farmhandAlwaysOn,
-                verifiedHostState.NetworkTwo!.BuildIdentity))
+                verifiedHostState.NetworkTwo!.BuildIdentity);
+        bool hostLifecycleReady = selectHost && NetworkTwoPairVerifier.IsHostLifecycleReady(
+            hostAlwaysOn,
+            farmhandAlwaysOn,
+            verifiedHostState.NetworkTwo.BuildIdentity);
+        if (!pairPassed && !hostLifecycleReady)
         {
             return ContextFailure(
                 "reviewPairNotReady",
                 "AlwaysOn has not confirmed the exact joined network-2 review pair.");
         }
 
-        bool selectHost = string.Equals(
-            _role,
-            NetworkTwoContract.HostRole,
-            StringComparison.Ordinal);
         LiveLabState selectedState = selectHost
             ? verifiedHostState
             : verifiedFarmhandState;
         AlwaysOnStatusReport selectedAlwaysOn =
             selectHost ? hostAlwaysOn : farmhandAlwaysOn;
+        string? selectedSession = selectedAlwaysOn.NetworkTwo?.SessionId;
+        if (!ReviewTransportToken.IsRequestId(selectedSession))
+            return ContextFailure("reviewBindingInvalid", "The selected network role session is invalid.");
+        lock (_networkBindingSync)
+        {
+            if (_boundNetworkSession is null)
+            {
+                if (!pairPassed)
+                {
+                    return ContextFailure(
+                        "reviewPairNotReady",
+                        "A new host client cannot bind during a farmhand lifecycle transition.");
+                }
+
+                _boundNetworkSession = selectedSession;
+            }
+            if (!string.Equals(_boundNetworkSession, selectedSession, StringComparison.Ordinal))
+            {
+                return ContextFailure(
+                    "reviewBindingChanged",
+                    "The selected network role departed or rejoined; start a new explicit client.");
+            }
+        }
         NetworkTwoLaunchState selectedNetwork = selectedState.NetworkTwo!;
         return new ProjectReviewMcpContextResult(
             new ProjectReviewMcpVerifiedContext(
@@ -383,7 +431,8 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 ProjectModReady(hostAlwaysOn, verifiedHostState.ProjectMod!)
                     && ProjectModReady(
                         farmhandAlwaysOn,
-                        verifiedFarmhandState.ProjectMod!)),
+                        verifiedFarmhandState.ProjectMod!),
+                NetworkPairPassed: pairPassed),
             null,
             null);
     }
@@ -460,7 +509,9 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 context.ScreenBinding is null ? null : new ProjectReviewMcpScreen(
                     context.ScreenBinding.ScreenId,
                     context.ScreenBinding.FarmerId,
-                    context.ScreenBinding.ContextId)),
+                    context.ScreenBinding.ContextId),
+                context.Role is null ? null : alwaysOn.NetworkTwo?.SessionId,
+                context.NetworkPairPassed),
             null,
             null);
     }

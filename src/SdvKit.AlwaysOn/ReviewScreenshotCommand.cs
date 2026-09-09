@@ -310,9 +310,9 @@ internal static class ReviewCommand
 {
     private const string RootCommand = "sdvkit";
     private const string HelpText =
-        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded screen/inventory/menu/data/map/texture/audio/mod-assets transports";
+        "Isolated review helpers: sdvkit split-screen join|leave|status | sdvkit network leave|join|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | bounded screen/inventory/menu/data/map/texture/audio/mod-assets transports";
     private const string Usage =
-        "Usage: sdvkit split-screen join|leave|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit inventory ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
+        "Usage: sdvkit split-screen join|leave|status | sdvkit network leave|join|status | sdvkit screenshot ... | sdvkit input ... | sdvkit fixture ... | sdvkit inventory ... | sdvkit menu ... | sdvkit data ... | sdvkit map ... | sdvkit texture ... | sdvkit audio ... | sdvkit mod-assets ...";
 
     public static void Register(
         IModHelper helper,
@@ -382,6 +382,19 @@ internal static class ReviewCommand
                     catch (Exception exception)
                     {
                         monitor.Log($"SDVKit local split-screen rejected: {exception.GetBaseException().Message}", LogLevel.Error);
+                    }
+                }
+                else if (arguments.Length > 0 && arguments[0] == "network")
+                {
+                    try
+                    {
+                        NetworkTwoAutomation network = networkTwo()
+                            ?? throw new InvalidOperationException("Network lifecycle requires an owned network-2 review.");
+                        network.HandleLifecycleCommand(arguments);
+                    }
+                    catch (Exception exception)
+                    {
+                        monitor.Log($"SDVKit network lifecycle rejected: {exception.GetBaseException().Message}", LogLevel.Error);
                     }
                 }
                 else if (arguments.Length > 0

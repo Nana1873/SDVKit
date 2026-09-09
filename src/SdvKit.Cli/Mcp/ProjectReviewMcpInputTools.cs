@@ -164,7 +164,7 @@ internal sealed class ProjectReviewMcpInputSession
 
         using (actionLock)
         {
-            ProjectReviewMcpReadResult before = _reader.Read();
+            ProjectReviewMcpReadResult before = _reader.ReadForAction();
             if (!before.Succeeded)
             {
                 return ProjectReviewMcpInputInvocation.Error(
@@ -320,6 +320,7 @@ internal sealed class ProjectReviewMcpInputSession
         && string.Equals(before.Target.UniqueId, after.Target.UniqueId, StringComparison.Ordinal)
         && string.Equals(before.Target.Version, after.Target.Version, StringComparison.Ordinal)
         && string.Equals(before.Target.BuildIdentity, after.Target.BuildIdentity, StringComparison.Ordinal)
+        && string.Equals(before.SessionId, after.SessionId, StringComparison.Ordinal)
         && before.ForegroundWindowHandle == after.ForegroundWindowHandle
         && before.ForegroundProcessId == after.ForegroundProcessId;
 
@@ -330,7 +331,7 @@ internal sealed class ProjectReviewMcpInputSession
         var stopwatch = Stopwatch.StartNew();
         while (true)
         {
-            ProjectReviewMcpReadResult after = _reader.Read();
+            ProjectReviewMcpReadResult after = _reader.ReadForAction();
             if (after.Succeeded)
             {
                 ProjectReviewMcpRuntimeSnapshot snapshot = after.Snapshot!;

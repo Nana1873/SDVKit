@@ -21,6 +21,8 @@ public sealed class ProjectReviewMcpTests
     private const string LaunchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string HostLaunchId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private const string FarmhandLaunchId = "cccccccccccccccccccccccccccccccc";
+    private const string HostSessionId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string FarmhandSessionId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private const string NetworkFixtureId = "dddddddddddddddddddddddddddddddd";
     private const string NetworkSaveId = "SDVKit_123456789";
     private const string NetworkBuildIdentity =
@@ -224,6 +226,9 @@ public sealed class ProjectReviewMcpTests
         Assert.Equal(expectedTime, snapshot.Runtime.TimeOfDay);
         Assert.Equal(NetworkFixtureId, snapshot.TestSave?.FixtureId);
         Assert.Equal(NetworkSaveId, snapshot.TestSave?.SaveId);
+        Assert.Equal(
+            role == NetworkTwoContract.HostRole ? HostSessionId : FarmhandSessionId,
+            snapshot.SessionId);
         Assert.Equal("Nana.Target", snapshot.Target.UniqueId);
         Assert.Equal(role == "host" ? "101" : "202", snapshot.Runtime.LocalPlayer?.Data?.PlayerId);
     }
@@ -308,6 +313,137 @@ public sealed class ProjectReviewMcpTests
 
         Assert.False(result.Succeeded);
         Assert.Equal("reviewPairNotReady", result.ErrorCode);
+    }
+
+    [Fact]
+    public void NetworkRuntimeReaderRejectsARejoinedRoleUntilANewClientBindsItsSession()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader oldClient = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.FarmhandRole);
+        Assert.Equal(FarmhandSessionId, oldClient.Read().Snapshot?.SessionId);
+        LiveLabPaths selectedPaths = LiveLabPaths.ResolveNetworkRole(
+            LiveLabPaths.Resolve(temporary.Path),
+            NetworkTwoContract.FarmhandRole);
+        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+            File.ReadAllText(selectedPaths.StatusPath),
+            LiveLabJsonOptions.CamelCase)!;
+        const string rejoinedSession = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        File.WriteAllText(
+            selectedPaths.StatusPath,
+            JsonSerializer.Serialize(
+                marker with
+                {
+                    NetworkTwo = marker.NetworkTwo! with
+                    {
+                        SessionId = rejoinedSession,
+                    },
+                },
+                LiveLabJsonOptions.CamelCase));
+
+        ProjectReviewMcpReadResult rejected = oldClient.Read();
+        ProjectReviewMcpRuntimeReader newClient = new(
+            temporary.Path,
+            NetworkTwoContract.Topology,
+            NetworkTwoContract.FarmhandRole,
+            new FakeProcessHost(LabProcessInspectStatus.Running),
+            () => ObservedAt.AddSeconds(1));
+
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("reviewBindingChanged", rejected.ErrorCode);
+        Assert.Equal(rejoinedSession, newClient.Read().Snapshot?.SessionId);
+    }
+
+    [Fact]
+    public void OnlyTheHostReaderRemainsAvailableDuringCoordinatedFarmhandDeparture()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader hostReader = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.HostRole);
+        ProjectReviewMcpRuntimeReader farmhandReader = new(
+            temporary.Path,
+            NetworkTwoContract.Topology,
+            NetworkTwoContract.FarmhandRole,
+            new FakeProcessHost(LabProcessInspectStatus.Running),
+            () => ObservedAt.AddSeconds(1));
+        Assert.Equal(HostSessionId, hostReader.Read().Snapshot?.SessionId);
+        Assert.Equal(FarmhandSessionId, farmhandReader.Read().Snapshot?.SessionId);
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatusPath,
+            "waitingForFarmhand");
+        RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatusPath,
+            "waitingForRejoin",
+            identityVerified: false,
+            sessionId: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            worldReady: false);
+
+        ProjectReviewMcpReadResult host = hostReader.Read();
+        ProjectReviewMcpReadResult farmhand = farmhandReader.Read();
+        ProjectReviewMcpRuntimeReader freshHostReader = new(
+            temporary.Path,
+            NetworkTwoContract.Topology,
+            NetworkTwoContract.HostRole,
+            new FakeProcessHost(LabProcessInspectStatus.Running),
+            () => ObservedAt.AddSeconds(1));
+        ProjectReviewMcpReadResult freshHost = freshHostReader.Read();
+        ProjectReviewMcpReadResult hostAction = hostReader.ReadForAction();
+        var inputCalls = 0;
+        var inputSession = new ProjectReviewMcpInputSession(
+            hostReader,
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).RuntimePath,
+            (_, _) =>
+            {
+                inputCalls++;
+                throw new InvalidOperationException("Input must not dispatch during departure.");
+            });
+        ProjectReviewMcpInputInvocation input = inputSession.Execute(
+            new ReviewInputQuery(
+                ReviewInputContract.PressAction,
+                "F8",
+                null,
+                null,
+                null),
+            CancellationToken.None);
+
+        Assert.True(host.Succeeded);
+        Assert.Equal(HostSessionId, host.Snapshot?.SessionId);
+        Assert.False(farmhand.Succeeded);
+        Assert.Equal("reviewPairNotReady", farmhand.ErrorCode);
+        Assert.False(freshHost.Succeeded);
+        Assert.Equal("reviewPairNotReady", freshHost.ErrorCode);
+        Assert.False(hostAction.Succeeded);
+        Assert.Equal("reviewPairNotReady", hostAction.ErrorCode);
+        Assert.Null(input.Acknowledgement);
+        Assert.Equal("reviewPairNotReady", input.Problem?.Code);
+        Assert.Equal(0, inputCalls);
+    }
+
+    [Fact]
+    public void UnexpectedFarmhandTitleReturnRejectsTheOldClientEvenWithUnchangedIdentityAndSession()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader oldClient = CreateReadyNetworkReview(
+            temporary,
+            NetworkTwoContract.FarmhandRole);
+        Assert.Equal(FarmhandSessionId, oldClient.Read().Snapshot?.SessionId);
+        LiveLabPaths selectedPaths = LiveLabPaths.ResolveNetworkRole(
+            LiveLabPaths.Resolve(temporary.Path),
+            NetworkTwoContract.FarmhandRole);
+        RewriteNetworkPhase(selectedPaths.StatusPath, "failed", worldReady: false);
+
+        ProjectReviewMcpReadResult rejected = oldClient.Read();
+
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("reviewPairNotReady", rejected.ErrorCode);
+        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+            File.ReadAllText(selectedPaths.StatusPath),
+            LiveLabJsonOptions.CamelCase)!;
+        Assert.True(marker.NetworkTwo?.IdentityVerified);
+        Assert.Equal(FarmhandSessionId, marker.NetworkTwo?.SessionId);
     }
 
     [Fact]
@@ -840,7 +976,8 @@ public sealed class ProjectReviewMcpTests
                 RemotePlayerId: 202,
                 NetworkTwoContract.FarmhandName,
                 "Exact pair joined.",
-                hostNetwork.NetworkLogPath),
+                hostNetwork.NetworkLogPath,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             projectMod,
             new RuntimeSnapshotMarker(
                 RuntimeSnapshotContract.SchemaVersion,
@@ -875,7 +1012,8 @@ public sealed class ProjectReviewMcpTests
                 RemotePlayerId: reciprocalPair ? 101 : 303,
                 TestSaveContract.PlayerName,
                 "Exact pair joined.",
-                farmhandNetwork.NetworkLogPath),
+                farmhandNetwork.NetworkLogPath,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
             projectMod,
             new RuntimeSnapshotMarker(
                 RuntimeSnapshotContract.SchemaVersion,
@@ -934,6 +1072,48 @@ public sealed class ProjectReviewMcpTests
         File.WriteAllText(
             state.StatusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));
+    }
+
+    internal static void RewriteNetworkPhase(
+        string path,
+        string phase,
+        bool? identityVerified = null,
+        string? sessionId = null,
+        bool? worldReady = null)
+    {
+        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+            File.ReadAllText(path),
+            LiveLabJsonOptions.CamelCase)!;
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(
+                marker with
+                {
+                    NetworkTwo = marker.NetworkTwo! with
+                    {
+                        Phase = phase,
+                        IdentityVerified = identityVerified
+                            ?? marker.NetworkTwo.IdentityVerified,
+                        SessionId = sessionId ?? marker.NetworkTwo.SessionId,
+                    },
+                    Runtime = worldReady is null
+                        ? marker.Runtime
+                        : marker.Runtime! with
+                        {
+                            WorldReady = worldReady.Value,
+                            Season = worldReady.Value ? marker.Runtime.Season : null,
+                            DayOfMonth = worldReady.Value ? marker.Runtime.DayOfMonth : null,
+                            Year = worldReady.Value ? marker.Runtime.Year : null,
+                            TimeOfDay = worldReady.Value ? marker.Runtime.TimeOfDay : null,
+                            LocationId = worldReady.Value ? marker.Runtime.LocationId : null,
+                            TileX = worldReady.Value ? marker.Runtime.TileX : null,
+                            TileY = worldReady.Value ? marker.Runtime.TileY : null,
+                            LocalPlayer = worldReady.Value
+                                ? marker.Runtime.LocalPlayer
+                                : LocalPlayerSnapshotContract.WithoutData("worldNotReady"),
+                        },
+                },
+                LiveLabJsonOptions.CamelCase));
     }
 
     internal static ProjectReviewMcpRuntimeReader CreateReadyReview(

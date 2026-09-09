@@ -88,6 +88,37 @@ Require `testSave.state=ready`, `phase=passed`, the expected Save/fixture IDs, a
 
 For a C# host/farmhand review, prepare that same baseline and start with `--topology network-2` (without `--test-save`). Confirm both exact roles, loaded target/build identity, and reciprocal joined-pair proof. Each role has a separate isolated profile.
 
+### Leave and rejoin the network farmhand
+
+After the pair has passed and both players are idle with no menu, event, fade, or
+save, the farmhand can request one host-authorized departure without stopping the
+host process:
+
+```powershell
+& $sdvkit project review command "sdvkit network leave" --topology network-2 --role farmhand --json
+& $sdvkit project review command "sdvkit network status" --topology network-2 --role host --json
+& $sdvkit project review command "sdvkit network status" --topology network-2 --role farmhand --json
+& $sdvkit project review command "sdvkit network join" --topology network-2 --role farmhand --json
+```
+
+The host must first acknowledge the exact reciprocal pair. The farmhand then
+returns to an unobstructed title screen while its owned process remains alive;
+the host advances only after it observes the actual disconnect. `join` is explicit
+and reuses the existing loopback connection and exact saved farmhand selection.
+Both roles must again reach the normal 120 verified unfocused ticks before the
+pair passes. Commands time out instead of silently retrying, and full `stop`/`reset`
+semantics are unchanged.
+
+During the coordinated absence, normal pair status is intentionally not ready.
+The host's already-bound MCP client can continue read-only inspection, but a new
+host client cannot bind and input or fixture actions remain refused until the
+whole pair passes again. The farmhand client cannot read during the absence. A
+confirmed return to title rotates only the farmhand's
+role session: the old farmhand client remains rejected after rejoin, so start a
+new explicit `--role farmhand` MCP client. The host session remains stable. Console
+delivery and phase text do not prove behavior; verify host continuity, old-client
+rejection, the newly bound farmhand, and the post-rejoin reciprocal passed state.
+
 ## Local split-screen review
 
 Start a single review with `--test-save` and require its exact fixture and target

@@ -218,7 +218,8 @@ internal static class ProjectReviewMcpScreenshotTools
         && string.Equals(
             before.TestSave?.SaveId,
             after.TestSave?.SaveId,
-            StringComparison.Ordinal);
+            StringComparison.Ordinal)
+        && string.Equals(before.SessionId, after.SessionId, StringComparison.Ordinal);
 
     private static CallToolResult Error(string message) => new()
     {

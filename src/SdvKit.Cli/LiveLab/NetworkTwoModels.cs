@@ -2,7 +2,7 @@ namespace SdvKit.Cli.LiveLab;
 
 internal static class NetworkTwoContract
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public const string Topology = "network-2";
     public const string HostRole = "host";
     public const string FarmhandRole = "farmhand";
@@ -23,6 +23,24 @@ internal static class NetworkTwoContract
             ? checked(currentCount + 1)
             : 0;
     }
+
+    public static string? NextHostLifecyclePhase(
+        string phase,
+        bool farmhandOnline,
+        bool exactPairVerified) => phase switch
+        {
+            "departureArmed" when !farmhandOnline => "waitingForFarmhand",
+            "departureArmed" => "departureArmed",
+            "waitingForFarmhand" when farmhandOnline && exactPairVerified => "rejoined",
+            "waitingForFarmhand" => "waitingForFarmhand",
+            _ => null,
+        };
+
+    public static bool IsExpectedFarmhandReturnToTitle(
+        string role,
+        string phase) =>
+        string.Equals(role, FarmhandRole, StringComparison.Ordinal)
+        && string.Equals(phase, "leaving", StringComparison.Ordinal);
 
     public static bool MatchesReviewSaveIdentity(
         string role,
@@ -94,7 +112,8 @@ internal sealed record NetworkTwoStatusMarker(
     long? RemotePlayerId,
     string? RemotePlayerName,
     string? Message,
-    string NetworkLogPath);
+    string NetworkLogPath,
+    string SessionId);
 
 internal sealed record NetworkTwoStatusReport(
     string State,
@@ -110,4 +129,5 @@ internal sealed record NetworkTwoStatusReport(
     long? RemotePlayerId,
     string? RemotePlayerName,
     string? Message,
-    string? NetworkLogPath);
+    string? NetworkLogPath,
+    string? SessionId);
