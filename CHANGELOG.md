@@ -10,7 +10,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
-- Owned review mouse input also reaches native mod controls which read the parameterless XNA mouse getter during their player update, including GMCM numeric sliders. Physical input remains available for overlap checks; cancellation removes the owned native sample without replaying a consumed wheel notch.
+- Owned review mouse input also reaches native mod controls which read the parameterless XNA mouse getter during their player update, including GMCM numeric sliders. Click and drag prepare their cursor through a completed game update before pressing; drag also holds its endpoint for one update so controls using previous coordinates can reach it. Physical input remains available for overlap checks; cancellation removes the owned native sample without replaying a consumed wheel notch.
 - Content Patcher diagnosis and refresh now inspect an already-published correlated log response before declaring its bounded wait expired.
 
 ## [0.10.1] - 2026-09-12

@@ -466,7 +466,7 @@ internal sealed class ReviewChordProgress
         {
             ReviewInputContract.ClickAction => 1,
             ReviewInputContract.ScrollAction => Math.Abs(gesture.Notches!.Value),
-            ReviewInputContract.DragAction => gesture.DurationTicks!.Value + 1,
+            ReviewInputContract.DragAction => gesture.DurationTicks!.Value + 2,
             _ => duration,
         };
     }
@@ -475,17 +475,25 @@ internal sealed class ReviewChordProgress
     public int EdgeSamples { get; private set; }
     public bool MoreActions => Remaining > 0 || (!Canceled && Gesture?.Action == ReviewInputContract.ClickAction && CompletedSteps + 1 < Gesture.Count);
     public bool AwaitingGameUpdate { get; private set; }
+    public bool PreparingCursor => !Canceled && !_cursorPrepared
+        && Gesture?.Action is ReviewInputContract.ClickAction or ReviewInputContract.DragAction;
+    public bool AwaitingCursorUpdate => AwaitingGameUpdate && _samplePreparingCursor;
+    private bool _cursorPrepared;
+    private bool _samplePreparingCursor;
     private bool _sampleReleased;
     private bool _sampleSucceeded;
     private int _sampleTick;
     private int _failedInputSamples;
-    public void ObserveGestureSample(int tick, bool released, bool succeeded)
+    public void ObserveGestureSample(int tick, bool released, bool succeeded, bool preparingCursor = false)
     {
         if (Gesture is null || AwaitingGameUpdate) throw new InvalidOperationException("No gesture sample can be observed.");
+        if (succeeded && !released && PreparingCursor && !preparingCursor)
+            throw new InvalidOperationException("The cursor must complete a game update before button-down.");
         _sampleTick = tick;
         _sampleReleased = released;
         _sampleSucceeded = succeeded;
-        if (!released && succeeded) StartTick ??= tick;
+        _samplePreparingCursor = preparingCursor;
+        if (!released && succeeded && !preparingCursor) StartTick ??= tick;
         AwaitingGameUpdate = true;
     }
     public void ObserveFailedInputSample(int tick)
@@ -498,13 +506,20 @@ internal sealed class ReviewChordProgress
         if (!AwaitingGameUpdate) return false;
         Cancel();
         AwaitingGameUpdate = false;
-        return _sampleReleased;
+        return _sampleReleased && !_samplePreparingCursor;
     }
     public bool CompleteGameUpdate(out bool released)
     {
-        released = _sampleSucceeded && _sampleReleased;
+        released = _sampleSucceeded && _sampleReleased && !_samplePreparingCursor;
         if (!AwaitingGameUpdate) return false;
         AwaitingGameUpdate = false;
+        if (_samplePreparingCursor)
+        {
+            // Historical-coordinate consumers see this position on the next update.
+            // Preparation owns no button edge and cannot survive cancellation.
+            _cursorPrepared = _sampleSucceeded && !Canceled;
+            return false;
+        }
         if (!_sampleReleased)
         {
             if (_sampleSucceeded) Consumed(_sampleTick, Canceled);
@@ -525,12 +540,13 @@ internal sealed class ReviewChordProgress
     public void Cancel() { Canceled = true; Remaining = 0; }
     public void Consumed(int tick, bool canceledGestureSample = false)
     {
-        if (Finished || ((Canceled || Remaining == 0) && !(canceledGestureSample && Gesture is not null))) throw new InvalidOperationException("No input sample was requested.");
+        if (PreparingCursor || Finished || ((Canceled || Remaining == 0) && !(canceledGestureSample && Gesture is not null))) throw new InvalidOperationException("No input sample was requested.");
         StartTick ??= tick;
         EdgeSamples++;
         if (!Canceled) Remaining--;
         if (Gesture?.Action == ReviewInputContract.ScrollAction) CompletedSteps++;
-        if (Gesture?.Action == ReviewInputContract.DragAction) CompletedSteps = Math.Max(0, EdgeSamples - 1);
+        if (Gesture?.Action == ReviewInputContract.DragAction)
+            CompletedSteps = Math.Min(Gesture.DurationTicks!.Value, Math.Max(0, EdgeSamples - 1));
     }
     public void Released(int tick, bool observed = true)
     {
@@ -1078,6 +1094,8 @@ internal static partial class ReviewVirtualCursor
     }
     private sealed class InputSample
     {
+        public bool PreparingCursor { get; set; }
+        public (int X, int Y)? CursorPosition { get; set; }
         public object? PreviousStates { get; init; }
         public ReviewOwnedButtonSample Owned { get; } = new();
         public long WheelSample { get; set; }
@@ -1396,6 +1414,11 @@ internal static partial class ReviewVirtualCursor
                 if (chord.Progress.Position is { } position)
                 {
                     Screen.Value.Mouse.Set(position.X, position.Y);
+                    if (chord.Progress.PreparingCursor)
+                    {
+                        __state.PreparingCursor = true;
+                        return;
+                    }
                     if (chord.Progress.Gesture?.Action == ReviewInputContract.ScrollAction)
                     {
                         __state.WheelBefore = __instance.GetMouseState().ScrollWheelValue;
@@ -1455,7 +1478,7 @@ internal static partial class ReviewVirtualCursor
             }
             else if (chord.Progress.Gesture is not null)
             {
-                bool downSample = chord.Progress.Remaining > 0;
+                bool downSample = chord.Progress.Remaining > 0 && !__state.PreparingCursor;
                 bool valid = downSample
                     ? chord.Progress.Gesture.Action == ReviewInputContract.ScrollAction
                         ? __state.WheelDelta != 0 && Screen.Value.Mouse.WheelSample == __state.WheelSample + 1
@@ -1463,8 +1486,14 @@ internal static partial class ReviewVirtualCursor
                         : __state.Owned.Injected && chord.Buttons.All(b => chord.Helper.GetState(b)
                             == (chord.Progress.EdgeSamples == 0 ? SButtonState.Pressed : SButtonState.Held))
                     : chord.Buttons.All(b => !chord.Helper.IsDown(b));
+                if (__state.PreparingCursor)
+                {
+                    MouseState confirmed = __instance.GetMouseState();
+                    valid &= !__state.Owned.Injected && __state.CursorPosition is { } position
+                        && confirmed.X == position.X && confirmed.Y == position.Y;
+                }
                 if (!valid) CancelChord("The complete gesture input sample was not observed.");
-                chord.Progress.ObserveGestureSample(Game1.ticks, !downSample, valid);
+                chord.Progress.ObserveGestureSample(Game1.ticks, !downSample, valid, __state.PreparingCursor);
             }
             else if (__state.Owned.Injected)
             {
@@ -1490,6 +1519,9 @@ internal static partial class ReviewVirtualCursor
         {
             ObserveTextLifetime();
             if (Screen.Value.Pending is not PendingInput pending || !pending.Progress.AwaitingGameUpdate) return;
+            if (pending.Progress.AwaitingCursorUpdate
+                && (_nativeMouseUpdate is not { } update || !IsCurrent(update)))
+                CancelChord("The owned player update changed during cursor preparation.");
             if (pending.Progress.CompleteGameUpdate(out bool released)) FinishChord(released);
         }
     }
@@ -1594,6 +1626,8 @@ internal static partial class ReviewVirtualCursor
             else
             {
                 Screen.Value.WheelFailureReported = false;
+                if (Screen.Value.ActiveSample is { PreparingCursor: true } activeSample)
+                    activeSample.CursorPosition = (sample.X, sample.Y);
             }
             __result = new MouseState(
                 sample.X,
