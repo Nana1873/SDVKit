@@ -125,11 +125,11 @@ internal static partial class ReviewVirtualCursor
         | (state.XButton1 == ButtonState.Pressed ? ReviewMouseButtons.X1 : ReviewMouseButtons.None)
         | (state.XButton2 == ButtonState.Pressed ? ReviewMouseButtons.X2 : ReviewMouseButtons.None));
 
-    private static MouseState State(ReviewMouseValues value)
+    private static MouseState State(ReviewMouseValues value, int horizontalWheel = 0)
     {
         ButtonState Button(ReviewMouseButtons button) => (value.Buttons & button) != 0 ? ButtonState.Pressed : ButtonState.Released;
         return new(value.X, value.Y, value.Wheel, Button(ReviewMouseButtons.Left), Button(ReviewMouseButtons.Middle),
-            Button(ReviewMouseButtons.Right), Button(ReviewMouseButtons.X1), Button(ReviewMouseButtons.X2));
+            Button(ReviewMouseButtons.Right), Button(ReviewMouseButtons.X1), Button(ReviewMouseButtons.X2), horizontalWheel);
     }
 
     private static void AfterGetNativeMouseState(ref MouseState __result)
@@ -147,7 +147,8 @@ internal static partial class ReviewVirtualCursor
             if (Screen.Value.Pending is { } chord)
                 foreach (SButton button in chord.Buttons)
                     if (chord.Helper.IsSuppressed(button)) suppressed |= MouseButton(button);
-            __result = State(update.Publication.Read(Values(__result), suppressed, true, out bool overlap));
+            __result = State(update.Publication.Read(Values(__result), suppressed, true, out bool overlap),
+                __result.HorizontalScrollWheelValue);
             if (overlap)
                 CancelChord("A physical or external input overlaps a native mouse sample.");
         }
