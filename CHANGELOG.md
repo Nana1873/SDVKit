@@ -4,6 +4,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-12
+
 ### Added
 
 - Follow one reproducible GMCM 1.16.0 integer-slider recipe through explicit bounds and steps, native unsaved/saved UI behavior, configuration reconciliation, exact export/restaging, and the same packaged DLL's numeric effect after restart.
@@ -13,6 +15,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - Owned review mouse input also reaches native mod controls which read the parameterless XNA mouse getter during their player update, including GMCM numeric sliders. Click and drag prepare their cursor through a completed game update before pressing; drag also holds its endpoint for one update so controls using previous coordinates can reach it. Physical input remains available for overlap checks; cancellation removes owned coordinates/buttons and preserves the consumed wheel origin even before the next sample is published.
 - Content Patcher diagnosis and refresh now inspect an already-published correlated log response before declaring its bounded wait expired.
+
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a fresh directory and restart MCP clients against it. The native GMCM integer-slider workflow requires this version or a verified later package.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/227) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.10.1...v0.10.2)
 
 ## [0.10.1] - 2026-09-12
 
