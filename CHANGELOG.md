@@ -6,7 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
-- A bounded neutral menu-close probe separates keyboard, mouse and controller callbacks, input release, parent menus and following menu transitions in an owned disposable review. Its live acceptance remains pending in #217.
+- A bounded neutral menu-close probe and live guidance document a native controller limitation: one synthetic B can close a root menu and then open inventory on disconnect. One Escape or observed close-button click closed the tested menus; child closes retained their parent. Runtime input is unchanged.
 
 ## [0.10.1] - 2026-09-12
 

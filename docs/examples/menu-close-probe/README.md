@@ -1,8 +1,8 @@
 # Neutral menu-close probe
 
 This bounded original diagnostic target supports [issue #217](https://github.com/Nana1873/SDVKit/issues/217).
-It is prepared for live acceptance; source inspection and compilation alone do
-not establish a reproduced defect or a fix. Use the existing
+The [observations below](#observed-behavior-2026-09-12) reproduce a native
+controller-close limitation; no SDVKit runtime fix is claimed. Use the existing
 [review workflow](../../live-review.md), including exclusive lab ownership,
 an exact disposable **single/screen 0** fixture, process-local input, and final
 stop/reset. Do not start it while another task owns the lab.
@@ -48,7 +48,7 @@ need not change the root reference. Use the tick samples and callback sequence
 together. A single controller press may also generate a native mapped keyboard
 callback; that is not proof of a second injected keyboard press.
 
-## Proposed live cases
+## Repeat the bounded live cases
 
 1. Confirm an unfocused, exact owned single fixture with no active menu. Record
    raw controller state, options, current runtime, target/package identity and
@@ -97,20 +97,104 @@ handler's pause/index/no-menu conditions remain independent of which callback
 closed the menu. Record actual callbacks and release state rather than assuming
 that the flag alone prevents duplicate dispatch or inventing a second press.
 
-## Source hypothesis to verify
+## Observed behavior (2026-09-12)
 
-The installed game/SMAPI inspection suggests this sequence for a synthetic B
-press with no physical controller: SMAPI builds a connected override, the native
-menu dispatcher maps B to a keyboard action, and the following raw disconnected
-sample reaches Stardew's `CheckGamepadMode`. That method can create `GameMenu`
-when the controller disconnects and no active menu remains. Its conditions,
-including the player index and pause eligibility, matter. The probe records
-these observations without changing that behavior.
+The seven cases below ran in one exact owned disposable single/screen-0 review,
+using Stardew 1.6.15.24356, SMAPI 4.5.2, and the unchanged v0.10.1 CI distribution.
+Native controller mode was `Auto`, `playerIndex=One`, and the selected raw
+controller remained disconnected with B released. All input cases had a fresh
+`isActive=false` observation and a foreground PID outside the owned game, correlated
+with read-only desktop samples. No focus changes or physical cursor input were
+performed by the test tools. Initial focused setup observations were retained
+separately; no test input was sent until an external focus change was verified.
 
-Connection notifications and subsequent inventory opening must be assessed
-separately. A remaining parent, force-on/off controller settings, a physical
-controller, or menu-specific close rules may change the result. This probe does
-not establish those untested configurations, other mods, or multiplayer behavior.
-Expand role/screen gates only if a demonstrated shared runtime correction needs
-them. Do not infer current correctness from historical #92/#93 acceptance or
-assign #193's later inventory to an unproven input edge.
+| Observed baseline and one input | Post-completion menu | Controller connection |
+| --- | --- | --- |
+| Root + Escape | None | Stayed disconnected |
+| Root + observed close click | None | Stayed disconnected |
+| Root + B | Native `GameMenu` / inventory after the root closed | Connected, then disconnected |
+| Child + Escape | Original parent only | Stayed disconnected |
+| Child + observed close click | Original parent only | Stayed disconnected |
+| Child + B | Original parent only; no inventory | Connected, then disconnected |
+| Closed baseline after root Escape + deliberate extra Escape | Native `GameMenu` / inventory | Stayed disconnected |
+
+Every case recorded exactly one target `ButtonPressed`, one `ButtonReleased`, and
+following `None` samples. Both clicks used the inspected visible close component
+at `(948,216)` with its own fresh UI revision, reported one completed click and
+confirmed release, and reached the native child/root close callback. Coordinates
+are historical evidence, not a fixed target for future runs. Typed menu/runtime
+responses and inspected viewport screenshots corroborated the results; custom
+menu inspection correctly reported partial `publicBase` coverage.
+
+### Exact root-B sequence
+
+The probe's monotonic sequence in the retained `final-SMAPI.txt` shows:
+
+| Sequence / game tick | Observation |
+| --- | --- |
+| 183–184 / 17770 | One B `Pressed`; probe root active; game-visible controller connected, raw controller disconnected |
+| 185–191 / 17771 | Native B callback, mapped `E` keyboard callback, then root cleanup; `UpdateTicked` has no menu |
+| 192–194 / 17771 | B `Released`; next `UpdateTicking` has no menu and a disconnected game-visible controller |
+| 195–196 / 17772 | `UpdateTicked` and `MenuChanged` show native `GameMenu` / inventory |
+| 197 onward / 17772 onward | B reaches `None`; inventory remains during the following observations |
+
+The B acknowledgement succeeded and still reported `menuOpen=false`; the next
+typed menu read reported inventory. The viewport showed both native Gamepad
+activation/disconnection messages behind that inventory. Delivery/release alone
+therefore cannot establish the final menu state.
+
+Source inspection of the exact installed binaries explains the observed path:
+SDVKit uses supported SMAPI `Press` overrides; SMAPI's controller builder produces
+the connected synthetic sample and returns to the raw disconnected state when
+the override ends. Stardew's `CheckGamepadMode` can then open `GameMenu` when its
+index/pause conditions qualify and no active root remains. The callback and tick
+sequence above is observed; attribution to that native branch is based on the
+matching installed source, without a patched branch tracer. The child-B comparison
+showed the same connection transitions while retaining its parent, with no
+inventory opening. The deliberate second Escape is a separate native menu-open
+action, not evidence of a stuck first press.
+
+No independent SDVKit input lifecycle defect was demonstrated. Holding fake
+connectivity beyond the action or suppressing a target menu would change native
+controller semantics and conceal the observed limitation; neither is warranted
+by this investigation. Use one Escape or one observed process-local close click
+for routine closing, then inspect and stop when the intended target is closed.
+
+### Provenance, cleanup and limits
+
+- Tested probe source: `5ea7889f00e2efe33973731cfadcb9c8783aa00d` in [PR #221](https://github.com/Nana1873/SDVKit/pull/221).
+- Probe ZIP SHA-256: `0069f0820078d68b4851251f4939a41f66059629d1c2999248bddd1fc5593b3d`.
+- Probe DLL SHA-256: `03301bbeb0c21fd4cac0f2e53e67401efb4303c7cc9d16e10778959bd5cbe01b`.
+- Runtime ZIP SHA-256: `6da54c86b9ff9034621af9ab18ccb946383d7db8de792612456c9fd733fa5500`.
+
+The target/launch/process/save/build bindings, complete event log, typed MCP
+responses, screenshots, before/after desktop observations and final audit remain
+under the task's ignored `.sdvkit/issue-217/live/`; the source/package evidence is
+under `revision-2/`. The initial preparation and earlier candidate evidence remain
+separate. Restore/format/build, installed-game AlwaysOn and probe builds, package
+and extraction passed. The default local suite passed 2,213 with the two documented
+local stress skips; exact tested-head CI passed all 2,215 with zero skips plus
+packaging/portable checks. A local orchestration-script parse error occurred before
+any case input; it was corrected before use and is not a product failure.
+
+All 18 native MCP sessions exited on EOF with exit code 0, no forced termination
+and no stderr. Final exact stop/reset removed target staging, mailbox payloads
+and the registered fixture mount; both owned locks were free, all three work-save
+files matched baseline, and no game process remained. The profile retained its
+ordinary fixture-preparation save directory, outside the removed registered mount.
+All 41,615 entries in the protected normal Mods, Stardew data and mod-manager
+staging comparison were unchanged. The exclusive live slot was released.
+
+Root Escape, root B and child Escape had unchanged sampled physical pointer and
+foreground during the input calls. Root/child clicks, child B and extra Escape
+had external physical pointer movement; they establish functional/menu/release
+behavior while unfocused, not stationary-pointer proof. None of these samples is
+continuous sub-tick monitoring or alone establishes cursor-movement causality.
+
+`controller-root` was prepared and compiled but not run: the base root-B case
+already established the shared post-close native path under the agreed conditional
+gate. The earlier explicit-controller callback distinction remains source-derived.
+Physical-controller, force-on/off, multiplayer, other local screens and other mods
+were not tested. No claim is made about the historical target mod's exact callback
+sequence or #193's earlier event attribution. This documents a reproduced
+controller limitation, not a controller-close fix or broad correctness proof.

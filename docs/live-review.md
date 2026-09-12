@@ -204,6 +204,15 @@ Mouse input uses only the process-local virtual cursor. Set it before mouse-butt
 
 For routine autonomous menu tests, prefer keyboard or process-local mouse input. Reserve controller buttons for tests explicitly exercising controller behavior: a synthetic controller press can temporarily report a connected controller when no physical controller is connected, then return to disconnected on a later sample.
 
+The [neutral single-review proof](examples/menu-close-probe/README.md#observed-behavior-2026-09-12)
+reproduced an important consequence in native Auto mode with the selected raw
+controller disconnected: one B closed the root menu, completed `Pressed` →
+`Released` → `None`, and Stardew opened inventory on the disconnect. With a parent
+remaining, the child closed and no inventory opened. One Escape or an observed
+close-button click closed the tested target without that controller transition.
+These are scoped observations, not a controller-close fix or a guarantee for
+other custom menus and controller configurations.
+
 1. Read the current menu through `project review menu` or `stardew_menu_get`. If inspection does not support that menu, inspect a fresh viewport screenshot instead. Do not send a close input when the intended menu is already closed.
 2. Send one `Escape` press, or click the observed visible close button once through the process-local virtual cursor. Use current geometry and a fresh `uiRevision` for bounded clicks; do not guess coordinates or hold/repeat the close input.
 3. Wait for input completion, then read the menu again (or inspect a fresh viewport screenshot). An input acknowledgement proves delivery/release, not that the intended menu closed.
@@ -213,8 +222,8 @@ This is agent guidance, not a change to controller simulation or proof that menu
 
 For a bounded investigation, the [neutral menu-close probe](examples/menu-close-probe/README.md)
 records native callbacks, root/child menus, input states and following ticks in an
-owned single fixture. Its proposed cases and pending acceptance are separate from
-this routine close workflow.
+owned single fixture. Its repeatable cases, observed native limitation and
+conditional explicit-controller case are separate from this routine close workflow.
 
 ### Input behavior
 
