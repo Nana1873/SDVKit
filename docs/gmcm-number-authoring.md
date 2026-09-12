@@ -688,6 +688,20 @@ function Invoke-OwnedViewportScreenshot(
         throw
     }
 }
+
+function Get-OwnedMenuRevision([string] $EvidenceName) {
+    $menuJson = & $sdvkit project review menu --topology single --json
+    $menuExit = $LASTEXITCODE
+    $menuJson | Set-Content -LiteralPath (Join-Path $evidence "$EvidenceName.json")
+    $current = ($menuJson -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($menuExit -ne 0 -or
+        $current.state -cne 'ready' -or
+        -not $current.menuOpen -or
+        [string]::IsNullOrWhiteSpace([string]$current.uiRevision)) {
+        throw 'A fresh owned GMCM revision is unavailable.'
+    }
+    return [string]$current.uiRevision
+}
 ```
 
 Require exact target/provider versions and hashes, a loaded target and GMCM
@@ -728,18 +742,18 @@ Set `$sliderMinX`, `$sliderMidX`, `$sliderMaxX`, and `$sliderY` from this exact
 screenshot. The displayed default at `$sliderMinX` proves the lower endpoint.
 Calculate one point strictly between the observed middle and maximum tick
 centers; this is an intentionally off-step pointer position, not a fourth valid
-value. Move to the middle step, the off-step point, and finally the right
-endpoint, capturing each result:
+value. Use a fresh menu revision for every action. The atomic click and drag
+commands prepare the process-local cursor through one neutral game update before
+pressing; the drag additionally holds its endpoint for one update before release.
+Move to the middle step with one click, drag from that known middle handle to the
+off-step point, and finally click the right endpoint, capturing each result:
 
 ```powershell
+$middleRevision = Get-OwnedMenuRevision 'menu-before-middle'
 Invoke-OwnedReviewCommand `
-    "sdvkit input cursor $sliderMidX $sliderY" `
-    "Set the virtual review cursor to UI coordinate $sliderMidX,$sliderY;" `
-    'middle-cursor'
-Invoke-OwnedReviewCommand `
-    'sdvkit input press MouseLeft' `
+    "sdvkit input click $sliderMidX $sliderY MouseLeft 1 $middleRevision" `
     'The complete chord was observed and released.' `
-    'middle-press'
+    'middle-click'
 [void](Invoke-OwnedViewportScreenshot 'gmcm-number-middle' 'screenshot-middle')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'middle-unsaved-state'
@@ -750,26 +764,20 @@ $sliderOffStepX = [int][Math]::Round(
 if ($sliderOffStepX -le $sliderMidX -or $sliderOffStepX -ge $sliderMaxX) {
     throw 'The observed slider is too narrow for a distinct off-step click.'
 }
+$offStepRevision = Get-OwnedMenuRevision 'menu-before-off-step'
 Invoke-OwnedReviewCommand `
-    "sdvkit input cursor $sliderOffStepX $sliderY" `
-    "Set the virtual review cursor to UI coordinate $sliderOffStepX,$sliderY;" `
-    'off-step-cursor'
-Invoke-OwnedReviewCommand `
-    'sdvkit input press MouseLeft' `
+    "sdvkit input drag $sliderMidX $sliderY $sliderOffStepX $sliderY MouseLeft 6 $offStepRevision" `
     'The complete chord was observed and released.' `
-    'off-step-press'
+    'off-step-drag'
 [void](Invoke-OwnedViewportScreenshot 'gmcm-number-off-step' 'screenshot-off-step')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'off-step-unsaved-state'
 
+$maximumRevision = Get-OwnedMenuRevision 'menu-before-maximum'
 Invoke-OwnedReviewCommand `
-    "sdvkit input cursor $sliderMaxX $sliderY" `
-    "Set the virtual review cursor to UI coordinate $sliderMaxX,$sliderY;" `
-    'maximum-cursor'
-Invoke-OwnedReviewCommand `
-    'sdvkit input press MouseLeft' `
+    "sdvkit input click $sliderMaxX $sliderY MouseLeft 1 $maximumRevision" `
     'The complete chord was observed and released.' `
-    'maximum-press'
+    'maximum-click'
 [void](Invoke-OwnedViewportScreenshot `
     'gmcm-number-unsaved-max' `
     'screenshot-unsaved-maximum')
@@ -777,10 +785,10 @@ Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'maximum-unsaved-state'
 ```
 
-Require completed process-local cursor and press/release acknowledgements. The
+Require completed process-local click/drag release acknowledgements. The
 default, middle, and endpoint screenshots must show **Row 15**, **Row 17**, and
 **Row 19**. Inspect the off-step screenshot and record whether GMCM snapped that
-between-ticks click to Row 17 or Row 19; any Row 16, Row 18, out-of-range value,
+between-ticks drag to Row 17 or Row 19; any Row 16, Row 18, out-of-range value,
 or unreadable result fails this gate. At every unsaved position, the owned log
 must still report `ArrivalRow=15`, the staged config must still validate as 15,
 and runtime state must remain Farm 64,15. This separates pointer geometry and
@@ -820,14 +828,11 @@ function Wait-ArrivalRowFile(
     throw "Timed out waiting for ArrivalRow=$Expected. Last observer result: $lastObserverFailure"
 }
 
+$saveRevision = Get-OwnedMenuRevision 'menu-before-save'
 Invoke-OwnedReviewCommand `
-    "sdvkit input cursor $saveX $saveY" `
-    "Set the virtual review cursor to UI coordinate $saveX,$saveY;" `
-    'save-cursor'
-Invoke-OwnedReviewCommand `
-    'sdvkit input press MouseLeft' `
+    "sdvkit input click $saveX $saveY MouseLeft 1 $saveRevision" `
     'The complete chord was observed and released.' `
-    'save-press'
+    'save-click'
 try {
     [void](Wait-ArrivalRowFile $stagedConfig 19 10)
 }
