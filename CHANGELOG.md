@@ -8,9 +8,15 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - A bounded neutral menu-close probe separates keyboard, mouse and controller callbacks, input release, parent menus and following menu transitions in an owned disposable review. Its live acceptance remains pending in #217.
 
+## [0.10.1] - 2026-09-12
+
 ### Fixed
 
 - Background MCP review input now tolerates foreground switches between unrelated applications while retaining exact review, player, and process checks. Acknowledgements flag observed external foreground changes; transitions involving either review process and uncertain completion still fail closed without replay.
+
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a fresh directory and restart MCP clients against it.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/216) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.10.0...v0.10.1)
 
 ## [0.10.0] - 2026-09-09
 
