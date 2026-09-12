@@ -4,9 +4,15 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-12
+
 ### Fixed
 
 - Background MCP review input now tolerates foreground switches between unrelated applications while retaining exact review, player, and process checks. Acknowledgements flag observed external foreground changes; transitions involving either review process and uncertain completion still fail closed without replay.
+
+Upgrade: stop active reviews and finish their required reset before upgrading. Extract this version into a fresh directory and restart MCP clients against it.
+
+[Release acceptance](https://github.com/Nana1873/SDVKit/issues/216) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.10.0...v0.10.1)
 
 ## [0.10.0] - 2026-09-09
 
