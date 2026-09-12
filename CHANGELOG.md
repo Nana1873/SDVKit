@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Fixed
+
+- Content Patcher diagnosis and refresh now inspect an already-published correlated log response before declaring its bounded wait expired.
+
 ## [0.10.1] - 2026-09-12
 
 ### Fixed
