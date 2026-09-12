@@ -108,6 +108,17 @@ internal static partial class ReviewVirtualCursor
     private static MouseState ReadHardwareMouse() => State(
         ReviewNativeMousePublication.ReadHardware(() => Values(Mouse.GetState())));
 
+    private static void BeforeHardwareMouseCapture(out IDisposable __state) =>
+        __state = ReviewNativeMousePublication.BeginHardwareRead();
+
+    private static Exception? AfterHardwareMouseCapture(IDisposable? __state, Exception? __exception)
+    {
+        // UpdateStates caches Mouse.GetState for the NEXT TrueUpdate. Caching the
+        // published virtual press here would turn its release into another Held sample.
+        __state?.Dispose();
+        return __exception;
+    }
+
     private static ReviewMouseButtons MouseButton(SButton button) => button switch
     {
         SButton.MouseLeft => ReviewMouseButtons.Left,

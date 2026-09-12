@@ -14,6 +14,47 @@ public sealed class ReviewNativeMousePublicationTests
         return (mouse, new(mouse));
     }
 
+    [Fact]
+    public void NativeHardwareCacheCannotFeedPublishedPressIntoNextTrueUpdateRelease()
+    {
+        var (_, publication) = Create();
+        var pressed = new ReviewMouseValues(20, 30, 240, ReviewMouseButtons.Left);
+        publication.Publish(pressed, ReviewMouseButtons.Left);
+        Assert.Equal(pressed, publication.Read(Hardware, 0, true, out _));
+
+        ReviewMouseValues nextHardwareCache;
+        // The production UpdateStates prefix/finalizer owns this same bypass.
+        using (ReviewNativeMousePublication.BeginHardwareRead())
+            nextHardwareCache = publication.Read(Hardware, 0, true, out _);
+        Assert.Equal(Hardware, nextHardwareCache);
+        Assert.Equal(pressed, publication.Read(Hardware, 0, true, out _));
+
+        publication.BeginInputSample();
+        // Next TrueUpdate has no queued override and must derive Released, not Held.
+        publication.Publish(nextHardwareCache with { X = 20, Y = 30 }, ReviewMouseButtons.None);
+        Assert.Equal(ReviewMouseButtons.None, publication.Read(Hardware, 0, true, out _).Buttons);
+    }
+
+    [Fact]
+    public void NestedHardwareCaptureFailureRestoresOuterBypassThenModVisibility()
+    {
+        var (_, publication) = Create();
+        publication.Publish(new(20, 30, 240, ReviewMouseButtons.Left), ReviewMouseButtons.Left);
+        using (ReviewNativeMousePublication.BeginHardwareRead())
+        {
+            Assert.Throws<InvalidOperationException>((Action)(() =>
+            {
+                IDisposable capture = ReviewNativeMousePublication.BeginHardwareRead();
+                try { throw new InvalidOperationException("UpdateStates failed."); }
+                finally { capture.Dispose(); capture.Dispose(); }
+            }));
+            Assert.True(ReviewNativeMousePublication.ReadingHardware);
+            Assert.Equal(Hardware, publication.Read(Hardware, 0, true, out _));
+        }
+        Assert.False(ReviewNativeMousePublication.ReadingHardware);
+        Assert.Equal(ReviewMouseButtons.Left, publication.Read(Hardware, 0, true, out _).Buttons);
+    }
+
     [Theory]
     [InlineData((int)ReviewMouseButtons.Left)]
     [InlineData((int)ReviewMouseButtons.Middle)]

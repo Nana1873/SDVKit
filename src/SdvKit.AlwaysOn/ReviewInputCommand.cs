@@ -390,11 +390,23 @@ internal readonly record struct ReviewMouseValues(int X, int Y, int Wheel, Revie
 internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse)
 {
     [ThreadStatic] private static int _hardwareReads;
+    private sealed class HardwareRead : IDisposable
+    {
+        private bool _disposed;
+        public HardwareRead() => _hardwareReads++;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _hardwareReads--;
+        }
+    }
     private ReviewMouseValues? _sample;
     private ReviewMouseButtons _buttons;
     private bool _invalidated;
     public bool Published { get; private set; }
     public static bool ReadingHardware => _hardwareReads != 0;
+    public static IDisposable BeginHardwareRead() => new HardwareRead();
 
     public void BeginInputSample()
     {
@@ -421,9 +433,7 @@ internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse
 
     public static ReviewMouseValues ReadHardware(Func<ReviewMouseValues> read)
     {
-        _hardwareReads++;
-        try { return read(); }
-        finally { _hardwareReads--; }
+        using (BeginHardwareRead()) return read();
     }
 
     public ReviewMouseValues Read(ReviewMouseValues hardware, ReviewMouseButtons suppressed,
@@ -1128,6 +1138,7 @@ internal static partial class ReviewVirtualCursor
             MethodInfo? gameUpdate = smapiGame is null ? null : AccessTools.DeclaredMethod(
                 smapiGame, "Update", [typeof(Microsoft.Xna.Framework.GameTime)]);
             MethodInfo? rawMouse = AccessTools.DeclaredMethod(typeof(Mouse), nameof(Mouse.GetState), Type.EmptyTypes);
+            MethodInfo? hardwareCapture = AccessTools.DeclaredMethod(typeof(InputState), nameof(InputState.UpdateStates), Type.EmptyTypes);
             FieldInfo? pressedKeys = smapiInput is null ? null : AccessTools.Field(smapiInput, "CustomPressedKeys");
             PropertyInfo? buttonStates = smapiInput is null ? null : AccessTools.Property(smapiInput, "ButtonStates");
             MethodInfo? inputPrefix = AccessTools.Method(typeof(ReviewVirtualCursor), nameof(BeforeInputUpdate));
@@ -1150,6 +1161,7 @@ internal static partial class ReviewVirtualCursor
                 || trueUpdate.GetParameters().Length != 0
                 || gameUpdate is null || gameUpdate.IsStatic || gameUpdate.ReturnType != typeof(void)
                 || rawMouse is null || !rawMouse.IsStatic || rawMouse.ReturnType != typeof(MouseState)
+                || hardwareCapture is null || hardwareCapture.IsStatic || hardwareCapture.ReturnType != typeof(void)
                 || pressedKeys?.FieldType != typeof(HashSet<SButton>)
                 || pressedKeys.IsStatic
                 || buttonStates?.PropertyType != typeof(IDictionary<SButton, SButtonState>)
@@ -1179,6 +1191,9 @@ internal static partial class ReviewVirtualCursor
                     finalizer: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterPlayerUpdate)));
                 harmony.Patch(rawMouse,
                     postfix: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterGetNativeMouseState)));
+                harmony.Patch(hardwareCapture,
+                    prefix: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(BeforeHardwareMouseCapture)),
+                    finalizer: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterHardwareMouseCapture)));
                 harmony.Patch(
                     isActiveNoOverlay,
                     postfix: new HarmonyMethod(activePostfix));
