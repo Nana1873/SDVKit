@@ -747,7 +747,7 @@ coordinates when scaling differs.
 
 Set `$sliderMinX`, `$sliderMidX`, `$sliderMaxX`, and `$sliderY` from this exact
 screenshot. Here `$sliderMaxX` is the visible maximum tick or knob center, not
-the slider element's right boundary. The displayed default at `$sliderMinX`
+the maximum drag endpoint. The displayed default at `$sliderMinX`
 proves the lower endpoint. Calculate one point strictly between the observed
 middle and maximum tick centers; this is an intentionally off-step pointer
 position, not a fourth valid value. Use a fresh menu revision for every action.
@@ -784,16 +784,17 @@ Invoke-OwnedReviewCommand `
 
 Inspect the off-step screenshot before continuing. Set `$sliderCurrentX` to the
 center of the handle in that exact screenshot. Set `$sliderMaxDragX` to the
-slider element's true right boundary, strictly to the right of the visible
-maximum tick or knob center. Do not use the maximum knob center itself as the
-drag endpoint. In the selected GMCM 1.16.0 provider, `Slider<int>` calculates
+point at or just beyond the visible right edge of the track, strictly to the
+right of the maximum tick or knob center and still inside the owned viewport.
+Do not use the maximum knob center itself as the drag endpoint. In the selected
+GMCM 1.16.0 provider, `Slider<int>` calculates
 `(mouseX - Position.X) / Width`, truncates the scaled integer range, and only
 then clamps it. A center click can therefore remain below the maximum. The
 accepted native-input proof for this same provider and 1280 x 720 viewport used
 **830,140 -> 1010,140** and visibly changed Row 17 to Row 19; remeasure after
 any viewport or scaling change.
 
-Drag from the currently observed handle to that true right boundary and capture
+Drag from the currently observed handle to that measured endpoint and capture
 the unsaved maximum:
 
 ```powershell
