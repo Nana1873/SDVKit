@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- Follow one reproducible GMCM 1.16.0 integer-slider recipe through explicit bounds and steps, native unsaved/saved UI behavior, configuration reconciliation, exact export/restaging, and the same packaged DLL's numeric effect after restart.
 - A bounded neutral menu-close probe and live guidance document a native controller limitation: one synthetic B can close a root menu and then open inventory on disconnect. One Escape or observed close-button click closed the tested menus; child closes retained their parent. Runtime input is unchanged.
 
 ### Fixed
