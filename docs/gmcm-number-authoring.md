@@ -447,7 +447,8 @@ foreach ($file in @('manifest.json', 'GmcmArrivalRow.dll', 'config.json')) {
 }
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $status.labRoot $status.persistentSavesPath))
-$smapiLog = Join-Path (Split-Path $persistentSaves -Parent) 'ErrorLogs/SMAPI-latest.txt'
+$stardewData = Split-Path $persistentSaves -Parent
+$smapiLog = Join-Path $stardewData 'ErrorLogs/SMAPI-latest.txt'
 if (-not (Test-Path -LiteralPath $smapiLog -PathType Leaf)) {
     throw 'The exact owned SMAPI log is unavailable.'
 }
@@ -511,6 +512,61 @@ function Invoke-OwnedReviewCommand(
         throw
     }
 }
+
+function Invoke-OwnedViewportScreenshot(
+    [string] $Label,
+    [string] $EvidenceName
+) {
+    $screenshot = Join-Path $stardewData "Screenshots/SDVKit-$Label.png"
+    if (Test-Path -LiteralPath $screenshot) {
+        throw "Choose a fresh screenshot label: $Label"
+    }
+    $offset = (Get-Item -LiteralPath $smapiLog).Length
+    $requestedAt = [DateTime]::UtcNow
+    $commandJson = & $sdvkit project review command `
+        "sdvkit screenshot viewport $Label" --topology single --json
+    $commandExit = $LASTEXITCODE
+    $commandJson | Set-Content -LiteralPath (
+        Join-Path $evidence "$EvidenceName-command.json")
+    $delivery = ($commandJson -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($commandExit -ne 0 -or $delivery.commandWritten -ne $true) {
+        throw "Screenshot command delivery failed: $Label"
+    }
+    try {
+        $expectedSuccess = "Created isolated viewport screenshot '$screenshot'."
+        Wait-OwnedLogText $smapiLog $offset $expectedSuccess 10 |
+            Set-Content -LiteralPath (Join-Path $evidence "$EvidenceName-log-tail.txt")
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        $lastObserverFailure = $null
+        do {
+            try {
+                $file = Get-Item -LiteralPath $screenshot -Force
+                if ($file.PSIsContainer -or
+                    ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                    $file.Length -lt 1 -or
+                    $file.LastWriteTimeUtc -lt $requestedAt.AddSeconds(-2)) {
+                    throw 'The screenshot file is empty, linked, stale, or not regular.'
+                }
+                [pscustomobject]@{
+                    path = $file.FullName
+                    bytes = $file.Length
+                    sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+                    lastWriteTimeUtc = $file.LastWriteTimeUtc.ToString('O')
+                } | ConvertTo-Json | Set-Content -LiteralPath (
+                    Join-Path $evidence "$EvidenceName-file.json")
+                return $file.FullName
+            }
+            catch { $lastObserverFailure = $_.Exception.Message }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $deadline)
+        throw "Screenshot file confirmation timed out: $lastObserverFailure"
+    }
+    catch {
+        $_ | Out-String | Set-Content -LiteralPath (
+            Join-Path $evidence "$EvidenceName-observer-failure.txt")
+        throw
+    }
+}
 ```
 
 Require exact target/provider versions and hashes, a loaded target and GMCM
@@ -537,10 +593,7 @@ $menu = ($menuJson -join [Environment]::NewLine) | ConvertFrom-Json
 if ($menuExit -ne 0 -or $menu.state -cne 'ready' -or -not $menu.menuOpen) {
     throw 'The expected GMCM page did not open.'
 }
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-default' `
-    'gmcm-number-default' `
-    'screenshot-default'
+[void](Invoke-OwnedViewportScreenshot 'gmcm-number-default' 'screenshot-default')
 ```
 
 Inspect the fresh owned screenshot. Require this mod's GMCM page, one **Arrival
@@ -564,12 +617,9 @@ Invoke-OwnedReviewCommand `
     'middle-cursor'
 Invoke-OwnedReviewCommand `
     'sdvkit input press MouseLeft' `
-    "Pressed review input 'MouseLeft' for one input tick." `
+    'The complete chord was observed and released.' `
     'middle-press'
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-middle' `
-    'gmcm-number-middle' `
-    'screenshot-middle'
+[void](Invoke-OwnedViewportScreenshot 'gmcm-number-middle' 'screenshot-middle')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'middle-unsaved-state'
 
@@ -585,12 +635,9 @@ Invoke-OwnedReviewCommand `
     'off-step-cursor'
 Invoke-OwnedReviewCommand `
     'sdvkit input press MouseLeft' `
-    "Pressed review input 'MouseLeft' for one input tick." `
+    'The complete chord was observed and released.' `
     'off-step-press'
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-off-step' `
-    'gmcm-number-off-step' `
-    'screenshot-off-step'
+[void](Invoke-OwnedViewportScreenshot 'gmcm-number-off-step' 'screenshot-off-step')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'off-step-unsaved-state'
 
@@ -600,12 +647,11 @@ Invoke-OwnedReviewCommand `
     'maximum-cursor'
 Invoke-OwnedReviewCommand `
     'sdvkit input press MouseLeft' `
-    "Pressed review input 'MouseLeft' for one input tick." `
+    'The complete chord was observed and released.' `
     'maximum-press'
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-unsaved-max' `
+[void](Invoke-OwnedViewportScreenshot `
     'gmcm-number-unsaved-max' `
-    'screenshot-unsaved-maximum'
+    'screenshot-unsaved-maximum')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'maximum-unsaved-state'
 ```
@@ -659,7 +705,7 @@ Invoke-OwnedReviewCommand `
     'save-cursor'
 Invoke-OwnedReviewCommand `
     'sdvkit input press MouseLeft' `
-    "Pressed review input 'MouseLeft' for one input tick." `
+    'The complete chord was observed and released.' `
     'save-press'
 try {
     [void](Wait-ArrivalRowFile $stagedConfig 19 10)
@@ -727,10 +773,7 @@ $savedMenu = ($savedMenuJson -join [Environment]::NewLine) | ConvertFrom-Json
 if ($savedMenuExit -ne 0 -or $savedMenu.state -cne 'ready' -or -not $savedMenu.menuOpen) {
     throw 'Menu inspection did not resume after reconciliation.'
 }
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-saved' `
-    'gmcm-number-saved' `
-    'screenshot-saved'
+[void](Invoke-OwnedViewportScreenshot 'gmcm-number-saved' 'screenshot-saved')
 ```
 
 ## Stop, restage, and prove row 19 in a new process
@@ -782,16 +825,14 @@ if ($configuredStatusExit -ne 0 -or $configuredStatus.state -cne 'running') {
 }
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $configuredStatus.labRoot $configuredStatus.persistentSavesPath))
-$smapiLog = Join-Path (Split-Path $persistentSaves -Parent) 'ErrorLogs/SMAPI-latest.txt'
+$stardewData = Split-Path $persistentSaves -Parent
+$smapiLog = Join-Path $stardewData 'ErrorLogs/SMAPI-latest.txt'
 if (-not (Test-Path -LiteralPath $smapiLog -PathType Leaf)) {
     throw 'The restarted owned SMAPI log is unavailable.'
 }
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=19' 'restart-state'
-Invoke-OwnedReviewCommand `
-    'sdvkit screenshot viewport gmcm-number-restart' `
-    'gmcm-number-restart' `
-    'screenshot-restart'
+[void](Invoke-OwnedViewportScreenshot 'gmcm-number-restart' 'screenshot-restart')
 ```
 
 Require a new launch and process identity, the same exact DLL/manifest and
