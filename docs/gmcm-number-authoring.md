@@ -746,14 +746,15 @@ location and value. Translate the observed screenshot point to screen-local UI
 coordinates when scaling differs.
 
 Set `$sliderMinX`, `$sliderMidX`, `$sliderMaxX`, and `$sliderY` from this exact
-screenshot. The displayed default at `$sliderMinX` proves the lower endpoint.
-Calculate one point strictly between the observed middle and maximum tick
-centers; this is an intentionally off-step pointer position, not a fourth valid
-value. Use a fresh menu revision for every action. The atomic click and drag
-commands prepare the process-local cursor through one neutral game update before
-pressing; the drag additionally holds its endpoint for one update before release.
-Move to the middle step with one click, drag from that known middle handle to the
-off-step point, and finally click the right endpoint, capturing each result:
+screenshot. Here `$sliderMaxX` is the visible maximum tick or knob center, not
+the slider element's right boundary. The displayed default at `$sliderMinX`
+proves the lower endpoint. Calculate one point strictly between the observed
+middle and maximum tick centers; this is an intentionally off-step pointer
+position, not a fourth valid value. Use a fresh menu revision for every action.
+The atomic click and drag commands prepare the process-local cursor through one
+neutral game update before pressing; the drag additionally holds its endpoint
+for one update before release. Move to the middle step with one click, then drag
+from that known middle handle to the off-step point, capturing each result:
 
 ```powershell
 $middleRevision = Get-OwnedMenuRevision 'menu-before-middle'
@@ -779,12 +780,35 @@ Invoke-OwnedReviewCommand `
 [void](Invoke-OwnedViewportScreenshot 'gmcm-number-off-step' 'screenshot-off-step')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'off-step-unsaved-state'
+```
+
+Inspect the off-step screenshot before continuing. Set `$sliderCurrentX` to the
+center of the handle in that exact screenshot. Set `$sliderMaxDragX` to the
+slider element's true right boundary, strictly to the right of the visible
+maximum tick or knob center. Do not use the maximum knob center itself as the
+drag endpoint. In the selected GMCM 1.16.0 provider, `Slider<int>` calculates
+`(mouseX - Position.X) / Width`, truncates the scaled integer range, and only
+then clamps it. A center click can therefore remain below the maximum. The
+accepted native-input proof for this same provider and 1280 x 720 viewport used
+**830,140 -> 1010,140** and visibly changed Row 17 to Row 19; remeasure after
+any viewport or scaling change.
+
+Drag from the currently observed handle to that true right boundary and capture
+the unsaved maximum:
+
+```powershell
+if ($sliderCurrentX -lt $sliderMinX -or $sliderCurrentX -gt $sliderMaxX) {
+    throw 'The observed current handle is outside the slider tick range.'
+}
+if ($sliderMaxDragX -le $sliderMaxX) {
+    throw 'The maximum drag endpoint must be right of the visible maximum tick center.'
+}
 
 $maximumRevision = Get-OwnedMenuRevision 'menu-before-maximum'
 Invoke-OwnedReviewCommand `
-    "sdvkit input click $sliderMaxX $sliderY MouseLeft 1 $maximumRevision" `
+    "sdvkit input drag $sliderCurrentX $sliderY $sliderMaxDragX $sliderY MouseLeft 6 $maximumRevision" `
     'The complete chord was observed and released.' `
-    'maximum-click'
+    'maximum-drag'
 [void](Invoke-OwnedViewportScreenshot `
     'gmcm-number-unsaved-max' `
     'screenshot-unsaved-maximum')
