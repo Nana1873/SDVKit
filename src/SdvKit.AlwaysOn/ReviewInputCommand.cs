@@ -440,7 +440,7 @@ internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse
         bool current, out bool overlap)
     {
         overlap = false;
-        if (ReadingHardware || !Published || !current) return hardware;
+        if (ReadingHardware || !current) return hardware;
         if (_sample is { } sample)
         {
             overlap = ((hardware.Buttons | suppressed) & _buttons) != 0;
@@ -449,8 +449,9 @@ internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse
                     sample.Wheel, hardware.Buttons | (sample.Buttons & _buttons));
             Invalidate();
         }
-        // Clear/cancel drops owned coordinates/buttons immediately, retaining only
-        // the consumed wheel origin. Reading cannot consume or cancel another notch.
+        // Unpublished and invalidated samples expose no owned coordinates/buttons.
+        // Keep only the consumed wheel origin, including cancellation before Publish.
+        // Reading cannot consume or cancel another notch.
         return hardware with { Wheel = mouse.ApplyWheelOrigin(hardware.Wheel) };
     }
 }

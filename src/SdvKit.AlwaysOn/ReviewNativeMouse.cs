@@ -146,7 +146,7 @@ internal static partial class ReviewVirtualCursor
     private static void AfterGetNativeMouseState(ref MouseState __result)
     {
         if (ReviewNativeMousePublication.ReadingHardware
-            || _nativeMouseUpdate is not { Publication.Published: true } update) return;
+            || _nativeMouseUpdate is not { } update) return;
         lock (Sync)
         {
             if (!IsCurrent(update))

@@ -98,6 +98,69 @@ public sealed class ReviewNativeMousePublicationTests
         Assert.Equal(Hardware with { Wheel = 480 }, publication.Read(Hardware with { Wheel = 360 }, 0, true, out _));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CancellationRetainsConsumedWheelAcrossUnpublishedReleaseAndNextSample(bool publishBeforeCancel)
+    {
+        var hardware = Hardware with { Wheel = 0 };
+        var mouse = new ReviewVirtualMouseState();
+        mouse.Set(20, 30);
+        mouse.Apply(8, 9, 0, 100, 100, 1, out _);
+        for (int notch = 0; notch < 2; notch++)
+        {
+            Assert.True(mouse.TryQueueWheel(-120));
+            mouse.Apply(8, 9, 0, 100, 100, 1, out _);
+        }
+        var pressed = new ReviewMouseValues(20, 30, -240, ReviewMouseButtons.Left);
+        var publication = new ReviewNativeMousePublication(mouse);
+        publication.Publish(pressed, ReviewMouseButtons.Left);
+        Assert.Equal(-240, publication.Read(hardware, 0, true, out _).Wheel);
+
+        // A new release update has no confirmed publication yet. Cancellation
+        // must not expose physical wheel 0 for one frame and then restore -240.
+        publication.BeginInputSample();
+        if (publishBeforeCancel) publication.Publish(pressed, ReviewMouseButtons.Left);
+        Assert.True(mouse.TryQueueWheel(120));
+        publication.Invalidate();
+        mouse.CancelWheel();
+        publication.Publish(pressed, ReviewMouseButtons.Left); // cannot revive canceled fields.
+        var neutral = hardware with { Wheel = -240 };
+        Assert.Equal(neutral, publication.Read(hardware, 0, true, out bool overlap));
+        Assert.False(overlap);
+        Assert.Equal(2, mouse.WheelSample);
+        Assert.False(mouse.HasPendingWheel);
+        mouse.Clear();
+
+        publication = new(mouse); // the next owned player update gets a fresh cache.
+        publication.BeginInputSample();
+        Assert.Equal(neutral, publication.Read(hardware, 0, true, out _));
+        publication.Publish(neutral, ReviewMouseButtons.None);
+        Assert.Equal(neutral, publication.Read(hardware, 0, true, out _));
+        Assert.Equal(2, mouse.WheelSample);
+    }
+
+    [Fact]
+    public void UnpublishedNeutralOriginDoesNotConsumePendingWheelOrOverrideHardwareAndForeignReads()
+    {
+        var (mouse, publication) = Create();
+        Assert.True(mouse.TryQueueWheel(-120));
+        mouse.Apply(8, 9, 240, 100, 100, 1, out _);
+        Assert.True(mouse.TryQueueWheel(120));
+        publication.BeginInputSample();
+        var hardware = Hardware with { Buttons = ReviewMouseButtons.Right };
+        var neutral = hardware with { Wheel = 120 };
+        Assert.Equal(neutral, publication.Read(hardware, 0, true, out _));
+        Assert.Equal(Hardware with { Wheel = 240, Buttons = ReviewMouseButtons.Right },
+            publication.Read(hardware with { Wheel = 360 }, 0, true, out _));
+        using (ReviewNativeMousePublication.BeginHardwareRead())
+            Assert.Equal(hardware, publication.Read(hardware, 0, true, out _));
+        Assert.Equal(hardware, publication.Read(hardware, 0, false, out _));
+        Assert.Equal(neutral, publication.Read(hardware, 0, true, out _));
+        Assert.True(mouse.HasPendingWheel);
+        Assert.Equal(1, mouse.WheelSample);
+    }
+
     [Fact]
     public void CancellationBeforeConfirmationCannotRepublishAndNextReleaseDropsOwnedButtons()
     {
