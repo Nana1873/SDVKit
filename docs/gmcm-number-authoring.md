@@ -18,13 +18,13 @@ inspection coverage.
 
 | Concern | Bounded contract |
 | --- | --- |
-| Provider | Explicitly selected `spacechase0.GenericModConfigMenu` **1.16.0**, with recorded manifest/DLL hashes. Other versions do not register this recipe's menu integration. |
+| Provider | Explicitly selected `spacechase0.GenericModConfigMenu` **1.16.0**, copied below this lab and initialized with that version's canonical default config bytes before review, with recorded manifest/DLL/config hashes. Other versions do not register this recipe's menu integration. |
 | Environment | Single review, Stardew Valley **1.6.15**, SMAPI **4.5.2**, owned disposable standard-farm fixture. No multiplayer acceptance. |
-| Option | Original mod `ExampleAuthor.GmcmArrivalRow`; integer `ArrivalRow`; default/minimum **15**, maximum **19**, interval **2**, values **15/17/19**, `fieldId` **ArrivalRow**. |
-| Registration | `Register` during `GameLaunched`, `titleScreenOnly: false`; the verified integer `AddNumberOption` overload supplies explicit `min`, `max`, `interval`, formatter and field identity. |
+| Option | Original mod `ExampleAuthor.GmcmArrivalRow`; integer `ArrivalRow`; domain default/minimum **15**, maximum **19**, interval **2**, values **15/17/19**, `fieldId` **ArrivalRow**. The native GMCM control uses step indexes **0/1/2** with interval **1** and formats/maps them to those rows. |
+| Registration | `Register` during `GameLaunched`, `titleScreenOnly: false`; the verified integer `AddNumberOption` overload supplies explicit step-index `min`, `max`, `interval`, formatter, conversion adapter and field identity. |
 | Effect | `DayStarted` warps the local farmer to Farm tile **64,ArrivalRow** in a ready single-player world. Default and saved acceptance positions are 64,15 and 64,19. Saving does not warp again in the current day. |
 | Save | The real GMCM **Save** action commits the cached integer through the setter and invokes `Helper.WriteConfig`. Slider movement alone changes neither the in-memory config nor `config.json`. |
-| Reconcile | The packaged default `config.json` participates in the original staging identity. After Save, the next owned inspection/input request rejects drift; explicit `config-reconcile` accepts only this selected root config and retains its export without restarting. |
+| Reconcile | The packaged default `config.json` participates in the original staging identity. Its canonical SMAPI serialization is established before packaging, not adopted through an early reconciliation. After the user's real Save, the next owned inspection/input request rejects drift; explicit `config-reconcile` accepts only this selected root config and retains its export without restarting. |
 | Restart | Stop removes staging. A fresh extraction of the unchanged ZIP receives only the reconciled config export, then a new process loads row 19 from the same DLL. |
 | Unsupported | Float sliders, text/custom controls, other provider versions, foreign configs, automatic dependency installation, implicit config retention and multiplayer are outside this recipe. |
 
@@ -60,10 +60,23 @@ $evidence = Join-Path $lab '.sdvkit/gmcm-number-evidence'
 foreach ($fresh in @($mod, $providerDestination, $evidence)) {
     if (Test-Path -LiteralPath $fresh) { throw "Choose a fresh path: $fresh" }
 }
-New-Item -ItemType Directory -Force -Path (Split-Path $providerDestination) | Out-Null
-Copy-Item -LiteralPath $selectedGmcm -Destination $providerDestination -Recurse
-$provider = (Resolve-Path -LiteralPath $providerDestination).Path
 New-Item -ItemType Directory -Path $evidence | Out-Null
+$selectedProviderRoot = (Resolve-Path -LiteralPath $selectedGmcm).Path
+$selectedProviderConfig = Join-Path $selectedProviderRoot 'config.json'
+[ordered]@{
+    sourceRoot = $selectedProviderRoot
+    manifestSha256 = (Get-FileHash -LiteralPath (
+        Join-Path $selectedProviderRoot 'manifest.json') -Algorithm SHA256).Hash
+    dllSha256 = (Get-FileHash -LiteralPath (
+        Join-Path $selectedProviderRoot 'GenericModConfigMenu.dll') -Algorithm SHA256).Hash
+    configPresent = Test-Path -LiteralPath $selectedProviderConfig -PathType Leaf
+    configSha256 = if (Test-Path -LiteralPath $selectedProviderConfig -PathType Leaf) {
+        (Get-FileHash -LiteralPath $selectedProviderConfig -Algorithm SHA256).Hash
+    } else { $null }
+} | ConvertTo-Json | Set-Content (Join-Path $evidence 'selected-provider-source.json')
+New-Item -ItemType Directory -Force -Path (Split-Path $providerDestination) | Out-Null
+Copy-Item -LiteralPath $selectedProviderRoot -Destination $providerDestination -Recurse
+$provider = (Resolve-Path -LiteralPath $providerDestination).Path
 
 $providerManifest = Get-Content -LiteralPath (Join-Path $provider 'manifest.json') -Raw |
     ConvertFrom-Json
@@ -124,6 +137,37 @@ the live slot. Identify its current owner and wait for a verified handoff. Recor
 protected Saves, normal/mod-manager-owned Mods, and preferences through the
 [existing fingerprint procedure](cp-authoring.md#prerequisites-and-one-lab-directory).
 Copy an independent provider directory into the lab; never alter its original.
+GMCM 1.16.0 creates its own default `config.json` during the first launch when
+that file is absent. That write is legitimate provider behavior, but it changes
+the selected companion after the ownership marker is established. Prepare the
+owned copy with those exact defaults before staging instead. This is not an
+ownership bypass, and it is not the mod user's Save action:
+
+```powershell
+$providerConfig = Join-Path $provider 'config.json'
+$utf8NoBom = [Text.UTF8Encoding]::new($false)
+[IO.File]::WriteAllText(
+    $providerConfig,
+    "{`r`n  `"OpenMenuKey`": `"None`",`r`n  `"ScrollSpeed`": 120`r`n}",
+    $utf8NoBom)
+$providerDefaults = Get-Content -LiteralPath $providerConfig -Raw | ConvertFrom-Json
+if ($providerDefaults.OpenMenuKey -cne 'None' -or
+    [int]$providerDefaults.ScrollSpeed -ne 120 -or
+    (Get-Item -LiteralPath $providerConfig).Length -ne 52) {
+    throw 'The owned GMCM 1.16.0 config is not the exact canonical default.'
+}
+Get-FileHash -LiteralPath @(
+    (Join-Path $provider 'manifest.json'),
+    (Join-Path $provider 'GenericModConfigMenu.dll'),
+    $providerConfig) -Algorithm SHA256 |
+    ConvertTo-Json | Set-Content (Join-Path $evidence 'prepared-provider-hashes.json')
+```
+
+The selected provider source remains untouched. Record whether it originally
+contained a config and its hash if present, then record the owned copy's new
+config hash separately. A different provider version or different intended
+provider settings require a new bounded acceptance; do not silently normalize
+them into this 1.16.0 baseline.
 
 Add this optional dependency to the generated manifest:
 
@@ -144,6 +188,40 @@ Add a checked-in default config to the example:
   "ArrivalRow": 15
 }
 ```
+
+Create that file with the serialization SMAPI 4.5.2 preserves after
+`ReadConfig`: UTF-8 without BOM, CRLF inside the object, and no final newline.
+Validate the numeric target before accepting these bytes as the packaging
+baseline:
+
+```powershell
+$sourceConfig = Join-Path $mod 'config.json'
+$utf8NoBom = [Text.UTF8Encoding]::new($false)
+[IO.File]::WriteAllText(
+    $sourceConfig,
+    "{`r`n  `"ArrivalRow`": 15`r`n}",
+    $utf8NoBom)
+$sourceDocument = [Text.Json.JsonDocument]::Parse([IO.File]::ReadAllText($sourceConfig))
+try {
+    $sourceFields = @($sourceDocument.RootElement.EnumerateObject())
+    [int]$sourceValue = 0
+    if ($sourceFields.Count -ne 1 -or
+        $sourceFields[0].Name -cne 'ArrivalRow' -or
+        -not $sourceFields[0].Value.TryGetInt32([ref]$sourceValue) -or
+        $sourceValue -ne 15 -or
+        (Get-Item -LiteralPath $sourceConfig).Length -ne 24) {
+        throw 'The source config is not the exact canonical numeric default.'
+    }
+}
+finally { $sourceDocument.Dispose() }
+Get-FileHash -LiteralPath $sourceConfig -Algorithm SHA256 |
+    ConvertTo-Json | Set-Content (Join-Path $evidence 'source-config-baseline-hash.json')
+```
+
+Do not obtain this baseline by launching the review and reconciling startup
+drift. If a startup normalization was used to discover the bytes, preserve that
+launch as a failed candidate, stop it cleanly, update the source and package,
+and declare the rebuilt ZIP as the new candidate before functional input.
 
 The reconciliation operation requires the selected root config to exist when
 staging begins. Make that explicit in the project file so the package contains
@@ -176,6 +254,10 @@ public sealed class ModEntry : Mod
     public const int MaximumArrivalRow = 19;
     public const int ArrivalRowInterval = 2;
     public const int DefaultArrivalRow = 15;
+
+    private const int MinimumSliderStep = 0;
+    private const int MaximumSliderStep = 2;
+    private const int SliderStepInterval = 1;
 
     private const string GmcmId = "spacechase0.GenericModConfigMenu";
     private const string SupportedGmcmVersion = "1.16.0";
@@ -213,6 +295,17 @@ public sealed class ModEntry : Mod
         return value >= MinimumArrivalRow &&
             value <= MaximumArrivalRow &&
             (value - MinimumArrivalRow) % ArrivalRowInterval == 0;
+    }
+
+    private static int ArrivalRowToSliderStep(int arrivalRow)
+    {
+        return (arrivalRow - MinimumArrivalRow) / ArrivalRowInterval;
+    }
+
+    private static int SliderStepToArrivalRow(int sliderStep)
+    {
+        int boundedStep = Math.Clamp(sliderStep, MinimumSliderStep, MaximumSliderStep);
+        return MinimumArrivalRow + boundedStep * ArrivalRowInterval;
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -253,14 +346,14 @@ public sealed class ModEntry : Mod
             titleScreenOnly: false);
         api.AddNumberOption(
             manifest: ModManifest,
-            getValue: () => Config.ArrivalRow,
-            setValue: value => Config.ArrivalRow = value,
+            getValue: () => ArrivalRowToSliderStep(Config.ArrivalRow),
+            setValue: step => Config.ArrivalRow = SliderStepToArrivalRow(step),
             name: () => "Arrival row",
             tooltip: () => "Warp the local player to Farm tile 64 on this row when a day starts.",
-            min: MinimumArrivalRow,
-            max: MaximumArrivalRow,
-            interval: ArrivalRowInterval,
-            formatValue: value => $"Row {value}",
+            min: MinimumSliderStep,
+            max: MaximumSliderStep,
+            interval: SliderStepInterval,
+            formatValue: step => $"Row {SliderStepToArrivalRow(step)}",
             fieldId: "ArrivalRow");
     }
 
@@ -316,8 +409,13 @@ public interface IGenericModConfigMenuApi
 ```
 
 The runtime check deliberately fails closed to the default for a direct invalid
-integer config. It does not rewrite the invalid file. The recipe additionally
-validates all explicit config transfers before staging them.
+integer config. It does not rewrite the invalid file. The native integer slider
+uses 0/1/2 because GMCM 1.16.0 adjusts integers to absolute multiples of its
+`interval`; passing the domain's odd minimum 15 with interval 2 would expose
+invalid even values 16 and 18. The thin conversion keeps the native widget and
+its boundary behavior while mapping its three valid positions to rows 15/17/19.
+The recipe additionally validates all explicit config transfers before staging
+them.
 
 ## Validate, build, and retain the exact package
 
@@ -404,7 +502,9 @@ Get-FileHash -LiteralPath @(
 Require the ZIP to contain only the original mod's DLL, manifest and default
 config. It must not contain GMCM, game binaries, saves or evidence. Review this
 extracted ready artifact directly, without `--project`, so the exact retained
-DLL is staged. Build/package success does not prove its runtime effect.
+DLL is staged. Record the ZIP hash and the extracted DLL, manifest, and canonical
+24-byte config hashes as the final candidate identities. Build/package success
+does not prove its runtime effect.
 
 ## Prove default and unsaved slider steps
 
@@ -445,6 +545,27 @@ foreach ($file in @('manifest.json', 'GmcmArrivalRow.dll', 'config.json')) {
         throw "Default staged bytes differ: $file"
     }
 }
+$companions = @($status.artifacts | Where-Object {
+    $_.role -ceq 'companion' -and $_.uniqueId -ceq 'spacechase0.GenericModConfigMenu'
+})
+if ($companions.Count -ne 1) { throw 'The exact selected GMCM companion is unavailable.' }
+$stagedProvider = [IO.Path]::GetFullPath(
+    (Join-Path $status.labRoot $companions[0].stagingPath))
+foreach ($file in @('manifest.json', 'GenericModConfigMenu.dll', 'config.json')) {
+    if ((Get-FileHash (Join-Path $provider $file) -Algorithm SHA256).Hash -ne
+        (Get-FileHash (Join-Path $stagedProvider $file) -Algorithm SHA256).Hash) {
+        throw "Prepared provider staged bytes differ: $file"
+    }
+}
+$stagingIdentities = [ordered]@{
+    targetBuildIdentity = $targets[0].buildIdentity
+    targetConfigSha256 = (Get-FileHash $stagedConfig -Algorithm SHA256).Hash
+    providerBuildIdentity = $companions[0].buildIdentity
+    providerConfigSha256 = (
+        Get-FileHash (Join-Path $stagedProvider 'config.json') -Algorithm SHA256).Hash
+}
+$stagingIdentities | ConvertTo-Json |
+    Set-Content (Join-Path $evidence 'default-staging-identities.json')
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $status.labRoot $status.persistentSavesPath))
 $stardewData = Split-Path $persistentSaves -Parent
