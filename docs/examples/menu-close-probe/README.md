@@ -177,6 +177,12 @@ local stress skips; exact tested-head CI passed all 2,215 with zero skips plus
 packaging/portable checks. A local orchestration-script parse error occurred before
 any case input; it was corrected before use and is not a product failure.
 
+The final example project explicitly declares C# 12, implicit usings and nullable
+support instead of relying on the enclosing SDVKit checkout. An offline build
+with repository-wide MSBuild properties/targets disabled passed with zero
+warnings/errors. `ModEntry.cs` remains byte-identical to the live-tested source;
+that standalone build is not a replacement for the frozen live package above.
+
 All 18 native MCP sessions exited on EOF with exit code 0, no forced termination
 and no stderr. Final exact stop/reset removed target staging, mailbox payloads
 and the registered fixture mount; both owned locks were free, all three work-save
