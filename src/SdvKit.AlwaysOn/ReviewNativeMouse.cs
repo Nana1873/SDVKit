@@ -12,14 +12,10 @@ internal static partial class ReviewVirtualCursor
         public ReviewMouseSampleScope Scope { get; } = scope;
         public ScreenInputState Owner { get; } = owner;
         public object? PreviousStates { get; set; }
-        public MouseState? Sample { get; set; }
-        public SButton[] Buttons { get; set; } = [];
-        public bool Invalidated { get; set; }
-        public bool Published { get; set; }
+        public ReviewNativeMousePublication Publication { get; } = new(owner.Mouse);
     }
 
     [ThreadStatic] private static NativeMouseUpdate? _nativeMouseUpdate;
-    [ThreadStatic] private static int _hardwareMouseReads;
 
     private static bool NativeMouseContextReady => Context.IsWorldReady && !Game1.exitToTitle
         && Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") == "1";
@@ -70,10 +66,7 @@ internal static partial class ReviewVirtualCursor
     private static void BeginNativeMouseInputSample(InputState input)
     {
         if (_nativeMouseUpdate is not { } update) return;
-        update.Sample = null;
-        update.Buttons = [];
-        update.Invalidated = false;
-        update.Published = false;
+        update.Publication.BeginInputSample();
         update.PreviousStates = IsCurrent(update) && ReferenceEquals(input, update.Owner.InputOwner)
             ? _buttonStates!.GetValue(input) : null;
     }
@@ -82,7 +75,7 @@ internal static partial class ReviewVirtualCursor
     {
         lock (Sync)
         {
-            if (_nativeMouseUpdate is not { } update || update.Invalidated || !succeeded
+            if (_nativeMouseUpdate is not { } update || !succeeded
                 || update.PreviousStates is null || !IsCurrent(update)
                 || !ReferenceEquals(input, update.Owner.InputOwner)
                 || ReferenceEquals(update.PreviousStates, _buttonStates!.GetValue(input))
@@ -94,10 +87,10 @@ internal static partial class ReviewVirtualCursor
                 // SInputState's override returns its completed MouseState builder result.
                 // Never call Mouse.Apply here: its cumulative wheel was already consumed once.
                 MouseState confirmed = input.GetMouseState();
-                update.Buttons = sample?.Owned.Injected == true && Screen.Value.Pending is { } chord
-                    ? chord.Buttons.Where(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())).ToArray() : [];
-                update.Sample = confirmed;
-                update.Published = true;
+                ReviewMouseButtons buttons = ReviewMouseButtons.None;
+                if (sample?.Owned.Injected == true && Screen.Value.Pending is { } chord)
+                    foreach (SButton button in chord.Buttons) buttons |= MouseButton(button);
+                update.Publication.Publish(Values(confirmed), buttons);
             }
             catch (Exception)
             {
@@ -109,21 +102,40 @@ internal static partial class ReviewVirtualCursor
     private static void InvalidateNativeMouseSample()
     {
         if (_nativeMouseUpdate is not { } update || !ReferenceEquals(update.Owner, Screen.Value)) return;
-        update.Sample = null;
-        update.Buttons = [];
-        update.Invalidated = true;
+        update.Publication.Invalidate();
     }
 
-    private static MouseState ReadHardwareMouse()
+    private static MouseState ReadHardwareMouse() => State(
+        ReviewNativeMousePublication.ReadHardware(() => Values(Mouse.GetState())));
+
+    private static ReviewMouseButtons MouseButton(SButton button) => button switch
     {
-        _hardwareMouseReads++;
-        try { return Mouse.GetState(); }
-        finally { _hardwareMouseReads--; }
+        SButton.MouseLeft => ReviewMouseButtons.Left,
+        SButton.MouseMiddle => ReviewMouseButtons.Middle,
+        SButton.MouseRight => ReviewMouseButtons.Right,
+        SButton.MouseX1 => ReviewMouseButtons.X1,
+        SButton.MouseX2 => ReviewMouseButtons.X2,
+        _ => ReviewMouseButtons.None
+    };
+
+    private static ReviewMouseValues Values(MouseState state) => new(state.X, state.Y, state.ScrollWheelValue,
+        (state.LeftButton == ButtonState.Pressed ? ReviewMouseButtons.Left : ReviewMouseButtons.None)
+        | (state.MiddleButton == ButtonState.Pressed ? ReviewMouseButtons.Middle : ReviewMouseButtons.None)
+        | (state.RightButton == ButtonState.Pressed ? ReviewMouseButtons.Right : ReviewMouseButtons.None)
+        | (state.XButton1 == ButtonState.Pressed ? ReviewMouseButtons.X1 : ReviewMouseButtons.None)
+        | (state.XButton2 == ButtonState.Pressed ? ReviewMouseButtons.X2 : ReviewMouseButtons.None));
+
+    private static MouseState State(ReviewMouseValues value)
+    {
+        ButtonState Button(ReviewMouseButtons button) => (value.Buttons & button) != 0 ? ButtonState.Pressed : ButtonState.Released;
+        return new(value.X, value.Y, value.Wheel, Button(ReviewMouseButtons.Left), Button(ReviewMouseButtons.Middle),
+            Button(ReviewMouseButtons.Right), Button(ReviewMouseButtons.X1), Button(ReviewMouseButtons.X2));
     }
 
     private static void AfterGetNativeMouseState(ref MouseState __result)
     {
-        if (_hardwareMouseReads != 0 || _nativeMouseUpdate is not { Published: true } update) return;
+        if (ReviewNativeMousePublication.ReadingHardware
+            || _nativeMouseUpdate is not { Publication.Published: true } update) return;
         lock (Sync)
         {
             if (!IsCurrent(update))
@@ -131,42 +143,13 @@ internal static partial class ReviewVirtualCursor
                 update.Scope.Dispose();
                 return;
             }
-            MouseState hardware = __result;
-            MouseState Neutral() => new(hardware.X, hardware.Y,
-                update.Owner.Mouse.ApplyWheelOrigin(hardware.ScrollWheelValue),
-                hardware.LeftButton, hardware.MiddleButton, hardware.RightButton,
-                hardware.XButton1, hardware.XButton2);
-            if (update.Sample is not { } sample)
-            {
-                // Clear/cancel removes every owned field immediately. The already consumed
-                // cumulative origin survives, just as it does in InputState.GetMouseState.
-                __result = Neutral();
-                return;
-            }
-            ButtonState Value(MouseState state, SButton button) => button switch
-            {
-                SButton.MouseLeft => state.LeftButton,
-                SButton.MouseMiddle => state.MiddleButton,
-                SButton.MouseRight => state.RightButton,
-                SButton.MouseX1 => state.XButton1,
-                SButton.MouseX2 => state.XButton2,
-                _ => ButtonState.Released
-            };
-            if (update.Buttons.Any(b => Value(hardware, b) == ButtonState.Pressed
-                || Screen.Value.Pending?.Helper.IsSuppressed(b) == true))
-            {
+            ReviewMouseButtons suppressed = ReviewMouseButtons.None;
+            if (Screen.Value.Pending is { } chord)
+                foreach (SButton button in chord.Buttons)
+                    if (chord.Helper.IsSuppressed(button)) suppressed |= MouseButton(button);
+            __result = State(update.Publication.Read(Values(__result), suppressed, true, out bool overlap));
+            if (overlap)
                 CancelChord("A physical or external input overlaps a native mouse sample.");
-                __result = Neutral();
-                return;
-            }
-            ButtonState Merge(SButton button) => update.Buttons.Contains(button)
-                ? Value(sample, button) : Value(hardware, button);
-            __result = new MouseState(
-                Screen.Value.Mouse.IsSet ? sample.X : hardware.X,
-                Screen.Value.Mouse.IsSet ? sample.Y : hardware.Y,
-                sample.ScrollWheelValue,
-                Merge(SButton.MouseLeft), Merge(SButton.MouseMiddle), Merge(SButton.MouseRight),
-                Merge(SButton.MouseX1), Merge(SButton.MouseX2));
         }
     }
 }

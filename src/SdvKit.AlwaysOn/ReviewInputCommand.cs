@@ -381,6 +381,70 @@ internal sealed class ReviewMouseSampleScope(
     public void Dispose() => _closed = true;
 }
 
+[Flags]
+internal enum ReviewMouseButtons { None = 0, Left = 1, Middle = 2, Right = 4, X1 = 8, X2 = 16 }
+
+internal readonly record struct ReviewMouseValues(int X, int Y, int Wheel, ReviewMouseButtons Buttons);
+
+// A cache of the completed SMAPI sample, not another chord/gesture progression.
+internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse)
+{
+    [ThreadStatic] private static int _hardwareReads;
+    private ReviewMouseValues? _sample;
+    private ReviewMouseButtons _buttons;
+    private bool _invalidated;
+    public bool Published { get; private set; }
+    public static bool ReadingHardware => _hardwareReads != 0;
+
+    public void BeginInputSample()
+    {
+        _sample = null;
+        _buttons = ReviewMouseButtons.None;
+        _invalidated = false;
+        Published = false;
+    }
+
+    public void Publish(ReviewMouseValues sample, ReviewMouseButtons ownedButtons)
+    {
+        if (_invalidated) return;
+        _sample = sample;
+        _buttons = ownedButtons;
+        Published = true;
+    }
+
+    public void Invalidate()
+    {
+        _sample = null;
+        _buttons = ReviewMouseButtons.None;
+        _invalidated = true;
+    }
+
+    public static ReviewMouseValues ReadHardware(Func<ReviewMouseValues> read)
+    {
+        _hardwareReads++;
+        try { return read(); }
+        finally { _hardwareReads--; }
+    }
+
+    public ReviewMouseValues Read(ReviewMouseValues hardware, ReviewMouseButtons suppressed,
+        bool current, out bool overlap)
+    {
+        overlap = false;
+        if (ReadingHardware || !Published || !current) return hardware;
+        if (_sample is { } sample)
+        {
+            overlap = ((hardware.Buttons | suppressed) & _buttons) != 0;
+            if (!overlap)
+                return new(mouse.IsSet ? sample.X : hardware.X, mouse.IsSet ? sample.Y : hardware.Y,
+                    sample.Wheel, hardware.Buttons | (sample.Buttons & _buttons));
+            Invalidate();
+        }
+        // Clear/cancel drops owned coordinates/buttons immediately, retaining only
+        // the consumed wheel origin. Reading cannot consume or cancel another notch.
+        return hardware with { Wheel = mouse.ApplyWheelOrigin(hardware.Wheel) };
+    }
+}
+
 // Counts completed input samples, never wall-clock or public game-loop events.
 internal sealed class ReviewChordProgress
 {
