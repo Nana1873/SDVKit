@@ -7,6 +7,12 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Added
 
 - Follow one reproducible GMCM 1.16.0 integer-slider recipe through explicit bounds and steps, native unsaved/saved UI behavior, configuration reconciliation, exact export/restaging, and the same packaged DLL's numeric effect after restart.
+- A bounded neutral menu-close probe and live guidance document a native controller limitation: one synthetic B can close a root menu and then open inventory on disconnect. One Escape or observed close-button click closed the tested menus; child closes retained their parent. Runtime input is unchanged.
+
+### Fixed
+
+- Owned review mouse input also reaches native mod controls which read the parameterless XNA mouse getter during their player update, including GMCM numeric sliders. Click and drag prepare their cursor through a completed game update before pressing; drag also holds its endpoint for one update so controls using previous coordinates can reach it. Physical input remains available for overlap checks; cancellation removes owned coordinates/buttons and preserves the consumed wheel origin even before the next sample is published.
+- Content Patcher diagnosis and refresh now inspect an already-published correlated log response before declaring its bounded wait expired.
 
 ## [0.10.1] - 2026-09-12
 

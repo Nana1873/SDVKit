@@ -333,15 +333,18 @@ exposes nine typed action tools:
 
 - `stardew_input_click { "x": 200, "y": 100, "button": "MouseLeft", "count": 2, "uiRevision": "<from stardew_menu_get>", "modifiers": ["LeftShift"] }`
   clicks an active menu once or twice, with a separate complete press/release
-  edge for each click. A target may interpret two clicks differently from a
+  edge for each click. Click and drag first complete a cursor-only game update
+  and revalidate the menu before pressing, so previous-coordinate hit tests see
+  the requested position. A target may interpret two clicks differently from a
   native double-click feature.
 - `stardew_input_scroll { "x": 200, "y": 100, "notches": -3, "uiRevision": "<from stardew_menu_get>" }`
   scrolls an active menu at the coordinate by 1-20 notches, one verified notch
   per input update. Positive counts scroll up; negative counts scroll down.
 - `stardew_input_drag { "x": 200, "y": 100, "endX": 200, "endY": 300, "button": "MouseLeft", "durationTicks": 30, "uiRevision": "<from stardew_menu_get>" }`
   presses at the start, moves along one linear path for 1-120 movement updates,
-  then releases at the exact endpoint. Duration excludes the initial press and
-  final release: duration 1 still contains one genuine held movement update.
+  holds the exact endpoint for one additional update, then releases. Duration
+  excludes cursor preparation, the initial press, endpoint holding and final
+  release: duration 1 still contains one genuine held movement update.
   Click and drag accept MouseLeft, MouseRight, MouseMiddle, MouseX1 or MouseX2,
   and an optional list of up to six distinct Left/Right Shift, Control or Alt
   modifiers. Omitted or null modifiers mean an empty list.

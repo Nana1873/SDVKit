@@ -5,6 +5,28 @@ namespace SdvKit.Tests;
 public sealed class ReviewVirtualMouseStateTests
 {
     [Fact]
+    public void NativeNeutralReadsCannotConsumePendingNotchOrReverseConsumedOffsetAfterClear()
+    {
+        var state = new ReviewVirtualMouseState();
+        state.Apply(8, 9, 240, 100, 100, 1, out _);
+        state.Set(20, 30);
+        Assert.True(state.TryQueueWheel(120));
+        for (int i = 0; i < 5; i++) Assert.Equal(240, state.ApplyWheelOrigin(240));
+        Assert.True(state.HasPendingWheel);
+        Assert.Equal(0, state.WheelSample);
+        Assert.Equal(360, state.Apply(8, 9, 240, 100, 100, 1, out _).Wheel);
+        Assert.True(state.TryQueueWheel(-120));
+        state.Clear();
+        Assert.False(state.IsSet);
+        Assert.True(state.HasWheelOffset);
+        for (int i = 0; i < 5; i++) Assert.Equal(360, state.ApplyWheelOrigin(240));
+        Assert.Equal(1, state.WheelSample);
+        Assert.Equal(480, state.ApplyWheelOrigin(360));
+        Assert.Equal(360, state.ApplyWheelOrigin(int.MaxValue));
+        Assert.Equal(0, new ReviewVirtualMouseState().ApplyWheelOrigin(0));
+    }
+
+    [Fact]
     public void CursorUsesScaledClampedCoordinatesAndClearRestoresPhysicalCoordinates()
     {
         var state = new ReviewVirtualMouseState();

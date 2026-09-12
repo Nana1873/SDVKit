@@ -1,0 +1,10 @@
+{
+  "Name": "SDVKit Menu Close Probe",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Bounded neutral menu-close observations in an owned disposable single review.",
+  "UniqueID": "SDVKit.MenuCloseProbe",
+  "EntryDll": "MenuCloseProbe.dll",
+  "MinimumApiVersion": "4.5.2",
+  "UpdateKeys": []
+}

@@ -72,6 +72,33 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         Assert.DoesNotContain(listedAgain.Tools, t => t.Name == ProjectReviewMcpCpTools.RefreshToolName);
     }
 
+    [Fact]
+    public void CpDiagnosisObservesSynchronousResponseWrittenBeforeSlowDispatchReturns()
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        var commands = new List<string>();
+        var inner = CpMcpSender(temporary, review, commands);
+        bool delayed = false;
+        LiveLabCommandResult Send(string command)
+        {
+            LiveLabCommandResult result = inner(command);
+            if (!delayed)
+            {
+                delayed = true;
+                Thread.Sleep(25);
+            }
+            return result;
+        }
+
+        CpDiagnosisResult result = ProjectReviewCpDiagnosis.Execute(review.Reader, "Test.Pack",
+            ProjectReviewCpDiagnosis.ProviderId, "Data/Objects", null, Send,
+            timeout: TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal("ready:<none>", $"{result.State}:{result.ErrorCode ?? "<none>"}");
+        Assert.Equal(3, commands.Count);
+    }
+
     [Theory]
     [InlineData("success")]
     [InlineData("uncertain")]
@@ -107,8 +134,17 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         Assert.True(Json.Schema.JsonSchema.FromText(refresh.OutputSchema!.Value.GetRawText()).Evaluate(JsonNode.Parse(json.GetRawText())).IsValid);
         Assert.Equal(1, invocations);
         Assert.Equal(mode == "copyFailure" ? 0 : 1, commands.Count(c => c.StartsWith("patch reload", StringComparison.Ordinal)));
+        string? expectedError = mode switch
+        {
+            "success" => null,
+            "uncertain" => "cpCommandDeliveryFailed",
+            "timeout" => "cpResponseTimedOut",
+            "copyFailure" => "cpRefreshRollbackIncomplete",
+            _ => "cpRefreshObservationIncomplete",
+        };
+        Assert.Equal((mode == "success" ? "observed" : "incomplete", expectedError),
+            (json.GetProperty("state").GetString(), json.GetProperty("errorCode").GetString()));
         Assert.Equal(mode != "success", result.IsError);
-        Assert.Equal(mode == "success" ? "observed" : "incomplete", json.GetProperty("state").GetString());
         Assert.Equal(mode != "success", json.GetProperty("refresh").GetProperty("requiresRestart").GetBoolean());
         Assert.False(json.GetProperty("process").TryGetProperty("executablePath", out _));
         if (mode == "success") Assert.Equal("after", json.GetProperty("observation").GetProperty("record").GetProperty("DisplayName").GetString());

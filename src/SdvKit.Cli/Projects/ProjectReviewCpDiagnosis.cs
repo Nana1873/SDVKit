@@ -133,12 +133,15 @@ internal static class ProjectReviewCpDiagnosis
                     }
                     bool WaitFor(Func<string, bool> predicate)
                     {
-                        while (timer.Elapsed < (timeout ?? Timeout))
+                        TimeSpan budget = timeout ?? Timeout;
+                        while (true)
                         {
                             if (predicate(Delta())) return true;
-                            Thread.Sleep(50);
+                            TimeSpan remaining = budget - timer.Elapsed;
+                            if (remaining <= TimeSpan.Zero) return false;
+                            Thread.Sleep(remaining < TimeSpan.FromMilliseconds(50)
+                                ? remaining : TimeSpan.FromMilliseconds(50));
                         }
-                        return false;
                     }
                     if (!Dispatch($"patch parse \"{begin}\" \"{selectedId}\" compact", false)) return Failure("cpMarkerDeliveryFailed");
                     if (!WaitFor(t => Entries(t, provider.Manifest.Name).Any(e => e.Text.Trim() == Marker(begin)))) return Failure("cpResponseTimedOut");
