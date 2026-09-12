@@ -8,6 +8,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - A bounded neutral menu-close probe and live guidance document a native controller limitation: one synthetic B can close a root menu and then open inventory on disconnect. One Escape or observed close-button click closed the tested menus; child closes retained their parent. Runtime input is unchanged.
 
+### Fixed
+
+- Content Patcher diagnosis and refresh now inspect an already-published correlated log response before declaring its bounded wait expired.
+
 ## [0.10.1] - 2026-09-12
 
 ### Fixed
