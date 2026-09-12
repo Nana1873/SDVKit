@@ -18,6 +18,7 @@ inspection coverage.
 
 | Concern | Bounded contract |
 | --- | --- |
+| SDVKit | Use a package built from merged [PR #226](https://github.com/Nana1873/SDVKit/pull/226), commit [`3d255b6`](https://github.com/Nana1873/SDVKit/commit/3d255b6d3e2ca1eea32d96019977918de3aa1604), or a verified descendant. Record the exact package hash and source commit. |
 | Provider | Explicitly selected `spacechase0.GenericModConfigMenu` **1.16.0**, copied below this lab and initialized with that version's canonical default config bytes before review, with recorded manifest/DLL/config hashes. Other versions do not register this recipe's menu integration. |
 | Environment | Single review, Stardew Valley **1.6.15**, SMAPI **4.5.2**, owned disposable standard-farm fixture. No multiplayer acceptance. |
 | Option | Original mod `ExampleAuthor.GmcmArrivalRow`; integer `ArrivalRow`; domain default/minimum **15**, maximum **19**, interval **2**, values **15/17/19**, `fieldId` **ArrivalRow**. The native GMCM control uses step indexes **0/1/2** with interval **1** and formats/maps them to those rows. |
@@ -27,6 +28,12 @@ inspection coverage.
 | Reconcile | The packaged default `config.json` participates in the original staging identity. Its canonical SMAPI serialization is established before packaging, not adopted through an early reconciliation. After the user's real Save, the next owned inspection/input request rejects drift; explicit `config-reconcile` accepts only this selected root config and retains its export without restarting. |
 | Restart | Stop removes staging. A fresh extraction of the unchanged ZIP receives only the reconciled config export, then a new process loads row 19 from the same DLL. |
 | Unsupported | Float sliders, text/custom controls, other provider versions, foreign configs, automatic dependency installation, implicit config retention and multiplayer are outside this recipe. |
+
+The currently published v0.10.1 archive predates the native raw-mouse adapter.
+Its version string alone is therefore insufficient for this workflow. The exact
+CLI package must contain #226's process-local XNA mouse publication, neutral
+click/drag preparation and held drag endpoint behavior; verify that through its
+recorded commit/artifact identity instead of assuming support from `0.10.1`.
 
 Use the [official GMCM download](https://www.nexusmods.com/stardewvalley/mods/5098?tab=files)
 to obtain the selected provider. Keep an explicitly selected independent copy
