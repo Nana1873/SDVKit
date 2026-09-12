@@ -211,6 +211,11 @@ For routine autonomous menu tests, prefer keyboard or process-local mouse input.
 
 This is agent guidance, not a change to controller simulation or proof that menu-close regressions are fixed.
 
+For a bounded investigation, the [neutral menu-close probe](examples/menu-close-probe/README.md)
+records native callbacks, root/child menus, input states and following ticks in an
+owned single fixture. Its proposed cases and pending acceptance are separate from
+this routine close workflow.
+
 ### Input behavior
 
 The adapter supplies one mouse snapshot before SMAPI derives helper state and input events. SMAPI retains ownership of button transitions and event dispatch. UI coordinates are scaled to raw screen pixels; SMAPI's cursor properties use its normal zoom/world-coordinate conversion.
