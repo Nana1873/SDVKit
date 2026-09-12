@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- Follow one reproducible GMCM 1.16.0 integer-slider recipe through explicit bounds and steps, native unsaved/saved UI behavior, configuration reconciliation, exact export/restaging, and the same packaged DLL's numeric effect after restart.
+
 ## [0.10.1] - 2026-09-12
 
 ### Fixed
