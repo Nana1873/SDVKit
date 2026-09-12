@@ -287,7 +287,14 @@ internal sealed class ReviewVirtualMouseState
     public int LastWheel => _lastWheel;
     public long WheelSample { get; private set; }
     public bool HasPendingWheel => _pendingWheel != 0;
+    public bool HasWheelOffset => _wheelOffset != 0;
     public void CancelWheel() => _pendingWheel = 0;
+
+    public int ApplyWheelOrigin(int physicalWheel)
+    {
+        long neutral = (long)physicalWheel + _wheelOffset;
+        return neutral is >= int.MinValue and <= int.MaxValue ? (int)neutral : _lastWheel;
+    }
 
     public void Set(int x, int y)
     {
@@ -332,9 +339,7 @@ internal sealed class ReviewVirtualMouseState
         }
         // An external counter jump may also make the consumed origin unrepresentable.
         // Retain the last output then; resetting the origin would replay an opposite delta.
-        int wheel = wheelRejected
-            ? neutral is >= int.MinValue and <= int.MaxValue ? (int)neutral : _lastWheel
-            : (int)requested;
+        int wheel = wheelRejected ? ApplyWheelOrigin(physicalWheel) : (int)requested;
         _lastWheel = wheel;
         if (_uiX is not int x || _uiY is not int y)
         {
@@ -358,6 +363,99 @@ internal sealed class ReviewVirtualMouseState
     }
 }
 
+// A synchronous player update owns publication, not the shorter input-builder call.
+// Reference identity matters: a replacement player/input on the same screen is not its owner.
+internal sealed class ReviewMouseSampleScope(
+    object game, object input, object player, int screen, string launch, string? role) : IDisposable
+{
+    private readonly int _thread = Environment.CurrentManagedThreadId;
+    private bool _closed;
+
+    public bool IsCurrent(object? currentGame, object? currentInput, object? currentPlayer,
+        int currentScreen, string? currentLaunch, string? currentRole, bool reviewActive) =>
+        !_closed && reviewActive && _thread == Environment.CurrentManagedThreadId
+        && ReferenceEquals(game, currentGame) && ReferenceEquals(input, currentInput)
+        && ReferenceEquals(player, currentPlayer) && screen == currentScreen
+        && !string.IsNullOrWhiteSpace(launch) && launch == currentLaunch && role == currentRole;
+
+    public void Dispose() => _closed = true;
+}
+
+[Flags]
+internal enum ReviewMouseButtons { None = 0, Left = 1, Middle = 2, Right = 4, X1 = 8, X2 = 16 }
+
+internal readonly record struct ReviewMouseValues(int X, int Y, int Wheel, ReviewMouseButtons Buttons);
+
+// A cache of the completed SMAPI sample, not another chord/gesture progression.
+internal sealed class ReviewNativeMousePublication(ReviewVirtualMouseState mouse)
+{
+    [ThreadStatic] private static int _hardwareReads;
+    private sealed class HardwareRead : IDisposable
+    {
+        private bool _disposed;
+        public HardwareRead() => _hardwareReads++;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _hardwareReads--;
+        }
+    }
+    private ReviewMouseValues? _sample;
+    private ReviewMouseButtons _buttons;
+    private bool _invalidated;
+    public bool Published { get; private set; }
+    public static bool ReadingHardware => _hardwareReads != 0;
+    public static IDisposable BeginHardwareRead() => new HardwareRead();
+
+    public void BeginInputSample()
+    {
+        _sample = null;
+        _buttons = ReviewMouseButtons.None;
+        _invalidated = false;
+        Published = false;
+    }
+
+    public void Publish(ReviewMouseValues sample, ReviewMouseButtons ownedButtons)
+    {
+        if (_invalidated) return;
+        _sample = sample;
+        _buttons = ownedButtons;
+        Published = true;
+    }
+
+    public void Invalidate()
+    {
+        _sample = null;
+        _buttons = ReviewMouseButtons.None;
+        _invalidated = true;
+    }
+
+    public static ReviewMouseValues ReadHardware(Func<ReviewMouseValues> read)
+    {
+        using (BeginHardwareRead()) return read();
+    }
+
+    public ReviewMouseValues Read(ReviewMouseValues hardware, ReviewMouseButtons suppressed,
+        bool current, out bool overlap)
+    {
+        overlap = false;
+        if (ReadingHardware || !current) return hardware;
+        if (_sample is { } sample)
+        {
+            overlap = ((hardware.Buttons | suppressed) & _buttons) != 0;
+            if (!overlap)
+                return new(mouse.IsSet ? sample.X : hardware.X, mouse.IsSet ? sample.Y : hardware.Y,
+                    sample.Wheel, hardware.Buttons | (sample.Buttons & _buttons));
+            Invalidate();
+        }
+        // Unpublished and invalidated samples expose no owned coordinates/buttons.
+        // Keep only the consumed wheel origin, including cancellation before Publish.
+        // Reading cannot consume or cancel another notch.
+        return hardware with { Wheel = mouse.ApplyWheelOrigin(hardware.Wheel) };
+    }
+}
+
 // Counts completed input samples, never wall-clock or public game-loop events.
 internal sealed class ReviewChordProgress
 {
@@ -369,7 +467,7 @@ internal sealed class ReviewChordProgress
         {
             ReviewInputContract.ClickAction => 1,
             ReviewInputContract.ScrollAction => Math.Abs(gesture.Notches!.Value),
-            ReviewInputContract.DragAction => gesture.DurationTicks!.Value + 1,
+            ReviewInputContract.DragAction => gesture.DurationTicks!.Value + 2,
             _ => duration,
         };
     }
@@ -378,17 +476,25 @@ internal sealed class ReviewChordProgress
     public int EdgeSamples { get; private set; }
     public bool MoreActions => Remaining > 0 || (!Canceled && Gesture?.Action == ReviewInputContract.ClickAction && CompletedSteps + 1 < Gesture.Count);
     public bool AwaitingGameUpdate { get; private set; }
+    public bool PreparingCursor => !Canceled && !_cursorPrepared
+        && Gesture?.Action is ReviewInputContract.ClickAction or ReviewInputContract.DragAction;
+    public bool AwaitingCursorUpdate => AwaitingGameUpdate && _samplePreparingCursor;
+    private bool _cursorPrepared;
+    private bool _samplePreparingCursor;
     private bool _sampleReleased;
     private bool _sampleSucceeded;
     private int _sampleTick;
     private int _failedInputSamples;
-    public void ObserveGestureSample(int tick, bool released, bool succeeded)
+    public void ObserveGestureSample(int tick, bool released, bool succeeded, bool preparingCursor = false)
     {
         if (Gesture is null || AwaitingGameUpdate) throw new InvalidOperationException("No gesture sample can be observed.");
+        if (succeeded && !released && PreparingCursor && !preparingCursor)
+            throw new InvalidOperationException("The cursor must complete a game update before button-down.");
         _sampleTick = tick;
         _sampleReleased = released;
         _sampleSucceeded = succeeded;
-        if (!released && succeeded) StartTick ??= tick;
+        _samplePreparingCursor = preparingCursor;
+        if (!released && succeeded && !preparingCursor) StartTick ??= tick;
         AwaitingGameUpdate = true;
     }
     public void ObserveFailedInputSample(int tick)
@@ -401,13 +507,20 @@ internal sealed class ReviewChordProgress
         if (!AwaitingGameUpdate) return false;
         Cancel();
         AwaitingGameUpdate = false;
-        return _sampleReleased;
+        return _sampleReleased && !_samplePreparingCursor;
     }
     public bool CompleteGameUpdate(out bool released)
     {
-        released = _sampleSucceeded && _sampleReleased;
+        released = _sampleSucceeded && _sampleReleased && !_samplePreparingCursor;
         if (!AwaitingGameUpdate) return false;
         AwaitingGameUpdate = false;
+        if (_samplePreparingCursor)
+        {
+            // Historical-coordinate consumers see this position on the next update.
+            // Preparation owns no button edge and cannot survive cancellation.
+            _cursorPrepared = _sampleSucceeded && !Canceled;
+            return false;
+        }
         if (!_sampleReleased)
         {
             if (_sampleSucceeded) Consumed(_sampleTick, Canceled);
@@ -428,12 +541,13 @@ internal sealed class ReviewChordProgress
     public void Cancel() { Canceled = true; Remaining = 0; }
     public void Consumed(int tick, bool canceledGestureSample = false)
     {
-        if (Finished || ((Canceled || Remaining == 0) && !(canceledGestureSample && Gesture is not null))) throw new InvalidOperationException("No input sample was requested.");
+        if (PreparingCursor || Finished || ((Canceled || Remaining == 0) && !(canceledGestureSample && Gesture is not null))) throw new InvalidOperationException("No input sample was requested.");
         StartTick ??= tick;
         EdgeSamples++;
         if (!Canceled) Remaining--;
         if (Gesture?.Action == ReviewInputContract.ScrollAction) CompletedSteps++;
-        if (Gesture?.Action == ReviewInputContract.DragAction) CompletedSteps = Math.Max(0, EdgeSamples - 1);
+        if (Gesture?.Action == ReviewInputContract.DragAction)
+            CompletedSteps = Math.Min(Gesture.DurationTicks!.Value, Math.Max(0, EdgeSamples - 1));
     }
     public void Released(int tick, bool observed = true)
     {
@@ -951,6 +1065,7 @@ internal static partial class ReviewVirtualCursor
     private sealed class ScreenInputState
     {
         public ReviewVirtualMouseState Mouse { get; set; } = new();
+        public ReviewMouseSampleScope? NativeMouseBinding { get; set; }
         public InputSample? ActiveSample { get; set; }
         public bool WheelFailureReported { get; set; }
         public InputState? InputOwner { get; set; }
@@ -980,6 +1095,8 @@ internal static partial class ReviewVirtualCursor
     }
     private sealed class InputSample
     {
+        public bool PreparingCursor { get; set; }
+        public (int X, int Y)? CursorPosition { get; set; }
         public object? PreviousStates { get; init; }
         public ReviewOwnedButtonSample Owned { get; } = new();
         public long WheelSample { get; set; }
@@ -1036,6 +1153,11 @@ internal static partial class ReviewVirtualCursor
                 nameof(AfterGetMouseState));
             Type? smapiInput = AccessTools.TypeByName("StardewModdingAPI.Framework.Input.SInputState");
             MethodInfo? trueUpdate = smapiInput is null ? null : AccessTools.Method(smapiInput, "TrueUpdate");
+            Type? smapiGame = AccessTools.TypeByName("StardewModdingAPI.Framework.SGame");
+            MethodInfo? gameUpdate = smapiGame is null ? null : AccessTools.DeclaredMethod(
+                smapiGame, "Update", [typeof(Microsoft.Xna.Framework.GameTime)]);
+            MethodInfo? rawMouse = AccessTools.DeclaredMethod(typeof(Mouse), nameof(Mouse.GetState), Type.EmptyTypes);
+            MethodInfo? hardwareCapture = AccessTools.DeclaredMethod(typeof(InputState), nameof(InputState.UpdateStates), Type.EmptyTypes);
             FieldInfo? pressedKeys = smapiInput is null ? null : AccessTools.Field(smapiInput, "CustomPressedKeys");
             PropertyInfo? buttonStates = smapiInput is null ? null : AccessTools.Property(smapiInput, "ButtonStates");
             MethodInfo? inputPrefix = AccessTools.Method(typeof(ReviewVirtualCursor), nameof(BeforeInputUpdate));
@@ -1056,6 +1178,9 @@ internal static partial class ReviewVirtualCursor
                 || trueUpdate.IsStatic
                 || trueUpdate.ReturnType != typeof(void)
                 || trueUpdate.GetParameters().Length != 0
+                || gameUpdate is null || gameUpdate.IsStatic || gameUpdate.ReturnType != typeof(void)
+                || rawMouse is null || !rawMouse.IsStatic || rawMouse.ReturnType != typeof(MouseState)
+                || hardwareCapture is null || hardwareCapture.IsStatic || hardwareCapture.ReturnType != typeof(void)
                 || pressedKeys?.FieldType != typeof(HashSet<SButton>)
                 || pressedKeys.IsStatic
                 || buttonStates?.PropertyType != typeof(IDictionary<SButton, SButtonState>)
@@ -1080,6 +1205,14 @@ internal static partial class ReviewVirtualCursor
                     trueUpdate,
                     prefix: new HarmonyMethod(inputPrefix),
                     finalizer: new HarmonyMethod(inputFinalizer));
+                harmony.Patch(gameUpdate,
+                    prefix: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(BeforePlayerUpdate)),
+                    finalizer: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterPlayerUpdate)));
+                harmony.Patch(rawMouse,
+                    postfix: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterGetNativeMouseState)));
+                harmony.Patch(hardwareCapture,
+                    prefix: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(BeforeHardwareMouseCapture)),
+                    finalizer: new HarmonyMethod(typeof(ReviewVirtualCursor), nameof(AfterHardwareMouseCapture)));
                 harmony.Patch(
                     isActiveNoOverlay,
                     postfix: new HarmonyMethod(activePostfix));
@@ -1114,6 +1247,7 @@ internal static partial class ReviewVirtualCursor
 
             EnsureInputOwner();
             Screen.Value.Mouse.Set(uiX, uiY);
+            BindNativeMouse();
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
@@ -1125,6 +1259,7 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
+            InvalidateNativeMouseSample();
             FinishText("The review input was cleared before completion.");
             CancelChord("The review input was cleared before completion.");
             if (Screen.Value.Pending?.Progress.Gesture is null) Screen.Value.Mouse.Clear();
@@ -1172,6 +1307,8 @@ internal static partial class ReviewVirtualCursor
                 Viewport = currentViewport?.Invoke(),
                 ValidateDispatch = validateDispatch
             };
+            if (gesture is not null || buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())))
+                BindNativeMouse();
             AllowBackgroundInputForNextTicks();
             error = string.Empty;
             return true;
@@ -1204,6 +1341,7 @@ internal static partial class ReviewVirtualCursor
         lock (Sync)
         {
             EnsureInputOwner();
+            BeginNativeMouseInputSample(__instance);
             ObserveTextLifetime();
             if (Screen.Value.Text is not null) AllowBackgroundInputForNextTicks();
             if (!ReferenceEquals(__instance, Screen.Value.InputOwner) || Screen.Value.Pending is not PendingInput chord) return;
@@ -1250,7 +1388,7 @@ internal static partial class ReviewVirtualCursor
 
                 // Read-only physical samples: never move the cursor, change focus or suppress a key.
                 KeyboardState keyboard = Keyboard.GetState();
-                MouseState mouse = Mouse.GetState();
+                MouseState mouse = ReadHardwareMouse();
                 GamePadState controller = Game1.playerOneIndex >= Microsoft.Xna.Framework.PlayerIndex.One
                     ? GamePad.GetState(Game1.playerOneIndex) : default;
                 bool Physical(SButton b) => b.TryGetKeyboard(out Keys key) ? keyboard.IsKeyDown(key)
@@ -1277,6 +1415,11 @@ internal static partial class ReviewVirtualCursor
                 if (chord.Progress.Position is { } position)
                 {
                     Screen.Value.Mouse.Set(position.X, position.Y);
+                    if (chord.Progress.PreparingCursor)
+                    {
+                        __state.PreparingCursor = true;
+                        return;
+                    }
                     if (chord.Progress.Gesture?.Action == ReviewInputContract.ScrollAction)
                     {
                         __state.WheelBefore = __instance.GetMouseState().ScrollWheelValue;
@@ -1302,6 +1445,22 @@ internal static partial class ReviewVirtualCursor
     private static Exception? AfterInputUpdate(InputState __instance,
         HashSet<SButton> ___CustomPressedKeys, InputSample? __state, Exception? __exception)
     {
+        bool completed = false;
+        try
+        {
+            Exception? result = CompleteInputUpdate(__instance, ___CustomPressedKeys, __state, __exception);
+            completed = true;
+            return result;
+        }
+        finally
+        {
+            PublishNativeMouseSample(__instance, __state, completed && __exception is null);
+        }
+    }
+
+    private static Exception? CompleteInputUpdate(InputState __instance,
+        HashSet<SButton> ___CustomPressedKeys, InputSample? __state, Exception? __exception)
+    {
         lock (Sync)
         {
             Screen.Value.ActiveSample = null;
@@ -1320,7 +1479,7 @@ internal static partial class ReviewVirtualCursor
             }
             else if (chord.Progress.Gesture is not null)
             {
-                bool downSample = chord.Progress.Remaining > 0;
+                bool downSample = chord.Progress.Remaining > 0 && !__state.PreparingCursor;
                 bool valid = downSample
                     ? chord.Progress.Gesture.Action == ReviewInputContract.ScrollAction
                         ? __state.WheelDelta != 0 && Screen.Value.Mouse.WheelSample == __state.WheelSample + 1
@@ -1328,8 +1487,14 @@ internal static partial class ReviewVirtualCursor
                         : __state.Owned.Injected && chord.Buttons.All(b => chord.Helper.GetState(b)
                             == (chord.Progress.EdgeSamples == 0 ? SButtonState.Pressed : SButtonState.Held))
                     : chord.Buttons.All(b => !chord.Helper.IsDown(b));
+                if (__state.PreparingCursor)
+                {
+                    MouseState confirmed = __instance.GetMouseState();
+                    valid &= !__state.Owned.Injected && __state.CursorPosition is { } position
+                        && confirmed.X == position.X && confirmed.Y == position.Y;
+                }
                 if (!valid) CancelChord("The complete gesture input sample was not observed.");
-                chord.Progress.ObserveGestureSample(Game1.ticks, !downSample, valid);
+                chord.Progress.ObserveGestureSample(Game1.ticks, !downSample, valid, __state.PreparingCursor);
             }
             else if (__state.Owned.Injected)
             {
@@ -1355,12 +1520,16 @@ internal static partial class ReviewVirtualCursor
         {
             ObserveTextLifetime();
             if (Screen.Value.Pending is not PendingInput pending || !pending.Progress.AwaitingGameUpdate) return;
+            if (pending.Progress.AwaitingCursorUpdate
+                && (_nativeMouseUpdate is not { } update || !IsCurrent(update)))
+                CancelChord("The owned player update changed during cursor preparation.");
             if (pending.Progress.CompleteGameUpdate(out bool released)) FinishChord(released);
         }
     }
 
     private static void CancelChord(string failure)
     {
+        InvalidateNativeMouseSample();
         if (Screen.Value.Pending is not PendingInput chord) return;
         chord.Failure ??= failure;
         chord.Progress.Cancel();
@@ -1415,9 +1584,12 @@ internal static partial class ReviewVirtualCursor
     {
         if (!ReferenceEquals(Screen.Value.InputOwner, Game1.input))
         {
+            InvalidateNativeMouseSample();
             FinishText("The input owner changed before text delivery completed.");
             Screen.Value.InputOwner = Game1.input;
             Screen.Value.Mouse = new ReviewVirtualMouseState();
+            Screen.Value.NativeMouseBinding?.Dispose();
+            Screen.Value.NativeMouseBinding = null;
             CancelChord("The input owner changed before release was confirmed.");
             FinishChord(false);
             Screen.Value.WheelFailureReported = false;
@@ -1455,6 +1627,8 @@ internal static partial class ReviewVirtualCursor
             else
             {
                 Screen.Value.WheelFailureReported = false;
+                if (Screen.Value.ActiveSample is { PreparingCursor: true } activeSample)
+                    activeSample.CursorPosition = (sample.X, sample.Y);
             }
             __result = new MouseState(
                 sample.X,
