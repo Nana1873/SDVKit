@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Fixed
+
+- Owned review mouse input also reaches native mod controls which read the parameterless XNA mouse getter during their player update, including GMCM numeric sliders. Physical input remains available for overlap checks; cancellation removes the owned native sample without replaying a consumed wheel notch.
+
 ## [0.10.1] - 2026-09-12
 
 ### Fixed
