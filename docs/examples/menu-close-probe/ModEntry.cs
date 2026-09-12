@@ -21,7 +21,7 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID");
-        helper.ConsoleCommands.Add("mc217_open", "mc217_open <label> <root|child>: open only from a closed-menu baseline.", Open);
+        helper.ConsoleCommands.Add("mc217_open", "mc217_open <label> <root|child|controller-root>: open only from a closed-menu baseline.", Open);
         helper.ConsoleCommands.Add("mc217_observe", "mc217_observe <label>: observe the current state without changing it.", Observe);
         helper.Events.GameLoop.UpdateTicking += (_, _) => Sample("UpdateTicking");
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
@@ -83,13 +83,14 @@ public sealed class ModEntry : Mod
 
     private void Open(string command, string[] args)
     {
-        if (args.Length != 2 || args[1] is not ("root" or "child") || Game1.activeClickableMenu is not null)
+        if (args.Length != 2 || args[1] is not ("root" or "child" or "controller-root") || Game1.activeClickableMenu is not null)
         {
-            Monitor.Log("Refused: mc217_open requires <label> <root|child> and no active menu.", LogLevel.Warn);
+            Monitor.Log("Refused: mc217_open requires <label> <root|child|controller-root> and no active menu.", LogLevel.Warn);
             return;
         }
         if (!Arm(args, 2)) return;
-        var root = new ProbeMenu("root", Callback);
+        bool controller = args[1] == "controller-root";
+        var root = new ProbeMenu(controller ? "controller-root" : "root", Callback, controller);
         if (args[1] == "child") root.SetChildMenu(new ProbeMenu("child", Callback));
         Game1.activeClickableMenu = root;
         Sample("opened");
@@ -135,13 +136,15 @@ public sealed class ModEntry : Mod
 internal sealed class ProbeMenu : IClickableMenu
 {
     private readonly Action<string> observe;
+    private readonly bool explicitController;
     public string Label { get; }
 
-    public ProbeMenu(string label, Action<string> observe)
+    public ProbeMenu(string label, Action<string> observe, bool explicitController = false)
         : base((Game1.uiViewport.Width - 640) / 2, (Game1.uiViewport.Height - 320) / 2, 640, 320, true)
     {
         Label = label;
         this.observe = observe;
+        this.explicitController = explicitController;
         Rectangle close = upperRightCloseButton.bounds;
         observe($"construct menu={Label} closeX={close.Center.X} closeY={close.Center.Y}");
     }
@@ -155,8 +158,15 @@ internal sealed class ProbeMenu : IClickableMenu
     public override void receiveGamePadButton(Buttons button)
     {
         observe($"receiveGamePadButton menu={Label} button={button}");
-        base.receiveGamePadButton(button);
+        if (explicitController && button == Buttons.B && readyToClose())
+        {
+            observe($"explicitControllerClose menu={Label}");
+            exitThisMenu();
+        }
+        else base.receiveGamePadButton(button);
     }
+
+    public override bool areGamePadControlsImplemented() => explicitController || base.areGamePadControlsImplemented();
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
@@ -173,7 +183,8 @@ internal sealed class ProbeMenu : IClickableMenu
     public override void draw(SpriteBatch b)
     {
         b.Draw(Game1.fadeToBlackRect, new Rectangle(xPositionOnScreen, yPositionOnScreen, width, height), Color.DarkSlateGray);
-        b.DrawString(Game1.smallFont, $"Neutral close probe: {Label}\nInherited keyboard, mouse and controller behavior.",
+        string behavior = explicitController ? "Explicit native B close; inherited keyboard/mouse." : "Inherited keyboard, mouse and controller behavior.";
+        b.DrawString(Game1.smallFont, $"Neutral close probe: {Label}\n{behavior}",
             new Vector2(xPositionOnScreen + 32, yPositionOnScreen + 64), Color.White);
         base.draw(b);
         if (GetChildMenu() is { } child) child.draw(b);

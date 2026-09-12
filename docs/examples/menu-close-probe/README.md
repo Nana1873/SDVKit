@@ -19,13 +19,17 @@ Do not deploy to normal Mods or select a normal save.
   logs that baseline, and opens an ordinary `IClickableMenu` subclass.
 - `mc217_open <label> child` creates the same menu as a native child of another
   probe menu. Its inherited `exitThisMenu` should leave the parent in place.
+- `mc217_open <label> controller-root` prepares the conditional explicit-controller
+  case below. It returns `true` from `areGamePadControlsImplemented()` and calls
+  native `exitThisMenu()` for B in `receiveGamePadButton`, logging that exact path.
 - `mc217_observe <label>` arms observation of the current state without changing
   it. Rearm after collecting the initial menu/screenshot and before the input.
 - Labels contain 1–48 ASCII letters, digits, hyphens or underscores. Commands
   refuse mismatched launch, fixture/save, player, role or local-screen ownership.
 
-The probe delegates keyboard, controller and close-button handling to Stardew's
-base class. It adds no input, suppression, Harmony patches, close delays or
+The default probe delegates keyboard, controller and close-button handling to
+Stardew's base class; the optional controller variant closes on B in its earlier
+controller callback. It adds no input, suppression, Harmony patches, close delays or
 automatic retries. It never replaces an existing menu to prepare a case.
 Its only setup mutation is opening its own menu from a verified closed baseline.
 
@@ -67,6 +71,31 @@ callback; that is not proof of a second injected keyboard press.
 6. Stop/reset the exact owned review and verify exited process, staging/mailbox,
    fixture mount cleanup and protected-path evidence. Preserve failures and
    inconclusive windows; never replay an unknown-completion action.
+
+### Conditional explicit-controller case
+
+Run the base cases first. If the root B case establishes the full shared sequence
+of one press, actual menu close, released/disconnected sample, and native
+`CheckGamepadMode` inventory opening, the explicit variant is not needed merely
+to repeat that cause. That conclusion covers the demonstrated post-close native
+path under its observed conditions; it does not verify every custom controller
+handler or identify the historical target mod's exact callback sequence.
+
+If the base root case does not establish that sequence, inspect and restore a
+closed baseline, then open `mc217_open controller-b controller-root`. Observe one
+B press using the same completion, menu, screenshot and following-tick checks.
+Do not infer custom-controller correctness from a base-menu non-reproduction.
+The explicit variant is one additional root case, not a new controller matrix.
+
+Installed Stardew 1.6.15 dispatch calls `receiveGamePadButton` before its later
+mapped-key loop. In this version `areGamePadControlsImplemented()` guards the
+A/X mouse fallbacks and A hold/release handling; it does **not** by itself disable
+the later B-to-key mapping. An explicit B close can make the earlier menu inactive,
+so later native `IsActive()` checks skip that mapped callback. Both paths may end
+with no root menu before the following disconnected sample. The shared disconnect
+handler's pause/index/no-menu conditions remain independent of which callback
+closed the menu. Record actual callbacks and release state rather than assuming
+that the flag alone prevents duplicate dispatch or inventing a second press.
 
 ## Source hypothesis to verify
 
