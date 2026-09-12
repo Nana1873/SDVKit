@@ -463,7 +463,7 @@ internal static class ProjectReviewMcpServer
             {
                 Name = "sdvkit-project-review",
                 Version = typeof(ProjectReviewMcpServer).Assembly
-                    .GetName().Version?.ToString(3) ?? "0.10.1",
+                    .GetName().Version?.ToString(3) ?? "0.10.2",
             },
             ServerInstructions =
                 "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection, one screenshot capture, player-local backpack and chest reads, role-local world reads, and process-shared canonical Data reads are available for every valid selection. Data selection validates freshness and identity but does not create a role- or screen-local cache. Shop, map, texture, audio, mod-asset, Content Patcher, and mutation capabilities retain their narrower gates. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "

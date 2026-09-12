@@ -29,7 +29,7 @@ inspection coverage.
 | Restart | Stop removes staging. A fresh extraction of the unchanged ZIP receives only the reconciled config export, then a new process loads row 19 from the same DLL. |
 | Unsupported | Float sliders, text/custom controls, other provider versions, foreign configs, automatic dependency installation, implicit config retention and multiplayer are outside this recipe. |
 
-The currently published v0.10.1 archive predates the native raw-mouse adapter.
+SDVKit v0.10.2 includes the native raw-mouse adapter. The older v0.10.1 archive predates it.
 Its version string alone is therefore insufficient for this workflow. The exact
 CLI package must contain #226's process-local XNA mouse publication, neutral
 click/drag preparation and held drag endpoint behavior; verify that through its
