@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- Follow an original SMAPI save-data migration recipe with distinct v1, deliberately broken v2, and corrected v2 packages; preserve selected values through actual restart, verify repeated-load idempotence, and test missing data and future-schema refusal.
+
 ### Fixed
 
 - Offline `project check` now catches malformed reachable Content Patcher Include fragments and missing unconditional literal `FromFile` files, including nested Includes. Diagnostics identify the source field or included JSON; tokenized/conditional references and bounded Include coverage report explicit non-blocking warnings. Paths outside the selected mod root or through symbolic links/junctions are rejected before reading.
