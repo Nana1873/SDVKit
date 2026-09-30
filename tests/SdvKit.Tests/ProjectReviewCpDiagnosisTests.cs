@@ -137,10 +137,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     public void CpCliRequiresExplicitProviderAndRejectsDuplicateOrRoleArguments()
     {
         string[] valid = ["project", "review", "cp-diagnose", "--pack", "Test.Pack", "--provider", ProjectReviewCpDiagnosis.ProviderId, "--json"];
-        Assert.True(CliApplication.TryParseCpDiagnosis(valid, out _, out _, out _, out _));
-        Assert.False(CliApplication.TryParseCpDiagnosis(valid.Concat(["--json"]).ToArray(), out _, out _, out _, out _));
-        Assert.False(CliApplication.TryParseCpDiagnosis(valid.Concat(["--role", "host"]).ToArray(), out _, out _, out _, out _));
-        Assert.False(CliApplication.TryParseCpDiagnosis(["project", "review", "cp-diagnose", "--pack", "Test.Pack", "--json"], out _, out _, out _, out _));
+        Assert.True(CliApplication.TryParseCpDiagnosis(valid, out _, out _, out _, out _, out _));
+        Assert.False(CliApplication.TryParseCpDiagnosis(valid.Concat(["--json"]).ToArray(), out _, out _, out _, out _, out _));
+        Assert.False(CliApplication.TryParseCpDiagnosis(valid.Concat(["--role", "host"]).ToArray(), out _, out _, out _, out _, out _));
+        Assert.False(CliApplication.TryParseCpDiagnosis(["project", "review", "cp-diagnose", "--pack", "Test.Pack", "--json"], out _, out _, out _, out _, out _));
     }
 
     [Fact]
