@@ -80,9 +80,28 @@ distribution; record its package hash separately from the mod ZIP hash.
 
 ```powershell
 & $sdvkit project review start $ready --game-path $gamePath --topology single --test-save --json
+& $sdvkit lab status --topology single --json
+```
+
+Wait for the exact owned process, loaded target and ready fixture. SMAPI 4.5.2's
+[`ReadConfig`](https://github.com/Pathoschild/SMAPI/blob/4.5.2/src/SMAPI/Framework/ModHelpers/ModHelper.cs)
+reserializes the packaged config at startup. Before review status or inspection,
+retain both source and actual staged config bytes and hashes. Require each to
+contain only the integer `RequiredFriendshipPoints=750`, with every non-config
+file, DLL and manifest unchanged. Reject unexpected fields or values. If only
+that same-value serialization changed, explicitly reconcile it:
+
+```powershell
+& $sdvkit project review config-reconcile --mod SDVKit.ProgressionProbe --json
 & $sdvkit project review status --json
 & $sdvkit project review diagnostics --mod SDVKit.ProgressionProbe --json
 ```
+
+Retain the separate startup-750 receipt and exact export: previous hash equals
+the packaged config hash, accepted hash equals the observed staged bytes, and
+launch/process and non-config identity remain unchanged. Canonical unchanged
+bytes return `state=unchanged`. This accepts startup serialization only; it does
+not correct the condition or prove a gameplay effect.
 
 Require the exact target loaded with no mod error and the owned fixture ready.
 Use a native MCP SDK client against `project review mcp serve --topology single`
@@ -114,8 +133,10 @@ native MCP. Delivery of a helper command alone proves neither failure nor effect
 The small developer correction changes only this recipe's required points from
 750 to 500 and saves its already-packaged root config. Require `state=reconciled`,
 the previous/accepted config hashes, unchanged non-config identity and a verified
-export. Do not edit ownership markers. Require the same launch/DLL and fresh
-observations with exactly one mailbox entry and exactly one incomplete quest;
+export. Its previous hash must match the observed accepted startup-750 bytes;
+when startup reconciliation occurred, its preceding reconciliation ID must match
+that separate receipt. Do not edit ownership markers. Require the same launch/DLL
+and fresh observations with exactly one mailbox entry and exactly one incomplete quest;
 receipt remains false. This proves the original mod's delivered effects, not a
 player speaking to Leah. Repeat evaluation and require counts stay exactly one.
 
@@ -165,6 +186,11 @@ client, stop the exact review **without reset**, and verify its process exited.
 Start the selected accepted-config ready artifact against the same test save.
 Require a new PID/start time/launch, unchanged fixture/farmer, same DLL hash and
 accepted config bytes. `SaveLoaded` reevaluates the condition automatically.
+If `ReadConfig` changes only serialization on reload, retain the source/staged
+bytes, require exactly the same single integer value 500 and unchanged non-config
+files, then explicitly reconcile that startup serialization before inspection.
+Keep its receipt separate from the original 750-to-500 correction; never adopt
+different values or replace the earlier correction evidence.
 
 Capture the selected progression through CLI and a new native MCP client: receipt
 true, mailbox count 0, one accepted/completed quest, and no new effects. Require
