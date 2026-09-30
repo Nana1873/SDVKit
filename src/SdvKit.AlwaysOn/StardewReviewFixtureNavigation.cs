@@ -18,7 +18,8 @@ namespace SdvKit.AlwaysOn;
 
 #if SDVKIT_GAME_AVAILABLE
 internal sealed partial class StardewReviewFixtureRuntime
-{    private sealed record NavigationPlan(
+{
+    private sealed record NavigationPlan(
         GameLocation Location,
         int TileX,
         int TileY,
