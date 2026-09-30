@@ -51,15 +51,17 @@ internal static partial class ProjectModStager
                     ProjectReviewArtifactRole.Target,
                     StringComparison.Ordinal));
             if (string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)
-                && string.Equals(
+                && (string.Equals(
                     reviewTarget.Manifest.Kind,
                     ProjectInspectionReport.ContentPack,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal)
+                    || artifacts.Any(artifact => artifact.Role == ProjectReviewArtifactRole.ContentPack
+                        && PathEquals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(artifact.SourceRoot))!, reviewTarget.SourceRoot))))
             {
                 return ReviewFailure(
                     "reviewTargetTopologyUnsupported",
                     reviewTarget.SourceRoot,
-                    "A content-pack review target supports only topology single.");
+                    "Content-pack targets and ready bundles support only topology single.");
             }
 
             ReviewRolePaths[] rolePaths = ResolveReviewRolePaths(singlePaths, topology);

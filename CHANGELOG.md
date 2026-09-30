@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- Review an extracted C# and content-pack bundle in `single` by selecting its root and every direct pack child with `--content-pack`. Exactly one root/direct-child code mod and all declared pack members are frozen and staged separately; missing/unselected members, unsafe paths and identity collisions fail before launch. The original Bundle Arrival recipe covers existing build/package, explicit ready selection and separate code/pack effects.
+
 ### Fixed
 
 - Offline `project check` now catches malformed reachable Content Patcher Include fragments and missing unconditional literal `FromFile` files, including nested Includes. Diagnostics identify the source field or included JSON; tokenized/conditional references and bounded Include coverage report explicit non-blocking warnings. Paths outside the selected mod root or through symbolic links/junctions are rejected before reading.

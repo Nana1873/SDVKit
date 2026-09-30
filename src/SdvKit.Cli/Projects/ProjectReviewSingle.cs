@@ -125,7 +125,9 @@ internal static partial class ProjectReviewService
                     "The retained single review does not match the requested --test-save selection; nothing was changed.")]);
         }
 
-        if (retained.Staging is not null && (projectFile is not null || retained.Staging.Target.ProjectFile is not null))
+        if (retained.Staging is not null && (projectFile is not null || retained.Staging.Target.ProjectFile is not null
+            || retained.Staging.Artifacts.Any(artifact => artifact.Role == ProjectReviewArtifactRole.ContentPack
+                && PathEqualsBundleRoot(retained.Staging.Target.SourceRoot, artifact.SourceRoot))))
         {
             ProjectReviewProblem? requestProblem = ReviewSetRequestProblem(sourcePath, companionPaths, contentPackPaths, retained.Staging, projectFile);
             if (requestProblem is not null)

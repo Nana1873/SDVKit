@@ -156,6 +156,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
+        output.WriteLine("Ready bundles support single: select their root and every direct pack child with --content-pack; exactly one root/direct-child code mod is required.");
         output.WriteLine("Asset inspection requires single; menu inspection and network console commands support explicit roles.");
         output.WriteLine("Local split-screen: in a single --test-save review, send sdvkit split-screen join/leave/status; use native screen=<id> console selection.");
     }
