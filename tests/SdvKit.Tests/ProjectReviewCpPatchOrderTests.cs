@@ -45,10 +45,34 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     }
 
     [Theory]
+    [InlineData("selected")]
+    [InlineData("unselectedFirst")]
+    [InlineData("unselectedLast")]
+    public void CpAssetOrderAcceptsRetainedEmptyTargetBuckets(string mode)
+    {
+        const string populated = "\n\nData/Objects\n------------\n   [X] EditData Test Pack > Preferred";
+        string message = CpAppliedHeading + (mode switch
+        {
+            "selected" => "\n\nData/Objects\n------------",
+            "unselectedFirst" => "\n\nData/Crops\n----------" + populated,
+            _ => populated + "\n\nData/Weapons\n------------",
+        });
+        var applied = CpDumpInterpret(message);
+        Assert.Equal("ready", applied.State);
+        Assert.Equal(mode == "selected" ? 3 : 4, applied.Messages.Count);
+        Assert.DoesNotContain("Data/Crops", applied.Messages);
+        Assert.DoesNotContain("Data/Weapons", applied.Messages);
+        var order = CpDumpInterpret(CpOrderDump, "order", paths: mode == "selected" ? [] : ["Test Pack > Preferred"]);
+        Assert.Equal("ready", order.State);
+        Assert.Equal(mode == "selected" ? 3 : 4, order.Messages.Count);
+    }
+
+    [Theory]
     [InlineData("header")]
     [InlineData("divider")]
     [InlineData("row")]
-    [InlineData("emptyGroup")]
+    [InlineData("missingDivider")]
+    [InlineData("malformedEmptyDivider")]
     [InlineData("duplicate")]
     [InlineData("position")]
     [InlineData("shortOrder")]
@@ -60,7 +84,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             "header" => CpDumpInterpret(CpAppliedDump.Replace("Here are", "These are", StringComparison.Ordinal)),
             "divider" => CpDumpInterpret(CpAppliedDump.Replace("------------", "---", StringComparison.Ordinal)),
             "row" => CpDumpInterpret(CpAppliedDump.Replace("[X] Load", "[?] Load", StringComparison.Ordinal)),
-            "emptyGroup" => CpDumpInterpret(CpAppliedHeading + "\n\nData/Objects\n------------"),
+            "missingDivider" => CpDumpInterpret(CpAppliedHeading + "\n\nData/Objects"),
+            "malformedEmptyDivider" => CpDumpInterpret(CpAppliedHeading + "\n\nData/Objects\n---"),
             "duplicate" => CpDumpInterpret(CpAppliedDump + "\n\nData/Objects\n------------\n   [X] EditData Duplicate"),
             "position" => CpDumpInterpret(CpOrderDump.Replace("   3       ", "   5       ", StringComparison.Ordinal), "order", paths: CpSelectedPaths),
             "shortOrder" => CpDumpInterpret(CpOrderHeading + "\n\n   order   index path   patch", "order", paths: []),

@@ -40,21 +40,20 @@ internal static partial class ProjectReviewCpDiagnosis
             int i = 1;
             while (i < lines.Length)
             {
-                if (lines[i++] != "" || i + 2 >= lines.Length) return Unsupported();
+                if (lines[i++] != "" || i + 1 >= lines.Length) return Unsupported();
                 string target = lines[i++];
                 // Target names may be localized/custom. They are only used for equality,
                 // never dispatched, inspected or returned outside the selected group.
                 if (target.Length == 0 || !targets.Add(target) || lines[i++] != new string('-', target.Length)) return Unsupported();
-                int count = 0;
+                // CP retains target buckets after their last patch is removed;
+                // their complete target/divider pair can legitimately have no rows.
                 while (i < lines.Length && lines[i] != "")
                 {
                     var row = AppliedRow.Match(lines[i]);
                     if (!row.Success || !paths.Add(target + "\n" + row.Groups["path"].Value)) return Unsupported();
                     if (target.Equals(asset, StringComparison.OrdinalIgnoreCase)) selected.Add(lines[i]);
-                    count++;
                     i++;
                 }
-                if (count == 0) return Unsupported();
             }
         }
         else if (dump == "order")
