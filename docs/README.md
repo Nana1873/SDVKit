@@ -24,6 +24,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Observe supported Gold-shop offers, money and inventory | [Shop inspection](shop-inspection.md) |
 | Inspect every bounded backpack slot without opening a menu | [Inventory inspection](inventory-inspection.md) |
 | Inspect bounded live crops, soil, and machines | [World inspection](world-inspection.md) |
+| Observe selected NPC/mail/quest state and prove an original recipe through reload | [Progression authoring and observation](progression-authoring.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
@@ -52,6 +53,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
 | Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | Exact world-ready single player, network role, or local screen; every empty/occupied/unavailable slot, no peer fallback, menu, or mutation; [contract](inventory-inspection.md) |
 | Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | Exact single player, network role, or local screen; complete in-map rectangle of at most 256 tiles as observed by that selection; [contract](world-inspection.md) |
+| Selected NPC friendship, mail membership and quest-log counts | `project review progression --npc --mail --quest` | `stardew_progression_get` | Exact owned disposable unbound single-player review; one explicit ID per family, fresh farmer/fixture/launch binding, no mutation or historical completion; [contract and original recipe](progression-authoring.md) |
 | Selected regular vanilla chest and both sides | `project review container` | `stardew_container_get` | Exact single player, network role, or local screen; selected open 36-slot wooden/stone chest, local player/chest slots and held item, no mutation; [contract](container-inspection.md) |
 | Exact supported chest quantity transfer | `project review container-transfer` | `stardew_container_transfer` | Owned disposable unbound single world, screen 0; 1-99 stackable vanilla objects, fresh container identities; MCP requires `--allow-container-transfer`; [contract](container-transfer.md) |
 | One adjacent crop/soil or machine interaction | `project review interact` | `stardew_world_interact`, separate `--allow-world-actions` | Exact owned disposable single-player review; fresh target and inventory revisions; completion is dispatch evidence only; [contract](world-interaction.md) |

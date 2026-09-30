@@ -117,3 +117,6 @@ fields above. Deferred: complete inventories, item instance identities, quests,
 relationships, skill/progression state and other players. Excluded: names,
 arbitrary `modData`, private account data, paths and object dumps. This is a
 bounded mod-test observation, not universal save inspection or gameplay mutation.
+Selected NPC friendship, mail membership and current quest-log counts are available
+separately through the narrower [progression query](progression-authoring.md#read-only-contract)
+in the exact owned disposable single-player review; they are not added to this status slice.

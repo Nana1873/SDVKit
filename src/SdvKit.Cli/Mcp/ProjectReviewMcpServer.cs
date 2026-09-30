@@ -393,6 +393,7 @@ internal static class ProjectReviewMcpServer
             if (containerTransferEnabled)
                 tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer!));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
+            tools.Add(ProjectReviewMcpProgressionTools.Create(reader));
         }
         runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
         if (cpRefreshPermission is not null)

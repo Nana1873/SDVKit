@@ -133,6 +133,7 @@ $linkedFiles = @(
     "ReviewMapModels.cs",
     "ReviewMenuModels.cs",
     "ReviewShopModels.cs",
+    "ReviewProgressionModels.cs",
     "ReviewWorldModels.cs",
     "ReviewWorldActionModels.cs",
     "ReviewModAssetModels.cs",

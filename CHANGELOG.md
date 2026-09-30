@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- Read one explicitly selected NPC friendship, mail ID and quest ID through `project review progression` and native MCP `stardew_progression_get` in the exact owned disposable single-player review. Fresh farmer/fixture/launch-bound observations expose raw friendship points, exact mail membership/count and current quest-log counts. An original rain-barrel recipe demonstrates diagnosis of a wrong friendship threshold, config correction, native mail/quest effects and explicit save/reload checks without inferring historical completion or paying the retained quest reward.
+
 ### Fixed
 
 - Offline `project check` now catches malformed reachable Content Patcher Include fragments and missing unconditional literal `FromFile` files, including nested Includes. Diagnostics identify the source field or included JSON; tokenized/conditional references and bounded Include coverage report explicit non-blocking warnings. Paths outside the selected mod root or through symbolic links/junctions are rejected before reading.

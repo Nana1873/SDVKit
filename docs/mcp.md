@@ -6,7 +6,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 
 | Startup profile | single | local screen | host | farmhand |
 | --- | --- | --- | --- | --- |
-| Default observation/evidence | 30 tools | 12 tools | 12 tools | 12 tools |
+| Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
 | Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
@@ -160,6 +160,12 @@ both inventory sides, and any menu-held item. Its selection identity binds the
 open menu and placed chest; its content revision also binds the exposed item
 facts. The open menu, local player, location, and placed chest must all match the
 selected role or screen. It never opens, searches, sorts, or mutates a chest.
+
+Unbound single-review servers expose `stardew_progression_get` with required
+`npcId`, `mailId` and `questId` for one fresh selected
+[NPC/mail/quest observation](progression-authoring.md#read-only-contract).
+It requires the exact ready owned disposable single-player fixture and needs no
+mutation opt-in; unsupported contexts fail without peer or previous-capture fallback.
 
 Unbound single-review servers also expose `stardew_shop_get {}` for a fresh
 read-only capture of [supported Gold-shop offers, money and inventory](shop-inspection.md).

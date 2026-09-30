@@ -182,6 +182,11 @@ save or reset the fixture.
 
 ## Exercise behavior and collect evidence
 
+For one selected NPC friendship, mail ID and quest ID, use the read-only
+[progression contract and original persistence recipe](progression-authoring.md).
+Its first supported context is the exact owned disposable unbound single-player
+review; it does not enumerate people, infer historical completion or edit state.
+
 On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.
 
 Use an idle SMAPI console with no concurrent manual typing. Console delivery proves only delivery; verify the actual effect through matching logs, state, or images.
