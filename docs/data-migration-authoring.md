@@ -109,7 +109,9 @@ this exact unbound single review with `--allow-fixture-actions`:
 ```
 
 Retain its catalogue, tool calls, results, and orderly EOF transcript. Call
-`stardew_fixture_save {}` and require `state=completed` and saved identity.
+`stardew_fixture_save {}` and require `state=ready`, `operation=save`, the
+exact fixture/save IDs, a populated `save.persistedAtUtc`, and no problems or
+`mayHaveRun`.
 Close the client by orderly EOF. Stop **without reset**, then start broken v2:
 
 ```powershell
