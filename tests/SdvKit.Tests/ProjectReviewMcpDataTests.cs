@@ -141,6 +141,7 @@ public sealed class ProjectReviewMcpDataTests
                 ProjectReviewMcpMenuTools.ToolName,
                 ProjectReviewMcpLogTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ModsToolName,
+                ProjectReviewMcpProgressionTools.ToolName,
                 ProjectReviewMcpDiagnosticsTools.ReviewToolName,
                 ProjectReviewMcpServer.RuntimeToolName,
                 ProjectReviewMcpScreenshotTools.CaptureToolName,

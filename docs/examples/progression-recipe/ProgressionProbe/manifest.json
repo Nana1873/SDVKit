@@ -1,0 +1,10 @@
+{
+  "Name": "SDVKit Progression Probe",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Original disposable Leah rain-barrel mail and quest progression recipe.",
+  "UniqueID": "SDVKit.ProgressionProbe",
+  "EntryDll": "ProgressionProbe.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
