@@ -91,7 +91,8 @@ public static partial class CliApplication
         {
             output.WriteLine(CheckUsage);
             output.WriteLine("Offline schema check and locale comparison of one mod root: manifest.json, CP 2.9.x content.json, and direct i18n/*.json.");
-            output.WriteLine("No recursive mod discovery, Include/FromFile resolution, build, or runtime validation.");
+            output.WriteLine("Checks reachable literal CP Includes and FromFile existence; conditional/tokenized references are skipped with warnings.");
+            output.WriteLine("No recursive mod discovery, build, or runtime validation; Include validation is bounded.");
             return Success;
         }
 

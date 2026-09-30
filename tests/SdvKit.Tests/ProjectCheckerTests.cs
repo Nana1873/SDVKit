@@ -207,14 +207,14 @@ public sealed class ProjectCheckerTests : IDisposable
     }
 
     [Fact]
-    public void DynamicPathsAndNestedProjectsAreNotRead()
+    public void DynamicAndConditionalPathsAndNestedProjectsAreNotRead()
     {
         Create(ProjectCreator.ContentPack);
         Write("content.json", """
             { "Format": "2.9.0", "Changes": [
               { "Action": "Include", "FromFile": "assets/{{Season}}.json" },
-              { "Action": "Include", "FromFile": "assets/static.json" },
-              { "Action": "Load", "Target": "Data/Test", "FromFile": "absent.json" }
+              { "Action": "Include", "FromFile": "assets/static.json", "When": { "Season": "winter" } },
+              { "Action": "Load", "Target": "Data/Test", "FromFile": "absent.json", "When": { "Season": "winter" } }
             ] }
             """);
         Write("assets/static.json", "broken JSON");
@@ -225,6 +225,289 @@ public sealed class ProjectCheckerTests : IDisposable
         ProjectCheckReport result = ProjectChecker.Check(root);
         Assert.Empty(result.Problems);
         Assert.Equal(["manifest.json", "content.json", "i18n/default.json"], result.Files.Select(file => file.File));
+        Assert.Single(result.Warnings, warning => warning.Code == "dynamicReferenceSkipped"
+            && warning.File == "content.json" && warning.Field == "/Changes/0/FromFile");
+        Assert.Equal(2, result.Warnings.Count(warning => warning.Code == "conditionalReferenceSkipped"));
+    }
+
+    [Theory]
+    [InlineData("{bad", "invalidJson", "")]
+    [InlineData("{\"Changes\":[{\"Action\":\"BadAction\"}]}", "schemaViolation", "/Changes/0/Action")]
+    [InlineData("{\"Changes\":[],\"ConfigSchema\":{}}", "includeShapeInvalid", "")]
+    public void ReachableIncludeJsonIsValidatedWithTheBundledSchema(string json, string code, string field)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"patches/item.json"}]}""");
+        Write("patches/item.json", json);
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains(result.Problems, problem => problem.File == "patches/item.json" && problem.Code == code
+            && problem.Field == field);
+    }
+
+    [Theory]
+    [InlineData("Include", "missing.json", "fileNotFound")]
+    [InlineData("Load", "missing.png", "fileNotFound")]
+    [InlineData("EditImage", "missing.png", "fileNotFound")]
+    [InlineData("EditMap", "missing.tmx", "fileNotFound")]
+    [InlineData("Include", "../outside.json", "referencePathInvalid")]
+    [InlineData("Include", "..\\outside.json", "referencePathInvalid")]
+    [InlineData("Include", "/outside.json", "referencePathInvalid")]
+    [InlineData("Include", "C:/outside.json", "referencePathInvalid")]
+    [InlineData("Load", "assets/directory.png", "referenceNotFile")]
+    public void LiteralReferencesReportTheSourceField(string action, string from, string code)
+    {
+        Create(ProjectCreator.ContentPack);
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Maps/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+        Directory.CreateDirectory(Path.Combine(root, "assets", "directory.png"));
+
+        Assert.Contains(ProjectChecker.Check(root).Problems, problem => problem.Code == code
+            && problem.File == "content.json" && problem.Field == "/Changes/0/FromFile");
+    }
+
+    [Theory]
+    [InlineData("Load", "png", false)]
+    [InlineData("EditImage", "png", false)]
+    [InlineData("EditMap", "tmx", false)]
+    [InlineData("Load", "png", true)]
+    [InlineData("EditImage", "png", true)]
+    [InlineData("EditMap", "tmx", true)]
+    public void AllActionsCheckEveryCommaDelimitedLiteralFile(string action, string extension, bool missing)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write($"assets/first.{extension}", "Asset existence only.");
+        if (!missing) Write($"assets/second.{extension}", "Asset existence only.");
+        var patch = new JsonObject
+        {
+            ["Action"] = action,
+            ["Target"] = "Maps/Test",
+            ["FromFile"] = $"assets/first.{extension}, assets/second.{extension}",
+        };
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal(missing ? "failed" : "passed", result.Status);
+        Assert.Empty(result.Warnings);
+        if (missing)
+        {
+            ProjectCheckProblem problem = Assert.Single(result.Problems);
+            Assert.Equal("fileNotFound", problem.Code);
+            Assert.Equal("content.json", problem.File);
+            Assert.Equal("/Changes/0/FromFile", problem.Field);
+            Assert.Contains($"assets/second.{extension}", problem.Message, StringComparison.Ordinal);
+        }
+        else Assert.Empty(result.Problems);
+    }
+
+    [Theory]
+    [InlineData("Include", " , patches/item.json")]
+    [InlineData("Include", "patches/item.json, , patches/item.json")]
+    [InlineData("Include", "patches/item.json, ")]
+    [InlineData("Load", " , patches/item.json")]
+    [InlineData("Load", "patches/item.json, , patches/item.json")]
+    [InlineData("Load", "patches/item.json, ")]
+    public void EmptyLiteralCommaSegmentsAreNotResolvedAsMissingFiles(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("patches/item.json", """{"Changes":[]}""");
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.DoesNotContain(result.Problems, problem => problem.Code != "schemaViolation");
+        if (from.TrimEnd().EndsWith(','))
+        {
+            // The unchanged official schema snapshot rejects a trailing comma;
+            // file resolution must not add its own missing/invalid-path error.
+            Assert.Contains(result.Problems, problem => problem.Code == "schemaViolation"
+                && problem.Field == "/Changes/0/FromFile");
+        }
+        else
+        {
+            Assert.Equal("passed", result.Status);
+            Assert.Empty(result.Problems);
+        }
+        Assert.Empty(result.Warnings);
+        if (action == "Include") Assert.Single(result.Files, file => file.File == "patches/item.json");
+    }
+
+    [Theory]
+    [InlineData("Include", "")]
+    [InlineData("Include", " , , ")]
+    [InlineData("Load", " , , ")]
+    public void EntirelyEmptyLiteralFileListsFailAtTheSourceField(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains(result.Problems, problem => problem.Code == "referencePathInvalid" && problem.File == "content.json"
+            && problem.Field == "/Changes/0/FromFile" && problem.Message == "FromFile contains no literal file paths.");
+        Assert.DoesNotContain(result.Problems, problem => problem.Code == "fileNotFound");
+    }
+
+    [Fact]
+    public void NestedIncludesUseRootRelativePathsAndDeduplicateEquivalentPathsWithoutReadingAssets()
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"patches/first.json, patches/./first.json, patches/second.json"}]}""");
+        Write("patches/first.json", """{"Changes":[{"Action":"Include","FromFile":"patches/second.json"}]}""");
+        Write("patches/second.json", """{"Changes":[{"Action":"Load","Target":"Data/Test","FromFile":"assets/data.json"}]}""");
+        Write("assets/data.json", "Asset contents are not parsed by the offline existence check.");
+        Dictionary<string, string> before = Snapshot();
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("passed", result.Status);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(["manifest.json", "content.json", "patches/first.json", "patches/second.json"], result.Files.Select(file => file.File));
+        Assert.Equal(before, Snapshot());
+    }
+
+    [Fact]
+    public void IncludeCyclesFailAtTheClosingReference()
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"patches/first.json"}]}""");
+        Write("patches/first.json", """{"Changes":[{"Action":"Include","FromFile":"patches/second.json"}]}""");
+        Write("patches/second.json", """{"Changes":[{"Action":"Include","FromFile":"patches/first.json"}]}""");
+
+        ProjectCheckProblem problem = Assert.Single(ProjectChecker.Check(root).Problems);
+
+        Assert.Equal("includeCycle", problem.Code);
+        Assert.Equal("patches/second.json", problem.File);
+        Assert.Equal("/Changes/0/FromFile", problem.Field);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IncludeCommentsTrailingCommasAndByteOrderMarksUseExistingJsonBehavior(bool unicode)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"patches/item.json"}]}""");
+        string path = Write("patches/item.json", "");
+        File.WriteAllText(path, "{ // comment\n \"Changes\": [ ], }",
+            unicode ? System.Text.Encoding.Unicode : System.Text.Encoding.UTF8);
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("passed", result.Status);
+        Assert.Contains(result.Files, file => file.File == "patches/item.json");
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void IncludeCountAndByteLimitsSkipWithoutRejectingLargeRuntimePacks()
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"patches/0.json"}]}""");
+        for (int index = 0; index < ProjectChecker.MaximumCpFiles; index++)
+        {
+            Write($"patches/{index}.json", index == ProjectChecker.MaximumCpFiles - 1 ? "must not be read"
+                : $$"""{"Changes":[{"Action":"Include","FromFile":"patches/{{index + 1}}.json"}]}""");
+        }
+        ProjectCheckReport count = ProjectChecker.Check(root);
+        Assert.Equal("passed", count.Status);
+        Assert.Single(count.Warnings, warning => warning.Code == "includeLimit");
+        Assert.Equal(ProjectChecker.MaximumCpFiles + 1, count.Files.Count); // plus manifest.json
+        Assert.DoesNotContain(count.Files, file => file.File == $"patches/{ProjectChecker.MaximumCpFiles - 1}.json");
+
+        Write("patches/0.json", new string(' ', ProjectChecker.MaximumCpIncludeBytes + 1));
+        ProjectCheckReport bytes = ProjectChecker.Check(root);
+        Assert.Equal("passed", bytes.Status);
+        Assert.Single(bytes.Warnings, warning => warning.Code == "includeFileTooLarge" && warning.File == "patches/0.json");
+        Assert.DoesNotContain(bytes.Files, file => file.File == "patches/0.json");
+    }
+
+    [Fact]
+    public void ConditionalIncludesDoNotVisitTheirChildrenButUnconditionalDuplicatesStillDo()
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """
+            {"Format":"2.9.0","Changes":[
+            {"Action":"Include","FromFile":"patches/item.json","When":{"Season":"winter"}},
+            {"Action":"Include","FromFile":"patches/item.json"}]}
+            """);
+        Write("patches/item.json", """{"Changes":[{"Action":"Load","Target":"Data/Test","FromFile":"missing.json"}]}""");
+        ProjectCheckReport result = ProjectChecker.Check(root);
+        Assert.Single(result.Warnings, warning => warning.Code == "conditionalReferenceSkipped");
+        Assert.Single(result.Problems, problem => problem.Code == "fileNotFound" && problem.File == "patches/item.json"
+            && problem.Field == "/Changes/0/FromFile");
+    }
+
+    [Theory]
+    [InlineData("Include", "patches/item.json")]
+    [InlineData("Load", "patches/item.png")]
+    public void ReferencesThroughDirectoryJunctionsAreRejectedBeforeReading(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        string target = Path.Combine(root, "outside");
+        Directory.CreateDirectory(target);
+        Write("outside/item.json", "must not be read");
+        Write("outside/item.png", "must not be read");
+        CreateDirectoryLink(Path.Combine(root, "patches"), target);
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Single(result.Problems, problem => problem.Code == "linkedPath" && problem.Field == "/Changes/0/FromFile");
+        Assert.DoesNotContain(result.Problems, problem => problem.Code == "invalidJson");
+    }
+
+    [Theory]
+    [InlineData("Include", "patches/item.json")]
+    [InlineData("Load", "assets/item.png")]
+    public void ReferenceFileLinksAreRejectedWithoutReadingTargetsWhenSupported(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        string target = Write("outside.json", "must not be read");
+        string linked = Write(from, "placeholder");
+        File.Delete(linked);
+        try
+        {
+            File.CreateSymbolicLink(linked, target);
+        }
+        catch (IOException) when (OperatingSystem.IsWindows())
+        {
+            return; // Junction coverage remains mandatory when file symlinks need privileges.
+        }
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        Assert.Single(ProjectChecker.Check(root).Problems, problem => problem.Code == "linkedPath"
+            && problem.File == "content.json" && problem.Field == "/Changes/0/FromFile");
+        Assert.Equal("must not be read", File.ReadAllText(target));
+    }
+
+    [Fact]
+    public void SkippedCpReferencesAreExplicitInHumanAndJsonOutputWithoutFailing()
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("content.json", """{"Format":"2.9.0","Changes":[{"Action":"Include","FromFile":"{{Season}}.json"}]}""");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Assert.Equal(0, CliApplication.Run(["project", "check", root], output, error));
+        Assert.Contains("content.json /Changes/0/FromFile [warning:dynamicReferenceSkipped]", output.ToString(), StringComparison.Ordinal);
+        output.GetStringBuilder().Clear();
+        Assert.Equal(0, CliApplication.Run(["project", "check", root, "--json"], output, error));
+        using JsonDocument result = JsonDocument.Parse(output.ToString());
+        Assert.Equal("passed", result.RootElement.GetProperty("status").GetString());
+        Assert.Equal("dynamicReferenceSkipped", result.RootElement.GetProperty("warnings")[0].GetProperty("code").GetString());
     }
 
     [Theory]
