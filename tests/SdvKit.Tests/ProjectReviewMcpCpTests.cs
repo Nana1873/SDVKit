@@ -29,6 +29,10 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         else if (command.StartsWith("patch summary", StringComparison.Ordinal))
             message = CpSummary.Replace("Content Patcher", "ContentPatcher", StringComparison.Ordinal)
                 .Replace("Patcher]\n", "Patcher] \n", StringComparison.Ordinal) + "\n";
+        else if (command == "patch dump applied")
+            message = "[08:00:02 INFO  ContentPatcher] \n" + CpAppliedDump + "\n";
+        else if (command == "patch dump order")
+            message = "[08:00:02 INFO  ContentPatcher] \n" + CpOrderDump + "\n";
         else if (command.StartsWith("patch parse", StringComparison.Ordinal))
             message = CpMarker(command.Split('"')[1]).Replace("Content Patcher", "ContentPatcher", StringComparison.Ordinal);
         else
@@ -54,7 +58,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var commands = new List<string>();
         var send = CpMcpSender(temporary, review, commands);
         await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
-            runCpDiagnosis: (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send)));
+            runCpDiagnosis: (pack, provider, asset, parse, order) => ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send, order: order)));
         var tools = (await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token)).Tools;
         var diagnose = Assert.Single(tools, t => t.Name == ProjectReviewMcpCpTools.DiagnoseToolName);
         Assert.DoesNotContain(tools, t => t.Name == ProjectReviewMcpCpTools.RefreshToolName);
@@ -70,6 +74,45 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         // Listing and diagnosis use the same connection; absence is permission, not a client allowlist.
         var listedAgain = await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token);
         Assert.DoesNotContain(listedAgain.Tools, t => t.Name == ProjectReviewMcpCpTools.RefreshToolName);
+    }
+
+    [Fact]
+    public async Task CpMcpAssetOrderHasClosedSchemaAndRequiresMatchingSelectedResponse()
+    {
+        using TemporaryDirectory temporary = new();
+        var review = RefreshReview(temporary);
+        var commands = new List<string>();
+        var send = CpMcpSender(temporary, review, commands);
+        bool mismatch = false;
+        await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
+            runCpDiagnosis: (pack, provider, asset, parse, order) =>
+            {
+                var diagnosis = ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send, order: order);
+                return mismatch ? diagnosis with { OrderAsset = "Data/Crops" } : diagnosis;
+            }));
+        var tool = Assert.Single((await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token)).Tools,
+            t => t.Name == ProjectReviewMcpCpTools.DiagnoseToolName);
+        var args = CpArgs(); args["order"] = true;
+        var called = await harness.Client.CallToolAsync(tool.Name, args, cancellationToken: harness.Token);
+        var json = AssertSuccessfulJson(called);
+        Assert.True(Json.Schema.JsonSchema.FromText(tool.OutputSchema!.Value.GetRawText()).Evaluate(JsonNode.Parse(json.GetRawText())).IsValid);
+        Assert.Equal("Data/Objects", json.GetProperty("orderAsset").GetString());
+        Assert.Equal("ready", json.GetProperty("order").GetProperty("state").GetString());
+        Assert.Equal("ready", json.GetProperty("applied").GetProperty("state").GetString());
+        Assert.DoesNotContain("Unselected", json.GetRawText());
+        foreach (var invalid in new Action<Dictionary<string, object?>>[]
+        {
+            a => a.Remove("asset"), a => a["order"] = "true", a => a["order"] = null,
+        })
+        {
+            int sent = commands.Count;
+            var invalidArgs = CpArgs(); invalidArgs["order"] = true; invalid(invalidArgs);
+            var rejected = await harness.Client.CallToolAsync(tool.Name, invalidArgs, cancellationToken: harness.Token);
+            Assert.True(rejected.IsError); Assert.Null(rejected.StructuredContent); Assert.Equal(sent, commands.Count);
+        }
+        mismatch = true;
+        var mismatched = await harness.Client.CallToolAsync(tool.Name, args, cancellationToken: harness.Token);
+        Assert.True(mismatched.IsError); Assert.Null(mismatched.StructuredContent);
     }
 
     [Fact]
@@ -169,7 +212,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var review = RefreshReview(temporary);
         var permission = review.Reader.ReadContext().Context!;
         await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
-            runCpDiagnosis: (_, _, _, _) => throw new InvalidOperationException("Invalid diagnosis dispatched"),
+            runCpDiagnosis: (_, _, _, _, _) => throw new InvalidOperationException("Invalid diagnosis dispatched"),
             runCpRefresh: (_, _, _, _, _, _) => throw new InvalidOperationException("Invalid refresh dispatched"), cpRefreshPermission: permission));
         foreach (var change in new Action<Dictionary<string, object?>>[]
         {
@@ -243,7 +286,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var commands = new List<string>();
         var send = CpMcpSender(temporary, review, commands);
         await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
-            runCpDiagnosis: (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send)
+            runCpDiagnosis: (pack, provider, asset, parse, order) => ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send, order: order)
                 with
             { PackId = "Other.Pack" }));
         var result = await harness.Client.CallToolAsync(ProjectReviewMcpCpTools.DiagnoseToolName, CpArgs(), cancellationToken: harness.Token);
@@ -297,9 +340,9 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         var commands = new List<string>();
         var send = CpMcpSender(temporary, review, commands);
         await using var harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(review.Reader,
-            runCpDiagnosis: (pack, provider, asset, parse) =>
+            runCpDiagnosis: (pack, provider, asset, parse, order) =>
             {
-                var result = ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send);
+                var result = ProjectReviewCpDiagnosis.Execute(review.Reader, pack, provider, asset, parse, send, order: order);
                 if (mode == "diagnosisIncomplete") return result with
                 {
                     State = "incomplete",

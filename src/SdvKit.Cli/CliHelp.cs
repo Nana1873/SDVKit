@@ -150,7 +150,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
         output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
         output.WriteLine("  sdvkit project review diagnostics --help Selected-mod warnings and exceptions.");
-        output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis.");
+        output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis and asset patch order.");
         output.WriteLine("  sdvkit project review cp-refresh --help Refresh selected owned CP patch JSON.");
         output.WriteLine("  sdvkit project review config-reconcile --help Accept a selected staged config change.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
