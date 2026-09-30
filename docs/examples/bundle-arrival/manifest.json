@@ -1,0 +1,9 @@
+{
+  "Name": "Bundle Arrival",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Original isolated single-player bundle review example.",
+  "UniqueID": "SDVKit.BundleArrival",
+  "EntryDll": "BundleArrival.dll",
+  "MinimumApiVersion": "4.0.0"
+}
