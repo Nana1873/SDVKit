@@ -198,3 +198,58 @@ internal sealed record ReviewModAssetResponseEnvelope(
     int SchemaVersion,
     string RequestId,
     ReviewModAssetReport Report);
+
+internal static class ReviewModAssetQueryValidation
+{
+    public static ReviewModAssetProblem? Validate(ReviewModAssetQuery query)
+    {
+        if (query.Operation is not (
+                ReviewModAssetContract.AssetsOperation
+                or ReviewModAssetContract.KeysOperation
+                or ReviewModAssetContract.GetOperation))
+        {
+            return new ReviewModAssetProblem("modAssetOperationUnknown", "The review-mod-assets operation is unknown.");
+        }
+        bool listOperation = query.Operation is ReviewModAssetContract.AssetsOperation
+            or ReviewModAssetContract.KeysOperation;
+        if (query.Offset < 0
+            || query.Limit < 1
+            || query.Limit > ReviewModAssetContract.MaximumPageLimit
+            || (!listOperation && (query.Offset != 0 || query.Limit != 1)))
+        {
+            return new ReviewModAssetProblem(
+                "modAssetPaginationInvalid",
+                $"List offsets must be non-negative with limits from 1 through {ReviewModAssetContract.MaximumPageLimit}; exact reads do not accept pagination.");
+        }
+
+        bool needsAsset = query.Operation is ReviewModAssetContract.KeysOperation
+            or ReviewModAssetContract.GetOperation;
+        bool needsKey = query.Operation is ReviewModAssetContract.GetOperation;
+        if (needsAsset
+            && !ReviewModAssetContract.IsCanonicalAssetName(query.Asset))
+        {
+            return new ReviewModAssetProblem(
+                "modAssetNameInvalid",
+                "A canonical bounded Mods/<owner>/... asset name is required.");
+        }
+        if (needsKey
+            && (!ReviewModAssetContract.IsBoundedText(
+                    query.Key,
+                    ReviewModAssetContract.MaximumKeyLength)
+                || string.IsNullOrWhiteSpace(query.Key)))
+        {
+            return new ReviewModAssetProblem(
+                "modAssetKeyInvalid",
+                "A bounded non-empty adapted record key is required.");
+        }
+        if ((!needsAsset && query.Asset is not null)
+            || (!needsKey && query.Key is not null))
+        {
+            return new ReviewModAssetProblem(
+                "modAssetRequestInvalid",
+                "The review-mod-assets request has unexpected operands.");
+        }
+
+        return null;
+    }
+}

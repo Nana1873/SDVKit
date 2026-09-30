@@ -159,7 +159,7 @@ internal static class ProjectReviewContainerTransferService
 
     internal static bool PermissionBindingValid(ProjectReviewMcpRuntimeSnapshot expected,
         ProjectReviewMcpRuntimeSnapshot current) => expected.TestSave is not null
-        && current.TestSave is not null && ProjectReviewMenuService.SameBinding(expected, current);
+        && current.TestSave is not null && ProjectReviewResponseTransport.SameBinding(expected, current);
 
     internal static ReviewContainerTransferReport BindingChangedFailure(ReviewContainerTransferReport report,
         bool cancellationRequested, DateTimeOffset observedAt)

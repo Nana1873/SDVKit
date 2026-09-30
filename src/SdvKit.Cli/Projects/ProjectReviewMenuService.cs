@@ -64,7 +64,7 @@ internal static class ProjectReviewMenuService
                 return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "menuResponseInvalid");
             }
             ProjectReviewMcpReadResult after = reader.Read();
-            if (!after.Succeeded || !SameBinding(before.Snapshot, after.Snapshot!)
+            if (!after.Succeeded || !ProjectReviewResponseTransport.SameBinding(before.Snapshot, after.Snapshot!)
                 || !after.Snapshot!.Runtime.WorldReady)
             {
                 return Failure("reviewBindingChanged");
@@ -81,11 +81,6 @@ internal static class ProjectReviewMenuService
             return Failure("menuReadUnavailable");
         }
     }
-
-    internal static bool SameBinding(ProjectReviewMcpRuntimeSnapshot before, ProjectReviewMcpRuntimeSnapshot after) =>
-        before.LaunchId == after.LaunchId && before.Topology == after.Topology && before.Role == after.Role
-        && before.Target == after.Target && before.TestSave == after.TestSave
-        && before.Screen == after.Screen && before.SessionId == after.SessionId;
 
     internal static ReviewMenuResponseEnvelope? DeserializeResponse(byte[] bytes)
     {
@@ -143,11 +138,8 @@ internal static class ProjectReviewMenuService
     internal static bool ValidResponse(ReviewMenuReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         DateTimeOffset started, DateTimeOffset now)
     {
-        if (report is null || report.SchemaVersion != 1 || report.LaunchId != expected.LaunchId
-            || report.Topology != expected.Topology || report.Role != expected.Role
-            || report.CapturedAtUtc.Offset != TimeSpan.Zero
-            || report.CapturedAtUtc < started || report.CapturedAtUtc > now.AddSeconds(5)
-            || now - report.CapturedAtUtc > TimeSpan.FromSeconds(5)
+        if (report is null || report.SchemaVersion != 1 || !ProjectReviewResponseTransport.MatchesCaptureBinding(
+                report.LaunchId, report.Topology, report.Role, report.CapturedAtUtc, expected, started, now)
             || report.Menus is null || report.Limitations is null || report.Limitations.Count > 8
             || report.Limitations.Any(x => x is not ("menuTreeLimit" or "repeatedMenuReference"
                 or "publicBaseOnly" or "componentScanLimit" or "typeIdentifierWithheld" or "componentLimit"

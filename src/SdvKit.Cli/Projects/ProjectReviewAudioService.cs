@@ -719,50 +719,11 @@ internal static class ProjectReviewAudioService
 
     internal static ReviewAudioProblem? Validate(ReviewAudioQuery query)
     {
-        ArgumentNullException.ThrowIfNull(query);
-        if (query.Operation is not (
-                ReviewAudioContract.CuesOperation
-                or ReviewAudioContract.CueOperation))
-        {
-            return Problem(
-                "audioOperationUnknown",
-                "The review-audio operation is unknown.");
-        }
-
-        if (query.Operation == ReviewAudioContract.CuesOperation)
-        {
-            if (query.CueId is not null)
-            {
-                return Problem(
-                    "audioRequestInvalid",
-                    "The cue inventory request has an unexpected cue ID.");
-            }
-            if (query.Offset < 0
-                || query.Limit < 1
-                || query.Limit > ReviewAudioContract.MaximumPageLimit)
-            {
-                return Problem(
-                    "audioPaginationInvalid",
-                    $"Offset must be non-negative and limit must be between 1 and {ReviewAudioContract.MaximumPageLimit}.");
-            }
-
-            return null;
-        }
-
-        if (query.Offset != 0 || query.Limit != 1)
-        {
-            return Problem(
-                "audioRequestInvalid",
-                "An exact cue request does not accept pagination.");
-        }
-        if (!ReviewAudioValidation.IsSafeCueId(query.CueId))
-        {
-            return Problem(
-                "audioCueIdInvalid",
-                $"A cue ID must contain 1-{ReviewAudioContract.MaximumCueIdLength} well-formed non-control characters.");
-        }
-
-        return null;
+        ReviewAudioProblem? problem = ReviewAudioQueryValidation.Validate(query);
+        // The CLI includes the encoding requirement in its existing diagnostic.
+        return problem?.Code == "audioCueIdInvalid"
+            ? problem with { Message = $"A cue ID must contain 1-{ReviewAudioContract.MaximumCueIdLength} well-formed non-control characters." }
+            : problem;
     }
 
     private static LiveLabCommandResult Failure(

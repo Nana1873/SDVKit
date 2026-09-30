@@ -192,3 +192,55 @@ internal sealed record ReviewTextureResponseEnvelope(
     int SchemaVersion,
     string RequestId,
     ReviewTextureReport Report);
+
+internal static class ReviewTextureQueryValidation
+{
+    public static ReviewTextureProblem? Validate(ReviewTextureQuery query)
+    {
+        if (query.Operation is not (
+                ReviewTextureContract.AssetsOperation
+                or ReviewTextureContract.GetOperation
+                or ReviewTextureContract.PreviewOperation))
+        {
+            return new ReviewTextureProblem(
+                "textureOperationUnknown",
+                "The review-texture operation is unknown.");
+        }
+
+        if (query.Offset < 0
+            || query.Limit < 1
+            || query.Limit > ReviewTextureContract.MaximumPageLimit)
+        {
+            return new ReviewTextureProblem(
+                "texturePaginationInvalid",
+                $"Offset must be non-negative and limit must be between 1 and {ReviewTextureContract.MaximumPageLimit}.");
+        }
+
+        bool needsAsset = query.Operation is ReviewTextureContract.GetOperation
+            or ReviewTextureContract.PreviewOperation;
+        if (needsAsset
+            && !ReviewTextureContract.IsCanonicalAssetName(query.Asset))
+        {
+            return new ReviewTextureProblem(
+                "textureAssetInvalid",
+                "A canonical bounded texture asset name is required.");
+        }
+
+        if (!needsAsset && query.Asset is not null)
+        {
+            return new ReviewTextureProblem(
+                "textureRequestInvalid",
+                "The review-texture request has unexpected operands.");
+        }
+
+        if (needsAsset
+            && (query.Offset != 0 || query.Limit != 1))
+        {
+            return new ReviewTextureProblem(
+                "textureRequestInvalid",
+                "Exact texture operations do not accept pagination.");
+        }
+
+        return null;
+    }
+}

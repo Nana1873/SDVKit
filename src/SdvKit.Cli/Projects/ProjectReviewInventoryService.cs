@@ -42,7 +42,7 @@ internal static class ProjectReviewInventoryService
             if (result.Response is null)
                 return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "inventoryResponseInvalid");
             ProjectReviewMcpReadResult after = reader.Read();
-            if (!after.Succeeded || !ProjectReviewMenuService.SameBinding(before.Snapshot, after.Snapshot!)
+            if (!after.Succeeded || !ProjectReviewResponseTransport.SameBinding(before.Snapshot, after.Snapshot!)
                 || !after.Snapshot!.Runtime.WorldReady) return Failure("reviewBindingChanged");
             if (!ValidResponse(result.Response.Report, after.Snapshot!, requestId, started, clock()))
                 return Failure("inventoryResponseStale");
@@ -83,10 +83,8 @@ internal static class ProjectReviewInventoryService
     internal static bool ValidResponse(ReviewInventoryReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         string requestId, DateTimeOffset started, DateTimeOffset now) => report is not null
         && report.SchemaVersion == ReviewInventoryContract.SchemaVersion
-        && report.LaunchId == expected.LaunchId && report.Topology == expected.Topology
-        && report.Role == expected.Role && report.CapturedAtUtc.Offset == TimeSpan.Zero
-        && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
-        && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
+        && ProjectReviewResponseTransport.MatchesCaptureBinding(
+            report.LaunchId, report.Topology, report.Role, report.CapturedAtUtc, expected, started, now)
         && (report.State == "ready" ? report.ErrorCode is null && report.Data is { } data
                 && data.CaptureId == requestId && ReviewInventoryContract.DataValid(data, expected.LaunchId)
                 && data.PlayerId == expected.Runtime.LocalPlayer?.Data?.PlayerId

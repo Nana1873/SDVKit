@@ -676,44 +676,11 @@ internal static class ProjectReviewTextureService
 
     private static ReviewTextureProblem? Validate(ReviewTextureQuery query)
     {
-        if (query.Operation is not (
-                ReviewTextureContract.AssetsOperation
-                or ReviewTextureContract.GetOperation
-                or ReviewTextureContract.PreviewOperation))
-        {
-            return Problem(
-                "textureOperationUnknown",
-                "The review-texture operation is unknown.");
-        }
-
-        if (query.Offset < 0
-            || query.Limit < 1
-            || query.Limit > ReviewTextureContract.MaximumPageLimit)
-        {
-            return Problem(
-                "texturePaginationInvalid",
-                $"Offset must be non-negative and limit must be between 1 and {ReviewTextureContract.MaximumPageLimit}.");
-        }
-
-        bool needsAsset = query.Operation is ReviewTextureContract.GetOperation
-            or ReviewTextureContract.PreviewOperation;
-        if (needsAsset
-            && !ReviewTextureContract.IsCanonicalAssetName(query.Asset))
-        {
-            return Problem(
-                "textureAssetInvalid",
-                "A canonical bounded texture asset name is required.");
-        }
-
-        if ((!needsAsset && query.Asset is not null)
-            || (needsAsset && (query.Offset != 0 || query.Limit != 1)))
-        {
-            return Problem(
-                "textureRequestInvalid",
-                "The review-texture request has unexpected operands or pagination.");
-        }
-
-        return null;
+        ReviewTextureProblem? problem = ReviewTextureQueryValidation.Validate(query);
+        // Preserve the CLI's combined diagnostic for unexpected operands or pagination.
+        return problem?.Code == "textureRequestInvalid"
+            ? problem with { Message = "The review-texture request has unexpected operands or pagination." }
+            : problem;
     }
 
     private static void ValidateEnvelopeShape(JsonElement root)

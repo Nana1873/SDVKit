@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Cli;
 
@@ -21,6 +22,19 @@ internal static class ProjectReviewResponseTransport
 {
     private const int Success = 0;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(15);
+
+    internal static bool SameBinding(ProjectReviewMcpRuntimeSnapshot before, ProjectReviewMcpRuntimeSnapshot after) =>
+        before.LaunchId == after.LaunchId && before.Topology == after.Topology && before.Role == after.Role
+        && before.Target == after.Target && before.TestSave == after.TestSave
+        && before.Screen == after.Screen && before.SessionId == after.SessionId;
+
+    internal static bool MatchesCaptureBinding(string? launchId, string topology, string? role,
+        DateTimeOffset capturedAtUtc, ProjectReviewMcpRuntimeSnapshot expected,
+        DateTimeOffset started, DateTimeOffset now) =>
+        launchId == expected.LaunchId && topology == expected.Topology && role == expected.Role
+        && capturedAtUtc.Offset == TimeSpan.Zero
+        && capturedAtUtc >= started && capturedAtUtc <= now.AddSeconds(5)
+        && now - capturedAtUtc <= TimeSpan.FromSeconds(5);
 
     public static ProjectReviewResponseTransportResult<TResponse> Execute<TResponse>(
         string command,

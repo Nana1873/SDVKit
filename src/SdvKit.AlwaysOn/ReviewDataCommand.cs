@@ -359,52 +359,8 @@ internal static class ReviewDataOperation
                 snapshot.Report.ProblemCode ?? "dataAssetUnsupported",
                 "The canonical Data asset is not safely queryable.")]);
 
-    private static ReviewDataProblem? Validate(ReviewDataQuery query)
-    {
-        if (query.Operation is not (
-                ReviewDataContract.AssetsOperation
-                or ReviewDataContract.KeysOperation
-                or ReviewDataContract.GetOperation))
-        {
-            return Problem("dataOperationUnknown", "The review-data operation is unknown.");
-        }
-
-        if (query.Offset < 0
-            || query.Limit < 1
-            || query.Limit > ReviewDataContract.MaximumPageLimit)
-        {
-            return Problem(
-                "dataPaginationInvalid",
-                $"Offset must be non-negative and limit must be between 1 and {ReviewDataContract.MaximumPageLimit}.");
-        }
-
-        bool needsAsset = query.Operation is ReviewDataContract.KeysOperation
-            or ReviewDataContract.GetOperation;
-        bool needsKey = query.Operation is ReviewDataContract.GetOperation;
-        if (needsAsset
-            && (string.IsNullOrWhiteSpace(query.Asset)
-                || query.Asset.Length > ReviewDataContract.MaximumAssetLength
-                || query.Asset.Any(char.IsControl)))
-        {
-            return Problem("dataAssetInvalid", "A bounded non-empty Data asset name is required.");
-        }
-
-        if (needsKey
-            && (string.IsNullOrWhiteSpace(query.Key)
-                || query.Key.Length > ReviewDataContract.MaximumKeyLength
-                || query.Key.Any(char.IsControl)))
-        {
-            return Problem("dataKeyInvalid", "A bounded non-empty stable record key is required.");
-        }
-
-        if ((!needsAsset && query.Asset is not null)
-            || (!needsKey && query.Key is not null))
-        {
-            return Problem("dataRequestInvalid", "The review-data request has unexpected operands.");
-        }
-
-        return null;
-    }
+    private static ReviewDataProblem? Validate(ReviewDataQuery query) =>
+        ReviewDataQueryValidation.Validate(query);
 
     private static bool TryResolveAsset(
         string input,
