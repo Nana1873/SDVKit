@@ -20,6 +20,21 @@ The solution builds the CLI and game-free tests. Tests link selected AlwaysOn so
 
 Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages. Ordinary .NET `bin/obj` outputs are ignored. The portable verifier deliberately extracts to a fresh external temporary directory to prove checkout independence; that retained directory is its explicit exception and must never be a normal Saves/Mods directory.
 
+## Source navigation
+
+Command routing starts in `src/SdvKit.Cli/CliApplication.cs`; help is in `CliHelp.cs`, project commands in `ProjectCommand.cs` and `ProjectReviewCommand.cs`, and review queries in the matching `Review*Command.cs` partials.
+
+The larger workflows stay in their existing components, with files named for the responsibility they contain:
+
+| Workflow | Source files |
+| --- | --- |
+| Fixture review | AlwaysOn's `ReviewFixtureArguments`, `ReviewFixtureTransportArguments`, `ReviewFixtureOperation`, `ReviewFixturePolicy`, and `ReviewFixtureKindResolver`; `ReviewFixtureCommand` and `ReviewFixtureTransportCommand` dispatch to the `StardewReviewFixture*` runtime partials for buildings, objects, animals, and navigation. |
+| Map review | AlwaysOn's `ReviewMapOperation`, `ReviewMapResolution`, and `ReviewMapValidation`, with `ReviewMapSource`, `ReviewMapFileInventory`, `StardewReviewMapSource`, and `ReviewMapCommand` at the adapter boundary. |
+| Project review | `src/SdvKit.Cli/Projects/ProjectReviewService.cs` routes requests; `ProjectReviewSingle`, `ProjectReviewNetwork`, `ProjectReviewConsole`, and `ProjectReviewReports` contain the matching partial responsibilities. |
+| Lab lifecycle | `src/SdvKit.Cli/LiveLab/LiveLabService.cs` owns dependencies and shared state; `LiveLabStart`, `LiveLabStatus`, `LiveLabStop`, `LiveLabTestSave`, `LiveLabProjectReview`, and `LiveLabNetwork` contain the matching partial responsibilities. |
+
+Extend the file for the affected responsibility. Keep shared state in its existing partial type, and add explicit links in `tests/SdvKit.Tests/SdvKit.Tests.csproj` when splitting AlwaysOn source used by game-free tests.
+
 ## Documentation changes
 
 - Keep the root README focused on installation and one example for each product pillar.
