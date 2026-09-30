@@ -18,7 +18,7 @@ internal sealed record ProjectCheckReport(
     IReadOnlyList<ProjectCheckProblem> Problems,
     IReadOnlyList<ProjectCheckProblem> Warnings);
 
-internal static class ProjectChecker
+internal static partial class ProjectChecker
 {
     internal const string SchemaCommit = "79f9bbbe3edbb7ca3369e7ad0d3dd45131b34fc0";
     private static readonly JsonDocumentOptions JsonOptions = new()
@@ -73,7 +73,8 @@ internal static class ProjectChecker
             {
                 if (string.Equals(value, "Pathoschild.ContentPatcher", StringComparison.OrdinalIgnoreCase))
                 {
-                    CheckFile(root, "content.json", "content-patcher", files, problems);
+                    JsonNode? content = CheckFile(root, "content.json", "content-patcher", files, problems);
+                    CheckContentPatcherReferences(root, content, files, problems, warnings);
                 }
                 else
                 {
@@ -218,19 +219,40 @@ internal static class ProjectChecker
     }
 
     private static JsonNode? CheckFile(string root, string relative, string schemaName,
-        List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems, bool include = false)
+        List<ProjectCheckedFile> files, List<ProjectCheckProblem> problems, bool include = false,
+        int? maximumBytes = null, List<ProjectCheckProblem>? warnings = null)
     {
         string path = Path.Combine(root, relative);
         JsonNode? instance;
         try
         {
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            if (HasLinkedAncestor(Path.GetDirectoryName(path)!)
+                || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
             {
-                problems.Add(new("linkedPath", relative, "", "Authoring files must not be symbolic links."));
+                problems.Add(new("linkedPath", relative, "", "Authoring file paths must not use symbolic links or junctions."));
                 return null;
             }
 
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path), JsonOptions);
+            string text;
+            if (maximumBytes is int limit)
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (stream.Length > limit)
+                {
+                    warnings!.Add(new("includeFileTooLarge", relative, "",
+                        $"Include validation skipped: the file exceeds {limit} bytes; validate it with Content Patcher in game."));
+                    return null;
+                }
+                byte[] bytes = new byte[(int)stream.Length];
+                stream.ReadExactly(bytes);
+                using var reader = new StreamReader(new MemoryStream(bytes), detectEncodingFromByteOrderMarks: true);
+                text = reader.ReadToEnd();
+            }
+            else
+            {
+                text = File.ReadAllText(path);
+            }
+            using JsonDocument document = JsonDocument.Parse(text, JsonOptions);
             int before = problems.Count;
             CheckDuplicateProperties(document.RootElement, relative, "", problems);
             if (problems.Count != before)
