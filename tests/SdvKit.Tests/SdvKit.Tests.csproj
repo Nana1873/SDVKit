@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SdvKit.Cli\SdvKit.Cli.csproj" />
+    <Compile Include="..\..\docs\recipes\data-migration\Ledger.cs" Link="Recipes\Ledger.cs" />
   </ItemGroup>
 
   <ItemGroup>
