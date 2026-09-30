@@ -16,9 +16,12 @@ internal sealed record CpDiagnosisResult(string State, string? ErrorCode, string
     string AssetObservation = "notRequested; inspect separately after diagnosis; inspection may load the asset")
 {
     public CpResponse? Reload { get; init; }
+    public string? OrderAsset { get; init; }
+    public CpResponse? Applied { get; init; }
+    public CpResponse? Order { get; init; }
 }
 
-internal static class ProjectReviewCpDiagnosis
+internal static partial class ProjectReviewCpDiagnosis
 {
     internal const string ProviderId = "Pathoschild.ContentPatcher";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -46,17 +49,17 @@ internal static class ProjectReviewCpDiagnosis
     internal static CpDiagnosisResult Execute(ProjectReviewMcpRuntimeReader reader, string packId,
         string providerId, string? asset, string? parse,
         Func<string, LiveLabCommandResult>? send = null, TimeSpan? timeout = null,
-        ProjectReviewActionLock? heldActionLock = null, bool reload = false)
+        ProjectReviewActionLock? heldActionLock = null, bool reload = false, bool order = false)
     {
         ProjectReviewMcpVerifiedContext? context = null;
         ProjectReviewOwnedArtifact? pack = null, provider = null;
         bool packLoaded = false, providerLoaded = false;
-        CpResponse? summary = null, parsed = null, reloaded = null;
+        CpResponse? summary = null, parsed = null, reloaded = null, applied = null, definition = null;
         CpDiagnosisResult Result(string state, string? code) => new(state, code, context?.State.LaunchId,
             pack?.Manifest.UniqueId ?? packId, provider?.Manifest.UniqueId ?? providerId,
             provider?.Manifest.Version, pack?.StagedBuildIdentity, provider?.StagedBuildIdentity, packLoaded, providerLoaded, summary, parsed)
-        { Reload = reloaded };
-        if (reader.Topology != LiveLabState.SingleTopology || !ValidArguments(packId, providerId, asset, parse))
+        { Reload = reloaded, OrderAsset = order ? asset : null, Applied = applied, Order = definition };
+        if (reader.Topology != LiveLabState.SingleTopology || !ValidArguments(packId, providerId, asset, parse) || order && asset is null)
             return Result("unavailable", "cpArgumentsInvalid");
         try
         {
@@ -100,9 +103,16 @@ internal static class ProjectReviewCpDiagnosis
                 parsed = Capture($"patch parse \"{parse}\" \"{selectedId}\"", true);
                 if (parsed.State != "ready") return Result("incomplete", parsed.ErrorCode);
             }
+            if (order)
+            {
+                applied = Capture("patch dump applied", false, dump: "applied");
+                if (applied.State != "ready") return Result("incomplete", applied.ErrorCode);
+                definition = Capture("patch dump order", false, dump: "order");
+                if (definition.State != "ready") return Result("incomplete", definition.ErrorCode);
+            }
             return Result("ready", null);
 
-            CpResponse Capture(string command, bool isParse, bool isReload = false)
+            CpResponse Capture(string command, bool isParse, bool isReload = false, string? dump = null)
             {
                 DateTimeOffset started = DateTimeOffset.UtcNow;
                 bool written = false, mayHaveWritten = false;
@@ -150,15 +160,16 @@ internal static class ProjectReviewCpDiagnosis
                     if (!Dispatch($"patch parse \"{end}\" \"{selectedId}\" compact", false)) return Failure("cpMarkerDeliveryFailed");
                     if (!WaitFor(t => Entries(t, provider.Manifest.Name).Any(e => e.Text.Trim() == Marker(end)))) return Failure("cpResponseTimedOut");
                     return InterpretWindow(Delta(), provider.Manifest.Name, selectedId, asset, parse,
-                        begin, end, isParse, context.Staging.Artifacts.Select(a => a.Manifest).ToArray(), started, isReload);
+                        begin, end, isParse, context.Staging.Artifacts.Select(a => a.Manifest).ToArray(), started, isReload, dump,
+                        applied?.Messages.Where(m => AppliedRow.IsMatch(m)).Select(m => AppliedRow.Match(m).Groups["path"].Value).ToArray());
                 }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Security.SecurityException or RegexMatchTimeoutException)
+                catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Security.SecurityException or RegexMatchTimeoutException)
                 {
                     return Failure("cpLogWindowUnavailable");
                 }
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Security.SecurityException or RegexMatchTimeoutException)
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Security.SecurityException or RegexMatchTimeoutException)
         {
             return Result("unavailable", "cpReviewUnavailable");
         }
@@ -209,7 +220,8 @@ internal static class ProjectReviewCpDiagnosis
 
     internal static CpResponse InterpretWindow(string text, string provider, string packId,
         string? asset, string? parse, string begin, string end, bool isParse,
-        IReadOnlyList<ProjectReviewManifest> staged, DateTimeOffset started, bool isReload = false)
+        IReadOnlyList<ProjectReviewManifest> staged, DateTimeOffset started, bool isReload = false,
+        string? dump = null, IReadOnlyList<string>? appliedPaths = null)
     {
         CpResponse Failure(string code) => new("incomplete", code, true, true, started,
             DateTimeOffset.UtcNow, null, [], 0, false, []);
@@ -225,6 +237,8 @@ internal static class ProjectReviewCpDiagnosis
             return Failure("cpResponseUncorrelatedOrOverlapping");
         Entry response = entries[1];
         string message = response.Text;
+        if (dump is not null)
+            return InterpretDump(response.Level, response.Time, message, asset!, dump, appliedPaths, started);
         bool known;
         if (isReload)
         {

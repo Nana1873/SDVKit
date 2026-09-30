@@ -108,6 +108,13 @@ bounds, owned-log correlation, disclosure limits and explicit incomplete results
 does not inspect or reload an asset. `state=ready` means recognized, correlated
 CP output; compare patch states and then separately inspect the final asset.
 
+Set `"order": true` with one canonical `asset` to add bounded provider apply and
+definition order for active CP patches on that asset. `orderAsset`, `applied` and
+`order` are null when omitted or false. Only selected-asset rows are disclosed;
+the provider's global dump responses must fit the complete reply limits before
+filtering. See [selected order and interpretation](cp-diagnosis.md#explain-competing-patches-on-one-asset).
+These reports do not load the asset or establish arbitrary C# edit provenance.
+
 Enable the independent refresh capability only for an authorized client:
 
 ```powershell
