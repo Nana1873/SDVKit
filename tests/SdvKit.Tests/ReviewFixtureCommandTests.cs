@@ -1216,7 +1216,19 @@ public sealed class ReviewFixtureCommandTests
     }
 
     private static string ReadSource()
-        => ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureCommand.cs");
+        => string.Join("\n",
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureTransportArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureKindResolver.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureOperation.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixturePolicy.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureCommand.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureTransportCommand.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureRuntime.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureBuildings.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureObjects.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureAnimals.cs"),
+            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureNavigation.cs"));
 
     private static string ReadRepositorySource(params string[] parts)
     {

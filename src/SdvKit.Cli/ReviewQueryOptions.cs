@@ -1,4 +1,7 @@
+using System.Globalization;
+using System.Text.Json;
 using SdvKit.Cli.LiveLab;
+using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Cli;
 
@@ -126,4 +129,11 @@ public static partial class CliApplication
         options = new ReviewQueryOptions(operands, offset, limit, frameIndex, topology, role, screenId);
         return true;
     }
+
+    private static bool TryParseNonNegative(string value, out int parsed) =>
+        int.TryParse(
+            value,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out parsed);
 }
