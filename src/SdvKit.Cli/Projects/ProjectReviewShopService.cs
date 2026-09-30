@@ -43,7 +43,7 @@ internal static class ProjectReviewShopService
             if (result.Response is null)
                 return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "shopResponseInvalid");
             ProjectReviewMcpReadResult after = reader.Read();
-            if (!after.Succeeded || !ProjectReviewMenuService.SameBinding(before.Snapshot, after.Snapshot!)
+            if (!after.Succeeded || !ProjectReviewResponseTransport.SameBinding(before.Snapshot, after.Snapshot!)
                 || !after.Snapshot!.Runtime.WorldReady) return Failure("reviewBindingChanged");
             if (!ValidResponse(result.Response.Report, after.Snapshot!, started, clock())) return Failure("shopResponseStale");
             return result.Response.Report;
@@ -89,10 +89,9 @@ internal static class ProjectReviewShopService
 
     internal static bool ValidResponse(ReviewShopReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         DateTimeOffset started, DateTimeOffset now) => report is not null && report.SchemaVersion == 1
-        && report.LaunchId == expected.LaunchId && report.Topology == "single" && report.Topology == expected.Topology
-        && report.Role is null && expected.Role is null && report.CapturedAtUtc.Offset == TimeSpan.Zero
-        && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
-        && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
+        && report.Topology == "single" && report.Role is null && expected.Role is null
+        && ProjectReviewResponseTransport.MatchesCaptureBinding(
+            report.LaunchId, report.Topology, report.Role, report.CapturedAtUtc, expected, started, now)
         && (report.State == "ready" ? report.ErrorCode is null && ReviewShopContract.DataValid(report.Data)
             : report.State == "unavailable" && report.Data is null && report.ErrorCode is
                 ("shopReviewBindingInvalid" or "shopWorldNotReady" or "shopCaptureFailed" or "shopResponseLimit"

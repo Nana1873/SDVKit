@@ -129,3 +129,53 @@ internal sealed record ReviewDataResponseEnvelope(
     int SchemaVersion,
     string RequestId,
     ReviewDataReport Report);
+
+internal static class ReviewDataQueryValidation
+{
+    public static ReviewDataProblem? Validate(ReviewDataQuery query)
+    {
+        if (query.Operation is not (
+                ReviewDataContract.AssetsOperation
+                or ReviewDataContract.KeysOperation
+                or ReviewDataContract.GetOperation))
+        {
+            return new ReviewDataProblem("dataOperationUnknown", "The review-data operation is unknown.");
+        }
+
+        if (query.Offset < 0
+            || query.Limit < 1
+            || query.Limit > ReviewDataContract.MaximumPageLimit)
+        {
+            return new ReviewDataProblem(
+                "dataPaginationInvalid",
+                $"Offset must be non-negative and limit must be between 1 and {ReviewDataContract.MaximumPageLimit}.");
+        }
+
+        bool needsAsset = query.Operation is ReviewDataContract.KeysOperation
+            or ReviewDataContract.GetOperation;
+        bool needsKey = query.Operation is ReviewDataContract.GetOperation;
+        if (needsAsset
+            && (string.IsNullOrWhiteSpace(query.Asset)
+                || query.Asset.Length > ReviewDataContract.MaximumAssetLength
+                || query.Asset.Any(char.IsControl)))
+        {
+            return new ReviewDataProblem("dataAssetInvalid", "A bounded non-empty Data asset name is required.");
+        }
+
+        if (needsKey
+            && (string.IsNullOrWhiteSpace(query.Key)
+                || query.Key.Length > ReviewDataContract.MaximumKeyLength
+                || query.Key.Any(char.IsControl)))
+        {
+            return new ReviewDataProblem("dataKeyInvalid", "A bounded non-empty stable record key is required.");
+        }
+
+        if ((!needsAsset && query.Asset is not null)
+            || (!needsKey && query.Key is not null))
+        {
+            return new ReviewDataProblem("dataRequestInvalid", "The review-data request has unexpected operands.");
+        }
+
+        return null;
+    }
+}

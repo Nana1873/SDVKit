@@ -49,7 +49,7 @@ internal static class ProjectReviewWorldService
             if (result.Response is null)
                 return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "worldResponseInvalid");
             ProjectReviewMcpReadResult after = reader.Read();
-            if (!after.Succeeded || !ProjectReviewMenuService.SameBinding(before.Snapshot, after.Snapshot!)
+            if (!after.Succeeded || !ProjectReviewResponseTransport.SameBinding(before.Snapshot, after.Snapshot!)
                 || !after.Snapshot!.Runtime.WorldReady) return Failure("reviewBindingChanged");
             if (!ValidResponse(result.Response.Report, after.Snapshot!, area, started, clock()))
                 return Failure("worldResponseStale");
@@ -118,10 +118,8 @@ internal static class ProjectReviewWorldService
     internal static bool ValidResponse(ReviewWorldReport? report, ProjectReviewMcpRuntimeSnapshot expected,
         ReviewWorldArea expectedArea, DateTimeOffset started, DateTimeOffset now) =>
         report is not null && report.SchemaVersion == 1
-        && report.LaunchId == expected.LaunchId && report.Topology == expected.Topology
-        && report.Role == expected.Role && report.CapturedAtUtc.Offset == TimeSpan.Zero
-        && report.CapturedAtUtc >= started && report.CapturedAtUtc <= now.AddSeconds(5)
-        && now - report.CapturedAtUtc <= TimeSpan.FromSeconds(5)
+        && ProjectReviewResponseTransport.MatchesCaptureBinding(
+            report.LaunchId, report.Topology, report.Role, report.CapturedAtUtc, expected, started, now)
         && (report.State == "ready" ? report.ErrorCode is null && ReviewWorldContract.DataValid(report.Data)
                 && report.Data!.LocationName == expected.Runtime.LocationId
                 && report.Data.PlayerId == expected.Runtime.LocalPlayer?.Data?.PlayerId

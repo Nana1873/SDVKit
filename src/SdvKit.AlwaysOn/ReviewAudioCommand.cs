@@ -131,50 +131,8 @@ internal static class ReviewAudioOperation
             coverage: null,
             problem);
 
-    internal static ReviewAudioProblem? Validate(ReviewAudioQuery query)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        if (query.Operation == ReviewAudioContract.CuesOperation)
-        {
-            if (query.CueId is not null)
-            {
-                return Problem(
-                    "audioRequestInvalid",
-                    "The cue inventory request has an unexpected cue ID.");
-            }
-            if (query.Offset < 0
-                || query.Limit < 1
-                || query.Limit > ReviewAudioContract.MaximumPageLimit)
-            {
-                return Problem(
-                    "audioPaginationInvalid",
-                    $"Offset must be non-negative and limit must be between 1 and {ReviewAudioContract.MaximumPageLimit}.");
-            }
-
-            return null;
-        }
-
-        if (query.Operation != ReviewAudioContract.CueOperation)
-        {
-            return Problem(
-                "audioOperationUnknown",
-                "The review-audio operation is unknown.");
-        }
-        if (query.Offset != 0 || query.Limit != 1)
-        {
-            return Problem(
-                "audioRequestInvalid",
-                "An exact cue request does not accept pagination.");
-        }
-        if (!ReviewAudioValidation.IsSafeCueId(query.CueId))
-        {
-            return Problem(
-                "audioCueIdInvalid",
-                $"A cue ID must contain 1-{ReviewAudioContract.MaximumCueIdLength} non-control characters.");
-        }
-
-        return null;
-    }
+    internal static ReviewAudioProblem? Validate(ReviewAudioQuery query) =>
+        ReviewAudioQueryValidation.Validate(query);
 
     private static ReviewAudioReport ListCues(
         ReviewAudioQuery query,
