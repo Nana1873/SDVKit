@@ -38,9 +38,17 @@ internal static partial class ProjectChecker
                 }
                 bool include = patch["Action"] is JsonValue action && action.TryGetValue(out string? actionName)
                     && actionName == "Include";
-                foreach (string reference in include ? from.Split(',') : [from])
+                // CP's token-free lexer splits FromFile for every action, trims entries,
+                // and ignores empty comma segments (PatchLoader 2.9.1).
+                string[] references = from.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (references.Length == 0)
                 {
-                    string? relative = ResolveCpFile(root, reference.Trim(), file, field, problems);
+                    problems.Add(new("referencePathInvalid", file, field, "FromFile contains no literal file paths."));
+                    continue;
+                }
+                foreach (string reference in references)
+                {
+                    string? relative = ResolveCpFile(root, reference, file, field, problems);
                     if (relative is null || !include) continue;
                     if (active.Contains(relative))
                     {

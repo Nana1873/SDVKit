@@ -269,6 +269,94 @@ public sealed class ProjectCheckerTests : IDisposable
             && problem.File == "content.json" && problem.Field == "/Changes/0/FromFile");
     }
 
+    [Theory]
+    [InlineData("Load", "png", false)]
+    [InlineData("EditImage", "png", false)]
+    [InlineData("EditMap", "tmx", false)]
+    [InlineData("Load", "png", true)]
+    [InlineData("EditImage", "png", true)]
+    [InlineData("EditMap", "tmx", true)]
+    public void AllActionsCheckEveryCommaDelimitedLiteralFile(string action, string extension, bool missing)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write($"assets/first.{extension}", "Asset existence only.");
+        if (!missing) Write($"assets/second.{extension}", "Asset existence only.");
+        var patch = new JsonObject
+        {
+            ["Action"] = action,
+            ["Target"] = "Maps/Test",
+            ["FromFile"] = $"assets/first.{extension}, assets/second.{extension}",
+        };
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal(missing ? "failed" : "passed", result.Status);
+        Assert.Empty(result.Warnings);
+        if (missing)
+        {
+            ProjectCheckProblem problem = Assert.Single(result.Problems);
+            Assert.Equal("fileNotFound", problem.Code);
+            Assert.Equal("content.json", problem.File);
+            Assert.Equal("/Changes/0/FromFile", problem.Field);
+            Assert.Contains($"assets/second.{extension}", problem.Message, StringComparison.Ordinal);
+        }
+        else Assert.Empty(result.Problems);
+    }
+
+    [Theory]
+    [InlineData("Include", " , patches/item.json")]
+    [InlineData("Include", "patches/item.json, , patches/item.json")]
+    [InlineData("Include", "patches/item.json, ")]
+    [InlineData("Load", " , patches/item.json")]
+    [InlineData("Load", "patches/item.json, , patches/item.json")]
+    [InlineData("Load", "patches/item.json, ")]
+    public void EmptyLiteralCommaSegmentsAreNotResolvedAsMissingFiles(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        Write("patches/item.json", """{"Changes":[]}""");
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.DoesNotContain(result.Problems, problem => problem.Code != "schemaViolation");
+        if (from.TrimEnd().EndsWith(','))
+        {
+            // The unchanged official schema snapshot rejects a trailing comma;
+            // file resolution must not add its own missing/invalid-path error.
+            Assert.Contains(result.Problems, problem => problem.Code == "schemaViolation"
+                && problem.Field == "/Changes/0/FromFile");
+        }
+        else
+        {
+            Assert.Equal("passed", result.Status);
+            Assert.Empty(result.Problems);
+        }
+        Assert.Empty(result.Warnings);
+        if (action == "Include") Assert.Single(result.Files, file => file.File == "patches/item.json");
+    }
+
+    [Theory]
+    [InlineData("Include", "")]
+    [InlineData("Include", " , , ")]
+    [InlineData("Load", " , , ")]
+    public void EntirelyEmptyLiteralFileListsFailAtTheSourceField(string action, string from)
+    {
+        Create(ProjectCreator.ContentPack);
+        var patch = new JsonObject { ["Action"] = action, ["FromFile"] = from };
+        if (action != "Include") patch["Target"] = "Data/Test";
+        Edit("content.json", content => content["Changes"] = new JsonArray(patch));
+
+        ProjectCheckReport result = ProjectChecker.Check(root);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Contains(result.Problems, problem => problem.Code == "referencePathInvalid" && problem.File == "content.json"
+            && problem.Field == "/Changes/0/FromFile" && problem.Message == "FromFile contains no literal file paths.");
+        Assert.DoesNotContain(result.Problems, problem => problem.Code == "fileNotFound");
+    }
+
     [Fact]
     public void NestedIncludesUseRootRelativePathsAndDeduplicateEquivalentPathsWithoutReadingAssets()
     {
