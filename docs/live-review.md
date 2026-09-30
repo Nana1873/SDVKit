@@ -38,7 +38,7 @@ To review one code project within an existing repository:
 & $sdvkit project review start .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --topology single --json
 ```
 
-The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Review stages one standalone code-mod package per target or companion; hybrid/bundled-pack build/package support does not make a multi-manifest bundle reviewable. Supply separately supported ready packs through `--content-pack`. Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
+The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Source review stages one standalone code-mod package per target or companion. Build/package a source bundle and extract it before selecting its ready root; see [explicit ready bundles](#select-a-ready-bundle). Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
 
 A selected code project may have nested C# test projects and QA mods with their own
 code manifests. For a root mod plus a separate live-test companion, select both
@@ -65,6 +65,31 @@ To review an already packaged code mod, extract it yourself and select the singl
 With no C# project present, review copies the ready artifact unchanged and does not build or package it. This also supports `network-2`. Do not pass `--project` for a ready artifact. Select one root mod, not a ZIP or a multi-mod bundle; dependencies still require explicit companions. Missing or unsafe `EntryDll` paths fail preparation. SMAPI validates DLL loading and compatibility; check review status and selected-mod diagnostics for load failures. Supplied bytes and their staged build identity are preserved, but staging alone does not prove a valid or loaded mod.
 
 Review stays running until stopped. It starts windowed at 1280x720, keeps the SMAPI terminal available, and permits subsequent resize/UI-scale testing. Confirm the expected target is loaded; a built/staged artifact is not load confirmation.
+
+### Select a ready bundle
+
+For topology **single**, select an extracted bundle's outer directory and
+explicitly select every direct pack child through repeatable `--content-pack`:
+
+```powershell
+& $sdvkit project review start .\ReadyBundle --content-pack .\ReadyBundle\ArrivalPack --game-path $gamePath --topology single --test-save --json
+```
+
+The selected directory must contain exactly one code mod at its root or in a
+direct child directory, plus the selected direct-child pack manifests. Every
+manifest must belong to this explicit set. Unknown nested mods, unselected or
+missing members, source projects, links, unsafe paths, missing DLLs/providers
+and duplicate IDs/staging names reject preparation before launch. Code and packs
+use separate existing artifact roles, file hashes and cleanup ownership. The
+target's source root binds the selected outer directory; its staging path identifies
+only the code member. Packs are excluded from that code copy and staged once each.
+Retained active starts reject a changed outer root or companion/pack selection.
+Use the normal stop/reset sequence before changing the selection.
+
+ModBuildConfig's `ContentPacks` packaging produces the supported outer container
+with direct code/pack siblings. Source bundles and network-2 bundles remain
+unsupported. Follow the original [Bundle Arrival recipe](bundle-authoring.md)
+for build/package, exact ready selection, code/pack effects and restart checks.
 
 For selected dependencies, add repeatable `--companion .\ReadyCompanion` and `--content-pack .\ExamplePack`. A content-pack target itself needs its provider explicitly:
 

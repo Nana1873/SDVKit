@@ -7,6 +7,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
+| Build and review one explicit C# and associated content-pack bundle | [Bundle Arrival recipe](bundle-authoring.md) |
 | Author a multilingual SMAPI dialogue through fallback, controller, and reload proof | [Multilingual UI authoring recipe](multilingual-ui-authoring.md) |
 | Author a bounded vanilla Gold-shop offer and prove one purchase | [Shop purchase authoring recipe](shop-authoring.md) |
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
@@ -46,7 +47,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
 | Local split-screen | Quoted `sdvkit split-screen join/leave/status`, native `screen=<id>`, and `project review menu --screen <id>` | Exact startup `--screen <id>` for runtime/menu/viewport/input | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; screen/farmer/context binding invalidates on leave or replacement; shared-window text input unavailable; [workflow](live-review.md#local-split-screen-review) |
 | Network farmhand lifecycle | Quoted `sdvkit network leave/join/status` for the selected role | Observation only; host remains readable during coordinated absence, farmhand requires a new client after rejoin | Passed `network-2` pair; host-authorized farmhand departure, retained processes/fixture, explicit rejoin; [workflow](live-review.md#leave-and-rejoin-the-network-farmhand) |
-| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider |
+| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider; ready code/pack bundle single only, with every direct pack explicitly selected |
 | Runtime and selected-mod diagnostics | `project review status`; quoted split-screen status for local IDs | Runtime, review, mods tools | Active single, fixed host/farmhand role, or exact owned local screen where supported |
 | Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single, fixed host/farmhand, or exact owned local screen; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |

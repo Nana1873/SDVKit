@@ -1,0 +1,8 @@
+{
+  "Name": "Bundle Arrival Destination",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Original destination pack for the Bundle Arrival provider.",
+  "UniqueID": "SDVKit.BundleArrival.Destination",
+  "ContentPackFor": { "UniqueID": "SDVKit.BundleArrival", "MinimumVersion": "1.0.0" }
+}

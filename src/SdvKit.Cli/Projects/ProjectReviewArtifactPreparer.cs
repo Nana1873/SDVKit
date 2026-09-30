@@ -52,17 +52,26 @@ internal static partial class ProjectModStager
             var artifacts = new List<ProjectReviewPreparedArtifact>();
             ProjectReviewProblem? problem;
             ProjectInspectionReport targetInspection = ProjectInspector.Inspect(targetPath);
+            string[] embeddedPacks = contentPackPaths.Select(Path.GetFullPath)
+                .Where(path => IsBelow(targetInspection.Root, path)).ToArray();
+            if (embeddedPacks.Length > 0 && targetInspection.ProjectFiles.Count == 0)
+            {
+                problem = ValidateReadyBundle(targetInspection, embeddedPacks);
+                if (problem is not null)
+                    return PreparationFailure(preparationRoot, paths, problem);
+            }
             ProjectReviewPreparedArtifact? target = projectFile is null && Directory.Exists(targetPath)
                 && targetInspection.ProjectFiles.Count == 0
                     ? PrepareReadyDirectory(
                         ProjectReviewArtifactRole.Target,
-                        targetInspection.Kind == ProjectInspectionReport.SmapiMod
+                        targetInspection.Kind is ProjectInspectionReport.SmapiMod or ProjectInspectionReport.Hybrid
                             ? ProjectInspectionReport.SmapiMod
                             : ProjectInspectionReport.ContentPack,
                         targetPath,
                         preparationRoot,
                         artifacts.Count,
-                        out problem)
+                        out problem,
+                        embeddedPacks)
                     : PrepareProject(
                         ProjectReviewArtifactRole.Target,
                         targetPath,
@@ -176,6 +185,11 @@ internal static partial class ProjectModStager
                 CommentHandling = JsonCommentHandling.Skip,
             });
             JsonElement root = document.RootElement;
+            if (HasDuplicateManifestProperties(root))
+            {
+                error = "The manifest contains duplicate properties and has no unambiguous review identity.";
+                return null;
+            }
             string? name = StringProperty(root, "Name");
             string? uniqueId = StringProperty(root, "UniqueID");
             string? version = StringProperty(root, "Version");
@@ -598,17 +612,17 @@ internal static partial class ProjectModStager
         string sourcePath,
         string preparationRoot,
         int index,
-        out ProjectReviewProblem? problem)
+        out ProjectReviewProblem? problem,
+        IReadOnlyList<string>? embeddedPacks = null)
     {
         ProjectInspectionReport inspection = ProjectInspector.Inspect(sourcePath);
+        bool bundle = embeddedPacks is { Count: > 0 };
         if (inspection.Problems.Count > 0
             || inspection.ProjectFiles.Count != 0
-            || inspection.Manifests.Count != 1
-            || !string.Equals(
-                inspection.Manifests[0].Path,
-                "manifest.json",
-                StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(inspection.Kind, expectedKind, StringComparison.Ordinal))
+            || (!bundle && (inspection.Manifests.Count != 1
+                || !string.Equals(inspection.Manifests[0].Path, "manifest.json", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(inspection.Kind, expectedKind, StringComparison.Ordinal)))
+            || (bundle && ValidateReadyBundle(inspection, embeddedPacks!) is not null))
         {
             ProjectProblem sourceProblem = inspection.Problems.Count > 0
                 ? inspection.Problems[0]
@@ -622,7 +636,11 @@ internal static partial class ProjectModStager
             return null;
         }
 
-        string topLevel = Path.GetFileName(inspection.Root);
+        ProjectManifestSummary rootManifest = bundle
+            ? inspection.Manifests.Single(manifest => manifest.Kind == ProjectInspectionReport.SmapiMod)
+            : inspection.Manifests.Single();
+        string memberRoot = Path.GetDirectoryName(Path.Combine(inspection.Root, FromSlashPath(rootManifest.Path)))!;
+        string topLevel = Path.GetFileName(memberRoot);
         if (!IsSafeSegment(topLevel))
         {
             problem = ReviewProblem(
@@ -638,11 +656,14 @@ internal static partial class ProjectModStager
             "content",
             topLevel);
         bool cpSource = role == ProjectReviewArtifactRole.Target
-            && string.Equals(inspection.Manifests[0].ContentPackFor,
+            && string.Equals(rootManifest.ContentPackFor,
                 ProjectReviewCpDiagnosis.ProviderId, StringComparison.OrdinalIgnoreCase);
-        string[] sourceFiles = SelectReadySourceFiles(inspection.Root, cpSource);
-        string sourceIdentity = ModBuildIdentity.ComputeSelectedFiles(inspection.Root, sourceFiles);
-        CopySelectedReadyFiles(inspection.Root, preparedPath, sourceFiles);
+        // Validate the complete selected bundle before copying only the code member.
+        if (bundle && !PathEquals(memberRoot, inspection.Root))
+            _ = SelectReadySourceFiles(inspection.Root, cpSource: false);
+        string[] sourceFiles = SelectReadySourceFiles(memberRoot, cpSource, embeddedPacks);
+        string sourceIdentity = ModBuildIdentity.ComputeSelectedFiles(memberRoot, sourceFiles);
+        CopySelectedReadyFiles(memberRoot, preparedPath, sourceFiles);
         if (sourceIdentity != ModBuildIdentity.ComputeFileSet(preparedPath))
             throw new InvalidDataException("The ready source changed while it was copied.");
         ProjectReviewManifest? manifest = ReadReviewManifest(
@@ -653,7 +674,7 @@ internal static partial class ProjectModStager
             || !string.Equals(manifest.Kind, expectedKind, StringComparison.Ordinal)
             || !string.Equals(
                 manifest.UniqueId,
-                inspection.Manifests[0].UniqueId,
+                rootManifest.UniqueId,
                 StringComparison.OrdinalIgnoreCase)
             || (manifest.EntryDll is not null
                 && !File.Exists(Path.Combine(preparedPath, manifest.EntryDll))))
@@ -697,7 +718,7 @@ internal static partial class ProjectModStager
         }
     }
 
-    private static string[] SelectReadySourceFiles(string source, bool cpSource)
+    private static string[] SelectReadySourceFiles(string source, bool cpSource, IReadOnlyList<string>? embeddedPacks = null)
     {
         if (ProjectChecker.HasLinkedAncestor(source))
         {
@@ -723,6 +744,8 @@ internal static partial class ProjectModStager
                 string name = Path.GetFileName(entry);
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
+                    if (embeddedPacks?.Any(pack => PathEquals(pack, entry)) == true)
+                        continue;
                     bool excludedOutput = output || (cpSource && currentSource == source
                         && name.Equals(".sdvkit", StringComparison.OrdinalIgnoreCase));
                     if (!excludedOutput && ReviewForbiddenDirectories.Contains(name))
