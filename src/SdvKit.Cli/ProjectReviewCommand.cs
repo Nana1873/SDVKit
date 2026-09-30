@@ -35,6 +35,11 @@ public static partial class CliApplication
             return RunProjectReviewCpDiagnosis(arguments, output, error);
         }
 
+        if (arguments.Count > 2 && arguments[2] == "progression")
+        {
+            return RunProjectReviewProgression(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "shop")
         {
             return RunProjectReviewShop(arguments, output, error);
