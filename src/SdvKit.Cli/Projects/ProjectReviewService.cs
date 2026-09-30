@@ -112,7 +112,7 @@ internal static partial class ProjectReviewService
                 [Problem(
                     "reviewTargetTopologyUnsupported",
                     SafeFullPath(sourcePath),
-                    "A content-pack review target supports only topology single; nothing was launched or changed.")]);
+                    "Content-pack targets and ready bundles support only topology single; nothing was launched or changed.")]);
         }
 
         LiveLabPaths paths;
@@ -257,7 +257,7 @@ internal static partial class ProjectReviewService
                 "The retained artifacts were prepared for another game installation. Restart with that installation, or reset before rebuilding for a different one.");
     }
 
-    private static ProjectReviewProblem? ReviewSetRequestProblem(
+    internal static ProjectReviewProblem? ReviewSetRequestProblem(
         string sourcePath,
         IReadOnlyList<string> companionPaths,
         IReadOnlyList<string> contentPackPaths,
@@ -332,6 +332,10 @@ internal static partial class ProjectReviewService
         OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
+
+    private static bool PathEqualsBundleRoot(string root, string pack) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(root),
+            Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(pack)), PathComparison());
 
     private static bool IsControlledFailure(Exception exception) =>
         exception is ArgumentException

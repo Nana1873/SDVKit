@@ -7,6 +7,7 @@ concurrent manual commands. From the same lab directory:
 ```powershell
 & $sdvkit project review cp-diagnose --pack Example.Pack --provider Pathoschild.ContentPatcher --json
 & $sdvkit project review cp-diagnose --pack Example.Pack --provider Pathoschild.ContentPatcher --asset Data/Objects --parse '{{Season}}' --json
+& $sdvkit project review cp-diagnose --pack Example.Pack --provider Pathoschild.ContentPatcher --asset Data/Objects --order --json
 # Only after retaining the diagnosis, observe the actual final asset:
 & $sdvkit project review data get Data/Objects 388 --json
 ```
@@ -34,9 +35,47 @@ field. Finish with the [required stop/reset](live-review.md#finish-or-test-persi
 For supported patch-only edits, [refresh selected JSON](cp-refresh.md) can replace
 that restart while preserving the exact running process.
 
+## Explain competing patches on one asset
+
+Add `--order` with one canonical `--asset` to retain `applied.messages` in CP's
+expected apply order, including its `[X]`/`[ ]` applied checkboxes and action names.
+`order.messages` retains the same active patch paths in global definition order,
+including their original global position and hierarchical index path. `orderAsset`
+identifies the selection. These are separate observations after `summary` and
+optional `parse`; their timestamps are retained. `patches` remains the summary's
+boolean table; the dump response objects leave that array empty.
+
+CP's documented dumps have no asset or pack operand. SDVKit captures exactly
+`patch dump applied`, then `patch dump order`, and filters locally. Only the selected
+asset group and its matching definition rows leave the adapter. Competing CP patches
+from other packs are included for this asset; unrelated asset groups are omitted.
+Empty selected groups are valid and return headings with no patch rows. Inactive
+patches without a current target are outside this selected order; diagnose their
+conditions through the ordinary unfiltered selected-pack summary.
+
+The global definition sequence is not itself the expected apply sequence: CP puts
+`Load` patches before other actions within the target group. Read `applied` to
+understand the expected apply order. Both reports describe CP patches, not arbitrary
+C# content edits, per-field provenance or a guaranteed winning value. Observe the
+actual final asset separately after retaining the diagnosis.
+
+Both complete dump replies must fit 256 lines of 1,024 characters within the shared
+4 MiB log scan. Oversized global replies return `cpOrderOutputTruncated`, even if
+the selected subset is small. Unknown grammar, duplicate/ambiguous patch paths,
+missing definition rows or changed selections are incomplete. If a selected row
+contains known private context, the entire partial order is withheld as
+`cpOrderPrivateContextWithheld`. A partial order never returns `ready`; no automatic
+retry runs. The same ownership, correlation and idle-console requirements apply.
+
+For a reproducible unexpected winner, follow the original
+[two-patch recipe](cp-patch-order-recipe.md).
+
 ## Boundaries and interpretation
 
 The workflow uses documented [`patch summary` and `patch parse`](https://github.com/Pathoschild/StardewMods/blob/content-patcher/2.9.1/ContentPatcher/docs/author-guide/troubleshooting.md).
+The optional order adapter follows the immutable CP 2.9.1
+[`DumpCommand`](https://github.com/Pathoschild/StardewMods/blob/b2d750f944dff2c0a540a02dd2af653b09e378c4/ContentPatcher/Framework/Commands/Commands/DumpCommand.cs),
+which emits `dump applied` and `dump order` at `INFO` level.
 CP 2.9.1's [summary](https://github.com/Pathoschild/StardewMods/blob/content-patcher/2.9.1/ContentPatcher/Framework/Commands/Commands/SummaryCommand.cs)
 and [parse](https://github.com/Pathoschild/StardewMods/blob/content-patcher/2.9.1/ContentPatcher/Framework/Commands/Commands/ParseCommand.cs)
 emit normal informational command replies at `DEBUG` level. Other provider
@@ -81,4 +120,4 @@ owned logs remain available through the existing guide; no log is uploaded.
 Native MCP exposes the same selected-pack diagnosis through
 [`stardew_cp_diagnose`](mcp.md#content-patcher-diagnosis-and-opt-in-refresh).
 [Selected JSON refresh](cp-refresh.md) has a separate explicit MCP startup opt-in;
-diagnosis never grants it. This workflow does not establish general conflict detection.
+diagnosis never grants it. Selected CP patch order does not establish general conflict detection.

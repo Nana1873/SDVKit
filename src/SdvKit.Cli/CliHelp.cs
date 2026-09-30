@@ -151,12 +151,13 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
         output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
         output.WriteLine("  sdvkit project review diagnostics --help Selected-mod warnings and exceptions.");
-        output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis.");
+        output.WriteLine("  sdvkit project review cp-diagnose --help Selected Content Patcher diagnosis and asset patch order.");
         output.WriteLine("  sdvkit project review cp-refresh --help Refresh selected owned CP patch JSON.");
         output.WriteLine("  sdvkit project review config-reconcile --help Accept a selected staged config change.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound STDIO tools and action opt-ins.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
+        output.WriteLine("Ready bundles support single: select their root and every direct pack child with --content-pack; exactly one root/direct-child code mod is required.");
         output.WriteLine("Asset inspection requires single; menu inspection and network console commands support explicit roles.");
         output.WriteLine("Local split-screen: in a single --test-save review, send sdvkit split-screen join/leave/status; use native screen=<id> console selection.");
     }

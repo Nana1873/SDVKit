@@ -395,7 +395,7 @@ internal static class ProjectReviewMcpServer
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
             tools.Add(ProjectReviewMcpProgressionTools.Create(reader));
         }
-        runCpDiagnosis ??= (pack, provider, asset, parse) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse);
+        runCpDiagnosis ??= (pack, provider, asset, parse, order) => ProjectReviewCpDiagnosis.Execute(reader, pack, provider, asset, parse, order: order);
         if (cpRefreshPermission is not null)
         {
             runCpRefresh ??= (pack, provider, files, asset, key, permission) => ProjectReviewCpRefresh.Execute(

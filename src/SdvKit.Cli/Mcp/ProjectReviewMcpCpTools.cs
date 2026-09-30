@@ -7,7 +7,7 @@ using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Cli.Mcp;
 
-internal delegate CpDiagnosisResult ProjectReviewMcpCpDiagnosisRunner(string packId, string providerId, string? asset, string? parse);
+internal delegate CpDiagnosisResult ProjectReviewMcpCpDiagnosisRunner(string packId, string providerId, string? asset, string? parse, bool order);
 internal delegate CpRefreshResult ProjectReviewMcpCpRefreshRunner(string packId, string providerId, IReadOnlyList<string> files,
     string asset, string key, ProjectReviewMcpVerifiedContext permission);
 
@@ -42,7 +42,7 @@ internal static class ProjectReviewMcpCpTools
           },
           "diagnosis": {
             "type":["object","null"],"additionalProperties":false,
-            "required":["state","errorCode","launchId","packId","providerId","providerVersion","packBuildIdentity","providerBuildIdentity","packLoaded","providerLoaded","summary","parse","assetObservation","reload"],
+            "required":["state","errorCode","launchId","packId","providerId","providerVersion","packBuildIdentity","providerBuildIdentity","packLoaded","providerLoaded","summary","parse","assetObservation","reload","orderAsset","applied","order"],
             "properties":{
               "state":{"enum":["ready","incomplete","unavailable","unsupported"]},"errorCode":{"$ref":"#/$defs/code"},
               "launchId":{"$ref":"#/$defs/id"},"packId":{"type":"string","maxLength":256},
@@ -50,6 +50,7 @@ internal static class ProjectReviewMcpCpTools
               "packBuildIdentity":{"$ref":"#/$defs/hash"},"providerBuildIdentity":{"$ref":"#/$defs/hash"},
               "packLoaded":{"type":"boolean"},"providerLoaded":{"type":"boolean"},
               "summary":{"$ref":"#/$defs/response"},"parse":{"$ref":"#/$defs/response"},"reload":{"$ref":"#/$defs/response"},
+              "orderAsset":{"type":["string","null"],"maxLength":256},"applied":{"$ref":"#/$defs/response"},"order":{"$ref":"#/$defs/response"},
               "assetObservation":{"type":"string","maxLength":256}
             }
           },
@@ -80,7 +81,8 @@ internal static class ProjectReviewMcpCpTools
           "packId":{"type":"string","minLength":1,"maxLength":256},
           "providerId":{"type":"string","minLength":1,"maxLength":256},
           "asset":{"type":"string","minLength":1,"maxLength":256},
-          "parse":{"type":"string","minLength":1,"maxLength":512}
+          "parse":{"type":"string","minLength":1,"maxLength":512},
+          "order":{"type":"boolean"}
         }}
         """);
     private static readonly JsonElement RefreshInput = Schema("""
@@ -125,26 +127,29 @@ internal static class ProjectReviewMcpCpTools
     private sealed class DiagnoseTool(ProjectReviewMcpRuntimeReader reader, ProjectReviewMcpCpDiagnosisRunner run) : McpServerTool
     {
         public override Tool ProtocolTool { get; } = Tool(DiagnoseToolName,
-            "Diagnose one explicitly selected staged CP 2.9.1 pack through bounded summary and optional parse replies. Read-only; does not reload or inspect an asset. Ready means correlated diagnosis, not patch success.",
+            "Diagnose one explicitly selected staged CP 2.9.1 pack through bounded summary and optional parse replies. Optional order requires asset and reports active patches for that asset in provider apply/definition order. Read-only; does not reload or inspect an asset. Ready means correlated diagnosis, not patch success.",
             DiagnoseInput, DiagnoseOutput, readOnly: true);
         public override IReadOnlyList<object> Metadata => [];
         public override ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var args = request.Params?.Arguments;
-            if (!Only(args, ["packId", "providerId", "asset", "parse"])
+            bool order = false;
+            if (!Only(args, ["packId", "providerId", "asset", "parse", "order"])
                 || !String(args, "packId", out var pack) || !String(args, "providerId", out var provider)
                 || !OptionalString(args, "asset", out var asset) || !OptionalString(args, "parse", out var parse)
+                || !OptionalBoolean(args, "order", out order)
+                || order && asset is null
                 || !ProjectReviewCpDiagnosis.ValidArguments(pack!, provider!, asset, parse))
                 return Done(Error("cpArgumentsInvalid"));
             var before = reader.ReadContext();
             if (!before.Succeeded) return Done(Error(before.ErrorCode!));
-            var result = run(pack!, provider!, asset, parse);
+            var result = run(pack!, provider!, asset, parse, order);
             var after = reader.ReadContext();
             if (!after.Succeeded || before.Context!.State != after.Context!.State
                 || !OwnedReviewLogReader.SameStagedContent(before.Context.Staging, after.Context.Staging))
                 return Done(Error("cpDiagnosisBindingChanged"));
-            if (!ValidDiagnosis(result, before.Context!, pack!, provider!, parse, reload: false))
+            if (!ValidDiagnosis(result, before.Context!, pack!, provider!, parse, reload: false, order ? asset : null))
                 return Done(Error("cpDiagnosisResponseInvalid"));
             return Done(Json(result, result.State != "ready"));
         }
@@ -207,7 +212,7 @@ internal static class ProjectReviewMcpCpTools
     }
 
     private static bool ValidDiagnosis(CpDiagnosisResult result, ProjectReviewMcpVerifiedContext context,
-        string pack, string provider, string? parse, bool reload)
+        string pack, string provider, string? parse, bool reload, string? orderAsset = null)
     {
         var selected = context.Staging.Artifacts.SingleOrDefault(a => a.Manifest.UniqueId.Equals(pack, StringComparison.OrdinalIgnoreCase));
         var selectedProvider = context.Staging.Artifacts.SingleOrDefault(a => a.Manifest.UniqueId.Equals(provider, StringComparison.OrdinalIgnoreCase));
@@ -218,12 +223,16 @@ internal static class ProjectReviewMcpCpTools
             || result.ProviderBuildIdentity is not null && result.ProviderBuildIdentity != selectedProvider?.StagedBuildIdentity
             || result.ProviderVersion is not null && result.ProviderVersion != selectedProvider?.Manifest.Version
             || !ValidResponse(result.Summary) || !ValidResponse(result.Parse) || !ValidResponse(result.Reload)
+            || !ValidResponse(result.Applied) || !ValidResponse(result.Order) || result.OrderAsset != orderAsset
+            || orderAsset is null && (result.Applied is not null || result.Order is not null)
             || !reload && result.Reload is not null || parse is null && result.Parse is not null
             || result.AssetObservation is not { Length: <= 256 } || result.ErrorCode != Code(result.ErrorCode)) return false;
         return result.State != "ready" || result.ErrorCode is null && result.LaunchId == context.State.LaunchId
             && result.PackLoaded && result.ProviderLoaded && result.ProviderVersion == "2.9.1"
             && result.PackBuildIdentity is not null && result.ProviderBuildIdentity is not null
             && result.Summary?.State == "ready" && (parse is null || result.Parse?.State == "ready")
+            && (orderAsset is null || result.Applied?.State == "ready" && result.Order?.State == "ready"
+                && !result.Applied.Truncated && !result.Order.Truncated && result.Applied.WithheldLines == 0 && result.Order.WithheldLines == 0)
             && (!reload || result.Reload?.State == "ready");
     }
 
@@ -319,6 +328,15 @@ internal static class ProjectReviewMcpCpTools
     {
         value = null;
         return args is not null && (!args.ContainsKey(name) || String(args, name, out value));
+    }
+    private static bool OptionalBoolean(IDictionary<string, JsonElement>? args, string name, out bool value)
+    {
+        value = false;
+        if (args is null) return false;
+        if (!args.TryGetValue(name, out var element)) return true;
+        if (element.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+        value = element.GetBoolean();
+        return true;
     }
     private static bool Files(IDictionary<string, JsonElement>? args, out string[]? files)
     {
