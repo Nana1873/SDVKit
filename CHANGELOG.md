@@ -4,6 +4,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-01
+
 ### Added
 
 - Follow an original SMAPI save-data migration recipe with distinct v1, deliberately broken v2, and corrected v2 packages; preserve selected values through actual restart, verify repeated-load idempotence, and test missing data and future-schema refusal.
@@ -15,6 +17,14 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - Offline `project check` now catches malformed reachable Content Patcher Include fragments and missing unconditional literal `FromFile` files, including nested Includes. Diagnostics identify the source field or included JSON; tokenized/conditional references and bounded Include coverage report explicit non-blocking warnings. Paths outside the selected mod root or through symbolic links/junctions are rejected before reading.
 - Content Patcher diagnosis returns a controlled incomplete response when its owned log is replaced or its review binding changes during capture.
+
+### Changed
+
+- Establish the delivered modding toolkit and isolated live test lab as the 1.0 baseline. Document supported Windows/runtime and companion versions, capability limits, the 1.x public CLI/JSON/MCP/project compatibility policy, and stop/reset upgrade steps in the support guide. Root quickstarts and CLI help connect first use to diagnostics, observation and cleanup.
+
+Upgrade from 0.x: stop and reset owned runs with the old executable, extract this release into a fresh directory, explicitly update CLI/MCP executable paths, and check version, doctor and inactive review status before launching again. Internal generated state is not a cross-version active-process adoption API; retain rejected inactive state for diagnosis and use a fresh lab if necessary. See [support and upgrades](docs/support.md), including unresolved status-file risks #136/#143 and the native controller menu-close limitation.
+
+[Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/243) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v1.0.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v0.10.2...v1.0.0)
 
 ## [0.10.2] - 2026-09-12
 

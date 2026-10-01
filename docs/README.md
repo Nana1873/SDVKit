@@ -4,6 +4,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 
 | Task | Guide |
 | --- | --- |
+| Check supported runtimes, companions, limits, 1.x compatibility and upgrades | [Support policy](support.md) |
 | Create, inspect, check, build, or package a mod | [Toolkit](toolkit.md) |
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |

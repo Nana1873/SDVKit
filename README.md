@@ -7,7 +7,7 @@ An agent-first Windows toolkit for developing Stardew Valley mods, with an isola
 
 [Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Roadmap](https://github.com/Nana1873/SDVKit/issues/84)
 
-This documentation follows `main` for **v0.10.2**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) using the README from its tag. For this version, see [release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/227) and its [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v0.10.2).
+This documentation follows `main` for **v1.0.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) using the README from its tag. For this version, see [release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/243) and its [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v1.0.0).
 
 ## Set up with your agent
 
@@ -39,20 +39,20 @@ The agent can use the CLI for mod development and [connect MCP to an active revi
 - A local Stardew Valley installation with SMAPI for building and live testing. `doctor` must find exactly one ready installation.
 - Disposable-world automation accepts Stardew `>=1.6.15, <1.7` (file version `>=1.6.15.24356, <1.7`) and SMAPI `>=4.5.0, <5.0`. Runtime API checks also apply; these ranges are not a claim that every version has been tested.
 
-Project creation and inspection work without an installed game. Content-pack reviews need an explicitly selected local provider such as Content Patcher.
+See [1.x support, compatibility and upgrades](docs/support.md) for exact companion versions, capability limits and retained risks. Project creation, inspection and offline authoring checks work without an installed game. Content-pack reviews need an explicitly selected local provider such as Content Patcher.
 
 ## Install
 
-Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v0.10.2; for another version, follow its tagged README. In the download directory, compare the hash with the sidecar, then extract to a fresh directory:
+Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v1.0.0; for another version, follow its tagged README. In the download directory, compare the hash with the sidecar, then extract to a fresh directory:
 
 ```powershell
-$archive = '.\SDVKit-0.10.2-win-x64.zip'
+$archive = '.\SDVKit-1.0.0-win-x64.zip'
 $expectedHash = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'The download checksum does not match.'
 }
 Expand-Archive -LiteralPath $archive -DestinationPath .\SDVKit-install
-$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-0.10.2-win-x64\sdvkit.exe).Path
+$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-1.0.0-win-x64\sdvkit.exe).Path
 & $sdvkit --help
 & $sdvkit doctor --json
 ```
@@ -70,6 +70,7 @@ Run from the directory where you want to create `ExampleMod`:
 ```powershell
 & $sdvkit project create smapi-mod .\ExampleMod --name 'Example Mod' --author 'ExampleAuthor' --unique-id 'ExampleAuthor.ExampleMod' --description 'My first mod.' --json
 & $sdvkit project inspect .\ExampleMod --json
+& $sdvkit project check .\ExampleMod --json
 & $sdvkit project build .\ExampleMod --json
 & $sdvkit project package .\ExampleMod --json
 ```
@@ -89,10 +90,13 @@ A passing smoke confirms the staged mod was loaded by SMAPI, completed the bound
 For a functional or visual check, start a persistent review:
 
 ```powershell
-& $sdvkit project review start .\ExampleMod --json
+& $sdvkit project review start .\ExampleMod --test-save --json
 & $sdvkit project review status --json
-# Exercise your mod and inspect its actual behavior.
+# Diagnose the selected mod, then exercise and observe its actual effect.
+& $sdvkit project review diagnostics --mod ExampleAuthor.ExampleMod --json
+& $sdvkit project review inventory --json
 & $sdvkit project review stop --json
+& $sdvkit project review reset --topology single --json
 ```
 
 See [live reviews](docs/live-review.md) for disposable worlds, companions, screenshots, and local host/farmhand testing, including [two local screens in one process](docs/live-review.md#local-split-screen-review). [Native MCP](docs/mcp.md) connects an agent to an already-running review.

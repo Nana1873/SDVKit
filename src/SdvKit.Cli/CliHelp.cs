@@ -101,7 +101,9 @@ public static partial class CliApplication
         output.WriteLine("  lab --help        Control the isolated live lab and disposable world.");
         output.WriteLine();
         output.WriteLine("Use each subcommand's --help for syntax and supported options.");
-        output.WriteLine("Documentation: https://github.com/Nana1873/SDVKit#readme");
+        output.WriteLine("First use: doctor -> project create/inspect -> check/build/package -> review start/status -> diagnose/observe -> stop/reset.");
+        output.WriteLine($"Documentation: https://github.com/Nana1873/SDVKit/tree/v{CurrentVersion}#readme");
+        output.WriteLine($"Support and upgrades: https://github.com/Nana1873/SDVKit/blob/v{CurrentVersion}/docs/support.md");
     }
 
     private static void WriteLabUsage(TextWriter output)
@@ -158,7 +160,7 @@ public static partial class CliApplication
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
         output.WriteLine("Ready bundles support single: select their root and every direct pack child with --content-pack; exactly one root/direct-child code mod is required.");
-        output.WriteLine("Asset inspection requires single; menu inspection and network console commands support explicit roles.");
+        output.WriteLine("Map, texture, audio and mod-asset inspection require unbound single; Data and menu inspection support exact roles and local screens.");
         output.WriteLine("Local split-screen: in a single --test-save review, send sdvkit split-screen join/leave/status; use native screen=<id> console selection.");
     }
 

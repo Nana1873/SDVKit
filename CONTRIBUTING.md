@@ -1,6 +1,6 @@
 # Contributing to SDVKit
 
-Read [AGENTS.md](AGENTS.md). Keep changes tied to a concrete mod-development workflow, and reuse the existing CLI/lab paths. The [GitHub roadmap](https://github.com/Nana1873/SDVKit/issues/84) owns future scope; do not maintain a second local roadmap.
+Read [AGENTS.md](AGENTS.md). Keep changes tied to a concrete mod-development workflow, and reuse the existing CLI/lab paths. GitHub issues track maintenance and new feature requests; do not maintain a second local roadmap. The [initial roadmap](https://github.com/Nana1873/SDVKit/issues/84) becomes the archived delivery record after [verified 1.0 publication](https://github.com/Nana1873/SDVKit/issues/243).
 
 Use English for code, CLI text, documentation, issues, and pull requests. Chat and progress follow the contributor's preferred language.
 
