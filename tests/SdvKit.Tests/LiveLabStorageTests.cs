@@ -42,6 +42,32 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
         Assert.True(Directory.Exists(paths.LegacyGameSideModPath));
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void RemoveLegacyGameSideDirectoryFinishesAnInterruptedRemoval(
+        bool keepAssembly,
+        bool keepManifest)
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        WriteLegacyInstall(paths.LegacyGameSideModPath, "SDVKit.AlwaysOn", "SdvKit.AlwaysOn.dll");
+        if (!keepAssembly)
+        {
+            File.Delete(Path.Combine(paths.LegacyGameSideModPath, "SdvKit.AlwaysOn.dll"));
+        }
+
+        if (!keepManifest)
+        {
+            File.Delete(Path.Combine(paths.LegacyGameSideModPath, "manifest.json"));
+        }
+
+        Assert.True(paths.RemoveLegacyGameSideDirectory());
+        Assert.False(Directory.Exists(paths.LegacyGameSideModPath));
+    }
+
     [Fact]
     public void RemoveLegacyGameSideDirectoryIgnoresAMissingDirectory()
     {

@@ -894,6 +894,28 @@ public sealed class ProjectReviewStagerTests
             File.ReadAllText(Path.Combine(stagingPath, "partial.dll")));
     }
 
+    [Theory]
+    [InlineData("SDVKit.AlwaysOn", null)]
+    [InlineData("Nana.Other", "reviewStagingOwnershipMissing")]
+    public void ReviewReadToleratesOnlyTheExactLegacyGameSideInstall(
+        string manifestUniqueId,
+        string? expectedCode)
+    {
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        Directory.CreateDirectory(paths.LegacyGameSideModPath);
+        File.WriteAllText(Path.Combine(paths.LegacyGameSideModPath, "SdvKit.AlwaysOn.dll"), "assembly");
+        File.WriteAllText(
+            Path.Combine(paths.LegacyGameSideModPath, "manifest.json"),
+            $$"""{"UniqueID":"{{manifestUniqueId}}","EntryDll":"SdvKit.AlwaysOn.dll"}""");
+
+        ProjectReviewStagingResult read = ProjectModStager.ReadReview(paths);
+
+        Assert.Equal(expectedCode, read.Problem?.Code);
+        Assert.True(Directory.Exists(paths.LegacyGameSideModPath));
+    }
+
     [Fact]
     public void DriftedOwnedStagingBlocksNormalReadButNotExactOwnedCleanup()
     {

@@ -157,14 +157,15 @@ internal static partial class ProjectModStager
                     $"Required runtime dependencies are not provided by the isolated lab: {string.Join(", ", unavailableDependencies)}. SDVKit does not acquire dependencies automatically."));
             }
 
-            if (rolePaths.Any(paths => PathEquals(
+            if (LoadedModsContract.IsReservedUniqueId(prepared.TopLevelDirectory)
+                || rolePaths.Any(paths => PathEquals(
                     Path.Combine(paths.ModsPath, prepared.TopLevelDirectory),
                     paths.GameSideModPath)))
             {
                 return FinishWithPreparedCleanup(Failure(
                     "reservedModStagingPath",
                     package.Archive,
-                    "The package top-level directory collides with the reserved SDVKit.GameSide lab mod path."));
+                    "The package top-level directory collides with a reserved SDVKit.GameSide or former SDVKit.AlwaysOn lab mod path."));
             }
 
             string ownershipPath = OwnershipPath(singlePaths, topology);

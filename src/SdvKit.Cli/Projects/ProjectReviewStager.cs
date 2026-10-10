@@ -275,8 +275,10 @@ internal static partial class ProjectModStager
                         string? unownedArtifact = Directory
                             .EnumerateFileSystemEntries(rolePath.Paths.ModsPath)
                             .FirstOrDefault(entry => !PathEquals(
-                                entry,
-                                rolePath.Paths.GameSideModPath));
+                                    entry,
+                                    rolePath.Paths.GameSideModPath)
+                                && !(PathEquals(entry, rolePath.Paths.LegacyGameSideModPath)
+                                    && rolePath.Paths.IsLegacyGameSideInstall()));
                         if (unownedArtifact is not null)
                         {
                             return ReviewFailure(
