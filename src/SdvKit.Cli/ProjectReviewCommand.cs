@@ -20,6 +20,11 @@ public static partial class CliApplication
         ProjectReviewMapCommandRunner runProjectReviewMap,
         ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
+        if (arguments.Count > 2 && arguments[2] == "call")
+        {
+            return RunProjectReviewCall(arguments, output, error);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "cp-refresh")
         {
             return RunProjectReviewCpRefresh(arguments, output, error);
