@@ -30,7 +30,7 @@ dotnet build src\SdvKit.GameSide\SdvKit.GameSide.csproj -c Release "-p:SdvGamePa
 
 The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
 
-A pull request that changes the command transport, lab lifecycle, input or isolation needs both topologies live before merge. Identify the lab owner first, as described above.
+A pull request that changes the command transport, lab lifecycle, input or isolation needs both topologies live before merge. Identify the lab owner first (rule 10 in [AGENTS.md](AGENTS.md)).
 
 1. Run `project smoke --topology network-2` for a standalone C# mod.
 2. Start a `network-2` review. For each role, send one command and one native MCP read, then have the farmhand leave and rejoin.
