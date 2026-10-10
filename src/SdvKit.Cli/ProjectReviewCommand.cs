@@ -20,6 +20,11 @@ public static partial class CliApplication
         ProjectReviewMapCommandRunner runProjectReviewMap,
         ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
     {
+        if (arguments.Count > 2 && arguments[2] is "split-screen" or "network")
+        {
+            return RunProjectReviewLifecycle(arguments, output, error, runProjectReviewConsole);
+        }
+
         if (arguments.Count > 2 && arguments[2] == "call")
         {
             return RunProjectReviewCall(arguments, output, error);
@@ -209,6 +214,11 @@ public static partial class CliApplication
         {
             WriteProjectReviewUsage(error);
             return UsageError;
+        }
+
+        if (string.Equals(action, "command", StringComparison.Ordinal))
+        {
+            WarnIfSdvKitConsoleLine(command!, error);
         }
 
         LiveLabCommandResult result = string.Equals(

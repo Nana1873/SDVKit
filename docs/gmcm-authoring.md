@@ -43,7 +43,7 @@ particular checkbox and Save control.
 
 ## Prepare the original project and selected provider
 
-Use PowerShell 7 and the [installed CLI](../README.md#install), with `$sdvkit`
+Use PowerShell 7.3 or later and the [installed CLI](../README.md#install), with `$sdvkit`
 set to its absolute executable path. For a checkout build, follow the
 [authoring setup](cp-authoring.md#prerequisites-and-one-lab-directory), omitting CP
 selection. Retain the exact SDVKit ZIP/hash/commit and use one lab directory as
@@ -323,7 +323,7 @@ diagnostic warnings alone cannot establish the diagnosis.
 ```powershell
 & $sdvkit project review command 'gmcm_arrival_open' --topology single --json
 & $sdvkit project review menu --topology single --json
-& $sdvkit project review command 'sdvkit screenshot viewport gmcm-default' --topology single --json
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"gmcm-default"}'
 ```
 
 Require the screenshot's completion reply and fresh PNG at its exact owned
@@ -337,14 +337,15 @@ coordinates when UI scale differs. Set `$checkboxX` and `$checkboxY` to that
 observed center, then run sequentially:
 
 ```powershell
-& $sdvkit project review command "sdvkit input cursor $checkboxX $checkboxY" --topology single --json
-& $sdvkit project review command 'sdvkit input press MouseLeft' --topology single --json
-& $sdvkit project review command 'sdvkit screenshot viewport gmcm-checked' --topology single --json
+& $sdvkit project review call stardew_input_cursor_set "{`"x`":$checkboxX,`"y`":$checkboxY}" --allow-input
+& $sdvkit project review call stardew_input_press '{"button":"MouseLeft"}' --allow-input
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"gmcm-checked"}'
 & $sdvkit project review command 'gmcm_arrival_state' --topology single --json
 ```
 
-After each command, inspect its matching owned log acknowledgement: `commandWritten`
-proves delivery only. Require cursor acceptance, completed press/release and the
+After each mod console command, inspect its matching owned log acknowledgement:
+`commandWritten` proves delivery only. Require the tool results for cursor
+acceptance and completed press/release, and the
 fresh screenshot proving the checkbox is checked. Require the state command's
 owned log reply to remain `Enabled=false`: GMCM has only cached the visible edit,
 and the staged config must still contain Boolean `false`. Recheck exact menu and
@@ -354,11 +355,11 @@ never reuse another run's numbers without inspecting the current image.
 
 ```powershell
 & $sdvkit project review menu --topology single --json
-& $sdvkit project review command "sdvkit input cursor $saveX $saveY" --topology single --json
-& $sdvkit project review command 'sdvkit input press MouseLeft' --topology single --json
+& $sdvkit project review call stardew_input_cursor_set "{`"x`":$saveX,`"y`":$saveY}" --allow-input
+& $sdvkit project review call stardew_input_press '{"button":"MouseLeft"}' --allow-input
 & $sdvkit project review command 'gmcm_arrival_state' --topology single --json
-& $sdvkit project review command 'sdvkit screenshot viewport gmcm-saved' --topology single --json
-& $sdvkit project review command 'sdvkit input cursor clear' --topology single --json
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"gmcm-saved"}'
+& $sdvkit project review call stardew_input_cursor_clear --allow-input
 ```
 
 Observe the menu remaining open, actual `Enabled=true` from `gmcm_arrival_state`,

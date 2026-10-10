@@ -290,6 +290,13 @@ when testing the input path. In either case, require complete container evidence
 two Cola in the chest, zero in the player backpack, an empty held item, and no
 limitations.
 
+> [!NOTE]
+> This recipe's script sends deprecated `sdvkit ...` console lines through
+> `project review command` and evaluates `commandWritten`, so it prints a
+> deprecation warning. New scripts should call `stardew_input_click` with
+> `project review call` and `--allow-input` instead. See
+> [opt-in input](mcp.md#opt-in-input).
+
 The accepted #190 run tested the native menu path. Its helper placed the chest at
 `(41,4)` and the player at `(40,4)`, but always use the freshly reported tiles.
 Open it with one process-local `X` press, read `project review menu` and

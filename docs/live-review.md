@@ -120,10 +120,10 @@ save, the farmhand can request one host-authorized departure without stopping th
 host process:
 
 ```powershell
-& $sdvkit project review command "sdvkit network leave" --topology network-2 --role farmhand --json
-& $sdvkit project review command "sdvkit network status" --topology network-2 --role host --json
-& $sdvkit project review command "sdvkit network status" --topology network-2 --role farmhand --json
-& $sdvkit project review command "sdvkit network join" --topology network-2 --role farmhand --json
+& $sdvkit project review network leave --role farmhand --json
+& $sdvkit project review network status --role host --json
+& $sdvkit project review network status --role farmhand --json
+& $sdvkit project review network join --role farmhand --json
 ```
 
 The host must first acknowledge the exact reciprocal pair. The farmhand then
@@ -150,9 +150,9 @@ Start a single review with `--test-save` and require its exact fixture and targe
 to be ready. Then explicitly opt that running review into local split-screen:
 
 ```powershell
-& $sdvkit project review command "sdvkit split-screen join" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=0" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=1" --topology single --json
+& $sdvkit project review split-screen join --json
+& $sdvkit project review split-screen status --screen 0 --json
+& $sdvkit project review split-screen status --screen 1 --json
 ```
 
 The native game runner creates one additional SMAPI screen and joins only the
@@ -168,13 +168,14 @@ player, menu report, and active screen IDs. Screen IDs can change after leaving
 and rejoining; use the reported IDs instead of assuming every farmhand is screen 1.
 `commandWritten=true` still proves only that the command ran, not its effect.
 
-SMAPI's native `screen=<id>` command argument selects the screen for input,
-fixture navigation, screenshots, and explicitly selected mod commands:
+`--screen <id>` selects the screen for tools called through `project review call`
+and for lifecycle status. SMAPI's native `screen=<id>` argument selects it for an
+explicitly selected mod console command:
 
 ```powershell
-& $sdvkit project review command "sdvkit input press K screen=1" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=1" --topology single --json
-& $sdvkit project review command "sdvkit screenshot viewport local-journal-1 screen=1" --topology single --json
+& $sdvkit project review call stardew_input_press '{"button":"K"}' --screen 1 --allow-input
+& $sdvkit project review split-screen status --screen 1 --json
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"local-journal-1"}' --screen 1
 ```
 
 `K` is only an example mod binding. Inspect the menu before acting. Cursor,
@@ -196,7 +197,7 @@ permitted process-local input to that screen. Leaving/rejoining invalidates the
 old client even if Stardew reuses a numeric ID; start a new client for the newly
 reported context. Screen-bound MCP omits the text tool.
 
-To close only the second screen, send `sdvkit split-screen leave` from screen 0.
+To close only the second screen, run `project review split-screen leave --screen 0 --json` from the host screen.
 Require the confirmed removal log and inspect the host's retained state. A later
 `join` reuses the same marked farmhand. The host remains the only authority for
 fixture save and world mutations. Save through normal game behavior or the
@@ -214,19 +215,23 @@ review; it does not enumerate people, infer historical completion or edit state.
 
 On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.
 
-SDVKit sends commands to the review's [loopback command endpoint](lab-reference.md#command-endpoint), not by typing into the console, so manual use of the console window does not interfere with them. `commandWritten=true` means the command ran on the game thread; verify the actual effect through matching logs, state, or images.
+SDVKit sends commands to the review's [loopback command endpoint](lab-reference.md#command-endpoint), not by typing into the console, so manual use of the console window does not interfere with them. For a console command, `commandWritten=true` means it ran on the game thread. A tool called through `project review call` returns its own confirmed result instead. In both cases, verify the actual effect through matching logs, state, or images.
 
 ```powershell
-& $sdvkit project review command "sdvkit screenshot viewport menu-before" --topology single --json
-& $sdvkit project review command "sdvkit input cursor 200 100" --topology single --json
-& $sdvkit project review command "sdvkit input press MouseLeft" --topology single --json
-& $sdvkit project review command "sdvkit input cursor clear" --topology single --json
-& $sdvkit project review command "sdvkit screenshot viewport menu-after" --topology single --json
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"menu-before"}'
+& $sdvkit project review call stardew_input_cursor_set '{"x":200,"y":100}' --allow-input
+& $sdvkit project review call stardew_input_press '{"button":"MouseLeft"}' --allow-input
+& $sdvkit project review call stardew_input_cursor_clear --allow-input
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"menu-after"}'
 ```
+
+`project review command` remains for the reviewed mod's and SMAPI's console
+commands. SDVKit's own console lines (`sdvkit ...`) still run through it for
+existing scripts, but they are deprecated and print a warning; use the tools above.
 
 Coordinates are an example, not a known button location: inspect the current viewport before choosing them. A screenshot succeeds only when GameSide confirms the path and that exact PNG exists below the selected profile; inspect the image for visual acceptance. Use new labels, 1–64 ASCII letters/digits/`-`/`_`; captures never overwrite.
 
-`sdvkit screenshot <label>` captures the loaded map; `sdvkit screenshot viewport <label>` captures the rendered viewport, including menus/title/loading. Input and viewport console commands can diagnose pre-world state only while their exact process, staging, target-load, and role bindings remain valid. Other commands retain fixture/join readiness gates.
+`stardew_screenshot_capture` with mode `map` captures the loaded map; mode `viewport` captures the rendered viewport, including menus/title/loading. The deprecated `sdvkit input` and `sdvkit screenshot viewport` console lines can diagnose pre-world state only while their exact process, staging, target-load, and role bindings remain valid. Other commands retain fixture/join readiness gates.
 
 Mouse input uses only the process-local virtual cursor. Set it before mouse-button or `MouseWheelUp`/`MouseWheelDown` presses; wheel input also needs an active menu. Never move the physical pointer, focus the game, or use desktop automation to substitute for review input. A successful injection still requires a separate check of the intended effect.
 
@@ -275,11 +280,11 @@ Send actions sequentially and observe their effects before sending the next. A s
 
 Wheel input requires a sampled raw counter. Counter overflow is rejected before changing the virtual offset. If physical wheel input changes the counter beyond its available range after queueing, the adapter cancels all pending owned input, clears the virtual cursor, and logs an error; observe the effect rather than retrying an acknowledged command blindly. Release is reported as unconfirmed if physical/external input remains down; physical input is never suppressed to manufacture a release. An unrepresentable consumed origin retains the last output and reports failure instead of emitting a synthetic reverse notch.
 
-For a chord, first obtain `uiRevision` from `project review menu` or `stardew_menu_get`, then send `sdvkit input chord <1-120 ticks> <uiRevision> <1-8 button names>` through the existing review console command, or use `stardew_input_chord` with `--allow-input`. Changes to menu/root/page/known component geometry or UI scale before the first input update reject the request. Changes while more hold updates remain cancel reapplication; a menu opened by the final press does not invalidate its own release. Camera movement preserves the normalized screen-local revision. Ctrl+V is unsupported, including a physical modifier joining virtual input, because Stardew polls that combination for clipboard paste.
+For a chord, first obtain `uiRevision` from `project review menu` or `stardew_menu_get`, then call `stardew_input_chord` with `--allow-input`. The deprecated console form is `sdvkit input chord <1-120 ticks> <uiRevision> <1-8 button names>`. Changes to menu/root/page/known component geometry or UI scale before the first input update reject the request. Changes while more hold updates remain cancel reapplication; a menu opened by the final press does not invalidate its own release. Camera movement preserves the normalized screen-local revision. Ctrl+V is unsupported, including a physical modifier joining virtual input, because Stardew polls that combination for clipboard paste.
 
-For bounded text entry, use `stardew_input_text` with `--allow-input` and the exact NamingMenu `textField.id` plus fresh `uiRevision`. See [opt-in input](mcp.md#opt-in-input) for Unicode limits, per-poll focus checks, cancellation, native command-key limits and separate accepted/persisted-state proof. The low-level console transport is `sdvkit input text <uiRevision> <field-id> <UTF-8-base64>`; it requires a world-ready review and does not accept plaintext or paste.
+For bounded text entry, use `stardew_input_text` with `--allow-input` and the exact NamingMenu `textField.id` plus fresh `uiRevision`. See [opt-in input](mcp.md#opt-in-input) for Unicode limits, per-poll focus checks, cancellation, native command-key limits and separate accepted/persisted-state proof. The deprecated low-level console form is `sdvkit input text <uiRevision> <field-id> <UTF-8-base64>`; it requires a world-ready review and does not accept plaintext or paste.
 
-For active-menu mouse gestures, use `sdvkit input click <x> <y> <mouse-button> <1|2> <uiRevision> [modifiers...]`, `sdvkit input scroll <x> <y> <signed-notches> <uiRevision>`, or `sdvkit input drag <x> <y> <end-x> <end-y> <mouse-button> <movement-updates> <uiRevision> [modifiers...]` through `project review command`. MCP equivalents and complete examples are in [opt-in input](mcp.md#opt-in-input). Scroll accepts -20 through -1 (down) or 1 through 20 (up). Click and drag first complete one cursor-only game update, then revalidate before the first button-down. Drag duration is 1-120 movement updates after the initial press; one additional held endpoint update lets native controls consume historical coordinates before release, for duration+2 down samples. Preparation and endpoint holding do not increase `completedSteps`; `startTick` remains the first down sample. Click and drag accept five mouse buttons and distinct Left/Right Shift, Control or Alt modifiers.
+For active-menu mouse gestures, call `stardew_input_click`, `stardew_input_scroll` or `stardew_input_drag` with `--allow-input`; arguments and complete examples are in [opt-in input](mcp.md#opt-in-input). The deprecated console forms are `sdvkit input click <x> <y> <mouse-button> <1|2> <uiRevision> [modifiers...]`, `sdvkit input scroll <x> <y> <signed-notches> <uiRevision>` and `sdvkit input drag <x> <y> <end-x> <end-y> <mouse-button> <movement-updates> <uiRevision> [modifiers...]`. Scroll accepts -20 through -1 (down) or 1 through 20 (up). Click and drag first complete one cursor-only game update, then revalidate before the first button-down. Drag duration is 1-120 movement updates after the initial press; one additional held endpoint update lets native controls consume historical coordinates before release, for duration+2 down samples. Preparation and endpoint holding do not increase `completedSteps`; `startTick` remains the first down sample. Click and drag accept five mouse buttons and distinct Left/Right Shift, Control or Alt modifiers.
 
 Gestures check the full revision initially and again after cursor preparation, then retain root/active-page/child and viewport/scale continuity while allowing their own component/value changes. The final down action (including a drag's endpoint hold), or final scroll notch, may switch or close a menu; earlier menu changes cancel remaining actions, and viewport/scale must remain stable through release. Gesture completion waits until the game update after the final release sample, preserving the last virtual position for native release callbacks. Success retains that position. Cancellation clears it after the release opportunity; a skipped game callback uses a bounded common-input fallback and reports failure/unconfirmed release. Responses report partial `completedSteps` and final `cursorSet` plus coordinates only when still set. Validation before acceptance has no cursor effect. Wheel consumption stays inside the matching input sample and retains its cumulative origin even on failure, so cancellation never replays a notch or resets it in the opposite direction.
 
