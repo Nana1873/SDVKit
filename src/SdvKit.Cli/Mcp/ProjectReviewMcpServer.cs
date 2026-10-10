@@ -162,7 +162,11 @@ internal static class ProjectReviewMcpServer
         }
         """).RootElement.Clone();
 
-    public static async Task<int> RunStdioAsync(
+    /// <summary>
+    /// Serves the review tools over STDIO, or over loopback Streamable HTTP when
+    /// <paramref name="httpPort"/> is set (0 selects a free port).
+    /// </summary>
+    public static async Task<int> RunAsync(
         string projectRoot,
         string topology,
         string? role,
@@ -173,6 +177,7 @@ internal static class ProjectReviewMcpServer
         bool allowContainerTransfer,
         bool allowCpRefresh,
         TextWriter error,
+        int? httpPort = null,
         CancellationToken cancellationToken = default)
     {
         var reader = new ProjectReviewMcpRuntimeReader(
@@ -307,19 +312,136 @@ internal static class ProjectReviewMcpServer
             runContainerTransfer: runContainerTransfer,
             cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         var exitCode = 0;
+        var reviewEnded = false;
         try
         {
-            await using var transport = new StdioServerTransport(options);
-            await using McpServer server = McpServer.Create(transport, options);
-            await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
+            if (httpPort is int port)
+            {
+                reviewEnded = await ServeHttpAsync(
+                    options,
+                    projectRoot,
+                    topology,
+                    role,
+                    screenId,
+                    preflight.Context!.State.LaunchId,
+                    port,
+                    inputSession,
+                    error,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await using var transport = new StdioServerTransport(options);
+                await using McpServer server = McpServer.Create(transport, options);
+                await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (httpPort is not null
+            && exception is IOException or UnauthorizedAccessException)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [mcpHttpUnavailable]: {exception.Message}");
+            exitCode = OperationFailed;
+        }
+        catch (McpHttpAlreadyServingException exception)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [mcpHttpAlreadyServing]: {exception.Message}");
+            exitCode = OperationFailed;
         }
         finally
         {
-            exitCode = CompleteInputCleanup(inputSession, error);
+            inputSession?.CancelPending();
+            if (reviewEnded)
+            {
+                // The game process left with its input state; there is nothing to clear.
+                error.WriteLine("SDVKit MCP stopped because its review launch ended.");
+            }
+            else
+            {
+                int cleanup = CompleteInputCleanup(inputSession, error);
+                exitCode = exitCode == 0 ? cleanup : exitCode;
+            }
         }
 
         return exitCode;
     }
+
+    /// <returns>True when the server stopped because its review launch ended.</returns>
+    private static async Task<bool> ServeHttpAsync(
+        McpServerOptions options,
+        string projectRoot,
+        string topology,
+        string? role,
+        int? screenId,
+        string launchId,
+        int port,
+        ProjectReviewMcpInputSession? inputSession,
+        TextWriter error,
+        CancellationToken cancellationToken)
+    {
+        string token = SdvKit.GameSide.ReviewHttpContract.CreateToken();
+        await using ProjectReviewMcpHttpHost host =
+            await ProjectReviewMcpHttpHost.StartAsync(options, token, port, cancellationToken).ConfigureAwait(false);
+        string connectionPath = ProjectReviewMcpHttpHost.ConnectionPath(projectRoot, topology, role, screenId);
+        if (!ProjectReviewMcpHttpHost.TryClaimConnection(
+                connectionPath,
+                new ProjectReviewMcpHttpConnection(1, host.Url, token, launchId, topology, role, screenId, Environment.ProcessId),
+                out string? owner))
+        {
+            throw new McpHttpAlreadyServingException(
+                $"Another server already serves this review selection at {owner}; stop it first.");
+        }
+
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // ASP.NET Core can begin shutdown on its own (Ctrl+C, console close). Cancel pending input
+        // first, so Kestrel's graceful stop does not wait for an in-flight action.
+        using CancellationTokenRegistration hostStopping = host.Stopping.Register(() =>
+        {
+            inputSession?.CancelPending();
+            stop.Cancel();
+        });
+        ConsoleCancelEventHandler onCancel = (_, args) =>
+        {
+            args.Cancel = true;
+            stop.Cancel();
+        };
+        Console.CancelKeyPress += onCancel;
+        var reviewEnded = false;
+        try
+        {
+            error.WriteLine(
+                $"SDVKit MCP listens on {host.Url}. The URL and bearer token are in {connectionPath}. "
+                + "The server stops when its review launch ends or on Ctrl+C.");
+            while (!stop.IsCancellationRequested)
+            {
+                if (ProjectReviewMcpHttpHost.CheckReview(projectRoot, topology, role, launchId)
+                    == ProjectReviewMcpBinding.Ended)
+                {
+                    reviewEnded = true;
+                    break;
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), stop.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+            inputSession?.CancelPending();
+            ProjectReviewMcpHttpHost.ReleaseConnection(connectionPath, Environment.ProcessId);
+        }
+
+        return reviewEnded;
+    }
+
+    private sealed class McpHttpAlreadyServingException(string message) : Exception(message);
 
     internal static async Task RunUntilDisconnectAsync(
         McpServer server,

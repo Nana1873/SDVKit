@@ -1,6 +1,6 @@
 # Native MCP for an active review
 
-Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`; for local split-screen, obtain the current IDs through the [screen-selected status command](live-review.md#local-split-screen-review). Examples use `$sdvkit` from [installation](../README.md#install). The protocol uses STDIO; lifecycle stays in the CLI.
+Connect a client to an [already-running review](live-review.md#start-a-review). First confirm its target and selected role with `project review status`; for local split-screen, obtain the current IDs through the [screen-selected status command](live-review.md#local-split-screen-review). Examples use `$sdvkit` from [installation](../README.md#install). The server speaks STDIO by default or [Streamable HTTP on loopback](#connect-over-http) with `--http`; lifecycle stays in the CLI.
 
 [Default tools](#default-observation-and-screenshots) · [Data](#canonical-data) · [Maps and textures](#maps-and-textures) · [Audio and mod assets](#audio-and-observed-mod-assets) · [Content Patcher](#content-patcher-diagnosis-and-opt-in-refresh) · [Input](#opt-in-input) · [Fixtures](#opt-in-fixture-actions) · [World interactions](#opt-in-world-interactions) · [Client configuration](#client-configuration) · [Error contract](#binding-and-error-contract)
 
@@ -39,10 +39,10 @@ Startup observes and freezes that screen's numeric ID, farmer ID, and concrete
 game-context identity. Leaving or replacing it invalidates the server even if
 the numeric ID is reused; start a new client from a newly reported screen.
 Separate server processes are required for simultaneous local players. Duplicate,
-missing, or unknown option values are usage errors. The command deliberately has
-no `--json`, HTTP, TCP, relay, secret, or Python mode. Protocol frames are the
-only stdout output; bounded startup diagnostics use stderr. Closing the client's
-stdin ends the child server process. Input tools are absent by default. Add the
+missing, or unknown option values are usage errors. The command has no `--json`
+mode. In STDIO mode, protocol frames are the only stdout output, bounded startup
+diagnostics use stderr, and closing the client's stdin ends the child server
+process. Input tools are absent by default. Add the
 granular `--allow-input` startup flag only when that client is explicitly
 authorized to exercise process-local review input; the flag does not authorize
 fixture changes, arbitrary console text, or future action families.
@@ -574,6 +574,61 @@ enabled_tools = [
   "stardew_screenshot_capture",
 ]
 ```
+
+## Connect over HTTP
+
+Add `--http` to serve the same tools, with the same startup binding and opt-ins,
+over Streamable HTTP. The server listens only on `127.0.0.1`, on a free port
+unless you pass `--port <1024-65535>`:
+
+```powershell
+& $sdvkit project review mcp serve --topology single --http
+& $sdvkit project review mcp serve --topology network-2 --role host --http --allow-input
+```
+
+On start, it writes a connection file in the selected role's runtime directory
+and names it on stderr. The file is `.sdvkit/lab/single/runtime/mcp-http.json`
+for single, or `mcp-http-screen-<id>.json` for a local screen. It contains the
+`url`, the bearer `token`, and the bound `launchId`. Every request needs that
+token, the exact `127.0.0.1:<port>` host, and no browser `Origin` header. The
+server stops when its review launch ends, when the review is stopped, or on
+Ctrl+C, and then deletes the connection file. Keep the token out of shared
+configuration; read it from the file into the client's environment instead.
+
+Each start creates a new token. For a reusable client configuration, pass a
+fixed `--port`, set the token in the client's environment before you start the
+client, and keep only the variable name in the configuration:
+
+```powershell
+& $sdvkit project review mcp serve --topology single --http --port 47321
+$connection = Get-Content .\.sdvkit\lab\single\runtime\mcp-http.json -Raw | ConvertFrom-Json
+$env:SDVKIT_MCP_TOKEN = $connection.token
+```
+
+Codex:
+
+```toml
+[mcp_servers.sdvkit_review]
+url = "http://127.0.0.1:47321/mcp"
+bearer_token_env_var = "SDVKIT_MCP_TOKEN"
+```
+
+Claude Code (`.mcp.json`, which expands environment variables):
+
+```json
+{
+  "mcpServers": {
+    "sdvkit-review": {
+      "type": "http",
+      "url": "http://127.0.0.1:47321/mcp",
+      "headers": { "Authorization": "Bearer ${SDVKIT_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Only one HTTP server may serve the same launch and selection; a second one is
+refused with `mcpHttpAlreadyServing`.
 
 ## Binding and error contract
 
