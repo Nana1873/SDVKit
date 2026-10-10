@@ -19,7 +19,7 @@ public static partial class CliApplication
     private const string ReviewStatusUsage =
         "       sdvkit project review status [--topology <single|network-2>] --json";
     private const string ReviewCommandUsage =
-        "       sdvkit project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json";
+        "       sdvkit project review command <mod-or-SMAPI-console-line> [--topology <single|network-2>] [--role <host|farmhand>] --json";
     private const string ReviewStopUsage =
         "       sdvkit project review stop [--topology <single|network-2>] --json";
     private const string ReviewResetUsage =
@@ -134,11 +134,14 @@ public static partial class CliApplication
         output.WriteLine(ReviewStartUsage);
         output.WriteLine(ReviewStatusUsage);
         output.WriteLine(ReviewCommandUsage);
+        output.WriteLine(ReviewSplitScreenUsage);
+        output.WriteLine(ReviewNetworkUsage);
+        output.WriteLine(ReviewCallUsage);
         output.WriteLine(ReviewStopUsage);
         output.WriteLine(ReviewResetUsage);
         output.WriteLine();
         output.WriteLine("Reference help:");
-        output.WriteLine("  sdvkit project review command --help     Console input, screenshots, fixtures, and network lifecycle.");
+        output.WriteLine("  sdvkit project review command --help     Run the reviewed mod's or SMAPI's console commands.");
         output.WriteLine("  sdvkit project review data --help        Canonical structured Data.");
         output.WriteLine("  sdvkit project review menu --help        Read-only active menus for the selected role.");
         output.WriteLine("  sdvkit project review shop --help        Read-only SeedShop Gold evidence (single only).");
@@ -162,7 +165,7 @@ public static partial class CliApplication
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
         output.WriteLine("Ready bundles support single: select their root and every direct pack child with --content-pack; exactly one root/direct-child code mod is required.");
         output.WriteLine("Map, texture, audio and mod-asset inspection require unbound single; Data and menu inspection support exact roles and local screens.");
-        output.WriteLine("Local split-screen: in a single --test-save review, send sdvkit split-screen join/leave/status; use native screen=<id> console selection.");
+        output.WriteLine("Local split-screen: in a single --test-save review, use 'project review split-screen join|leave|status'; select a local screen with --screen <id> on call, menu and mcp serve.");
     }
 
     private static void WriteProjectReviewMcpUsage(TextWriter output)
@@ -246,29 +249,10 @@ public static partial class CliApplication
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)
     {
         output.WriteLine(
-            "GameSide review console lines (quote one as <text> for project review command; not top-level CLI):");
-        output.WriteLine("  sdvkit split-screen join|leave|status (single --test-save review; append native screen=<id> to select a local screen)");
-        output.WriteLine("  sdvkit network leave|join|status (network-2; leave/join are farmhand-only and host-authorized)");
-        output.WriteLine("  sdvkit screenshot <label>");
-        output.WriteLine("  sdvkit screenshot viewport <label>");
-        output.WriteLine("  sdvkit input press <SButton>");
-        output.WriteLine("  sdvkit input chord <1-120 ticks> <menu uiRevision> <1-8 SButton names>");
-        output.WriteLine("  sdvkit input click <x> <y> <mouse-button> <1|2> <uiRevision> [modifiers...]");
-        output.WriteLine("  sdvkit input scroll <x> <y> <-20..-1|1..20 notches> <uiRevision>");
-        output.WriteLine("  sdvkit input drag <x> <y> <end-x> <end-y> <mouse-button> <1-120 movement updates> <uiRevision> [modifiers...]");
-        output.WriteLine("  sdvkit input cursor <ui-x> <ui-y>");
-        output.WriteLine("  sdvkit input cursor clear");
-        output.WriteLine("  sdvkit fixture status");
-        output.WriteLine("  sdvkit fixture building ensure <alias> <building-kind> <x> <y>");
-        output.WriteLine("  sdvkit fixture object ensure <alias-or-id> <qualified-item-id>");
-        output.WriteLine("  sdvkit fixture object clear-owned <alias-or-id>");
-        output.WriteLine("  sdvkit fixture animal ensure <alias-or-id> <animal-kind>");
+            "Runs one console command of the reviewed mod or of SMAPI on the exact owned review, exactly as if typed; append screen=<id> for a local split-screen player.");
         output.WriteLine(
-            "  Kinds resolve from loaded canonical Stardew data IDs; legacy deluxe-barn and white-cow remain valid.");
+            "SDVKit's own actions are tools: use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), and 'project review split-screen' or 'project review network' for lifecycle.");
         output.WriteLine(
-            "  Unknown, ambiguous, unplaceable, or animal-house-incompatible kinds fail before mutation.");
-        output.WriteLine("  sdvkit fixture enter <alias-or-id>");
-        output.WriteLine("  sdvkit fixture enter greenhouse");
-        output.WriteLine("  sdvkit fixture farm");
+            "SDVKit console lines ('sdvkit ...') still run through this command for existing scripts but are deprecated.");
     }
 }

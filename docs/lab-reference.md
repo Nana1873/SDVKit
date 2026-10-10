@@ -78,47 +78,47 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 ## Fixture command reference
 
-Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport. Every operation is also a native MCP tool, also callable with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`. The lab tools for time, weather, season, warp, zoom and window exist only as tools; see [opt-in fixture actions](mcp.md#opt-in-fixture-actions).
+Each fixture operation is a native MCP tool. Call one from the command line with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`; for network-2, select one explicit `--role`. Arguments are in [opt-in fixture actions](mcp.md#opt-in-fixture-actions), together with the lab tools for time, weather, season, warp, zoom and window.
 
-| Console line | Role / result |
-| --- | --- |
-| `sdvkit fixture status` | Any verified role; owned fixture state |
-| `sdvkit fixture building ensure <alias> <building-kind> <x> <y>` | Single/host; idempotent building preparation |
-| `sdvkit fixture object ensure <alias-or-id> <qualified-item-id>` | Single/host; owned object |
-| `sdvkit fixture object clear-owned <alias-or-id>` | Single/host; remove the exact owned object |
-| `sdvkit fixture animal ensure <alias-or-id> <animal-kind>` | Single/host; compatible owned animal |
-| `sdvkit fixture enter <alias-or-id>` | Any verified role; natural entry to an owned interior |
-| `sdvkit fixture enter greenhouse` | Any verified role; exact loaded Greenhouse's natural entry |
-| `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
-| `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
+| Tool | Deprecated console line | Role / result |
+| --- | --- | --- |
+| `stardew_fixture_status_get` | `sdvkit fixture status` | Any verified role; owned fixture state |
+| `stardew_fixture_building_ensure` | `sdvkit fixture building ensure <alias> <building-kind> <x> <y>` | Single/host; idempotent building preparation |
+| `stardew_fixture_object_ensure` | `sdvkit fixture object ensure <alias-or-id> <qualified-item-id>` | Single/host; owned object |
+| `stardew_fixture_object_clear` | `sdvkit fixture object clear-owned <alias-or-id>` | Single/host; remove the exact owned object |
+| `stardew_fixture_animal_ensure` | `sdvkit fixture animal ensure <alias-or-id> <animal-kind>` | Single/host; compatible owned animal |
+| `stardew_fixture_enter` | `sdvkit fixture enter <alias-or-id>` | Any verified role; natural entry to an owned interior |
+| `stardew_fixture_enter` with `greenhouse` | `sdvkit fixture enter greenhouse` | Any verified role; exact loaded Greenhouse's natural entry |
+| `stardew_fixture_farm` | `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
+| `stardew_fixture_fishing_prepare` | `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
 
-Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only that the command ran; require the GameSide result and direct effect evidence.
+The console lines still run through `project review command` for existing scripts, but they are deprecated and print a warning. Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The operations are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. Require the GameSide result and direct effect evidence.
 
 ### Fishing preparation
 
-This console-only fixture action replaces the bank-search and rod-preparation
+This fixture action replaces the bank-search and rod-preparation
 helpers needed during Clearer Waters development. It requires the verified main
 player/host, an idle movable player, no menu/event/fade, an outdoor map no larger
-than 512x512, and enough empty inventory slots. It finds the standing position nearest to the player, or to an explicit search start given through the `stardew_fixture_fishing_prepare` tool, using
+than 512x512, and enough empty inventory slots. It finds the standing position nearest to the player, or to an explicit search start given as `x` and `y`, using
 the game's farmer collision check and natural fishable water two tiles away;
 building fish ponds are excluded. It does not clear obstacles or change maps.
 
 An already selected rod is retained, including its bait and tackle. Otherwise a
 Bamboo Pole is placed in an empty slot and selected. One additional empty catch
 slot is required. The player is positioned and faced toward the reported water.
-No existing inventory item is overwritten. With `--skip-tutorial` only, an empty
+No existing inventory item is overwritten. With `skipTutorial` only, an empty
 fish collection gets one Sunfish entry to bypass the forced first-fish tutorial;
 the result explicitly reports this synthetic prerequisite. No catch callback or
-inventory fish is created. Omitting the flag preserves tutorial behavior.
+inventory fish is created. Omitting it preserves tutorial behavior.
 
 ```powershell
-& $sdvkit project review command 'sdvkit fixture farm' --topology single --json
-& $sdvkit project review command 'sdvkit fixture fishing prepare --skip-tutorial' --topology single --json
+& $sdvkit project review call stardew_fixture_farm --allow-fixture-actions
+& $sdvkit project review call stardew_fixture_fishing_prepare '{"skipTutorial":true}' --allow-fixture-actions
 & $sdvkit project review status --topology single --json
-& $sdvkit project review command 'sdvkit input press C' --topology single --json
+& $sdvkit project review call stardew_input_press '{"button":"C"}' --allow-input
 ```
 
-Require the GameSide `Fishing prepared` result in the isolated SMAPI log and
+Require the tool's `Fishing prepared` result and
 check the reported player location/selected rod before casting. Preparation is
 not evidence of a successful cast or catch. Read the additive
 [fishing snapshot](runtime-state.md#fishing-observations) during play. The normal

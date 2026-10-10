@@ -145,7 +145,7 @@ player speaking to Leah. Repeat evaluation and require counts stay exactly one.
 Use the existing disposable fixture navigation to enter Farm, with no active menu:
 
 ```powershell
-& $sdvkit project review command 'sdvkit fixture farm' --json
+& $sdvkit project review call stardew_fixture_farm --allow-fixture-actions
 & $sdvkit project review command 'progression_probe_open_mail' --json
 & $sdvkit project review progression --npc Leah --mail SDVKit.ProgressionProbe_RainBarrel --quest SDVKit.ProgressionProbe_CheckBarrel --json
 & $sdvkit project review menu --json
@@ -180,7 +180,7 @@ original ready artifact and retain both config hashes. Never let a source rebuil
 substitute for these preserved bytes. Keep the accepted `RequiredFriendshipPoints=500`.
 
 Save through `stardew_fixture_save` on a server explicitly started with
-`--allow-fixture-actions`, or the existing `sdvkit fixture save` command. Require
+`--allow-fixture-actions`, or with `project review call stardew_fixture_save --allow-fixture-actions`. Require
 actual completion, exact fixture/save IDs and persisted timestamp. Close the MCP
 client, stop the exact review **without reset**, and verify its process exited.
 Start the selected accepted-config ready artifact against the same test save.

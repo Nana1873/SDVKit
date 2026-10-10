@@ -149,14 +149,14 @@ This proves host-authorized client-local mutation, not host-side remote inventor
 ### Leave and rejoin
 
 ~~~powershell
-& $sdvkit project review command "sdvkit network leave" --topology network-2 --role farmhand --json
+& $sdvkit project review network leave --role farmhand --json
 & $sdvkit project review status --topology network-2 --json
 ~~~
 
 Require farmhand at title, host still loaded and identity-verified, unchanged host session, and farmhand waiting for rejoin. The old farmhand MCP must reject as stale. On the prebound host client, only stardew_runtime_get may continue during the absence. Host inventory, world, Data, and action calls remain joined-pair-dependent and must fail closed. A new host MCP server must also be refused while the pair is absent.
 
 ~~~powershell
-& $sdvkit project review command "sdvkit network join" --topology network-2 --role farmhand --json
+& $sdvkit project review network join --role farmhand --json
 & $sdvkit project review status --topology network-2 --json
 ~~~
 
@@ -191,9 +191,9 @@ The following sequence produced the accepted local split-screen outcome.
 ~~~powershell
 & $sdvkit project review start $fixedReady --game-path $gamePath --topology single --test-save --companion $probeReady --json
 & $sdvkit project review mcp serve --topology single --allow-fixture-actions
-& $sdvkit project review command "sdvkit split-screen join" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=0" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=1" --topology single --json
+& $sdvkit project review split-screen join --json
+& $sdvkit project review split-screen status --screen 0 --json
+& $sdvkit project review split-screen status --screen 1 --json
 ~~~
 
 The unbound single server above is the fixture-authority client. Before starting the valid screen clients, prove that fixture authority cannot be attached to a screen: the following startup must be refused because --allow-fixture-actions is unsupported with --screen.
@@ -214,15 +214,15 @@ Record `screenId`, `farmerId`, and `contextId`. Run host-screen F7 once, second-
 The host screen is the authority that removes the second screen. Submit leave from screen 0; do not submit it from the departing farmhand screen:
 
 ~~~powershell
-& $sdvkit project review command "sdvkit split-screen leave screen=0" --topology single --json
+& $sdvkit project review split-screen leave --screen 0 --json
 ~~~
 
 Require the departed screen's MCP client to become stale and inspect the retained host state. Submit the later join through host authority, then read status and select the actual replacement screen reported by the runtime:
 
 ~~~powershell
-& $sdvkit project review command "sdvkit split-screen join screen=0" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=0" --topology single --json
-& $sdvkit project review command "sdvkit split-screen status screen=<reported-replacement-id>" --topology single --json
+& $sdvkit project review split-screen join --screen 0 --json
+& $sdvkit project review split-screen status --screen 0 --json
+& $sdvkit project review split-screen status --screen <reported-replacement-id> --json
 ~~~
 
 Rediscover the replacement farmer/context and start a fresh screen-bound client even if a numeric ID is ever reused.

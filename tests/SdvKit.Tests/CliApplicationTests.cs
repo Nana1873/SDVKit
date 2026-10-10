@@ -636,7 +636,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void ProjectReviewCommandDispatchesOneExactLineToTheCurrentLabOnly()
     {
-        const string command = "sdvkit fixture status";
+        const string command = "probe_ping on-screen screen=1";
         string? receivedCommand = null;
         string? receivedTopology = null;
         string? receivedRole = "unexpected";
@@ -685,7 +685,7 @@ public sealed class CliApplicationTests
     [InlineData("farmhand")]
     public void ProjectReviewNetworkCommandDispatchesOneExactRole(string expectedRole)
     {
-        const string command = "sdvkit fixture status";
+        const string command = "probe_ping on-screen screen=1";
         ProjectReviewCommandRunner reviewRunner = (_, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Review lifecycle should not run.");
         ProjectReviewConsoleCommandRunner consoleRunner = (
@@ -1722,7 +1722,7 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, output);
         Assert.Contains(
-            "project review command <text> [--topology <single|network-2>] [--role <host|farmhand>] --json",
+            "project review command <mod-or-SMAPI-console-line> [--topology <single|network-2>] [--role <host|farmhand>] --json",
             error,
             StringComparison.Ordinal);
     }
@@ -1760,7 +1760,7 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
-    public void ProjectReviewCommandHelpExposesConsoleGrammarWithoutDispatch()
+    public void ProjectReviewCommandHelpPointsSdvKitActionsToToolsWithoutDispatch()
     {
         ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
             throw new InvalidOperationException("Console input should not run.");
@@ -1770,30 +1770,58 @@ public sealed class CliApplicationTests
             "project", "review", "command", "--help");
 
         Assert.Equal(0, exitCode);
-        string[] reviewConsoleLines =
-        [
-            "sdvkit screenshot <label>",
-            "sdvkit screenshot viewport <label>",
-            "sdvkit input press <SButton>",
-            "sdvkit input cursor <ui-x> <ui-y>",
-            "sdvkit input cursor clear",
-            "sdvkit fixture status",
-            "sdvkit fixture building ensure <alias> <building-kind> <x> <y>",
-            "sdvkit fixture object ensure <alias-or-id> <qualified-item-id>",
-            "sdvkit fixture object clear-owned <alias-or-id>",
-            "sdvkit fixture animal ensure <alias-or-id> <animal-kind>",
-            "sdvkit fixture enter <alias-or-id>",
-            "sdvkit fixture enter greenhouse",
-            "sdvkit fixture farm",
-        ];
-        foreach (string reviewConsoleLine in reviewConsoleLines)
-        {
-            Assert.Contains(reviewConsoleLine, output, StringComparison.Ordinal);
-        }
-
-        Assert.Contains("not top-level CLI", output, StringComparison.Ordinal);
+        Assert.Contains("console command of the reviewed mod or of SMAPI", output, StringComparison.Ordinal);
+        Assert.Contains("project review call <tool>", output, StringComparison.Ordinal);
+        Assert.Contains("project review split-screen", output, StringComparison.Ordinal);
+        Assert.Contains("deprecated", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
+
+    [Fact]
+    public void SdvKitConsoleLinesStillDispatchWithADeprecationWarning()
+    {
+        string? received = null;
+        ProjectReviewConsoleCommandRunner runner = (command, _, _, _) =>
+        {
+            received = command;
+            return new LiveLabCommandResult(0, new { commandWritten = true });
+        };
+        (int exitCode, _, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", "sdvkit fixture status", "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("sdvkit fixture status", received);
+        Assert.Contains("deprecated", error, StringComparison.Ordinal);
+        Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("split-screen|join|--json", "sdvkit split-screen join", "single", null)]
+    [InlineData("split-screen|status|--screen|1|--json", "sdvkit split-screen status screen=1", "single", null)]
+    [InlineData("split-screen|leave|--screen|0|--json", "sdvkit split-screen leave screen=0", "single", null)]
+    [InlineData("network|leave|--role|farmhand|--json", "sdvkit network leave", "network-2", "farmhand")]
+    [InlineData("network|status|--role|host|--json", "sdvkit network status", "network-2", "host")]
+    public void LifecycleCommandsSendTheirExactLine(string suffix, string line, string topology, string? role)
+    {
+        string[] arguments = ["project", "review", .. suffix.Split('|')];
+        Assert.True(CliApplication.TryParseProjectReviewLifecycle(arguments, out string? parsed, out string? parsedTopology, out string? parsedRole));
+        Assert.Equal(line, parsed);
+        Assert.Equal(topology, parsedTopology);
+        Assert.Equal(role, parsedRole);
+    }
+
+    [Theory]
+    [InlineData("split-screen|join")]
+    [InlineData("split-screen|split|--json")]
+    [InlineData("split-screen|join|--screen|x|--json")]
+    [InlineData("network|join|--json")]
+    [InlineData("network|join|--role|guest|--json")]
+    [InlineData("network|kick|--role|farmhand|--json")]
+    public void LifecycleCommandsRejectIncompleteOrUnknownForms(string suffix) =>
+        Assert.False(CliApplication.TryParseProjectReviewLifecycle(
+            ["project", "review", .. suffix.Split('|')], out _, out _, out _));
 
     [Theory]
     [InlineData("mcp", "--help")]
