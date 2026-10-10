@@ -356,7 +356,12 @@ internal static class ReviewCommand
         if (commandQueue is not null)
         {
             helper.Events.GameLoop.UpdateTicking += (_, _) =>
-                commandQueue.Drain(Context.ScreenId, Context.HasScreenId, Dispatch);
+                // SMAPI's Context.HasScreenId still reports a screen briefly after a local player
+                // leaves; the game runner's instances are authoritative.
+                commandQueue.Drain(
+                    Context.ScreenId,
+                    id => GameRunner.instance.gameInstances.Any(game => game.instanceId == id),
+                    Dispatch);
         }
 
         bool Dispatch(string[] arguments)
