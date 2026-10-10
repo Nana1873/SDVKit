@@ -507,18 +507,25 @@ With the explicit `--allow-fixture-actions` opt-in, a `single` server or a
 - `stardew_lab_set_time { "time": 1930 }` (600 to 2550 in ten-minute steps) and
   `stardew_lab_set_season { "season": "winter" }` use the game's own debug
   commands. Ambient light catches up at the next ten-minute tick, and map tiles
-  refresh at the next location change.
+  refresh at the next location change. Game time keeps running: from 2400 the
+  player tires, and at 2600 the player passes out and the game saves the day, so
+  set an earlier time for longer checks.
 - `stardew_lab_set_weather { "weather": "Rain" }` sets `Sun`, `Rain`, `Storm`,
   `Snow`, `Wind` or `GreenRain` for the current location context.
 - `stardew_lab_warp { "location": "Town", "x": 20, "y": 30 }` warps the selected
-  player; the tile is optional. The location changes within a few frames, so
-  confirm it with `stardew_runtime_get`.
+  player and answers only after arrival is confirmed. The target must be a
+  permanent location; generated ones such as mine levels are refused. A given
+  tile must be on the map and passable; without one, the location's default
+  arrival tile is used.
 - `stardew_lab_set_zoom { "zoom": 1.25 }` (0.75 to 2) and
   `stardew_lab_set_window { "width": 1600, "height": 900 }` change the selected
   player's zoom and the process window, as the options menu does.
 
 Every `stardew_lab_*` result carries a `lab` object with the time, season,
-weather, location, tile, zoom and window size observed right after the action.
+weather, location, tile, zoom and window size observed right after the action,
+for a warp after arrival. `stardew_lab_set_window` resizes the whole process
+window, which local split-screen players share. Window and zoom preferences stay
+in the lab's isolated profile.
 
 A farmhand server advertises only `status_get`, `enter`, `farm`, `lab_warp`,
 `lab_set_zoom` and `lab_set_window`; it cannot discover or dispatch world

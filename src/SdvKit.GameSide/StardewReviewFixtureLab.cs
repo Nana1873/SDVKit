@@ -22,7 +22,7 @@ internal sealed partial class StardewReviewFixtureRuntime
             ReviewFixtureSetTimeRequest time => Debug("time", time.Time.ToString(CultureInfo.InvariantCulture)),
             ReviewFixtureSetSeasonRequest season => Debug("season", season.Season),
             ReviewFixtureSetWeatherRequest weather => SetWeather(weather.Weather),
-            ReviewFixtureWarpRequest warp => Warp(warp),
+            ReviewFixtureWarpRequest => "A warp runs through the confirmed navigation path.",
             ReviewFixtureSetZoomRequest zoom => SetZoom(zoom.Zoom),
             ReviewFixtureSetWindowRequest window => SetWindow(window.Width, window.Height),
             _ => "The lab action is unknown.",
@@ -34,8 +34,6 @@ internal sealed partial class StardewReviewFixtureRuntime
 
         string message = request switch
         {
-            ReviewFixtureWarpRequest warp =>
-                $"Warp to '{warp.Location}' requested; the location changes within a few frames.",
             ReviewFixtureSetTimeRequest =>
                 "Time set; ambient light catches up at the next ten-minute tick or location change.",
             ReviewFixtureSetSeasonRequest =>
@@ -86,18 +84,6 @@ internal sealed partial class StardewReviewFixtureRuntime
         return null;
     }
 
-    private static string? Warp(ReviewFixtureWarpRequest warp)
-    {
-        if (Game1.getLocationFromName(warp.Location) is null)
-        {
-            return $"The location '{warp.Location}' does not exist.";
-        }
-
-        return warp.X is int x && warp.Y is int y
-            ? Debug("warp", warp.Location, x.ToString(CultureInfo.InvariantCulture), y.ToString(CultureInfo.InvariantCulture))
-            : Debug("warp", warp.Location);
-    }
-
     private static string? SetZoom(double zoom)
     {
         Game1.options.desiredBaseZoomLevel = (float)zoom;
@@ -116,7 +102,7 @@ internal sealed partial class StardewReviewFixtureRuntime
         return null;
     }
 
-    private static ReviewFixtureLabReport CaptureLab()
+    internal static ReviewFixtureLabReport CaptureLab()
     {
         GameLocation? location = Game1.currentLocation;
         Microsoft.Xna.Framework.Rectangle window = Game1.game1.Window.ClientBounds;

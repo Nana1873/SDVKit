@@ -23,7 +23,8 @@ internal sealed partial class StardewReviewFixtureRuntime
         GameLocation Location,
         int TileX,
         int TileY,
-        string Message);
+        string Message,
+        bool ReportLab = false);
 
     public ReviewFixtureResult Enter(
         ReviewFixtureAccess access,
@@ -91,6 +92,10 @@ internal sealed partial class StardewReviewFixtureRuntime
         else if (request is ReviewFixtureFarmRequest)
         {
             immediate = PrepareFarm(access, out plan);
+        }
+        else if (request is ReviewFixtureWarpRequest warp)
+        {
+            immediate = PrepareLabWarp(warp, out plan);
         }
         else
         {
@@ -225,6 +230,60 @@ internal sealed partial class StardewReviewFixtureRuntime
         return null;
     }
 
+    /// <summary>
+    /// Plans a lab warp to a permanent location and an on-map, passable tile. Generated locations
+    /// such as mine levels are refused, so a warp never creates world state on the host.
+    /// </summary>
+    private static ReviewFixtureResult? PrepareLabWarp(ReviewFixtureWarpRequest warp, out NavigationPlan? plan)
+    {
+        plan = null;
+        if (!Context.IsWorldReady || Game1.player is null)
+        {
+            return Failure("The world is not ready for a warp.");
+        }
+
+        // Look only at the game's permanent location list: name lookups such as
+        // getLocationFromName generate mine and volcano levels as a side effect.
+        GameLocation? location = Game1.locations.FirstOrDefault(candidate => string.Equals(
+            candidate.NameOrUniqueName,
+            warp.Location,
+            StringComparison.OrdinalIgnoreCase));
+        if (location is null)
+        {
+            return Failure(
+                $"'{warp.Location}' is not a permanent location; generated locations such as mine levels are not warp targets.");
+        }
+
+        int tileX = 0;
+        int tileY = 0;
+        if (warp.X is int x && warp.Y is int y)
+        {
+            (tileX, tileY) = (x, y);
+        }
+        else
+        {
+            Utility.getDefaultWarpLocation(location.Name, ref tileX, ref tileY);
+            if (tileX == 0 && tileY == 0)
+            {
+                return Failure($"'{warp.Location}' has no default arrival tile; pass x and y.");
+            }
+        }
+
+        var target = new Vector2(tileX, tileY);
+        if (!location.isTileOnMap(target) || !location.isTilePassable(target))
+        {
+            return Failure($"Tile {tileX},{tileY} in '{location.NameOrUniqueName}' is off the map or not passable.");
+        }
+
+        plan = new NavigationPlan(
+            location,
+            tileX,
+            tileY,
+            $"Warped to '{location.NameOrUniqueName}' at {tileX},{tileY}.",
+            ReportLab: true);
+        return null;
+    }
+
     private static void BeginWarp(
         NavigationPlan plan,
         Action<ReviewFixtureResult> completed)
@@ -253,12 +312,14 @@ internal sealed partial class StardewReviewFixtureRuntime
                 return;
             }
 
-            completed(SuccessNavigation(
-                plan.Message,
-                actualLocation.NameOrUniqueName,
-                Game1.player.TilePoint.X,
-                Game1.player.TilePoint.Y,
-                changed: true));
+            completed(plan.ReportLab
+                ? new ReviewFixtureResult(true, plan.Message, Lab: CaptureLab())
+                : SuccessNavigation(
+                    plan.Message,
+                    actualLocation.NameOrUniqueName,
+                    Game1.player.TilePoint.X,
+                    Game1.player.TilePoint.Y,
+                    changed: true));
         };
         Game1.warpFarmer(
             locationRequest,

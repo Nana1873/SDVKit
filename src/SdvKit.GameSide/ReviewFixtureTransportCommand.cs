@@ -171,7 +171,7 @@ internal static class ReviewFixtureTransportCommand
                 monitor);
         }
 
-        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest)
+        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest or ReviewFixtureWarpRequest)
         {
             try
             {

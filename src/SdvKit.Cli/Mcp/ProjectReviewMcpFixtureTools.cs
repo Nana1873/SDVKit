@@ -359,7 +359,7 @@ internal static class ProjectReviewMcpFixtureTools
                     ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FarmOperation)
                     : null),
             Lab(runtimeReader, runQuery, topology, role, WarpToolName, ReviewFixtureTransportContract.WarpOperation,
-                "Warp the selected player to a named location, optionally to a tile, in the owned disposable world. The location changes within a few frames.",
+                "Warp the selected player to a permanent location, optionally to an on-map passable tile, and answer after arrival is confirmed.",
                 WarpInputSchema, idempotent: true, TryWarp),
             Lab(runtimeReader, runQuery, topology, role, SetZoomToolName, ReviewFixtureTransportContract.SetZoomOperation,
                 "Set the selected player's zoom level (0.75 to 2) in the owned disposable world.",
@@ -454,7 +454,7 @@ internal static class ProjectReviewMcpFixtureTools
                             && skip.ValueKind == JsonValueKind.True)
                     : null));
             tools.Add(Lab(runtimeReader, runQuery, topology, role, SetTimeToolName, ReviewFixtureTransportContract.SetTimeOperation,
-                "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command.",
+                "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command. Time keeps running; at 2600 the player passes out and the day is saved.",
                 TimeInputSchema, idempotent: true,
                 arguments => HasOnly(arguments, ["time"]) && TryInt(arguments, "time", out int time)
                     ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetTimeOperation, X: time)

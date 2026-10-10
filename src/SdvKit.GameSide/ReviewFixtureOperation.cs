@@ -146,7 +146,6 @@ internal static class ReviewFixtureOperation
             ReviewFixtureSetTimeRequest
                 or ReviewFixtureSetWeatherRequest
                 or ReviewFixtureSetSeasonRequest
-                or ReviewFixtureWarpRequest
                 or ReviewFixtureSetZoomRequest
                 or ReviewFixtureSetWindowRequest => runtime.ApplyLab(access, request),
             _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
@@ -232,7 +231,8 @@ internal static class ReviewFixtureNavigationOperation
         ArgumentNullException.ThrowIfNull(completed);
 
         if (request is not ReviewFixtureEnterRequest
-            && request is not ReviewFixtureFarmRequest)
+            && request is not ReviewFixtureFarmRequest
+            && request is not ReviewFixtureWarpRequest)
         {
             throw new ArgumentException(
                 "Only fixture navigation requests can use deferred navigation.",
