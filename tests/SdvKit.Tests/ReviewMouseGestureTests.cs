@@ -180,6 +180,22 @@ public sealed class ReviewMouseGestureTests
     }
 
     [Fact]
+    public void ClickCanceledDuringCursorPreparationNeverStarts()
+    {
+        // World actions use a one-click gesture; a cancel before the press must leave no start tick.
+        var progress = new ReviewChordProgress(1, Click());
+        Assert.True(progress.PreparingCursor);
+        progress.ObserveGestureSample(0, false, true, preparingCursor: true);
+        progress.Cancel();
+        Assert.False(progress.CompleteGameUpdate(out _));
+        progress.ObserveGestureSample(1, true, true);
+        progress.CompleteGameUpdate(out _);
+        Assert.True(progress.Finished);
+        Assert.Null(progress.StartTick);
+        Assert.Equal(0, progress.CompletedSteps);
+    }
+
+    [Fact]
     public void FailedReleaseDoesNotCountACompleteClick()
     {
         var progress = new ReviewChordProgress(1, Click());

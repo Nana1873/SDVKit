@@ -218,6 +218,7 @@ internal static class ReviewWorldActionCommand
         Farmer? player = worldReady ? Game1.player : null;
         bool playerReady = player is not null && Game1.activeClickableMenu is null
             && Game1.currentMinigame is null && !Game1.uiMode && !Game1.eventUp && !Game1.fadeToBlack
+            && !Game1.freezeControls && !Game1.globalFade
             && !player.UsingTool && player.CanMove && player.CursorSlotItem is null;
         bool facedAdjacent = playerReady && player!.GetGrabTile() == new Vector2(query.X, query.Y);
         bool inventoryMatches = false;
