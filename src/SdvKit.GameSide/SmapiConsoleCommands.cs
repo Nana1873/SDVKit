@@ -30,6 +30,8 @@ internal static class SmapiConsoleCommands
             return false;
         }
 
+        // SMAPI records typed input; keep the same evidence in the isolated log.
+        monitor.Log($"SDVKit review runs console command: {string.Join(' ', [name, .. arguments])}", LogLevel.Info);
         try
         {
             callback(name, arguments);
@@ -43,6 +45,22 @@ internal static class SmapiConsoleCommands
     }
 
     private static Func<string, Action<string, string[]>?>? CreateLookup()
+    {
+        try
+        {
+            return CreateLookupCore();
+        }
+        catch (Exception exception) when (exception is AmbiguousMatchException
+            or TargetException
+            or TargetInvocationException
+            or MemberAccessException)
+        {
+            // A changed SMAPI layout fails closed: other console commands are rejected, never run.
+            return null;
+        }
+    }
+
+    private static Func<string, Action<string, string[]>?>? CreateLookupCore()
     {
         const BindingFlags any = BindingFlags.Public | BindingFlags.NonPublic;
         Type? core = typeof(IModHelper).Assembly.GetType("StardewModdingAPI.Framework.SCore");
