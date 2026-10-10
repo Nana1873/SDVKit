@@ -20,6 +20,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next start, smoke, or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
 
+### Fixed
+
+- A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` when the target or backpack changed, or could not be read. Physical input could still act on the target in that window, so `notDispatched` again means that nothing ran (#264).
+
 ## [1.0.0] - 2026-10-01
 
 ### Added

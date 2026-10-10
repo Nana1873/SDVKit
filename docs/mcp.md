@@ -88,7 +88,8 @@ replays, or rolls back a native action.
 
 `state=completed` proves only that the one native input sample completed. Read
 world and inventory again to establish the effect. `dispatchState=notDispatched`
-is safe non-dispatch; `mayHaveRun` is uncertain and must be observed before any
+is safe non-dispatch: after the cursor reached the target, SDVKit reports it only
+when the target and backpack are still unchanged; `mayHaveRun` is uncertain and must be observed before any
 manual retry. Cancellation before dispatch cannot act; cancellation after the
 command write drains a retained response when possible and never retries.
 

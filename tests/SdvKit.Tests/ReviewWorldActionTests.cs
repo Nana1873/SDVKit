@@ -18,6 +18,21 @@ public sealed class ReviewWorldActionTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Theory]
+    [InlineData(Instance, Revision, Inventory, "notDispatched")]
+    [InlineData(Instance, Revision, "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "mayHaveRun")]
+    [InlineData(Instance, "ffffffffffffffffffffffffffffffff", Inventory, "mayHaveRun")]
+    [InlineData(null, null, Inventory, "mayHaveRun")]
+    [InlineData(Instance, Revision, null, "mayHaveRun")]
+    public void UnsentActionIsNotDispatchedOnlyWhileTargetAndBackpackAreUnchanged(
+        string? instance,
+        string? revision,
+        string? inventory,
+        string expected) =>
+        Assert.Equal(
+            expected,
+            ReviewWorldActionDecision.UnsentDispatchState(Query("harvest"), instance, revision, inventory));
+
+    [Theory]
     [InlineData("water")]
     [InlineData("harvest")]
     [InlineData("machineInsert")]

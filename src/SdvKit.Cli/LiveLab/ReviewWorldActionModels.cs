@@ -83,6 +83,22 @@ internal sealed record ReviewWorldActionFacts(
 
 internal static class ReviewWorldActionDecision
 {
+    /// <summary>
+    /// Dispatch state for an action SDVKit did not send after its cursor was already on the target.
+    /// Physical or external input can still have acted there, so only an unchanged target and
+    /// backpack, observed after the outcome, prove that nothing ran.
+    /// </summary>
+    public static string UnsentDispatchState(
+        ReviewWorldActionQuery query,
+        string? targetInstanceId,
+        string? targetRevision,
+        string? inventoryRevision) =>
+        targetInstanceId == query.TargetInstanceId
+            && targetRevision == query.TargetRevision
+            && inventoryRevision == query.InventoryRevision
+                ? "notDispatched"
+                : "mayHaveRun";
+
     public static string? Rejection(ReviewWorldActionQuery query, ReviewWorldActionFacts facts)
     {
         if (!facts.BindingReady) return "worldActionBindingInvalid";

@@ -58,6 +58,9 @@ internal static class ReviewWorldActionCommand
 
         bool dispatched = false;
         bool cursorOwned = false;
+        // Once the cursor sits on the target, "not sent by SDVKit" no longer proves "did not run".
+        bool cursorWasPlaced = false;
+        string Unsent() => cursorWasPlaced ? ObservedUnsentDispatchState(query, launch) : "notDispatched";
         try
         {
             if (args[2] != launch)
@@ -95,6 +98,7 @@ internal static class ReviewWorldActionCommand
                 return;
             }
             cursorOwned = true;
+            cursorWasPlaced = true;
             var request = new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0, RequestId: args[1]);
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position
@@ -108,7 +112,7 @@ internal static class ReviewWorldActionCommand
                     if (!cleared)
                     {
                         Write(Report("unavailable", "worldActionCursorCleanupFailed",
-                            result.StartTick is null ? "notDispatched" : "mayHaveRun",
+                            result.StartTick is null ? Unsent() : "mayHaveRun",
                             result.CanonicalButton, result.StartTick, result.EndTick));
                         return;
                     }
@@ -116,7 +120,7 @@ internal static class ReviewWorldActionCommand
                         ? Report("completed", null, "completed", result.CanonicalButton,
                             result.StartTick, result.EndTick)
                         : Report("unavailable", "worldActionCompletionUncertain",
-                            result.StartTick is null ? "notDispatched" : "mayHaveRun", result.CanonicalButton,
+                            result.StartTick is null ? Unsent() : "mayHaveRun", result.CanonicalButton,
                             result.StartTick, result.EndTick));
                 }, out _))
             {
@@ -124,7 +128,7 @@ internal static class ReviewWorldActionCommand
                 bool cleared = input.TryClearCursor(out _);
                 cursorOwned = false;
                 Write(Report("unavailable", cleared ? "worldActionInputRejected"
-                    : "worldActionCursorCleanupFailed", "notDispatched"));
+                    : "worldActionCursorCleanupFailed", Unsent()));
             }
         }
         catch (Exception)
@@ -135,7 +139,39 @@ internal static class ReviewWorldActionCommand
                 catch (Exception) { }
             }
             Write(Report("unavailable", dispatched ? "worldActionCompletionUncertain" : "worldActionValidationFailed",
-                dispatched ? "mayHaveRun" : "notDispatched"));
+                dispatched ? "mayHaveRun" : Unsent()));
+        }
+    }
+
+    /// <summary>
+    /// Rereads the exact target and backpack after an outcome in which SDVKit sent nothing.
+    /// Any change, or a failed read, is reported as <c>mayHaveRun</c>.
+    /// </summary>
+    private static string ObservedUnsentDispatchState(ReviewWorldActionQuery query, string launch)
+    {
+        try
+        {
+            ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"), launch);
+            ReviewWorldReport world = ReviewWorldCommand.Capture(launch, new(query.X, query.Y, 1, 1));
+            ReviewWorldTile? tile = inventory.State == "ready" && world.State == "ready"
+                ? world.Data?.Tiles.SingleOrDefault()
+                : null;
+            (string? instanceId, string? revision) = query.Action switch
+            {
+                ReviewWorldActionContract.Water => (tile?.Soil?.InstanceId, tile?.Soil?.Revision),
+                ReviewWorldActionContract.Harvest =>
+                    (tile?.Soil?.Crop.Data?.InstanceId, tile?.Soil?.Crop.Data?.Revision),
+                _ => (tile?.Machine?.InstanceId, tile?.Machine?.Revision),
+            };
+            return ReviewWorldActionDecision.UnsentDispatchState(
+                query,
+                instanceId,
+                revision,
+                inventory.State == "ready" ? inventory.Data?.InventoryRevision : null);
+        }
+        catch (Exception)
+        {
+            return "mayHaveRun";
         }
     }
 
