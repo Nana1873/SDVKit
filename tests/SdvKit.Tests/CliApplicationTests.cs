@@ -1773,28 +1773,27 @@ public sealed class CliApplicationTests
         Assert.Contains("console command of the reviewed mod or of SMAPI", output, StringComparison.Ordinal);
         Assert.Contains("project review call <tool>", output, StringComparison.Ordinal);
         Assert.Contains("project review split-screen", output, StringComparison.Ordinal);
-        Assert.Contains("deprecated", output, StringComparison.Ordinal);
+        Assert.Contains("rejected here", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
-    [Fact]
-    public void SdvKitConsoleLinesStillDispatchWithADeprecationWarning()
+    [Theory]
+    [InlineData("sdvkit fixture status")]
+    [InlineData("  SDVKit input press C")]
+    [InlineData("\"sdvkit\" split-screen join")]
+    public void SdvKitConsoleLinesAreRejectedWithoutDispatch(string line)
     {
-        string? received = null;
-        ProjectReviewConsoleCommandRunner runner = (command, _, _, _) =>
-        {
-            received = command;
-            return new LiveLabCommandResult(0, new { commandWritten = true });
-        };
-        (int exitCode, _, string error) = RunWithProjectReview(
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, string output, string error) = RunWithProjectReview(
             (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
             runner,
-            "project", "review", "command", "sdvkit fixture status", "--json");
+            "project", "review", "command", line, "--json");
 
-        Assert.Equal(0, exitCode);
-        Assert.Equal("sdvkit fixture status", received);
-        Assert.Contains("deprecated", error, StringComparison.Ordinal);
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
         Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
+        Assert.Contains("project review split-screen", error, StringComparison.Ordinal);
     }
 
     [Theory]

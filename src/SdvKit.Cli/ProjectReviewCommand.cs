@@ -216,9 +216,11 @@ public static partial class CliApplication
             return UsageError;
         }
 
-        if (string.Equals(action, "command", StringComparison.Ordinal))
+        if (string.Equals(action, "command", StringComparison.Ordinal)
+            && IsSdvKitConsoleLine(command!))
         {
-            WarnIfSdvKitConsoleLine(command!, error);
+            error.WriteLine(SdvKitConsoleLineRejection);
+            return UsageError;
         }
 
         LiveLabCommandResult result = string.Equals(

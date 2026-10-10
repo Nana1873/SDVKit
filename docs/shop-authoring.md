@@ -358,14 +358,7 @@ offer IDs.
 
 ## Buy once and prove the deltas
 
-> [!NOTE]
-> This recipe's script sends deprecated `sdvkit ...` console lines through
-> `project review command` and evaluates `commandWritten`, so it prints a
-> deprecation warning. New scripts should call `stardew_input_click` with
-> `project review call` and `--allow-input` instead. See
-> [opt-in input](mcp.md#opt-in-input).
-
-Send one bounded process-local click through the existing review console path:
+Send one bounded process-local click with the input tool:
 
 ```powershell
 $menuBefore = Get-Content (Join-Path $evidence 'menu-before.json') -Raw | ConvertFrom-Json
@@ -382,17 +375,23 @@ if ($saleRows.Count -lt 1) {
 $saleRow = $saleRows[0]
 $x = $saleRow.bounds.x + [int]($saleRow.bounds.width / 2)
 $y = $saleRow.bounds.y + [int]($saleRow.bounds.height / 2)
-$click = "sdvkit input click $x $y MouseLeft 1 $($menuBefore.uiRevision)"
-& $sdvkit project review command $click --topology single --json |
-    Tee-Object (Join-Path $evidence 'purchase-click.json')
+$clickArguments = @{
+    x = $x; y = $y; button = 'MouseLeft'; count = 1
+    uiRevision = [string]$menuBefore.uiRevision
+} | ConvertTo-Json -Compress
+$click = & $sdvkit project review call stardew_input_click $clickArguments --allow-input |
+    Tee-Object (Join-Path $evidence 'purchase-click.json') | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $click.succeeded -ne $true -or $click.released -ne $true) {
+    throw 'The purchase click did not complete; inspect the shop before any repeat.'
+}
 & $sdvkit project review shop --topology single --json |
     Tee-Object (Join-Path $evidence 'shop-after-purchase.json')
 ```
 
 Do not send another action until the fresh shop capture establishes what happened.
-An acknowledgement alone is not purchase proof. For a timeout or
-`mayHaveRun=true`, inspect current shop state before deciding whether any repeat
-is safe.
+A completed click alone is not purchase proof. If the click fails or is
+cancelled, inspect current shop state before deciding whether any repeat is safe;
+never retry it automatically.
 
 Compare only captures with the same launch ID, shop identity scope and player
 ID. Require money to decrease by exactly 10, offer 0 stock to change from 3 to 2,
@@ -428,9 +427,15 @@ if ($slotComponents.Count -ne 1) {
 $slot = $slotComponents[0]
 $slotX = $slot.bounds.x + [int]($slot.bounds.width / 2)
 $slotY = $slot.bounds.y + [int]($slot.bounds.height / 2)
-$place = "sdvkit input click $slotX $slotY MouseLeft 1 $($menuHeld.uiRevision)"
-& $sdvkit project review command $place --topology single --json |
-    Tee-Object (Join-Path $evidence 'place-held.json')
+$placeArguments = @{
+    x = $slotX; y = $slotY; button = 'MouseLeft'; count = 1
+    uiRevision = [string]$menuHeld.uiRevision
+} | ConvertTo-Json -Compress
+$place = & $sdvkit project review call stardew_input_click $placeArguments --allow-input |
+    Tee-Object (Join-Path $evidence 'place-held.json') | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $place.succeeded -ne $true -or $place.released -ne $true) {
+    throw 'The placement click did not complete; inspect the shop before any repeat.'
+}
 & $sdvkit project review shop --topology single --json |
     Tee-Object (Join-Path $evidence 'shop-final.json')
 ```

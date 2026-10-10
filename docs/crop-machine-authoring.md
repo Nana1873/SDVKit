@@ -290,13 +290,6 @@ when testing the input path. In either case, require complete container evidence
 two Cola in the chest, zero in the player backpack, an empty held item, and no
 limitations.
 
-> [!NOTE]
-> This recipe's script sends deprecated `sdvkit ...` console lines through
-> `project review command` and evaluates `commandWritten`, so it prints a
-> deprecation warning. New scripts should call `stardew_input_click` with
-> `project review call` and `--allow-input` instead. See
-> [opt-in input](mcp.md#opt-in-input).
-
 The accepted #190 run tested the native menu path. Its helper placed the chest at
 `(41,4)` and the player at `(40,4)`, but always use the freshly reported tiles.
 Open it with one process-local `X` press, read `project review menu` and
@@ -310,6 +303,11 @@ equals the observed Cola backpack slot, and click its center with the same fresh
 & $sdvkit project review command "recipe_probe_report" `
     --topology single --json
 # Open the freshly reported chest with one process-local X press, then inspect it.
+$open = & $sdvkit project review call stardew_input_press '{"button":"X"}' --allow-input |
+    ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $open.succeeded -ne $true -or $open.menuOpen -ne $true) {
+    throw "The chest did not open."
+}
 $menu = & $sdvkit project review menu --topology single --json | ConvertFrom-Json
 $container = & $sdvkit project review container --topology single --json |
     ConvertFrom-Json
@@ -325,9 +323,15 @@ if ($components.Count -ne 1) {
 $component = $components[0]
 $clickX = $component.bounds.x + [int]($component.bounds.width / 2)
 $clickY = $component.bounds.y + [int]($component.bounds.height / 2)
-& $sdvkit project review command `
-    "sdvkit input click $clickX $clickY MouseLeft 1 $($menu.uiRevision)" `
-    --topology single --json
+$clickArguments = @{
+    x = $clickX; y = $clickY; button = 'MouseLeft'; count = 1
+    uiRevision = [string]$menu.uiRevision
+} | ConvertTo-Json -Compress
+$click = & $sdvkit project review call stardew_input_click $clickArguments --allow-input |
+    ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $click.succeeded -ne $true -or $click.released -ne $true) {
+    throw "The Cola click did not complete."
+}
 ```
 
 Read the container again rather than assuming click semantics. In the observed

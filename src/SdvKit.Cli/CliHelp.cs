@@ -255,6 +255,6 @@ public static partial class CliApplication
         output.WriteLine(
             "SDVKit's own actions are tools: use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), and 'project review split-screen' or 'project review network' for lifecycle.");
         output.WriteLine(
-            "SDVKit console lines ('sdvkit ...') still run through this command for existing scripts but are deprecated.");
+            "SDVKit's own console lines ('sdvkit ...') are rejected here.");
     }
 }
