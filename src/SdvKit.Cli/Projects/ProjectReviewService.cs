@@ -20,8 +20,8 @@ internal static partial class ProjectReviewService
 
     private static readonly string[] CommandWarnings =
     [
-        "commandWritten=true confirms that one complete text line plus Enter was enqueued into the exact owned SMAPI console; it does not confirm that SMAPI accepted or completed the command.",
-        "Submit console input only at an idle SMAPI prompt and do not type concurrently; classic Windows console input cannot prove that no partially typed cooked line already exists.",
+        "commandWritten=true confirms that the exact owned review ran the command line on its game thread through its loopback command endpoint; inspect the command's effect separately before claiming success.",
+        "commandWritten=false means the command did not run. A missing value means delivery is unknown; do not retry such a command automatically.",
     ];
 
     private static readonly string[] NetworkWarnings =

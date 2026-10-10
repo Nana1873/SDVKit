@@ -90,7 +90,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 - Exit `0`: the requested operation succeeded. Check its specific result fields before making a broader claim.
 - Exit `2`: command syntax or arguments are invalid; use the matching `--help`.
 - Exit `3`: a controlled discovery, build, runtime, or ownership failure; read `problems`, warnings, and result-named logs.
-- `commandWritten=true`: a console line was delivered, not proof of the command's effect.
+- `commandWritten=true`: the review ran the command on its game thread. This is not proof of the command's effect. `false` means it did not run; a missing value means delivery is unknown and the command must not be retried automatically.
 - Build identity describes the controlled staged file set, not an in-memory DLL measurement.
 
 The [live guide](live-review.md#finish-or-test-persistence) distinguishes successful cleanup, retained state for restart, and warnings.

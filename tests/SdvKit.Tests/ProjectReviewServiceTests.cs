@@ -2965,30 +2965,26 @@ public sealed class ProjectReviewServiceTests
 
     [Theory]
     [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WorkerStartFailed,
+        (int)ProjectReviewConsoleInputStatus.EndpointUnavailable,
         false,
-        "reviewConsoleWorkerStartFailed")]
+        "reviewCommandEndpointUnavailable")]
     [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WorkerParentMismatch,
+        (int)ProjectReviewConsoleInputStatus.Rejected,
         false,
-        "reviewConsoleWorkerParentMismatch")]
+        "reviewCommandRejected")]
     [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WrittenDetachFailed,
-        true,
-        "reviewConsoleDetachFailed")]
+        (int)ProjectReviewConsoleInputStatus.NotExecuted,
+        false,
+        "reviewCommandNotExecuted")]
     [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WrittenProcessExited,
-        true,
-        "reviewConsoleProcessExitedAfterWrite")]
+        (int)ProjectReviewConsoleInputStatus.ScreenUnavailable,
+        false,
+        "reviewCommandScreenUnavailable")]
     [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WrittenProcessUnreadable,
+        (int)ProjectReviewConsoleInputStatus.ExecutedWithFailure,
         true,
-        "reviewConsoleProcessUnreadableAfterWrite")]
-    [InlineData(
-        (int)ProjectReviewConsoleInputStatus.WrittenConsoleChanged,
-        true,
-        "reviewConsoleOwnershipChangedAfterWrite")]
-    public void CommandMapsWorkerAndPostWriteFailuresWithoutMutatingOwnership(
+        "reviewCommandFailed")]
+    public void CommandMapsEndpointFailuresWithoutMutatingOwnership(
         int statusValue,
         bool expectedCommandWritten,
         string expectedProblem)

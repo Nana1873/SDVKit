@@ -18,7 +18,8 @@ internal sealed record GameSideStatusReport(
     int? ForegroundProcessId = null,
     ProjectModStatusReport? ProjectMod = null,
     RuntimeSnapshotReport? Runtime = null,
-    LoadedModsStatusReport? LoadedMods = null);
+    LoadedModsStatusReport? LoadedMods = null,
+    int? HttpPort = null);
 
 internal sealed record GameSideStatusMarker(
     int SchemaVersion,
@@ -38,7 +39,8 @@ internal sealed record GameSideStatusMarker(
     int? ForegroundProcessId = null,
     ProjectModStatusMarker? ProjectMod = null,
     RuntimeSnapshotMarker? Runtime = null,
-    LoadedModsStatusMarker? LoadedMods = null);
+    LoadedModsStatusMarker? LoadedMods = null,
+    int? HttpPort = null);
 
 internal static class GameSideStatusReader
 {
@@ -171,7 +173,8 @@ internal static class GameSideStatusReader
             marker.ForegroundProcessId,
             projectMod,
             runtime,
-            loadedMods);
+            loadedMods,
+            state == "active" && marker.HttpPort is >= 1 and <= 65535 ? marker.HttpPort : null);
     }
 
     private static LoadedModsStatusReport? ReadLoadedMods(

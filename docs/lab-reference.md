@@ -22,6 +22,12 @@ Ownership binds the exact PID, UTC process start time, executable identity, and 
 
 Status is a complete JSON snapshot, published by a same-directory atomic rename. An open reader can finish the old snapshot; later opens see the new one. Each read still validates launch/PID/start identity, nested role/build identity, bounded JSON and freshness; an active marker older than five seconds is stale. A partial or mismatched marker never establishes readiness. On Windows, publication uses `FileRenameInfoEx` with POSIX replacement semantics (Windows 10 version 1709 or later). Denied writes, read-only targets and filesystems that do not support the operation remain visible errors; no non-atomic fallback is used. GameSide logs the first error of each uninterrupted failure period, and a later successful tick can publish fresh status again.
 
+### Command endpoint
+
+Each launch gets a random token through its environment. The game-side mod listens on a random loopback port and publishes it as `httpPort` in its status. It accepts only `POST /v1/command` from `127.0.0.1` with that token, the exact `Host` and no `Origin` header. The CLI and native MCP send every review command line there instead of typing into the SMAPI console.
+
+A command runs on the game thread of the screen selected by SMAPI's `screen=<id>` argument. If the game does not start it within 5 seconds, it is withdrawn and reported as not run. This also happens while the game saves or starts a new day, because SMAPI pauses the update events that run commands. A missing screen, an unknown subcommand or a failed screen binding is reported as rejected without running the command. More than eight simultaneous connections are refused. Every reply names the launch it came from, and the CLI rejects a reply for another launch.
+
 Each status read opens the file again. A missing marker reports `pending`; an unreadable or malformed marker reports `invalid`; a marker for another launch or process reports `mismatch`. A later readable snapshot can recover on the next invocation, but it must still pass identity and freshness checks. SDVKit does not substitute an older cached snapshot for a failed read.
 
 GameSide disables `pauseWhenOutOfFocus` in its isolated profile while running. On controlled exit it attempts to restore and read back the captured option, publishes `exiting` or `restoreFailed`, and asks the game to exit normally in either case. A failed final publication is logged separately even if active updates were already failing; it does not hold the game open. Without a matching terminal marker, process exit alone returns `cleanStopNotConfirmed` and retains ownership for inspection. A published `restoreFailed` marker instead reports an unconfirmed restoration as a warning after otherwise safe exit; the next start reapplies the lab option. Crashes or manual/forced termination do not promise restoration.
@@ -82,7 +88,7 @@ Each row below is a GameSide game-console line, quoted as the text argument to `
 | `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
 | `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
 
-Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only delivery; require the GameSide result and direct effect evidence.
+Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only that the command ran; require the GameSide result and direct effect evidence.
 
 ### Fishing preparation
 

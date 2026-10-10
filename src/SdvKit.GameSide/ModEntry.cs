@@ -14,6 +14,8 @@ public sealed class ModEntry : Mod
     private PerScreen<BackgroundRunGuard>? _backgroundRuns;
     private BackgroundRunGuard? BackgroundRun => _backgroundRuns?.Value;
     private StatusWriter? _statusWriter;
+    private readonly ReviewCommandQueue _commandQueue = new();
+    private ReviewHttpEndpoint? _commandEndpoint;
     private TestSaveAutomation? _testSave;
     private NetworkTwoAutomation? _networkTwo;
     private ProjectModObserver? _projectMod;
@@ -53,6 +55,7 @@ public sealed class ModEntry : Mod
         });
         BackgroundOptionsReplacement.Install(() => BackgroundRun, Monitor);
         _statusWriter = new StatusWriter(launchId, statusPath);
+        StartCommandEndpoint(launchId);
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
         _labWindowModeRequired = string.Equals(
@@ -111,7 +114,8 @@ public sealed class ModEntry : Mod
                     "The GameSide status path has no runtime directory."),
             () => _testSave,
             () => _networkTwo,
-            screen => GameRunner.instance.ExecuteForInstances(current =>
+            commandQueue: _commandEndpoint is null ? null : _commandQueue,
+            prepareScreenExit: screen => GameRunner.instance.ExecuteForInstances(current =>
             {
                 if (ReferenceEquals(current, screen))
                 {
@@ -410,12 +414,48 @@ public sealed class ModEntry : Mod
         GameRunner.instance.Exit();
     }
 
+    private void StartCommandEndpoint(string launchId)
+    {
+        string? token = Environment.GetEnvironmentVariable(ReviewHttpContract.TokenVariable)?.Trim();
+        if (!ReviewHttpContract.IsToken(token))
+        {
+            Monitor.Log("SDVKit review command endpoint is disabled: the launch has no valid command token.", LogLevel.Warn);
+            return;
+        }
+
+        try
+        {
+            _commandEndpoint = ReviewHttpEndpoint.Start(
+                launchId,
+                token!,
+                _commandQueue,
+                message => Monitor.Log(message, LogLevel.Warn));
+            _statusWriter!.HttpPort = _commandEndpoint.Port;
+            Monitor.Log($"SDVKit review command endpoint listens on 127.0.0.1:{_commandEndpoint.Port}.", LogLevel.Trace);
+        }
+        catch (Exception exception) when (exception is System.Net.Sockets.SocketException or ArgumentException or IOException)
+        {
+            Monitor.Log($"SDVKit review command endpoint is unavailable: {exception.Message}", LogLevel.Error);
+        }
+    }
+
+    private void StopCommandEndpoint()
+    {
+        _commandEndpoint?.Dispose();
+        if (_statusWriter is not null)
+        {
+            _statusWriter.HttpPort = null;
+        }
+    }
+
     private void PrepareForExit()
     {
         if (_exitPrepared)
         {
             return;
         }
+
+        StopCommandEndpoint();
 
         int tick = Game1.ticks;
         ReviewVirtualCursor.Clear();
@@ -561,6 +601,7 @@ public sealed class ModEntry : Mod
         // the controlled stop request is the sole reported normal-exit path.
         try
         {
+            _commandEndpoint?.Dispose();
             if (!_exitPrepared)
             {
                 BackgroundRun?.RestoreOriginalAndDisable();

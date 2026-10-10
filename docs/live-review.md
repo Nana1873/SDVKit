@@ -166,7 +166,7 @@ ID. Review status additionally reports `testSave.localSplitScreen=true` once
 selected. The `SDVKit local screen` log entry contains that screen's current runtime,
 player, menu report, and active screen IDs. Screen IDs can change after leaving
 and rejoining; use the reported IDs instead of assuming every farmhand is screen 1.
-`commandWritten=true` still proves only delivery.
+`commandWritten=true` still proves only that the command ran, not its effect.
 
 SMAPI's native `screen=<id>` command argument selects the screen for input,
 fixture navigation, screenshots, and explicitly selected mod commands:
@@ -214,7 +214,7 @@ review; it does not enumerate people, infer historical completion or edit state.
 
 On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.
 
-Use an idle SMAPI console with no concurrent manual typing. Console delivery proves only delivery; verify the actual effect through matching logs, state, or images.
+SDVKit sends commands to the review's [loopback command endpoint](lab-reference.md#command-endpoint), not by typing into the console, so manual use of the console window does not interfere with them. `commandWritten=true` means the command ran on the game thread; verify the actual effect through matching logs, state, or images.
 
 ```powershell
 & $sdvkit project review command "sdvkit screenshot viewport menu-before" --topology single --json

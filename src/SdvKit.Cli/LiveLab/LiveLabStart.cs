@@ -104,6 +104,7 @@ internal sealed partial class LiveLabService
         }
 
         string executablePath = Path.Combine(gamePath, "StardewModdingAPI.exe");
+        string httpToken = SdvKit.GameSide.ReviewHttpContract.CreateToken();
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["USERPROFILE"] = _paths.UserProfilePath,
@@ -114,6 +115,7 @@ internal sealed partial class LiveLabService
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
             ["SDVKIT_LAB_WINDOWED"] = "1",
+            [SdvKit.GameSide.ReviewHttpContract.TokenVariable] = httpToken,
             ["SDVKIT_REVIEW_CONSOLE_BACKGROUND"] = interactiveConsole ? "1" : string.Empty,
         };
         foreach (string name in TestSaveEnvironmentNames)
@@ -184,7 +186,8 @@ internal sealed partial class LiveLabService
             _paths.StopRequestPath,
             testSave,
             networkTwo,
-            projectMod);
+            projectMod,
+            httpToken);
         if (started.Status != LabProcessStartStatus.Started)
         {
             return HandleLaunchVerificationFailure(

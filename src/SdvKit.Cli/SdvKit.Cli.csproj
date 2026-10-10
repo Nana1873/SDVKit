@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Compile Include="..\SdvKit.GameSide\BackgroundRunGuard.cs" Link="GameSide\BackgroundRunGuard.cs" />
+    <Compile Include="..\SdvKit.GameSide\ReviewHttpEndpoint.cs" Link="GameSide\ReviewHttpEndpoint.cs" />
   </ItemGroup>
 
   <ItemGroup>

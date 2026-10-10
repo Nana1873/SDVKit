@@ -1,8 +1,8 @@
 # Diagnose one Content Patcher change
 
 Start an [owned single review](live-review.md#start-a-review) with your pack and an
-explicit local Content Patcher 2.9.1 companion. Use an idle SMAPI console without
-concurrent manual commands. From the same lab directory:
+explicit local Content Patcher 2.9.1 companion. Diagnosis reads the owned SMAPI log, so do not
+type manual commands into the SMAPI console meanwhile. From the same lab directory:
 
 ```powershell
 & $sdvkit project review cp-diagnose --pack Example.Pack --provider Pathoschild.ContentPatcher --json
@@ -21,7 +21,7 @@ not mean the patch worked. Read `summary.patches` and the preserved CP `messages
 | `loadedAndEnabled` | CP loaded and enabled this patch. False: read CP's reason, then run the offline `project check` or selected `review diagnostics` when relevant. |
 | `conditionsMatch` | CP says the current conditions match. False: read the named condition and local token context. |
 | `applied` | CP says the target was loaded and patched. False with both previous columns true can mean an asset has not loaded yet; it is not proof of an incorrect target. |
-| `commandWritten` | The diagnosis command reached the owned console. Timeout or missing correlation remains incomplete. |
+| `commandWritten` | The diagnosis command ran on the owned review's game thread. Timeout or missing correlation remains incomplete. |
 | Separate Data/map/texture result | The value actually observed through the running content pipeline, at that later time. This is not a per-mod provenance claim. |
 
 For a deliberate failure, author a patch to `Data/Objects` with a `When` condition

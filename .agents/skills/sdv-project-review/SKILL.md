@@ -36,7 +36,7 @@ Read only the reference relevant to the selected operation. Do not reproduce eve
 
 ## Accept effects, not delivery
 
-Dispatch console lines only with an idle console and no concurrent manual typing. `commandWritten=true` proves delivery; console silence proves neither success nor failure. Verify effects through matching owned logs, fresh state, or the exact screenshot.
+SDVKit delivers command lines through the review's loopback command endpoint. `commandWritten=true` proves the command ran on the game thread, `false` that it did not run, and a missing value that delivery is unknown; console silence proves neither success nor failure. Verify effects through matching owned logs, fresh state, or the exact screenshot.
 
 Use fresh non-overwriting screenshot labels. Accept only a confirmed PNG under the selected isolated profile; inspect the image to claim visual behavior. For MCP, retain its matching launch/role metadata and returned image/hash. Never use a peer role's image as proof for the selected role.
 

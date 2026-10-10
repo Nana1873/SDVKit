@@ -10,6 +10,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - **Breaking (2.0):** JSON output follows the new name. `lab status` and network-2 reports use `gameSide` instead of `alwaysOn`; problem codes such as `alwaysOnPending` are now `gameSidePending`; the mod-asset coverage scope is `observedRequestsSinceGameSideSubscribed`. Build identities change because the assembly file name is part of the hash.
 - `SDVKit.AlwaysOn` stays reserved: user mods with that ID are still rejected.
 
+- **Breaking (2.0):** review commands no longer reach the game by typing into the SMAPI console. Each launch now opens a token-protected loopback command endpoint in the game-side mod, and the CLI and native MCP send command lines there. A command reports `commandWritten=true` only after it ran on the game thread, `false` when it did not run, and no value when delivery is unknown. The console-delivery problem codes (`reviewConsoleInputBusy`, `reviewConsolePartialWrite`, `reviewConsoleWorker*` and similar) are replaced by `reviewCommandEndpointUnavailable`, `reviewCommandRejected`, `reviewCommandNotExecuted`, `reviewCommandScreenUnavailable`, `reviewCommandFailed` and `reviewCommandDeliveryUnknown`. Manual use of the SMAPI console window no longer interferes with SDVKit commands.
+
 Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next start, smoke, or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
 
 ## [1.0.0] - 2026-10-01
