@@ -4,7 +4,7 @@ This original recipe changes one field with two competing CP patches in one pack
 Use an explicitly selected local Content Patcher 2.9.1 directory and an owned
 disposable single review. Keep generated pack files and evidence below the lab's
 ignored `.sdvkit/`; ordinary saves and normal Mods stay outside this workflow.
-Use one idle SMAPI console and the installed absolute `$sdvkit` executable.
+Use the installed absolute `$sdvkit` executable and do not type manual commands into the SMAPI console meanwhile.
 
 ## Author the competing changes
 

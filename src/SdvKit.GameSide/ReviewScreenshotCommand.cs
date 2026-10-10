@@ -320,7 +320,8 @@ internal static class ReviewCommand
         string runtimePath,
         Func<TestSaveAutomation?> testSave,
         Func<NetworkTwoAutomation?> networkTwo,
-        Action<Game1> prepareScreenExit)
+        Action<Game1> prepareScreenExit,
+        ReviewCommandQueue? commandQueue = null)
     {
         ArgumentNullException.ThrowIfNull(helper);
         ArgumentNullException.ThrowIfNull(monitor);
@@ -351,11 +352,15 @@ internal static class ReviewCommand
             testSave,
             networkTwo,
             helper.Multiplayer.GetNewID);
-        helper.ConsoleCommands.Add(
-            RootCommand,
-            HelpText,
-            (_, arguments) =>
-            {
+        helper.ConsoleCommands.Add(RootCommand, HelpText, (_, arguments) => Dispatch(arguments));
+        if (commandQueue is not null)
+        {
+            helper.Events.GameLoop.UpdateTicking += (_, _) =>
+                commandQueue.Drain(Context.ScreenId, Context.HasScreenId, Dispatch);
+        }
+
+        void Dispatch(string[] arguments)
+        {
                 if (!ReviewScreenBindingCommand.TryValidateDispatch(
                         arguments,
                         testSave(),
@@ -500,7 +505,7 @@ internal static class ReviewCommand
                 {
                     monitor.Log(Usage, LogLevel.Error);
                 }
-            });
+        }
     }
 }
 

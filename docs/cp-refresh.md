@@ -71,7 +71,7 @@ Otherwise stop/reset, rebuild when needed, and start again.
   entries and 256 MiB. Companions must be unchanged ready directories; a companion
   built from a C# project requires restart for this refresh slice.
 - Existing diagnosis limits still apply: bounded owned log, exact CP 2.9.1 output,
-  and no concurrent manual console typing. Unknown output or additional provider
+  and no concurrent manual console commands. Unknown output or additional provider
   errors return incomplete, even if CP also printed its success line.
   Reload permits CP 2.9.1's single known cache-invalidation trace before the
   complete INFO acknowledgment, including SMAPI's intervening propagation log.
@@ -108,7 +108,7 @@ evidence; they are not an alternate authoritative review state.
 
 If reload delivery, its reply, diagnosis, observation or the final marker update
 is uncertain, the staged files remain visible and the durable receipt requires
-restart. `commandWritten=true` means delivered; null can mean it ran. SDVKit never
+restart. `commandWritten=true` means it ran; null means it may have run. SDVKit never
 retries reload automatically and never rolls back files after possibly executed
 reload. A second refresh is rejected while recovery is pending.
 

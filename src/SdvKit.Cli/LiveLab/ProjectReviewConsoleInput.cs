@@ -1,10 +1,8 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text;
-using Microsoft.Win32.SafeHandles;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Text.Json;
+using SdvKit.GameSide;
 
 namespace SdvKit.Cli.LiveLab;
 
@@ -170,25 +168,27 @@ internal static class ProjectReviewConsoleLine
 
 internal enum ProjectReviewConsoleInputStatus
 {
+    /// <summary>The exact review ran the command on its game thread.</summary>
     Written = 0,
     InvalidRequest = 10,
-    ProcessExited = 11,
-    ProcessIdentityMismatch = 12,
-    ProcessUnreadable = 13,
-    AttachFailed = 14,
-    SharedConsole = 15,
-    InputBusy = 16,
-    InputOpenFailed = 17,
-    WriteFailed = 18,
-    PartialWrite = 19,
-    WrittenDetachFailed = 20,
-    WrittenProcessExited = 21,
-    WrittenProcessUnreadable = 22,
-    WrittenConsoleChanged = 23,
-    WorkerTimedOut = 30,
-    WorkerFailed = 31,
-    WorkerStartFailed = 32,
-    WorkerParentMismatch = 33,
+
+    /// <summary>No command endpoint was published or reachable; nothing was sent.</summary>
+    EndpointUnavailable = 11,
+
+    /// <summary>The endpoint refused the request before queueing it.</summary>
+    Rejected = 12,
+
+    /// <summary>The command was withdrawn before the game thread started it.</summary>
+    NotExecuted = 13,
+
+    /// <summary>The selected local screen does not exist; the command did not run.</summary>
+    ScreenUnavailable = 14,
+
+    /// <summary>The command ran but its dispatcher failed.</summary>
+    ExecutedWithFailure = 20,
+
+    /// <summary>The request may have run; it must not be retried automatically.</summary>
+    DeliveryUnknown = 30,
 }
 
 internal sealed record ProjectReviewConsoleInputResult(
@@ -198,13 +198,8 @@ internal sealed record ProjectReviewConsoleInputResult(
     public bool? CommandWritten => Status switch
     {
         ProjectReviewConsoleInputStatus.Written
-            or ProjectReviewConsoleInputStatus.WrittenDetachFailed
-            or ProjectReviewConsoleInputStatus.WrittenProcessExited
-            or ProjectReviewConsoleInputStatus.WrittenProcessUnreadable
-            or ProjectReviewConsoleInputStatus.WrittenConsoleChanged => true,
-        ProjectReviewConsoleInputStatus.PartialWrite
-            or ProjectReviewConsoleInputStatus.WorkerTimedOut
-            or ProjectReviewConsoleInputStatus.WorkerFailed => null,
+            or ProjectReviewConsoleInputStatus.ExecutedWithFailure => true,
+        ProjectReviewConsoleInputStatus.DeliveryUnknown => null,
         _ => false,
     };
 }
@@ -216,783 +211,169 @@ internal interface IProjectReviewConsoleInputSender
         string line);
 }
 
-internal sealed class WindowsProjectReviewConsoleInputSender
-    : IProjectReviewConsoleInputSender
+/// <summary>
+/// Sends one review command line to the exact launch's loopback command endpoint. The port comes
+/// from the launch-bound status marker and the bearer token from the owned lab state; the reply
+/// must name the same launch.
+/// </summary>
+internal sealed class HttpProjectReviewCommandSender(
+    int? port,
+    string? token,
+    string launchId) : IProjectReviewConsoleInputSender
 {
-    private static readonly TimeSpan WorkerTimeout = TimeSpan.FromSeconds(10);
-    private static readonly UTF8Encoding StrictUtf8 = new(
-        encoderShouldEmitUTF8Identifier: false,
-        throwOnInvalidBytes: true);
+    private const int MaximumReplyBytes = 64 * 1024;
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public ProjectReviewConsoleInputResult SendLine(
-        OwnedProcessIdentity expected,
-        string line)
+    public static HttpProjectReviewCommandSender For(LiveLabState state, GameSideStatusReport? gameSide) =>
+        new(gameSide?.HttpPort, state.HttpToken, state.LaunchId);
+
+    public ProjectReviewConsoleInputResult SendLine(OwnedProcessIdentity expected, string line)
     {
         ArgumentNullException.ThrowIfNull(expected);
         string? validationError = ProjectReviewConsoleLine.ValidationError(line);
         if (validationError is not null)
         {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.InvalidRequest,
-                validationError);
+            return new(ProjectReviewConsoleInputStatus.InvalidRequest, validationError);
         }
 
-        if (!OperatingSystem.IsWindows())
+        if (port is not (>= 1 and <= 65535) || !ReviewHttpContract.IsToken(token))
         {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerStartFailed,
-                "Project-review console input is implemented for Windows only.");
+            return new(
+                ProjectReviewConsoleInputStatus.EndpointUnavailable,
+                "The exact review has not published its command endpoint; no command was sent.");
         }
 
-        ProcessStartInfo startInfo;
-        try
-        {
-            startInfo = CreateWorkerStartInfo(expected);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException
-                or InvalidOperationException
-                or NotSupportedException
-                or PathTooLongException
-                or UnauthorizedAccessException
-                or Win32Exception)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerStartFailed,
-                exception.Message);
-        }
-
-        Process? worker;
-        try
-        {
-            worker = Process.Start(startInfo);
-            if (worker is null)
+        // Only a failure before the TCP connection exists proves that nothing was sent.
+        bool connected = false;
+        using var client = new HttpClient(
+            new SocketsHttpHandler
             {
-                return new ProjectReviewConsoleInputResult(
-                    ProjectReviewConsoleInputStatus.WorkerStartFailed,
-                    "Windows did not return the project-review console worker process.");
-            }
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or IOException
-                or Win32Exception
-                or UnauthorizedAccessException)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerStartFailed,
-                exception.Message);
-        }
-
-        using (worker)
-        {
-            try
-            {
-                worker.StandardInput.Write(line);
-                worker.StandardInput.Close();
-                if (!worker.WaitForExit(checked((int)WorkerTimeout.TotalMilliseconds)))
+                UseProxy = false,
+                AllowAutoRedirect = false,
+                ConnectTimeout = TimeSpan.FromSeconds(3),
+                ConnectCallback = async (context, cancellation) =>
                 {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                     try
                     {
-                        worker.Kill(entireProcessTree: true);
-                        worker.WaitForExit();
+                        await socket.ConnectAsync(context.DnsEndPoint, cancellation).ConfigureAwait(false);
+                        connected = true;
+                        return new NetworkStream(socket, ownsSocket: true);
                     }
-                    catch (Exception exception) when (
-                        exception is InvalidOperationException
-                            or NotSupportedException
-                            or Win32Exception)
+                    catch
                     {
-                        return new ProjectReviewConsoleInputResult(
-                            ProjectReviewConsoleInputStatus.WorkerTimedOut,
-                            $"The console worker timed out and its exact termination could not be confirmed: {exception.Message}");
+                        socket.Dispose();
+                        throw;
                     }
-
-                    return new ProjectReviewConsoleInputResult(
-                        ProjectReviewConsoleInputStatus.WorkerTimedOut,
-                        "The console worker timed out; command delivery is unknown and must not be retried automatically.");
-                }
-
-                string error = worker.StandardError.ReadToEnd().Trim();
-                ProjectReviewConsoleInputStatus status = Enum.IsDefined(
-                    typeof(ProjectReviewConsoleInputStatus),
-                    worker.ExitCode)
-                        ? (ProjectReviewConsoleInputStatus)worker.ExitCode
-                        : ProjectReviewConsoleInputStatus.WorkerFailed;
-                return new ProjectReviewConsoleInputResult(
-                    status,
-                    string.IsNullOrWhiteSpace(error) ? null : error);
-            }
-            catch (Exception exception) when (
-                exception is InvalidOperationException
-                    or IOException
-                    or Win32Exception
-                    or UnauthorizedAccessException)
-            {
-                return new ProjectReviewConsoleInputResult(
-                    ProjectReviewConsoleInputStatus.WorkerFailed,
-                    exception.Message);
-            }
-        }
-    }
-
-    internal static ProcessStartInfo CreateWorkerStartInfo(
-        OwnedProcessIdentity expected)
-    {
-        ArgumentNullException.ThrowIfNull(expected);
-        string processPath = Environment.ProcessPath
-            ?? throw new InvalidOperationException("The current SDVKit executable path is unavailable.");
-        string processName = Path.GetFileNameWithoutExtension(processPath);
-        var startInfo = new ProcessStartInfo
+                },
+            },
+            disposeHandler: true)
         {
-            FileName = processPath,
-            WorkingDirectory = Environment.CurrentDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = StrictUtf8,
-            StandardOutputEncoding = StrictUtf8,
-            StandardErrorEncoding = StrictUtf8,
+            Timeout = RequestTimeout,
         };
-
-        if (string.Equals(processName, "dotnet", StringComparison.OrdinalIgnoreCase))
+        string endpoint = string.Create(
+            CultureInfo.InvariantCulture,
+            $"http://127.0.0.1:{port.Value}{ReviewHttpContract.CommandPath}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint))
         {
-            string assemblyPath = Assembly.GetEntryAssembly()?.Location
-                ?? throw new InvalidOperationException("The current SDVKit assembly path is unavailable.");
-            startInfo.ArgumentList.Add(assemblyPath);
-        }
-        else if (!string.Equals(processName, "sdvkit", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                $"The current process '{processName}' is not the SDVKit app host.");
-        }
+            Content = new ByteArrayContent(
+                JsonSerializer.SerializeToUtf8Bytes(new ReviewHttpCommandBody(line), JsonOptions)),
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        startInfo.ArgumentList.Add(WindowsProjectReviewConsoleInputWorker.Argument);
-        startInfo.ArgumentList.Add(expected.ProcessId.ToString(CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add(expected.StartTimeUtc.UtcTicks.ToString(CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add(expected.ExecutablePath);
-        using Process parent = Process.GetCurrentProcess();
-        startInfo.ArgumentList.Add(parent.Id.ToString(CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add(
-            parent.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
-        return startInfo;
-    }
-}
-
-internal static class WindowsProjectReviewConsoleInputWorker
-{
-    internal const string Argument = "--internal-project-review-console-input";
-
-    private const uint GenericRead = 0x80000000;
-    private const uint GenericWrite = 0x40000000;
-    private const uint FileShareRead = 0x00000001;
-    private const uint FileShareWrite = 0x00000002;
-    private const uint OpenExisting = 3;
-    private const uint ToolhelpSnapshotProcess = 0x00000002;
-    private const uint EnableLineInput = 0x0002;
-    private const ushort KeyEvent = 0x0001;
-    private const ushort VirtualKeyReturn = 0x000D;
-    private const ushort VirtualKeyEscape = 0x001B;
-
-    internal static bool IsInvocation(IReadOnlyList<string> arguments) =>
-        arguments.Count > 0
-        && string.Equals(arguments[0], Argument, StringComparison.Ordinal);
-
-    internal static int Run(
-        IReadOnlyList<string> arguments,
-        TextReader input,
-        TextWriter error)
-    {
-        ArgumentNullException.ThrowIfNull(arguments);
-        ArgumentNullException.ThrowIfNull(input);
-        ArgumentNullException.ThrowIfNull(error);
-
-        ProjectReviewConsoleInputResult result = new(
-            ProjectReviewConsoleInputStatus.WorkerFailed,
-            "The console worker failed before it could determine command delivery.");
-        if (arguments.Count != 6
-            || !int.TryParse(
-                arguments[1],
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out int processId)
-            || processId <= 0
-            || !long.TryParse(
-                arguments[2],
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out long startTicks)
-            || startTicks <= 0
-            || string.IsNullOrWhiteSpace(arguments[3])
-            || !int.TryParse(
-                arguments[4],
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out int parentProcessId)
-            || parentProcessId <= 0
-            || !long.TryParse(
-                arguments[5],
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out long parentStartTicks)
-            || parentStartTicks <= 0)
-        {
-            result = new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.InvalidRequest,
-                "The internal console worker request is invalid.");
-        }
-        else
-        {
-            using SafeProcessHandle? parentHandle = OpenVerifiedParent(
-                parentProcessId,
-                parentStartTicks,
-                out ProjectReviewConsoleInputResult? parentFailure);
-            if (parentHandle is null)
-            {
-                result = parentFailure!;
-            }
-            else
-            {
-                try
-                {
-                    string line = input.ReadToEnd();
-                    var expected = new OwnedProcessIdentity(
-                        processId,
-                        new DateTimeOffset(startTicks, TimeSpan.Zero),
-                        arguments[3]);
-                    result = WriteLine(expected, line);
-                }
-                catch (Exception exception) when (
-                    exception is ArgumentException
-                        or IOException
-                        or NotSupportedException
-                        or PathTooLongException
-                        or UnauthorizedAccessException)
-                {
-                    result = new ProjectReviewConsoleInputResult(
-                        ProjectReviewConsoleInputStatus.InvalidRequest,
-                        exception.Message);
-                }
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.Error))
-        {
-            error.WriteLine(result.Error);
-        }
-
-        return (int)result.Status;
-    }
-
-    internal static ProjectReviewConsoleInputResult WriteLine(
-        OwnedProcessIdentity expected,
-        string line)
-    {
-        string? validationError = ProjectReviewConsoleLine.ValidationError(line);
-        if (validationError is not null)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.InvalidRequest,
-                validationError);
-        }
-
-        if (!OperatingSystem.IsWindows())
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerFailed,
-                "Project-review console input is implemented for Windows only.");
-        }
-
-        // A console-subsystem app host can inherit the caller's console even when
-        // the one-shot worker is hidden and all standard streams are redirected.
-        // Detach only this dedicated worker before attaching to the owned SMAPI
-        // console; the main SDVKit process must retain its original console.
-        if (GetConsoleCP() != 0 && !FreeConsole())
-        {
-            return Failure(
-                ProjectReviewConsoleInputStatus.AttachFailed,
-                "The console worker could not detach from its inherited console");
-        }
-
-        using SafeProcessHandle? processHandle = WindowsLabProcessHost.OpenVerifiedProcess(
-            expected,
-            out LabProcessInspectResult inspection);
-        if (processHandle is null)
-        {
-            return InspectionFailure(inspection);
-        }
-
-        if (!AttachConsole(checked((uint)expected.ProcessId)))
-        {
-            return Failure(
-                ProjectReviewConsoleInputStatus.AttachFailed,
-                "Windows could not attach to the exact owned SMAPI console");
-        }
-
-        ProjectReviewConsoleInputResult result = new(
-            ProjectReviewConsoleInputStatus.WorkerFailed,
-            "The console worker failed before it could determine command delivery.");
+        HttpResponseMessage response;
         try
         {
-            result = WriteAttachedConsole(processHandle, expected.ProcessId, line);
+            response = client.Send(request);
         }
-        finally
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
         {
-            if (!FreeConsole())
+            return connected
+                ? Unknown($"The command endpoint did not answer: {exception.Message}")
+                : new(
+                    ProjectReviewConsoleInputStatus.EndpointUnavailable,
+                    $"The exact review's command endpoint could not be reached; no command was sent. {exception.Message}");
+        }
+
+        using (response)
+        {
+            ReviewHttpCommandReply? reply = ReadReply(response);
+            int status = (int)response.StatusCode;
+            if (status is 200 or 409 or 504 && reply is null)
             {
-                int windowsError = Marshal.GetLastWin32Error();
-                result = result.Status == ProjectReviewConsoleInputStatus.Written
-                    ? new ProjectReviewConsoleInputResult(
-                        ProjectReviewConsoleInputStatus.WrittenDetachFailed,
-                        DescribeWindowsError(
-                            "The command was fully enqueued, but the console worker could not detach",
-                            windowsError))
-                    : result with
-                    {
-                        Error = $"{result.Error} {DescribeWindowsError("The console worker could not detach", windowsError)}".Trim(),
-                    };
+                return Unknown("The command endpoint returned an invalid reply.");
             }
-        }
 
-        return result;
+            if (reply is not null && !string.Equals(reply.LaunchId, launchId, StringComparison.Ordinal))
+            {
+                return Unknown("The command endpoint answered for a different launch.");
+            }
+
+            return (status, reply?.Outcome) switch
+            {
+                (200, ReviewHttpContract.Executed) => new(ProjectReviewConsoleInputStatus.Written),
+                (200, ReviewHttpContract.Failed) => new(
+                    ProjectReviewConsoleInputStatus.ExecutedWithFailure,
+                    $"The command ran but its dispatcher failed: {reply!.Message}"),
+                (409, ReviewHttpContract.ScreenUnavailable) => new(
+                    ProjectReviewConsoleInputStatus.ScreenUnavailable,
+                    reply!.Message ?? "The selected local screen is not active; the command did not run."),
+                (504, ReviewHttpContract.NotExecuted) => new(
+                    ProjectReviewConsoleInputStatus.NotExecuted,
+                    reply!.Message ?? "The game thread did not run the command in time; it was withdrawn."),
+                (400 or 401 or 403 or 404 or 405 or 411 or 413 or 415 or 429 or 431, _) => new(
+                    ProjectReviewConsoleInputStatus.Rejected,
+                    reply?.Message
+                        ?? $"The command endpoint rejected the request with HTTP {status}; the command did not run."),
+                _ => Unknown(reply?.Message ?? $"The command endpoint returned HTTP {status}."),
+            };
+        }
     }
 
-    internal static ConsoleInputRecord[] CreateInputRecords(string line)
+    private static ProjectReviewConsoleInputResult Unknown(string message) =>
+        new(
+            ProjectReviewConsoleInputStatus.DeliveryUnknown,
+            $"{message} The command may have run; do not retry it automatically.");
+
+    private static ReviewHttpCommandReply? ReadReply(HttpResponseMessage response)
     {
-        string? validationError = ProjectReviewConsoleLine.ValidationError(line);
-        if (validationError is not null)
+        if (response.Content.Headers.ContentLength is > MaximumReplyBytes)
         {
-            throw new ArgumentException(validationError, nameof(line));
-        }
-
-        // ReadConsole can retain an unsubmitted edited line after its input event
-        // queue is empty. Clear that cooked line without executing it before
-        // enqueueing the exact SDVKit command.
-        var records = new ConsoleInputRecord[checked((line.Length + 2) * 2)];
-        var index = 0;
-        records[index++] = Record('\u001b', keyDown: true, VirtualKeyEscape);
-        records[index++] = Record('\u001b', keyDown: false, VirtualKeyEscape);
-        foreach (char character in line)
-        {
-            records[index++] = Record(character, keyDown: true, virtualKeyCode: 0);
-            records[index++] = Record(character, keyDown: false, virtualKeyCode: 0);
-        }
-
-        records[index++] = Record('\r', keyDown: true, VirtualKeyReturn);
-        records[index] = Record('\r', keyDown: false, VirtualKeyReturn);
-        return records;
-    }
-
-    internal static bool UsesCookedLineInput(uint consoleMode) =>
-        (consoleMode & EnableLineInput) != 0;
-
-    private static ProjectReviewConsoleInputResult WriteAttachedConsole(
-        SafeProcessHandle processHandle,
-        int expectedProcessId,
-        string line)
-    {
-        if (!TryReadConsoleProcesses(out uint[] consoleProcesses, out string? processError))
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.AttachFailed,
-                processError);
-        }
-
-        uint currentProcessId = checked((uint)Environment.ProcessId);
-        uint targetProcessId = checked((uint)expectedProcessId);
-        if (consoleProcesses.Length != 2
-            || !consoleProcesses.Contains(currentProcessId)
-            || !consoleProcesses.Contains(targetProcessId))
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.SharedConsole,
-                "The attached console is not exclusively owned by the exact SMAPI process and the one-shot SDVKit worker; no input was written.");
-        }
-
-        LabProcessInspectResult running =
-            WindowsLabProcessHost.InspectVerifiedProcessHandle(processHandle);
-        if (running.Status != LabProcessInspectStatus.Running)
-        {
-            return InspectionFailure(running);
-        }
-
-        using SafeFileHandle inputHandle = CreateFile(
-            "CONIN$",
-            GenericRead | GenericWrite,
-            FileShareRead | FileShareWrite,
-            IntPtr.Zero,
-            OpenExisting,
-            flagsAndAttributes: 0,
-            IntPtr.Zero);
-        if (inputHandle.IsInvalid)
-        {
-            return Failure(
-                ProjectReviewConsoleInputStatus.InputOpenFailed,
-                "Windows could not open the exact SMAPI console input buffer");
-        }
-
-        if (!GetConsoleMode(inputHandle, out uint consoleMode))
-        {
-            return Failure(
-                ProjectReviewConsoleInputStatus.InputOpenFailed,
-                "Windows could not inspect the exact SMAPI console input mode");
-        }
-
-        if (!UsesCookedLineInput(consoleMode))
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.InputOpenFailed,
-                "The exact SMAPI console is not using the required cooked line-input mode; no command was written.");
-        }
-
-        if (!GetNumberOfConsoleInputEvents(inputHandle, out uint pendingEvents))
-        {
-            return Failure(
-                ProjectReviewConsoleInputStatus.InputOpenFailed,
-                "Windows could not inspect the exact SMAPI console input buffer");
-        }
-
-        if (pendingEvents != 0)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.InputBusy,
-                $"The exact SMAPI console has {pendingEvents} pending input event(s); no command was written.");
-        }
-
-        ConsoleInputRecord[] records = CreateInputRecords(line);
-        if (!WriteConsoleInput(
-                inputHandle,
-                records,
-                checked((uint)records.Length),
-                out uint written))
-        {
-            int windowsError = Marshal.GetLastWin32Error();
-            return new ProjectReviewConsoleInputResult(
-                written == 0
-                    ? ProjectReviewConsoleInputStatus.WriteFailed
-                    : ProjectReviewConsoleInputStatus.PartialWrite,
-                DescribeWindowsError(
-                    written == 0
-                        ? "Windows could not write to the exact SMAPI console input buffer"
-                        : $"Windows wrote only {written} of {records.Length} input records; delivery is unknown and must not be retried automatically",
-                    windowsError));
-        }
-
-        if (written != records.Length)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.PartialWrite,
-                $"Windows wrote only {written} of {records.Length} input records; delivery is unknown and must not be retried automatically.");
-        }
-
-        LabProcessInspectResult afterWrite =
-            WindowsLabProcessHost.InspectVerifiedProcessHandle(processHandle);
-        if (afterWrite.Status == LabProcessInspectStatus.Exited)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WrittenProcessExited,
-                "The complete command was enqueued, but the exact SMAPI process exited before delivery could be rechecked; do not retry it automatically.");
-        }
-
-        if (afterWrite.Status != LabProcessInspectStatus.Running)
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WrittenProcessUnreadable,
-                $"The complete command was enqueued, but the exact SMAPI process became unreadable before delivery could be rechecked; do not retry it automatically. {afterWrite.Error}".Trim());
-        }
-
-        if (!TryReadConsoleProcesses(out uint[] afterWriteProcesses, out string? afterWriteError))
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WrittenProcessUnreadable,
-                $"The complete command was enqueued, but the console ownership could not be rechecked; do not retry it automatically. {afterWriteError}".Trim());
-        }
-
-        if (afterWriteProcesses.Length != 2
-            || !afterWriteProcesses.Contains(currentProcessId)
-            || !afterWriteProcesses.Contains(targetProcessId))
-        {
-            return new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WrittenConsoleChanged,
-                "The complete command was enqueued, but the console process set changed before delivery could be rechecked; do not retry it automatically.");
-        }
-
-        return new ProjectReviewConsoleInputResult(ProjectReviewConsoleInputStatus.Written);
-    }
-
-    private static SafeProcessHandle? OpenVerifiedParent(
-        int expectedParentProcessId,
-        long expectedParentStartTicks,
-        out ProjectReviewConsoleInputResult? failure)
-    {
-        if (!TryGetParentProcessId(Environment.ProcessId, out int actualParentProcessId)
-            || actualParentProcessId != expectedParentProcessId)
-        {
-            failure = new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerParentMismatch,
-                "The internal console worker was not started by the exact SDVKit parent process; no console input was written.");
             return null;
         }
 
-        string? parentExecutablePath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(parentExecutablePath))
+        try
         {
-            failure = new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerParentMismatch,
-                "The internal console worker could not resolve its SDVKit executable identity; no console input was written.");
+            using Stream stream = response.Content.ReadAsStream();
+            using var buffer = new MemoryStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                if (buffer.Length + read > MaximumReplyBytes)
+                {
+                    return null;
+                }
+
+                buffer.Write(chunk, 0, read);
+            }
+
+            if (buffer.Length == 0)
+            {
+                return null;
+            }
+
+            ReviewHttpCommandReply? reply =
+                JsonSerializer.Deserialize<ReviewHttpCommandReply>(buffer.ToArray(), JsonOptions);
+            return reply is { SchemaVersion: ReviewHttpContract.SchemaVersion, LaunchId: not null, Outcome: not null }
+                ? reply
+                : null;
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or HttpRequestException)
+        {
             return null;
         }
-
-        var expectedParent = new OwnedProcessIdentity(
-            expectedParentProcessId,
-            new DateTimeOffset(expectedParentStartTicks, TimeSpan.Zero),
-            parentExecutablePath);
-        SafeProcessHandle? parentHandle = WindowsLabProcessHost.OpenVerifiedProcess(
-            expectedParent,
-            out LabProcessInspectResult inspection);
-        if (parentHandle is null)
-        {
-            failure = new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.WorkerParentMismatch,
-                inspection.Error
-                    ?? "The internal console worker could not verify its exact SDVKit parent process; no console input was written.");
-            return null;
-        }
-
-        failure = null;
-        return parentHandle;
     }
-
-    private static bool TryGetParentProcessId(
-        int processId,
-        out int parentProcessId)
-    {
-        using SafeFileHandle snapshot = CreateToolhelp32Snapshot(
-            ToolhelpSnapshotProcess,
-            processId: 0);
-        if (snapshot.IsInvalid)
-        {
-            parentProcessId = 0;
-            return false;
-        }
-
-        var entry = new ProcessEntry32
-        {
-            Size = checked((uint)Marshal.SizeOf<ProcessEntry32>()),
-        };
-        if (!Process32First(snapshot, ref entry))
-        {
-            parentProcessId = 0;
-            return false;
-        }
-
-        do
-        {
-            if (entry.ProcessId == processId)
-            {
-                parentProcessId = checked((int)entry.ParentProcessId);
-                return parentProcessId > 0;
-            }
-        }
-        while (Process32Next(snapshot, ref entry));
-
-        parentProcessId = 0;
-        return false;
-    }
-
-    private static ProjectReviewConsoleInputResult InspectionFailure(
-        LabProcessInspectResult inspection) => inspection.Status switch
-        {
-            LabProcessInspectStatus.Exited => new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.ProcessExited,
-                inspection.Error ?? "The exact owned SMAPI process exited before console input."),
-            LabProcessInspectStatus.IdentityMismatch => new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.ProcessIdentityMismatch,
-                inspection.Error ?? "The PID no longer identifies the exact owned SMAPI process."),
-            _ => new ProjectReviewConsoleInputResult(
-                ProjectReviewConsoleInputStatus.ProcessUnreadable,
-                inspection.Error ?? "The exact owned SMAPI process could not be verified."),
-        };
-
-    private static bool TryReadConsoleProcesses(
-        out uint[] processes,
-        out string? error)
-    {
-        uint[] buffer = new uint[4];
-        uint count = GetConsoleProcessList(buffer, checked((uint)buffer.Length));
-        if (count == 0)
-        {
-            processes = [];
-            error = DescribeWindowsError(
-                "Windows could not enumerate the attached console processes",
-                Marshal.GetLastWin32Error());
-            return false;
-        }
-
-        if (count > buffer.Length)
-        {
-            if (count > 64)
-            {
-                processes = [];
-                error = $"The attached console reported an unexpected process count of {count}.";
-                return false;
-            }
-
-            buffer = new uint[count];
-            count = GetConsoleProcessList(buffer, checked((uint)buffer.Length));
-            if (count == 0 || count > buffer.Length)
-            {
-                processes = [];
-                error = count == 0
-                    ? DescribeWindowsError(
-                        "Windows could not enumerate the attached console processes",
-                        Marshal.GetLastWin32Error())
-                    : "The attached console process list changed while it was being verified.";
-                return false;
-            }
-        }
-
-        processes = buffer[..checked((int)count)];
-        error = null;
-        return true;
-    }
-
-    private static ConsoleInputRecord Record(
-        char character,
-        bool keyDown,
-        ushort virtualKeyCode) => new()
-        {
-            EventType = KeyEvent,
-            KeyEvent = new ConsoleKeyEventRecord
-            {
-                KeyDown = keyDown,
-                RepeatCount = 1,
-                VirtualKeyCode = virtualKeyCode,
-                UnicodeChar = character,
-            },
-        };
-
-    private static ProjectReviewConsoleInputResult Failure(
-        ProjectReviewConsoleInputStatus status,
-        string action) => new(
-            status,
-            DescribeWindowsError(action, Marshal.GetLastWin32Error()));
-
-    private static string DescribeWindowsError(string action, int error) =>
-        $"{action}: {new Win32Exception(error).Message} (Win32 {error}).";
-
-    [StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode, Size = 20)]
-    internal struct ConsoleInputRecord
-    {
-        [FieldOffset(0)]
-        internal ushort EventType;
-
-        [FieldOffset(4)]
-        internal ConsoleKeyEventRecord KeyEvent;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    internal struct ConsoleKeyEventRecord
-    {
-        [MarshalAs(UnmanagedType.Bool)]
-        internal bool KeyDown;
-
-        internal ushort RepeatCount;
-        internal ushort VirtualKeyCode;
-        internal ushort VirtualScanCode;
-        internal char UnicodeChar;
-        internal uint ControlKeyState;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct ProcessEntry32
-    {
-        internal uint Size;
-        internal uint Usage;
-        internal int ProcessId;
-        internal IntPtr DefaultHeapId;
-        internal uint ModuleId;
-        internal uint Threads;
-        internal uint ParentProcessId;
-        internal int BasePriority;
-        internal uint Flags;
-
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        internal string ExecutableFile;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachConsole(uint processId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool FreeConsole();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern uint GetConsoleCP();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern SafeFileHandle CreateToolhelp32Snapshot(
-        uint flags,
-        uint processId);
-
-    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool Process32First(
-        SafeFileHandle snapshot,
-        ref ProcessEntry32 entry);
-
-    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool Process32Next(
-        SafeFileHandle snapshot,
-        ref ProcessEntry32 entry);
-
-    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern SafeFileHandle CreateFile(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetConsoleMode(
-        SafeFileHandle consoleHandle,
-        out uint mode);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNumberOfConsoleInputEvents(
-        SafeFileHandle consoleInput,
-        out uint numberOfEvents);
-
-    [DllImport("kernel32.dll", EntryPoint = "WriteConsoleInputW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool WriteConsoleInput(
-        SafeFileHandle consoleInput,
-        [In] ConsoleInputRecord[] buffer,
-        uint length,
-        out uint numberOfEventsWritten);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern uint GetConsoleProcessList(
-        [Out] uint[] processList,
-        uint processCount);
 }

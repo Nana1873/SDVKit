@@ -149,7 +149,7 @@ internal static partial class ProjectReviewService
                 new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 () => throw new InvalidOperationException(
-                    "Project-review console input must not run installation discovery."));
+                    "Project-review commands must not run installation discovery."));
             LiveLabCommandResult status = service.StatusProjectReview();
             LiveLabReport lab = (LiveLabReport)status.Report;
             if (!string.Equals(lab.State, "running", StringComparison.Ordinal)
@@ -167,7 +167,7 @@ internal static partial class ProjectReviewService
                         : [Problem(
                             "reviewConsoleNotRunning",
                             null,
-                            "The exact owned project-review process is not running; no console input was written.")]);
+                            "The exact owned project-review process is not running; no command was sent.")]);
             }
 
             LiveLabState exactState = state!;
@@ -182,7 +182,7 @@ internal static partial class ProjectReviewService
                     [Problem(
                         "reviewConsoleTargetNotReady",
                         null,
-                        "The exact target mod has not reached its fully confirmed loaded state; no console input was written.")]);
+                        "The exact target mod has not reached its fully confirmed loaded state; no command was sent.")]);
             }
 
             if (exactState.TestSave is not null
@@ -198,11 +198,11 @@ internal static partial class ProjectReviewService
                     [Problem(
                         "reviewConsoleTestSaveNotReady",
                         null,
-                        "The exact owned review fixture is not currently loaded and identity-verified; no console input was written.")]);
+                        "The exact owned review fixture is not currently loaded and identity-verified; no command was sent.")]);
             }
 
             ProjectReviewConsoleInputResult sent =
-                (inputSender ?? new WindowsProjectReviewConsoleInputSender()).SendLine(
+                (inputSender ?? HttpProjectReviewCommandSender.For(exactState, lab.GameSide)).SendLine(
                     exactState.OwnedProcessIdentity,
                     command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
@@ -267,7 +267,7 @@ internal static partial class ProjectReviewService
                     [staged.Problem ?? Problem(
                         "reviewOwnershipIncomplete",
                         null,
-                        "No exact retained network-2 project-review staging is available; no console input was written.")]);
+                        "No exact retained network-2 project-review staging is available; no command was sent.")]);
             }
 
             LiveLabCommandResult pairStatus = NetworkTwoSmokeService.StatusReviewWithinLock(
@@ -293,7 +293,7 @@ internal static partial class ProjectReviewService
                         : [Problem(
                             "reviewConsoleNotRunning",
                             null,
-                            "The exact host/farmhand review pair is not running; no console input was written.")]);
+                            "The exact host/farmhand review pair is not running; no command was sent.")]);
             }
 
             LiveLabPaths rolePaths = LiveLabPaths.ResolveNetworkRole(paths, role);
@@ -322,7 +322,7 @@ internal static partial class ProjectReviewService
                 new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 () => throw new InvalidOperationException(
-                    "Network-2 review console input must not run installation discovery."),
+                    "Network-2 review commands must not run installation discovery."),
                 reportTopology: NetworkTwoContract.Topology);
             LiveLabCommandResult roleStatus = service.StatusNetwork();
             LiveLabReport lab = (LiveLabReport)roleStatus.Report;
@@ -343,11 +343,11 @@ internal static partial class ProjectReviewService
                         : [Problem(
                             "reviewConsoleTargetNotReady",
                             null,
-                            "The exact role and target mod have not reached their confirmed loaded state; no console input was written.")]);
+                            "The exact role and target mod have not reached their confirmed loaded state; no command was sent.")]);
             }
 
             ProjectReviewConsoleInputResult sent =
-                (inputSender ?? new WindowsProjectReviewConsoleInputSender()).SendLine(
+                (inputSender ?? HttpProjectReviewCommandSender.For(state!, lab.GameSide)).SendLine(
                     state!.OwnedProcessIdentity,
                     command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
@@ -440,62 +440,29 @@ internal static partial class ProjectReviewService
             return null;
         }
 
-        string message = result.Error ?? result.Status switch
-        {
-            ProjectReviewConsoleInputStatus.WrittenDetachFailed =>
-                "The command was fully enqueued, but the one-shot console worker did not detach cleanly; do not retry it automatically.",
-            ProjectReviewConsoleInputStatus.WrittenProcessExited =>
-                "The command was fully enqueued, but the exact SMAPI process exited before delivery could be rechecked; do not retry it automatically.",
-            ProjectReviewConsoleInputStatus.WrittenProcessUnreadable =>
-                "The command was fully enqueued, but the exact SMAPI process became unreadable before delivery could be rechecked; do not retry it automatically.",
-            ProjectReviewConsoleInputStatus.WrittenConsoleChanged =>
-                "The command was fully enqueued, but the console process set changed before delivery could be rechecked; do not retry it automatically.",
-            ProjectReviewConsoleInputStatus.ProcessExited =>
-                "The exact owned SMAPI process exited before console input.",
-            ProjectReviewConsoleInputStatus.ProcessIdentityMismatch =>
-                "The PID no longer identifies the exact owned SMAPI process; no console input was written.",
-            ProjectReviewConsoleInputStatus.ProcessUnreadable =>
-                "The exact owned SMAPI process could not be verified; no console input was written.",
-            ProjectReviewConsoleInputStatus.AttachFailed =>
-                "The one-shot worker could not attach to the exact owned SMAPI console; no console input was written.",
-            ProjectReviewConsoleInputStatus.SharedConsole =>
-                "The SMAPI console has unexpected attached processes; no console input was written.",
-            ProjectReviewConsoleInputStatus.InputBusy =>
-                "The SMAPI console has pending input; no console input was written.",
-            ProjectReviewConsoleInputStatus.InputOpenFailed =>
-                "The exact SMAPI console input buffer could not be opened; no console input was written.",
-            ProjectReviewConsoleInputStatus.WriteFailed =>
-                "Windows did not enqueue any console input records.",
-            ProjectReviewConsoleInputStatus.PartialWrite =>
-                "Windows may have enqueued only part of the command; delivery is unknown and must not be retried automatically.",
-            ProjectReviewConsoleInputStatus.WorkerTimedOut =>
-                "The one-shot console worker timed out; delivery is unknown and must not be retried automatically.",
-            ProjectReviewConsoleInputStatus.WorkerStartFailed =>
-                "The one-shot console worker could not be started; no console input was written.",
-            ProjectReviewConsoleInputStatus.WorkerParentMismatch =>
-                "The internal console worker was not started by the exact SDVKit parent process; no console input was written.",
-            _ => "The one-shot console worker failed; delivery is unknown and must not be retried automatically.",
-        };
         string code = result.Status switch
         {
-            ProjectReviewConsoleInputStatus.WrittenDetachFailed => "reviewConsoleDetachFailed",
-            ProjectReviewConsoleInputStatus.WrittenProcessExited => "reviewConsoleProcessExitedAfterWrite",
-            ProjectReviewConsoleInputStatus.WrittenProcessUnreadable => "reviewConsoleProcessUnreadableAfterWrite",
-            ProjectReviewConsoleInputStatus.WrittenConsoleChanged => "reviewConsoleOwnershipChangedAfterWrite",
-            ProjectReviewConsoleInputStatus.ProcessExited => "reviewConsoleProcessExited",
-            ProjectReviewConsoleInputStatus.ProcessIdentityMismatch => "reviewConsoleIdentityMismatch",
-            ProjectReviewConsoleInputStatus.ProcessUnreadable => "reviewConsoleProcessUnreadable",
-            ProjectReviewConsoleInputStatus.AttachFailed => "reviewConsoleAttachFailed",
-            ProjectReviewConsoleInputStatus.SharedConsole => "reviewConsoleShared",
-            ProjectReviewConsoleInputStatus.InputBusy => "reviewConsoleInputBusy",
-            ProjectReviewConsoleInputStatus.InputOpenFailed => "reviewConsoleInputOpenFailed",
-            ProjectReviewConsoleInputStatus.WriteFailed => "reviewConsoleWriteFailed",
-            ProjectReviewConsoleInputStatus.PartialWrite => "reviewConsolePartialWrite",
-            ProjectReviewConsoleInputStatus.WorkerTimedOut => "reviewConsoleWorkerTimedOut",
-            ProjectReviewConsoleInputStatus.WorkerStartFailed => "reviewConsoleWorkerStartFailed",
-            ProjectReviewConsoleInputStatus.WorkerParentMismatch => "reviewConsoleWorkerParentMismatch",
             ProjectReviewConsoleInputStatus.InvalidRequest => "reviewConsoleCommandInvalid",
-            _ => "reviewConsoleWorkerFailed",
+            ProjectReviewConsoleInputStatus.EndpointUnavailable => "reviewCommandEndpointUnavailable",
+            ProjectReviewConsoleInputStatus.Rejected => "reviewCommandRejected",
+            ProjectReviewConsoleInputStatus.NotExecuted => "reviewCommandNotExecuted",
+            ProjectReviewConsoleInputStatus.ScreenUnavailable => "reviewCommandScreenUnavailable",
+            ProjectReviewConsoleInputStatus.ExecutedWithFailure => "reviewCommandFailed",
+            _ => "reviewCommandDeliveryUnknown",
+        };
+        string message = result.Error ?? result.Status switch
+        {
+            ProjectReviewConsoleInputStatus.EndpointUnavailable =>
+                "The exact review's command endpoint is unavailable; no command was sent.",
+            ProjectReviewConsoleInputStatus.Rejected =>
+                "The exact review's command endpoint rejected the request; the command did not run.",
+            ProjectReviewConsoleInputStatus.NotExecuted =>
+                "The game thread did not run the command in time; it was withdrawn and will not run.",
+            ProjectReviewConsoleInputStatus.ScreenUnavailable =>
+                "The selected local screen is not active; the command did not run.",
+            ProjectReviewConsoleInputStatus.ExecutedWithFailure =>
+                "The command ran, but its dispatcher failed; inspect the effect before any retry.",
+            _ => "Delivery of the command is unknown; it must not be retried automatically.",
         };
         return Problem(code, null, message);
     }

@@ -460,7 +460,7 @@ internal static partial class ProjectReviewService
             return Problem(
                 "reviewOwnershipMismatch",
                 null,
-                $"The retained {role} state does not match the exact owned network-2 review target and role binding; no console input was written.");
+                $"The retained {role} state does not match the exact owned network-2 review target and role binding; no command was sent.");
         }
 
         return null;

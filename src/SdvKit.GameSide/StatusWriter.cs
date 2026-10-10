@@ -29,6 +29,9 @@ internal sealed class StatusWriter
         _processStartTimeUtc = process.StartTime.ToUniversalTime();
     }
 
+    /// <summary>Loopback port of the review command endpoint, while it accepts commands.</summary>
+    public int? HttpPort { get; set; }
+
     public void Write(
         string phase,
         int tick,
@@ -58,6 +61,7 @@ internal sealed class StatusWriter
             ipConnectionsEnabled,
             foregroundWindowHandle,
             foregroundProcessId,
+            httpPort = HttpPort,
             testSave,
             networkTwo,
             projectMod,
