@@ -37,7 +37,8 @@ internal sealed record ReviewFixtureResult(
     ReviewFixtureStatusReport? Status = null,
     ReviewFixtureNavigationReport? Navigation = null,
     ReviewFixtureBuildingReport? Building = null,
-    ReviewFixtureAnimalReport? Animal = null);
+    ReviewFixtureAnimalReport? Animal = null,
+    ReviewFixtureLabReport? Lab = null);
 
 internal interface IReviewFixtureRuntime
 {
@@ -73,6 +74,10 @@ internal interface IReviewFixtureRuntime
     ReviewFixtureResult Farm(ReviewFixtureAccess access);
 
     ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial);
+
+    /// <summary>Applies one lab world, player or window change and reports the resulting state.</summary>
+    ReviewFixtureResult ApplyLab(ReviewFixtureAccess access, ReviewFixtureRequest request) =>
+        new(false, "Lab world-state actions are unavailable in this runtime.");
 
     void BeginNavigation(
         ReviewFixtureAccess access,
@@ -138,6 +143,12 @@ internal static class ReviewFixtureOperation
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
             ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial),
+            ReviewFixtureSetTimeRequest
+                or ReviewFixtureSetWeatherRequest
+                or ReviewFixtureSetSeasonRequest
+                or ReviewFixtureWarpRequest
+                or ReviewFixtureSetZoomRequest
+                or ReviewFixtureSetWindowRequest => runtime.ApplyLab(access, request),
             _ => new ReviewFixtureResult(false, ReviewFixtureArguments.Usage),
         };
         return new ReviewFixtureExecution(access, result);

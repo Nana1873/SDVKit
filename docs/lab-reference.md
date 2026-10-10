@@ -78,7 +78,7 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 ## Fixture command reference
 
-Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport.
+Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport. Every operation is also a native MCP tool, also callable with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`. The lab tools for time, weather, season, warp, zoom and window exist only as tools; see [opt-in fixture actions](mcp.md#opt-in-fixture-actions).
 
 | Console line | Role / result |
 | --- | --- |

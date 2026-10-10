@@ -8,7 +8,7 @@ Connect a client to an [already-running review](live-review.md#start-a-review). 
 | --- | --- | --- | --- | --- |
 | Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
-| Add `--allow-fixture-actions` | +6 | Unsupported | +6 | +3 |
+| Add `--allow-fixture-actions` | +15 | Unsupported | +15 | +6 |
 | Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
@@ -480,7 +480,7 @@ action, never automatic replay.
 ## Opt-in fixture actions
 
 With the explicit `--allow-fixture-actions` opt-in, a `single` server or a
-`network-2` host server additionally exposes exactly these six tools:
+`network-2` host server additionally exposes these fifteen tools:
 
 - `stardew_fixture_status_get {}` returns the role-local location, player and
   multiplayer state plus bounded stable identities for SDVKit-owned fixture
@@ -499,11 +499,32 @@ With the explicit `--allow-fixture-actions` opt-in, a `single` server or a
 - `stardew_fixture_save {}` completes Stardew's existing supported save iterator
   and returns the exact Save ID and persistence time only after its completion
   signal.
+- `stardew_fixture_object_ensure { "building": "coop-a", "qualifiedItemId": "(O)388" }`
+  and `stardew_fixture_object_clear { "building": "coop-a" }` place or remove
+  only SDVKit-owned objects in an owned fixture building.
+- `stardew_fixture_fishing_prepare { "skipTutorial": true }` runs the
+  [fishing preparation](lab-reference.md#fishing-preparation).
+- `stardew_lab_set_time { "time": 1930 }` (600 to 2550 in ten-minute steps) and
+  `stardew_lab_set_season { "season": "winter" }` use the game's own debug
+  commands. Ambient light catches up at the next ten-minute tick, and map tiles
+  refresh at the next location change.
+- `stardew_lab_set_weather { "weather": "Rain" }` sets `Sun`, `Rain`, `Storm`,
+  `Snow`, `Wind` or `GreenRain` for the current location context.
+- `stardew_lab_warp { "location": "Town", "x": 20, "y": 30 }` warps the selected
+  player; the tile is optional. The location changes within a few frames, so
+  confirm it with `stardew_runtime_get`.
+- `stardew_lab_set_zoom { "zoom": 1.25 }` (0.75 to 2) and
+  `stardew_lab_set_window { "width": 1600, "height": 900 }` change the selected
+  player's zoom and the process window, as the options menu does.
 
-A farmhand server advertises only `status_get`, `enter`, and `farm`; it cannot
-discover or dispatch building, animal, or save mutations. Object creation and
-clearing, arbitrary commands, generic RPC, unrestricted warps, and other world
-editing are not MCP tools. Every call repeats the exact launch, role, process,
+Every `stardew_lab_*` result carries a `lab` object with the time, season,
+weather, location, tile, zoom and window size observed right after the action.
+
+A farmhand server advertises only `status_get`, `enter`, `farm`, `lab_warp`,
+`lab_set_zoom` and `lab_set_window`; it cannot discover or dispatch world
+changes such as buildings, animals, objects, time, weather, season, fishing
+preparation or saves. Arbitrary commands, generic RPC and other world editing
+are not MCP tools. Every call repeats the exact launch, role, process,
 target, fixture and Save identity preflight immediately before dispatch. One
 cross-process action lock rejects concurrent input or fixture work for that
 role instead of queueing it. Responses are published once, taken once through

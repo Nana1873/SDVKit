@@ -28,7 +28,8 @@ public sealed class ProjectReviewMcpFixtureTests
                 defaults.Token);
             Assert.DoesNotContain(
                 listed.Tools,
-                tool => tool.Name.StartsWith("stardew_fixture_", StringComparison.Ordinal));
+                tool => tool.Name.StartsWith("stardew_fixture_", StringComparison.Ordinal)
+                    || tool.Name.StartsWith("stardew_lab_", StringComparison.Ordinal));
         }
 
         ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
@@ -40,7 +41,8 @@ public sealed class ProjectReviewMcpFixtureTests
             new ListToolsRequestParams(),
             optedIn.Token);
         Tool[] fixtureTools = enabled.Tools
-            .Where(tool => tool.Name.StartsWith("stardew_fixture_", StringComparison.Ordinal))
+            .Where(tool => tool.Name.StartsWith("stardew_fixture_", StringComparison.Ordinal)
+                || tool.Name.StartsWith("stardew_lab_", StringComparison.Ordinal))
             .OrderBy(tool => tool.Name, StringComparer.Ordinal)
             .ToArray();
 
@@ -50,8 +52,17 @@ public sealed class ProjectReviewMcpFixtureTests
                 ProjectReviewMcpFixtureTools.BuildingToolName,
                 ProjectReviewMcpFixtureTools.EnterToolName,
                 ProjectReviewMcpFixtureTools.FarmToolName,
+                ProjectReviewMcpFixtureTools.FishingToolName,
+                ProjectReviewMcpFixtureTools.ObjectClearToolName,
+                ProjectReviewMcpFixtureTools.ObjectEnsureToolName,
                 ProjectReviewMcpFixtureTools.SaveToolName,
                 ProjectReviewMcpFixtureTools.StatusToolName,
+                ProjectReviewMcpFixtureTools.SetSeasonToolName,
+                ProjectReviewMcpFixtureTools.SetTimeToolName,
+                ProjectReviewMcpFixtureTools.SetWeatherToolName,
+                ProjectReviewMcpFixtureTools.SetWindowToolName,
+                ProjectReviewMcpFixtureTools.SetZoomToolName,
+                ProjectReviewMcpFixtureTools.WarpToolName,
             ],
             fixtureTools.Select(tool => tool.Name).ToArray());
         foreach (Tool tool in fixtureTools)
@@ -74,8 +85,10 @@ public sealed class ProjectReviewMcpFixtureTests
         Assert.True(Find(ProjectReviewMcpFixtureTools.AnimalToolName).Annotations?.IdempotentHint);
         Assert.False(Find(ProjectReviewMcpFixtureTools.SaveToolName).Annotations?.IdempotentHint);
         Assert.True(Find(ProjectReviewMcpFixtureTools.BuildingToolName).Annotations?.DestructiveHint);
+        Assert.True(Find(ProjectReviewMcpFixtureTools.ObjectClearToolName).Annotations?.DestructiveHint);
         Assert.All(
-            fixtureTools.Where(tool => tool.Name != ProjectReviewMcpFixtureTools.BuildingToolName),
+            fixtureTools.Where(tool => tool.Name is not ProjectReviewMcpFixtureTools.BuildingToolName
+                and not ProjectReviewMcpFixtureTools.ObjectClearToolName),
             tool => Assert.False(tool.Annotations?.DestructiveHint));
 
         AssertOutput(ProjectReviewMcpFixtureTools.StatusToolName, "status", "status");
@@ -84,6 +97,8 @@ public sealed class ProjectReviewMcpFixtureTests
         AssertOutput(ProjectReviewMcpFixtureTools.BuildingToolName, "buildingEnsure", "building");
         AssertOutput(ProjectReviewMcpFixtureTools.AnimalToolName, "animalEnsure", "animal");
         AssertOutput(ProjectReviewMcpFixtureTools.SaveToolName, "save", "save");
+        AssertOutput(ProjectReviewMcpFixtureTools.SetTimeToolName, "setTime", "lab");
+        AssertOutput(ProjectReviewMcpFixtureTools.WarpToolName, "warp", "lab");
 
         Tool building = Assert.Single(
             fixtureTools,

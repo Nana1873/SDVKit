@@ -258,7 +258,8 @@ internal static class ReviewFixtureTransportCommand
             result.Navigation,
             result.Building,
             result.Animal,
-            save);
+            save,
+            Lab: result.Lab);
         var envelope = new ReviewFixtureResponseEnvelope(
             ReviewFixtureTransportContract.SchemaVersion,
             requestId,
