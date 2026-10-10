@@ -529,10 +529,15 @@ $deadline = [DateTime]::UtcNow.AddMinutes(3)
 do {
     Start-Sleep -Seconds 2
     $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
     $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
-} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
 $statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-default.json')
-if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 $targets = @($status.artifacts | Where-Object {
     $_.role -ceq 'target' -and $_.uniqueId -ceq 'ExampleAuthor.GmcmArrivalRow'
 })
@@ -745,7 +750,7 @@ the maximum drag endpoint. The displayed default at `$sliderMinX`
 proves the lower endpoint. Calculate one point strictly between the observed
 middle and maximum tick centers; this is an intentionally off-step pointer
 position, not a fourth valid value. Use a fresh menu revision for every action.
-The atomic click and drag commands prepare the process-local cursor through one
+The atomic click and drag tools prepare the process-local cursor through one
 neutral game update before pressing; the drag additionally holds its endpoint
 for one update before release. Move to the middle step with one click, then drag
 from that known middle handle to the off-step point, capturing each result:
@@ -978,10 +983,15 @@ $deadline = [DateTime]::UtcNow.AddMinutes(3)
 do {
     Start-Sleep -Seconds 2
     $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
     $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
-} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
 $statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-configured.json')
-if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 $configuredStatus = $status
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $configuredStatus.labRoot $configuredStatus.persistentSavesPath))

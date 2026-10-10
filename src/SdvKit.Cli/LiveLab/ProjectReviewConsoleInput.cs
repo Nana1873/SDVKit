@@ -29,6 +29,24 @@ internal static class ProjectReviewConsoleLine
             || IsNetworkLifecycleCommand(tokens);
     }
 
+    /// <summary>
+    /// Input and viewport-screenshot lines. From 2.0 the CLI accepts them only while an owned test-save
+    /// fixture is not loaded, such as at the title screen during a native language change, because the
+    /// input and screenshot tools require a ready fixture.
+    /// </summary>
+    public static bool IsTitleInputOrViewport(string line)
+    {
+        if (ValidationError(line) is not null)
+        {
+            return false;
+        }
+
+        string[] tokens = line.Split(' ');
+        return !tokens.Any(string.IsNullOrEmpty)
+            && string.Equals(tokens[0], "sdvkit", StringComparison.Ordinal)
+            && (IsInputCommand(tokens) || IsViewportScreenshotCommand(tokens));
+    }
+
     public static string? ValidationError(string? line)
     {
         if (string.IsNullOrWhiteSpace(line))

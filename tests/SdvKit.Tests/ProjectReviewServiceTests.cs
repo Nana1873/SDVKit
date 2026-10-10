@@ -2735,6 +2735,83 @@ public sealed class ProjectReviewServiceTests
         }
     }
 
+    [Theory]
+    [InlineData("failed", true)]
+    [InlineData("passed", false)]
+    public void CliTitleInputRunsOnlyWhileTheOwnedFixtureIsNotLoaded(string phase, bool expectedWritten)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory temporary = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        paths.EnsureDirectories();
+        ProjectReviewStaging staging = StageTarget(paths, temporary.Path);
+        TestSaveIdentity fixture = WriteReviewFixture(paths);
+        var testSave = new TestSaveLaunchState(
+            TestSaveContract.ReviewMode,
+            fixture,
+            Path.Combine(paths.SavesPath, fixture.SaveId),
+            paths.TestSaveWorkPath,
+            paths.TestSaveScenarioLogPath);
+        (OwnedProcessIdentity identity, Process child) = StartRunningProcess(temporary.Path);
+        using (child)
+        {
+            try
+            {
+                LiveLabState state = ReviewState(
+                    paths,
+                    staging.TargetLaunchState,
+                    identity) with
+                {
+                    TestSave = testSave,
+                };
+                new JsonLiveLabStateStore(paths.StatePath).Write(state);
+                WriteLoadedStatus(
+                    paths,
+                    state,
+                    staging.TargetLaunchState,
+                    testSave: new TestSaveStatusMarker(
+                        TestSaveContract.SchemaVersion,
+                        TestSaveContract.ReviewMode,
+                        phase,
+                        fixture.FixtureId,
+                        fixture.SaveId,
+                        IdentityVerified: phase == "passed",
+                        WaitedTicks: 0,
+                        phase,
+                        paths.TestSaveScenarioLogPath));
+                var sender = new RecordingConsoleInputSender(
+                    new ProjectReviewConsoleInputResult(
+                        ProjectReviewConsoleInputStatus.Written));
+
+                LiveLabCommandResult result = ProjectReviewService.ExecuteCommand(
+                    "sdvkit screenshot viewport title-1",
+                    LiveLabState.SingleTopology,
+                    role: null,
+                    temporary.Path,
+                    sender,
+                    requireFixtureNotReady: true);
+
+                ProjectReviewCommandReport report =
+                    Assert.IsType<ProjectReviewCommandReport>(result.Report);
+                Assert.Equal(expectedWritten ? 0 : 3, result.ExitCode);
+                Assert.Equal(expectedWritten, report.CommandWritten);
+                Assert.Equal(expectedWritten ? 1 : 0, sender.CallCount);
+                if (!expectedWritten)
+                {
+                    Assert.Equal("reviewConsoleUseTool", Assert.Single(report.Problems).Code);
+                }
+            }
+            finally
+            {
+                EnsureExited(child);
+            }
+        }
+    }
+
     [Fact]
     public void MapFixtureDataAndMalformedInputCommandsRemainFixtureGated()
     {

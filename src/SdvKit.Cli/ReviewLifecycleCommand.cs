@@ -138,7 +138,7 @@ public static partial class CliApplication
     }
 
     private const string SdvKitConsoleLineRejection =
-        "SDVKit's own console lines ('sdvkit ...') are internal. Use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), or 'project review split-screen'/'project review network' for lifecycle. 'project review command' runs the reviewed mod's and SMAPI's console commands.";
+        "SDVKit's own console lines ('sdvkit ...') are internal. Use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), or 'project review split-screen'/'project review network' for lifecycle. 'project review command' runs the reviewed mod's and SMAPI's console commands, plus 'sdvkit input' and 'sdvkit screenshot viewport' lines only while an owned test-save fixture is not loaded, such as at the title screen.";
 
     /// <summary>
     /// SDVKit's own console grammar is internal from 2.0: the CLI reaches it only through tools and

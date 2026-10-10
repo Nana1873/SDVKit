@@ -45,7 +45,8 @@ internal static partial class ProjectReviewService
         string labRoot,
         IProjectReviewConsoleInputSender? inputSender = null,
         LiveLabOperationLock? heldOperationLock = null,
-        Action<IProjectReviewConsoleInputSender>? useSender = null)
+        Action<IProjectReviewConsoleInputSender>? useSender = null,
+        bool requireFixtureNotReady = false)
     {
         useSender ??= SenderObserver.Value;
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
@@ -223,6 +224,22 @@ internal static partial class ProjectReviewService
                         "reviewConsoleTestSaveNotReady",
                         null,
                         "The exact owned review fixture is not currently loaded and identity-verified; no command was sent.")]);
+            }
+
+            if (requireFixtureNotReady
+                && (exactState.TestSave is null
+                    || TestSaveReadyForConsole(lab.GameSide, exactState.TestSave)))
+            {
+                return CommandResult(
+                    paths,
+                    staged.Staging,
+                    "blocked",
+                    lab,
+                    commandWritten: false,
+                    [Problem(
+                        "reviewConsoleUseTool",
+                        null,
+                        "Console input and viewport lines run only while an owned test-save fixture is not loaded, such as at the title screen. Use 'project review call' with the input or screenshot tool; no command was sent.")]);
             }
 
             IProjectReviewConsoleInputSender sender =

@@ -248,13 +248,13 @@ public static partial class CliApplication
             "For an asset or key operand that starts with '-' or matches an option name, put every CLI option before '--'; every following token is treated as an operand.");
     }
 
-    private static void WriteReviewFixtureConsoleUsage(TextWriter output)
+    private static void WriteReviewConsoleCommandUsage(TextWriter output)
     {
         output.WriteLine(
             "Runs one console command of the reviewed mod or of SMAPI on the exact owned review, exactly as if typed; append screen=<id> for a local split-screen player.");
         output.WriteLine(
             "SDVKit's own actions are tools: use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), and 'project review split-screen' or 'project review network' for lifecycle.");
         output.WriteLine(
-            "SDVKit's own console lines ('sdvkit ...') are rejected here.");
+            "SDVKit's own console lines ('sdvkit ...') are rejected here, except 'sdvkit input' and 'sdvkit screenshot viewport' while an owned test-save fixture is not loaded, such as at the title screen.");
     }
 }

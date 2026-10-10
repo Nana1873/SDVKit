@@ -295,10 +295,15 @@ $deadline = [DateTime]::UtcNow.AddMinutes(3)
 do {
     Start-Sleep -Seconds 2
     $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
     $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
-} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
 $statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-broken.json')
-if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-broken.json')
 & $sdvkit project review diagnostics --mod ExampleAuthor.ShopPurchaseProof --limit 20 --topology single --json |
@@ -339,10 +344,15 @@ $deadline = [DateTime]::UtcNow.AddMinutes(3)
 do {
     Start-Sleep -Seconds 2
     $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
     $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
-} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
 $statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-fixed.json')
-if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-fixed.json')
 & $sdvkit project review shop --topology single --json |

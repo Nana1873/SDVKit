@@ -172,7 +172,12 @@ public static partial class CliApplication
         }
 
         runProjectReviewConsole ??= (command, topology, role, labRoot) =>
-            ProjectReviewService.ExecuteCommand(command, topology, role, labRoot);
+            ProjectReviewService.ExecuteCommand(
+                command,
+                topology,
+                role,
+                labRoot,
+                requireFixtureNotReady: ProjectReviewConsoleLine.IsTitleInputOrViewport(command));
         runProjectReviewData ??= (query, labRoot, topology, role, screenId) =>
             ProjectReviewDataService.Execute(
                 query,

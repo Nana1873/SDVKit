@@ -1780,6 +1780,8 @@ public sealed class CliApplicationTests
     [Theory]
     [InlineData("sdvkit fixture status")]
     [InlineData("  SDVKit input press C")]
+    [InlineData("sdvkit screenshot map label")]
+    [InlineData("sdvkit fixture farm")]
     [InlineData("\"sdvkit\" split-screen join")]
     public void SdvKitConsoleLinesAreRejectedWithoutDispatch(string line)
     {
@@ -1794,6 +1796,27 @@ public sealed class CliApplicationTests
         Assert.Equal(string.Empty, output);
         Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
         Assert.Contains("project review split-screen", error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("sdvkit input press MouseLeft")]
+    [InlineData("sdvkit screenshot viewport title-1")]
+    public void TitleInputAndViewportLinesReachTheConsoleService(string line)
+    {
+        string? received = null;
+        ProjectReviewConsoleCommandRunner runner = (command, _, _, _) =>
+        {
+            received = command;
+            return new LiveLabCommandResult(0, new { commandWritten = true });
+        };
+        (int exitCode, _, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", line, "--json");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(line, received);
+        Assert.Equal(string.Empty, error);
     }
 
     [Theory]

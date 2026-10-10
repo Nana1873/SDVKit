@@ -444,9 +444,10 @@ Require the mod's `titleRequested` log and a fresh viewport screenshot of the
 actual title state. From this point, world-bound menu inspection such as
 `project review menu` and `stardew_menu_get`, plus fixture actions, is
 unavailable. The passed fixture status is intentionally invalidated while no
-world is loaded. The documented owned-process title/loading viewport and input
-commands remain available for native language selection until the exact fixture
-is revalidated.
+world is loaded. Send title input and viewport captures as `sdvkit input ...` and
+`sdvkit screenshot viewport <label>` lines through `project review command`; the
+input and screenshot tools need a loaded fixture. These lines run only until the
+exact fixture is revalidated, and are refused afterwards.
 
 Before selecting anything, capture the title viewport as
 `blueberry-initial-title`, inspect its visible native text, and require it to

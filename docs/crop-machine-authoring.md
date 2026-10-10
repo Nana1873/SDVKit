@@ -167,10 +167,15 @@ $deadline = [DateTime]::UtcNow.AddMinutes(3)
 do {
     Start-Sleep -Seconds 2
     $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
     $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
-} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
 $statusJson | Set-Content -LiteralPath (Join-Path $evidence 'wrong-status.json')
-if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 
 & $sdvkit project review cp-diagnose `
     --pack SDVKit.ObservedHarvestRecipe `
@@ -189,7 +194,8 @@ fixture loads in the FarmHouse, and the helpers require the Farm, so leave
 through the natural Farm exit first:
 
 ```powershell
-& $sdvkit project review call stardew_fixture_farm --allow-fixture-actions
+$farm = & $sdvkit project review call stardew_fixture_farm --allow-fixture-actions
+if ($LASTEXITCODE -ne 0) { throw "The Farm exit failed: $farm" }
 & $sdvkit project review command "recipe_probe_prepare_crop" `
     --topology single --json
 & $sdvkit project review command "recipe_probe_report" `
@@ -297,7 +303,9 @@ The permission is startup-bound. Save the collected Cola first with
 `stardew_fixture_save` on the action server, because the transfer below needs
 them after the restart. To test replacement safety without mutating the new
 launch, keep the old action server open, stop and start a replacement review,
-then submit one old action request with its retained old identities. Require
+then submit one old action request with its retained old identities. Wait for
+the replacement's readiness and leave through the Farm exit before the next
+helper command. Require
 `worldActionStartupBindingChanged` and `notDispatched`. Read-only unbound single
 tools may read the current owned single review; that does not extend the old
 server's action permission.
@@ -331,7 +339,11 @@ if ($LASTEXITCODE -ne 0 -or $open.succeeded -ne $true) {
     throw "The X press did not complete."
 }
 # The chest menu opens on a later tick, so confirm it from the menu read below.
-$menu = & $sdvkit project review menu --topology single --json | ConvertFrom-Json
+$deadline = [DateTime]::UtcNow.AddSeconds(10)
+do {
+    Start-Sleep -Milliseconds 250
+    $menu = & $sdvkit project review menu --topology single --json | ConvertFrom-Json
+} until ($menu.menuOpen -or [DateTime]::UtcNow -gt $deadline)
 if (-not $menu.menuOpen) { throw "The chest menu is not open." }
 $container = & $sdvkit project review container --topology single --json |
     ConvertFrom-Json
@@ -365,7 +377,8 @@ whole two-item stack directly into chest slot 0 with an empty held item.
 Save through `stardew_fixture_save` on a server started with
 `--allow-fixture-actions`. Require `state=ready`, the exact fixture/save IDs,
 `mayHaveRun=false`, and a persisted timestamp. Stop without reset, restart the
-same target/provider/helper selection and test save, rebind only the player
+same target/provider/helper selection and test save, wait for readiness, leave
+through the Farm exit, rebind only the player
 position to the existing marked chest, open it natively, and read it again through
 CLI and MCP. The chest must still contain exactly two Cola before final reset.
 

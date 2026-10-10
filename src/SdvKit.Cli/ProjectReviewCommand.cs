@@ -184,7 +184,7 @@ public static partial class CliApplication
                 && string.Equals(arguments[2], "command", StringComparison.Ordinal))
             {
                 output.WriteLine(ReviewCommandUsage.TrimStart());
-                WriteReviewFixtureConsoleUsage(output);
+                WriteReviewConsoleCommandUsage(output);
             }
             else
             {
@@ -217,7 +217,8 @@ public static partial class CliApplication
         }
 
         if (string.Equals(action, "command", StringComparison.Ordinal)
-            && IsSdvKitConsoleLine(command!))
+            && IsSdvKitConsoleLine(command!)
+            && !ProjectReviewConsoleLine.IsTitleInputOrViewport(command!))
         {
             error.WriteLine(SdvKitConsoleLineRejection);
             return UsageError;
