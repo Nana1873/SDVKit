@@ -175,7 +175,7 @@ internal enum ProjectReviewConsoleInputStatus
     /// <summary>No command endpoint was published or reachable; nothing was sent.</summary>
     EndpointUnavailable = 11,
 
-    /// <summary>The endpoint refused the request before queueing it.</summary>
+    /// <summary>The endpoint or the game-side dispatcher refused the command before running it.</summary>
     Rejected = 12,
 
     /// <summary>The command was withdrawn before the game thread started it.</summary>
@@ -314,6 +314,9 @@ internal sealed class HttpProjectReviewCommandSender(
             return (status, reply?.Outcome) switch
             {
                 (200, ReviewHttpContract.Executed) => new(ProjectReviewConsoleInputStatus.Written),
+                (200, ReviewHttpContract.Rejected) => new(
+                    ProjectReviewConsoleInputStatus.Rejected,
+                    reply!.Message ?? "The game-side dispatcher rejected the command; it did not run."),
                 (200, ReviewHttpContract.Failed) => new(
                     ProjectReviewConsoleInputStatus.ExecutedWithFailure,
                     $"The command ran but its dispatcher failed: {reply!.Message}"),
@@ -323,7 +326,7 @@ internal sealed class HttpProjectReviewCommandSender(
                 (504, ReviewHttpContract.NotExecuted) => new(
                     ProjectReviewConsoleInputStatus.NotExecuted,
                     reply!.Message ?? "The game thread did not run the command in time; it was withdrawn."),
-                (400 or 401 or 403 or 404 or 405 or 411 or 413 or 415 or 429 or 431, _) => new(
+                (400 or 401 or 403 or 404 or 405 or 411 or 413 or 415 or 429 or 431 or 503, _) => new(
                     ProjectReviewConsoleInputStatus.Rejected,
                     reply?.Message
                         ?? $"The command endpoint rejected the request with HTTP {status}; the command did not run."),

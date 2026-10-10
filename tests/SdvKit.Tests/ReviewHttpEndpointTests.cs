@@ -41,12 +41,12 @@ public sealed class ReviewHttpEndpointTests
         Assert.True(queue.TryEnqueue(["c"], 3, out PendingReviewCommand? missing));
         var ran = new List<string>();
 
-        queue.Drain(1, id => id is 0 or 1, arguments => ran.Add(arguments[0]));
+        queue.Drain(1, id => id is 0 or 1, arguments => Record(ran, arguments[0]));
         Assert.Equal(["b"], ran);
         Assert.False(first!.Completion.IsCompleted);
         Assert.False(missing!.Completion.IsCompleted);
 
-        queue.Drain(0, id => id is 0 or 1, arguments => ran.Add(arguments[0]));
+        queue.Drain(0, id => id is 0 or 1, arguments => Record(ran, arguments[0]));
         Assert.Equal(["b", "a"], ran);
         Assert.Equal(ReviewHttpContract.Executed, (await second!.Completion).Outcome);
         Assert.Equal(ReviewHttpContract.ScreenUnavailable, (await missing.Completion).Outcome);
@@ -66,7 +66,7 @@ public sealed class ReviewHttpEndpointTests
         Assert.True(queue.TryWithdraw(withdrawn!));
         Assert.False(queue.TryWithdraw(withdrawn!));
         var ran = new List<string>();
-        queue.Drain(0, _ => true, arguments => ran.Add(arguments[0]));
+        queue.Drain(0, _ => true, arguments => Record(ran, arguments[0]));
 
         Assert.Equal(ReviewCommandQueue.MaximumPending - 1, ran.Count);
         Assert.DoesNotContain((ReviewCommandQueue.MaximumPending - 1).ToString(System.Globalization.CultureInfo.InvariantCulture), ran);
@@ -113,7 +113,7 @@ public sealed class ReviewHttpEndpointTests
 
         Assert.Equal(ProjectReviewConsoleInputStatus.NotExecuted, result.Status);
         Assert.False(result.CommandWritten);
-        lab.Queue.Drain(0, _ => true, arguments => lab.Executed.Add(arguments));
+        lab.Queue.Drain(0, _ => true, arguments => Record(lab.Executed, arguments));
         Assert.Empty(lab.Executed);
     }
 
@@ -193,15 +193,65 @@ public sealed class ReviewHttpEndpointTests
         Assert.Empty(lab.Executed);
     }
 
+    private static bool Record<T>(List<T> target, T value)
+    {
+        lock (target)
+        {
+            target.Add(value);
+        }
+
+        return true;
+    }
+
+    [Fact]
+    public void DispatcherRejectionIsReportedAsNotRun()
+    {
+        using var lab = new FakeLab(_ => false);
+        ProjectReviewConsoleInputResult result = lab.Sender().SendLine(AnyProcess, "sdvkit unknown");
+
+        Assert.Equal(ProjectReviewConsoleInputStatus.Rejected, result.Status);
+        Assert.False(result.CommandWritten);
+    }
+
+    [Fact]
+    public void ConnectionsBeyondTheLimitAreRefusedAsNotRun()
+    {
+        using var lab = new FakeLab();
+        var idle = new List<TcpClient>();
+        try
+        {
+            for (int index = 0; index < 8; index++)
+            {
+                var client = new TcpClient();
+                client.Connect(IPAddress.Loopback, lab.Endpoint.Port);
+                idle.Add(client);
+            }
+
+            Thread.Sleep(200);
+            ProjectReviewConsoleInputResult result = lab.Sender().SendLine(AnyProcess, "sdvkit input press K");
+
+            Assert.Equal(ProjectReviewConsoleInputStatus.Rejected, result.Status);
+            Assert.False(result.CommandWritten);
+            Assert.Empty(lab.Executed);
+        }
+        finally
+        {
+            foreach (TcpClient client in idle)
+            {
+                client.Dispose();
+            }
+        }
+    }
+
     private sealed class FakeLab : IDisposable
     {
         private readonly CancellationTokenSource _stop = new();
         private readonly Task? _pump;
 
-        public FakeLab(Action<string[]>? dispatch = null, TimeSpan? executionTimeout = null, bool pump = true)
+        public FakeLab(Func<string[], bool>? dispatch = null, TimeSpan? executionTimeout = null, bool pump = true)
         {
             Endpoint = ReviewHttpEndpoint.Start(LaunchId, Token, Queue, _ => { }, executionTimeout);
-            Action<string[]> run = dispatch ?? (arguments => Executed.Add(arguments));
+            Func<string[], bool> run = dispatch ?? (arguments => Record(Executed, arguments));
             if (pump)
             {
                 _pump = Task.Run(async () =>

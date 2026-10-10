@@ -26,7 +26,7 @@ Status is a complete JSON snapshot, published by a same-directory atomic rename.
 
 Each launch gets a random token through its environment. The game-side mod listens on a random loopback port and publishes it as `httpPort` in its status. It accepts only `POST /v1/command` from `127.0.0.1` with that token, the exact `Host` and no `Origin` header. The CLI and native MCP send every review command line there instead of typing into the SMAPI console.
 
-A command runs on the game thread of the screen selected by SMAPI's `screen=<id>` argument. If the game does not start it within 5 seconds, it is withdrawn and reported as not run. A missing screen is reported without running the command. Every reply names the launch it came from, and the CLI rejects a reply for another launch.
+A command runs on the game thread of the screen selected by SMAPI's `screen=<id>` argument. If the game does not start it within 5 seconds, it is withdrawn and reported as not run. This also happens while the game saves or starts a new day, because SMAPI pauses the update events that run commands. A missing screen, an unknown subcommand or a failed screen binding is reported as rejected without running the command. More than eight simultaneous connections are refused. Every reply names the launch it came from, and the CLI rejects a reply for another launch.
 
 Each status read opens the file again. A missing marker reports `pending`; an unreadable or malformed marker reports `invalid`; a marker for another launch or process reports `mismatch`. A later readable snapshot can recover on the next invocation, but it must still pass identity and freshness checks. SDVKit does not substitute an older cached snapshot for a failed read.
 

@@ -359,7 +359,7 @@ internal static class ReviewCommand
                 commandQueue.Drain(Context.ScreenId, Context.HasScreenId, Dispatch);
         }
 
-        void Dispatch(string[] arguments)
+        bool Dispatch(string[] arguments)
         {
                 if (!ReviewScreenBindingCommand.TryValidateDispatch(
                         arguments,
@@ -368,13 +368,13 @@ internal static class ReviewCommand
                         out string bindingError))
                 {
                     monitor.Log($"SDVKit screen-bound dispatch rejected: {bindingError}", LogLevel.Error);
-                    return;
+                    return false;
                 }
                 if (Context.IsSplitScreen && (testSave() is not { } owned
                     || !owned.TryVerifyReviewFixture(out _, out _)))
                 {
                     monitor.Log("SDVKit requires the exact owned local screen before dispatching a split-screen command.", LogLevel.Error);
-                    return;
+                    return false;
                 }
                 if (arguments.Length > 0 && arguments[0] == "split-screen")
                 {
@@ -504,7 +504,10 @@ internal static class ReviewCommand
                 else
                 {
                     monitor.Log(Usage, LogLevel.Error);
+                    return false;
                 }
+
+                return true;
         }
     }
 }

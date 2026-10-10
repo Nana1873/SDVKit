@@ -18,6 +18,7 @@ internal static class ReviewHttpContract
     public const int MaximumLineLength = 4096;
     public const string Executed = "executed";
     public const string Failed = "failed";
+    public const string Rejected = "rejected";
     public const string NotExecuted = "notExecuted";
     public const string ScreenUnavailable = "screenUnavailable";
     public const string Unknown = "unknown";
@@ -148,7 +149,8 @@ internal sealed class ReviewCommandQueue
     }
 
     /// <summary>Runs on the game thread once per screen update.</summary>
-    public void Drain(int currentScreenId, Func<int, bool> screenExists, Action<string[]> dispatch)
+    /// <param name="dispatch">Returns false when the dispatcher rejected the command before running it.</param>
+    public void Drain(int currentScreenId, Func<int, bool> screenExists, Func<string[], bool> dispatch)
     {
         ArgumentNullException.ThrowIfNull(screenExists);
         ArgumentNullException.ThrowIfNull(dispatch);
@@ -175,8 +177,16 @@ internal sealed class ReviewCommandQueue
         {
             try
             {
-                dispatch(command.Arguments);
-                command.Complete(ReviewHttpContract.Executed, null);
+                if (dispatch(command.Arguments))
+                {
+                    command.Complete(ReviewHttpContract.Executed, null);
+                }
+                else
+                {
+                    command.Complete(
+                        ReviewHttpContract.Rejected,
+                        "The game-side dispatcher rejected the command before running it; see the isolated SMAPI log.");
+                }
             }
             catch (Exception exception)
             {
@@ -295,7 +305,7 @@ internal sealed class ReviewHttpEndpoint : IDisposable
             if (Interlocked.Increment(ref _connections) > MaximumConnections)
             {
                 Interlocked.Decrement(ref _connections);
-                client.Dispose();
+                _ = RefuseBusy(client);
                 continue;
             }
 
@@ -310,6 +320,24 @@ internal sealed class ReviewHttpEndpoint : IDisposable
                     Interlocked.Decrement(ref _connections);
                 }
             });
+        }
+    }
+
+    /// <summary>Answers an over-limit connection with 503 so the client knows nothing ran.</summary>
+    private async Task RefuseBusy(TcpClient client)
+    {
+        using (client)
+        {
+            try
+            {
+                using var output = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+                output.CancelAfter(TimeSpan.FromSeconds(1));
+                await Write(client.GetStream(), 503, null, output.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
+            {
+                // A client that cannot receive the refusal reports an unknown outcome; nothing ran.
+            }
         }
     }
 
@@ -444,7 +472,7 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         (string outcome, string? message) = command.Completion.Result;
         int status = outcome switch
         {
-            ReviewHttpContract.Executed or ReviewHttpContract.Failed => 200,
+            ReviewHttpContract.Executed or ReviewHttpContract.Failed or ReviewHttpContract.Rejected => 200,
             ReviewHttpContract.ScreenUnavailable => 409,
             _ => 500,
         };
@@ -542,6 +570,7 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         415 => "Unsupported Media Type",
         429 => "Too Many Requests",
         431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
