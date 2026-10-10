@@ -66,7 +66,8 @@ internal delegate int ProjectReviewMcpCommandRunner(
     bool allowWorldActions,
     bool allowContainerTransfer,
     bool allowCpRefresh,
-    TextWriter error);
+    TextWriter error,
+    int? httpPort = null);
 
 public static partial class CliApplication
 {
@@ -194,8 +195,9 @@ public static partial class CliApplication
             allowWorldActions,
             allowContainerTransfer,
             allowCpRefresh,
-            mcpError) =>
-            ProjectReviewMcpServer.RunStdioAsync(
+            mcpError,
+            httpPort) =>
+            ProjectReviewMcpServer.RunAsync(
                 labRoot,
                 topology,
                 role,
@@ -205,7 +207,8 @@ public static partial class CliApplication
                 allowWorldActions,
                 allowContainerTransfer,
                 allowCpRefresh,
-                mcpError)
+                mcpError,
+                httpPort)
                 .GetAwaiter().GetResult();
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))

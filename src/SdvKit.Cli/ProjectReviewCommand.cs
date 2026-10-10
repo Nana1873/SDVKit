@@ -150,7 +150,8 @@ public static partial class CliApplication
                 out bool allowFixtureActions,
                 out bool allowWorldActions,
                 out bool allowContainerTransfer,
-                out bool allowCpRefresh))
+                out bool allowCpRefresh,
+                out int? httpPort))
         {
             return runProjectReviewMcp(
                 mcpTopology!,
@@ -162,7 +163,8 @@ public static partial class CliApplication
                 allowWorldActions,
                 allowContainerTransfer,
                 allowCpRefresh,
-                error);
+                error,
+                httpPort);
         }
 
         if ((arguments.Count == 3 && IsHelp(arguments[2]))

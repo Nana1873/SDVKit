@@ -16,8 +16,10 @@ public static partial class CliApplication
         out bool allowFixtureActions,
         out bool allowWorldActions,
         out bool allowContainerTransfer,
-        out bool allowCpRefresh)
+        out bool allowCpRefresh,
+        out int? httpPort)
     {
+        httpPort = null;
         topology = LiveLabState.SingleTopology;
         role = null;
         screenId = null;
@@ -41,9 +43,17 @@ public static partial class CliApplication
         var allowWorldActionsCount = 0;
         var allowContainerTransferCount = 0;
         var allowCpRefreshCount = 0;
+        var httpCount = 0;
+        var portCount = 0;
+        int? requestedPort = null;
         for (var index = 4; index < arguments.Count; index++)
         {
             string option = arguments[index];
+            if (option == "--http")
+            {
+                httpCount++;
+                continue;
+            }
             if (option == "--allow-cp-refresh")
             {
                 allowCpRefreshCount++;
@@ -96,6 +106,14 @@ public static partial class CliApplication
                 roleCount++;
                 role = value;
             }
+            else if (option == "--port"
+                && int.TryParse(value, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int parsedPort)
+                && parsedPort is >= 1024 and <= 65535)
+            {
+                portCount++;
+                requestedPort = parsedPort;
+            }
             else if (string.Equals(option, "--screen", StringComparison.Ordinal)
                 && int.TryParse(value, System.Globalization.NumberStyles.None,
                     System.Globalization.CultureInfo.InvariantCulture, out int parsedScreen)
@@ -118,12 +136,16 @@ public static partial class CliApplication
             || allowWorldActionsCount > 1
             || allowContainerTransferCount > 1
             || allowCpRefreshCount > 1
+            || httpCount > 1
+            || portCount > 1
+            || portCount == 1 && httpCount == 0
             || screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh)
             || (allowCpRefresh || allowWorldActions || allowContainerTransfer) && topology != LiveLabState.SingleTopology)
         {
             return false;
         }
 
+        httpPort = httpCount == 1 ? requestedPort ?? 0 : null;
         return string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
             ? roleCount == 0 && (screenCount == 0 || screenId is not null)
             : string.Equals(topology, NetworkTwoContract.Topology, StringComparison.Ordinal)

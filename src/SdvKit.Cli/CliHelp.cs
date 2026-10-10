@@ -69,11 +69,11 @@ public static partial class CliApplication
     private const string ReviewModAssetGetUsage =
         "       sdvkit project review mod-assets get <Mods/owner/asset> <key> [--topology single] --json";
     private const string ReviewMcpSingleUsage =
-        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-container-transfer] [--allow-cp-refresh]";
+        "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-container-transfer] [--allow-cp-refresh] [--http [--port <n>]]";
     private const string ReviewMcpScreenUsage =
-        "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input]";
+        "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input] [--http [--port <n>]]";
     private const string ReviewMcpNetworkUsage =
-        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions]";
+        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions] [--http [--port <n>]]";
     private const string ReviewMcpToolsDescription =
         "       all MCP topologies/selections: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture, stardew_inventory_get, stardew_container_get, stardew_world_area_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; unbound single additionally: stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_progression_get (owned disposable single only), stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
@@ -175,6 +175,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMcpWorldActionDescription.TrimStart());
         output.WriteLine(ReviewMcpContainerTransferDescription.TrimStart());
         output.WriteLine("--allow-cp-refresh separately exposes stardew_cp_refresh for the exact startup single root CP 2.9.1 pack; input and fixture opt-ins never authorize refresh.");
+        output.WriteLine("--http serves the same tools over Streamable HTTP on 127.0.0.1 (a free port unless --port <1024-65535>). The URL and bearer token are written to the connection file named on stderr; the server stops when its review launch ends or on Ctrl+C.");
         output.WriteLine("Start the review through the CLI first, then serve from the same lab directory.");
         output.WriteLine("The role or exact observed local screen and farmer context is fixed at startup. A departed/rejoined screen requires a new server. Closing stdin stops this server; stdout contains only MCP frames.");
     }
