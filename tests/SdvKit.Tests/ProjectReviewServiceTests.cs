@@ -2736,9 +2736,14 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Theory]
-    [InlineData("failed", true)]
-    [InlineData("passed", false)]
-    public void CliTitleInputRunsOnlyWhileTheOwnedFixtureIsNotLoaded(string phase, bool expectedWritten)
+    [InlineData("failed", true, true)]
+    [InlineData("passed", true, false)]
+    [InlineData("passed", false, true)]
+    [InlineData("none", true, false)]
+    public void CliTitleInputRunsOnlyWhileTheOwnedFixtureIsNotLoaded(
+        string phase,
+        bool requireFixtureNotReady,
+        bool expectedWritten)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -2766,14 +2771,14 @@ public sealed class ProjectReviewServiceTests
                     staging.TargetLaunchState,
                     identity) with
                 {
-                    TestSave = testSave,
+                    TestSave = phase == "none" ? null : testSave,
                 };
                 new JsonLiveLabStateStore(paths.StatePath).Write(state);
                 WriteLoadedStatus(
                     paths,
                     state,
                     staging.TargetLaunchState,
-                    testSave: new TestSaveStatusMarker(
+                    testSave: phase == "none" ? null : new TestSaveStatusMarker(
                         TestSaveContract.SchemaVersion,
                         TestSaveContract.ReviewMode,
                         phase,
@@ -2793,7 +2798,7 @@ public sealed class ProjectReviewServiceTests
                     role: null,
                     temporary.Path,
                     sender,
-                    requireFixtureNotReady: true);
+                    requireFixtureNotReady: requireFixtureNotReady);
 
                 ProjectReviewCommandReport report =
                     Assert.IsType<ProjectReviewCommandReport>(result.Report);

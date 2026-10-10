@@ -9,7 +9,7 @@ internal static partial class ProjectReviewService
     private static readonly AsyncLocal<Action<IProjectReviewConsoleInputSender>?> SenderObserver = new();
 
     /// <summary>
-    /// Reports every sender that <see cref="ExecuteCommand(string, string, string?, string, IProjectReviewConsoleInputSender?, LiveLabOperationLock?, Action{IProjectReviewConsoleInputSender}?)"/>
+    /// Reports every sender that <see cref="ExecuteCommand(string, string, string?, string, IProjectReviewConsoleInputSender?, LiveLabOperationLock?, Action{IProjectReviewConsoleInputSender}?, bool)"/>
     /// uses while the scope is active, including calls made inside a caller-supplied send delegate.
     /// </summary>
     internal static IDisposable ObserveSenders(Action<IProjectReviewConsoleInputSender> observer)
@@ -109,6 +109,17 @@ internal static partial class ProjectReviewService
 
         if (networkTwo)
         {
+            if (requireFixtureNotReady)
+            {
+                return NetworkCommandFailure(
+                    SafeFullPath(labRoot),
+                    role!,
+                    [Problem(
+                        "reviewConsoleUseTool",
+                        null,
+                        "Console input and viewport lines are not available in network-2 reviews. Use 'project review call' with the input or screenshot tool; no command was sent.")]);
+            }
+
             if (heldOperationLock is not null)
                 throw new InvalidOperationException("Held-operation console dispatch supports single only.");
             return ExecuteNetworkCommand(
@@ -239,7 +250,9 @@ internal static partial class ProjectReviewService
                     [Problem(
                         "reviewConsoleUseTool",
                         null,
-                        "Console input and viewport lines run only while an owned test-save fixture is not loaded, such as at the title screen. Use 'project review call' with the input or screenshot tool; no command was sent.")]);
+                        exactState.TestSave is null
+                            ? "This review has no owned test save, so the input and screenshot tools are available. Use 'project review call' with the input or screenshot tool; no command was sent."
+                            : "Console input and viewport lines run only while the owned test-save fixture is not loaded, such as at the title screen. Use 'project review call' with the input or screenshot tool; no command was sent.")]);
             }
 
             IProjectReviewConsoleInputSender sender =

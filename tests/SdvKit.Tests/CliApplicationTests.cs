@@ -1782,6 +1782,10 @@ public sealed class CliApplicationTests
     [InlineData("  SDVKit input press C")]
     [InlineData("sdvkit screenshot map label")]
     [InlineData("sdvkit fixture farm")]
+    [InlineData("sdvkit input cancel aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("sdvkit input request aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa press F8")]
+    [InlineData("sdvkit screenshot capture aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa viewport x")]
+    [InlineData("sdvkit input press F8 screen=1")]
     [InlineData("\"sdvkit\" split-screen join")]
     public void SdvKitConsoleLinesAreRejectedWithoutDispatch(string line)
     {
@@ -1800,6 +1804,7 @@ public sealed class CliApplicationTests
 
     [Theory]
     [InlineData("sdvkit input press MouseLeft")]
+    [InlineData("sdvkit input cursor 100 200")]
     [InlineData("sdvkit screenshot viewport title-1")]
     public void TitleInputAndViewportLinesReachTheConsoleService(string line)
     {
@@ -1817,6 +1822,21 @@ public sealed class CliApplicationTests
         Assert.Equal(0, exitCode);
         Assert.Equal(line, received);
         Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void TitleInputLinesAreRejectedForNetworkTwo()
+    {
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, _, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", "sdvkit input press F8",
+            "--topology", "network-2", "--role", "host", "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -218,7 +218,8 @@ public static partial class CliApplication
 
         if (string.Equals(action, "command", StringComparison.Ordinal)
             && IsSdvKitConsoleLine(command!)
-            && !ProjectReviewConsoleLine.IsTitleInputOrViewport(command!))
+            && !(string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+                && ProjectReviewConsoleLine.IsTitleInputOrViewport(command!)))
         {
             error.WriteLine(SdvKitConsoleLineRejection);
             return UsageError;

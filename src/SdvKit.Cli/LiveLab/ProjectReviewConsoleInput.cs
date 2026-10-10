@@ -41,10 +41,17 @@ internal static class ProjectReviewConsoleLine
             return false;
         }
 
+        // Only the plain user forms; transport request, cancel and capture forms stay internal.
         string[] tokens = line.Split(' ');
         return !tokens.Any(string.IsNullOrEmpty)
+            && tokens.Length >= 3
             && string.Equals(tokens[0], "sdvkit", StringComparison.Ordinal)
-            && (IsInputCommand(tokens) || IsViewportScreenshotCommand(tokens));
+            && (tokens[1] == "input"
+                    && tokens[2] is "press" or "chord" or "cursor" or "click" or "scroll" or "drag"
+                    && IsInputCommand(tokens)
+                || tokens[1] == "screenshot"
+                    && tokens[2] == "viewport"
+                    && IsViewportScreenshotCommand(tokens));
     }
 
     public static string? ValidationError(string? line)

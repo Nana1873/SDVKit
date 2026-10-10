@@ -447,7 +447,15 @@ unavailable. The passed fixture status is intentionally invalidated while no
 world is loaded. Send title input and viewport captures as `sdvkit input ...` and
 `sdvkit screenshot viewport <label>` lines through `project review command`; the
 input and screenshot tools need a loaded fixture. These lines run only until the
-exact fixture is revalidated, and are refused afterwards.
+exact fixture is revalidated, and are refused afterwards:
+
+```powershell
+& $sdvkit project review command 'sdvkit screenshot viewport blueberry-initial-title' --json
+& $sdvkit project review command "sdvkit input cursor $languageX $languageY" --json
+& $sdvkit project review command 'sdvkit input press MouseLeft' --json
+```
+
+Set `$languageX` and `$languageY` from the fresh viewport image each time.
 
 Before selecting anything, capture the title viewport as
 `blueberry-initial-title`, inspect its visible native text, and require it to
