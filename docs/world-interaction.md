@@ -38,6 +38,10 @@ fails closed. The process-local virtual cursor is used; physical cursor movement
 focus changes, global input, pathfinding, and hidden navigation are outside this
 contract.
 
+Like menu clicks, the action first completes one cursor-only game update and
+revalidates the target before pressing, because Stardew aims a mouse tool use at
+the previous update's cursor position.
+
 The result separates `notDispatched`, `completed`, and `mayHaveRun`. Once SDVKit
 has placed its cursor on the target, an outcome in which it sent no input is
 `notDispatched` only if no action or tool input is held or queued, no tool is in

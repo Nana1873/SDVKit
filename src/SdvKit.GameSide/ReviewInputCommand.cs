@@ -1013,9 +1013,13 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
             error = "A world interaction requires exactly one native mouse action.";
             return false;
         }
+        // Stardew aims a mouse tool use at the previous update's mouse state. A one-click gesture
+        // first completes one cursor-only game update, so that state holds the target cursor.
+        var gesture = new ReviewInputQuery(ReviewInputContract.ClickAction, button.ToString(), null,
+            request.X, request.Y, Modifiers: [], Count: 1);
         return ReviewVirtualCursor.TryChord(helper.Input, [button], 1, null, currentRevision,
             result => completed(result with { CanonicalButton = result.Buttons?[0] }), out error,
-            request.RequestId, validateDispatch: validateDispatch);
+            request.RequestId, gesture, validateDispatch: validateDispatch);
     }
 
     public bool TryScroll(int direction, out string error)

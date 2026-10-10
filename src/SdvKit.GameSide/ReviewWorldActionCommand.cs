@@ -100,7 +100,7 @@ internal static class ReviewWorldActionCommand
             }
             cursorOwned = true;
             cursorWasPlaced = true;
-            var request = new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0, RequestId: args[1]);
+            var request = new ReviewInputRequest(ReviewInputKind.Press, button, cursorX, cursorY, RequestId: args[1]);
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position
                     ? (cursorX, cursorY) : null,
@@ -218,6 +218,7 @@ internal static class ReviewWorldActionCommand
         Farmer? player = worldReady ? Game1.player : null;
         bool playerReady = player is not null && Game1.activeClickableMenu is null
             && Game1.currentMinigame is null && !Game1.uiMode && !Game1.eventUp && !Game1.fadeToBlack
+            && !Game1.freezeControls && !Game1.globalFade
             && !player.UsingTool && player.CanMove && player.CursorSlotItem is null;
         bool facedAdjacent = playerReady && player!.GetGrabTile() == new Vector2(query.X, query.Y);
         bool inventoryMatches = false;
