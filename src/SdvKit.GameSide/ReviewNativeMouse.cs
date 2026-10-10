@@ -108,6 +108,35 @@ internal static partial class ReviewVirtualCursor
     private static MouseState ReadHardwareMouse() => State(
         ReviewNativeMousePublication.ReadHardware(() => Values(Mouse.GetState())));
 
+    /// <summary>
+    /// Read-only live sample of input the game may still apply to the faced target: hardware
+    /// mouse left/right, the action and use-tool keys, controller A/X, and presses another mod
+    /// queued for this screen. The same live reads cancel a pending chord, so a press seen there
+    /// is seen here even before SMAPI's next input snapshot contains it.
+    /// </summary>
+    internal static bool ActionInputPendingLive()
+    {
+        lock (Sync)
+        {
+            KeyboardState keyboard = Keyboard.GetState();
+            MouseState mouse = ReadHardwareMouse();
+            GamePadState controller = Game1.playerOneIndex >= Microsoft.Xna.Framework.PlayerIndex.One
+                ? GamePad.GetState(Game1.playerOneIndex) : default;
+            if (mouse.LeftButton == ButtonState.Pressed || mouse.RightButton == ButtonState.Pressed
+                || Game1.isOneOfTheseKeysDown(keyboard, Game1.options.actionButton)
+                || Game1.isOneOfTheseKeysDown(keyboard, Game1.options.useToolButton)
+                || controller.IsButtonDown(Buttons.A) || controller.IsButtonDown(Buttons.X))
+                return true;
+            if (_pressedKeys?.GetValue(Screen.Value.InputOwner) is not HashSet<SButton> queued)
+                return false;
+            return queued.Any(button => button is SButton.MouseLeft or SButton.MouseRight
+                    or SButton.ControllerA or SButton.ControllerX
+                || button.TryGetKeyboard(out Keys key)
+                    && (Game1.options.actionButton.Any(binding => binding.key == key)
+                        || Game1.options.useToolButton.Any(binding => binding.key == key)));
+        }
+    }
+
     private static void BeforeHardwareMouseCapture(out IDisposable __state) =>
         __state = ReviewNativeMousePublication.BeginHardwareRead();
 

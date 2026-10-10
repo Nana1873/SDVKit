@@ -1,6 +1,7 @@
 #if SDVKIT_GAME_AVAILABLE
 using System.Text.Json;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewValley;
@@ -58,6 +59,9 @@ internal static class ReviewWorldActionCommand
 
         bool dispatched = false;
         bool cursorOwned = false;
+        // Once the cursor sits on the target, "not sent by SDVKit" no longer proves "did not run".
+        bool cursorWasPlaced = false;
+        string Unsent() => cursorWasPlaced ? ObservedUnsentDispatchState(query, launch) : "notDispatched";
         try
         {
             if (args[2] != launch)
@@ -95,6 +99,7 @@ internal static class ReviewWorldActionCommand
                 return;
             }
             cursorOwned = true;
+            cursorWasPlaced = true;
             var request = new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0, RequestId: args[1]);
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position
@@ -108,7 +113,7 @@ internal static class ReviewWorldActionCommand
                     if (!cleared)
                     {
                         Write(Report("unavailable", "worldActionCursorCleanupFailed",
-                            result.StartTick is null ? "notDispatched" : "mayHaveRun",
+                            result.StartTick is null ? Unsent() : "mayHaveRun",
                             result.CanonicalButton, result.StartTick, result.EndTick));
                         return;
                     }
@@ -116,7 +121,7 @@ internal static class ReviewWorldActionCommand
                         ? Report("completed", null, "completed", result.CanonicalButton,
                             result.StartTick, result.EndTick)
                         : Report("unavailable", "worldActionCompletionUncertain",
-                            result.StartTick is null ? "notDispatched" : "mayHaveRun", result.CanonicalButton,
+                            result.StartTick is null ? Unsent() : "mayHaveRun", result.CanonicalButton,
                             result.StartTick, result.EndTick));
                 }, out _))
             {
@@ -124,7 +129,7 @@ internal static class ReviewWorldActionCommand
                 bool cleared = input.TryClearCursor(out _);
                 cursorOwned = false;
                 Write(Report("unavailable", cleared ? "worldActionInputRejected"
-                    : "worldActionCursorCleanupFailed", "notDispatched"));
+                    : "worldActionCursorCleanupFailed", Unsent()));
             }
         }
         catch (Exception)
@@ -135,8 +140,67 @@ internal static class ReviewWorldActionCommand
                 catch (Exception) { }
             }
             Write(Report("unavailable", dispatched ? "worldActionCompletionUncertain" : "worldActionValidationFailed",
-                dispatched ? "mayHaveRun" : "notDispatched"));
+                dispatched ? "mayHaveRun" : Unsent()));
         }
+    }
+
+    /// <summary>
+    /// Rereads the exact target and backpack after an outcome in which SDVKit sent nothing.
+    /// Held action input, a tool in use, any change, or a failed read is reported as <c>mayHaveRun</c>.
+    /// </summary>
+    private static string ObservedUnsentDispatchState(ReviewWorldActionQuery query, string launch)
+    {
+        try
+        {
+            bool inputSettled = !ActionInputOrToolInProgress();
+            ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"), launch);
+            ReviewWorldReport world = ReviewWorldCommand.Capture(launch, new(query.X, query.Y, 1, 1));
+            ReviewWorldTile? tile = inventory.State == "ready" && world.State == "ready"
+                ? world.Data?.Tiles.SingleOrDefault()
+                : null;
+            (string? instanceId, string? revision) = query.Action switch
+            {
+                ReviewWorldActionContract.Water => (tile?.Soil?.InstanceId, tile?.Soil?.Revision),
+                ReviewWorldActionContract.Harvest =>
+                    (tile?.Soil?.Crop.Data?.InstanceId, tile?.Soil?.Crop.Data?.Revision),
+                _ => (tile?.Machine?.InstanceId, tile?.Machine?.Revision),
+            };
+            return ReviewWorldActionDecision.UnsentDispatchState(
+                query,
+                inputSettled,
+                instanceId,
+                revision,
+                inventory.State == "ready" ? inventory.Data?.InventoryRevision : null);
+        }
+        catch (Exception)
+        {
+            return "mayHaveRun";
+        }
+    }
+
+    /// <summary>
+    /// True while input that the game may still apply to the target is held or queued, or a tool is
+    /// in use. The game applies a press from SMAPI's snapshot later in the tick, a newer hardware
+    /// press on the next tick, and tool effects at the end of the animation, so a reread in this
+    /// state cannot show that nothing will happen.
+    /// </summary>
+    private static bool ActionInputOrToolInProgress()
+    {
+        Farmer? player = Game1.player;
+        if (player is null || player.UsingTool || !player.CanMove)
+            return true;
+        MouseState mouse = Game1.input.GetMouseState();
+        if (mouse.LeftButton == ButtonState.Pressed || mouse.RightButton == ButtonState.Pressed)
+            return true;
+        KeyboardState keyboard = Game1.input.GetKeyboardState();
+        if (Game1.isOneOfTheseKeysDown(keyboard, Game1.options.actionButton)
+            || Game1.isOneOfTheseKeysDown(keyboard, Game1.options.useToolButton))
+            return true;
+        GamePadState gamePad = Game1.input.GetGamePadState();
+        if (gamePad.IsConnected && (gamePad.IsButtonDown(Buttons.A) || gamePad.IsButtonDown(Buttons.X)))
+            return true;
+        // SMAPI's snapshot above can lag the live read that cancelled a pending press by one tick.
+        return ReviewVirtualCursor.ActionInputPendingLive();
     }
 
     private static string? Validate(ReviewWorldActionQuery query, string launch,

@@ -38,7 +38,14 @@ fails closed. The process-local virtual cursor is used; physical cursor movement
 focus changes, global input, pathfinding, and hidden navigation are outside this
 contract.
 
-The result separates `notDispatched`, `completed`, and `mayHaveRun`. Completed
+The result separates `notDispatched`, `completed`, and `mayHaveRun`. Once SDVKit
+has placed its cursor on the target, an outcome in which it sent no input is
+`notDispatched` only if no action or tool input is held or queued, no tool is in
+use, the player can move, and a fresh read of the exact target and backpack is
+unchanged. Physical or external
+input could otherwise still act on the target, so anything else is reported as
+`mayHaveRun`. `notDispatched` means SDVKit sent nothing; physical input remains
+outside this contract. Completed
 means the native input lifecycle finished, not that watering, harvest, insertion,
 or collection changed the world. Always capture the target and inventory again
 and compare their fresh revisions, selected slot/tool/item, and slot facts. The
