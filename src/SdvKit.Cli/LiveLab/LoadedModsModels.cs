@@ -56,7 +56,7 @@ internal static class LoadedModsContract
         if (gameSide is null || gameSide.IsContentPack)
         {
             throw new InvalidDataException(
-                "The loaded-mod inventory does not contain the SDVKit Game Side code mod.");
+                "The loaded-mod inventory does not contain the SDVKit game-side mod.");
         }
 
         return new LoadedModsStatusMarker(

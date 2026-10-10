@@ -71,7 +71,7 @@ internal static partial class ProjectReviewCpDiagnosis
             if (pack is null || provider is null || !string.Equals(pack.Manifest.ContentPackFor, providerId, StringComparison.OrdinalIgnoreCase))
                 return Result("unavailable", "cpSelectionMismatch");
             if (context.Staging.Artifacts.Count(a => a.Manifest.Name.Equals(provider.Manifest.Name, StringComparison.OrdinalIgnoreCase)) != 1
-                || provider.Manifest.Name is "SMAPI" or "SDVKit Game Side")
+                || provider.Manifest.Name is "SMAPI" or "SDVKit")
                 return Result("unavailable", "cpProviderLoggerAmbiguous");
             var loaded = context.GameSide.LoadedMods;
             bool IsLoaded(ProjectReviewOwnedArtifact a, bool isPack) => loaded?.State == "ready"

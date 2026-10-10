@@ -276,7 +276,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         if (reader.Role is not null) paths = LiveLabPaths.ResolveNetworkRole(paths, reader.Role);
         string path = Path.Combine(paths.StardewDataPath, "ErrorLogs", "SMAPI-latest.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, $"[08:00:00 INFO  SDVKit Game Side] SDVKit Game Side activated for isolated lab launch '{context.State.LaunchId}'.\n" + text + "\n");
+        File.WriteAllText(path, $"[08:00:00 INFO  SDVKit] SDVKit activated for isolated lab launch '{context.State.LaunchId}'.\n" + text + "\n");
         return path;
     }
 

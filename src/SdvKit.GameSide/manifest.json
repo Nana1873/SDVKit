@@ -1,5 +1,5 @@
 {
-  "Name": "SDVKit Game Side",
+  "Name": "SDVKit",
   "Author": "SDVKit contributors",
   "Version": "1.0.0",
   "Description": "SDVKit's game-side mod for its isolated test lab: background running, lab status, review commands, and disposable-world fixtures.",

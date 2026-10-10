@@ -16,12 +16,12 @@ internal sealed class StatusPublication
         {
             if (phase is "exiting" or "restoreFailed")
             {
-                logError($"SDVKit Game Side couldn't publish its final '{phase}' lab status marker: {exception.Message} "
+                logError($"SDVKit couldn't publish its final '{phase}' lab status marker: {exception.Message} "
                     + "The game will still exit, but this update cannot confirm the final lab status.");
             }
             else if (!_activeWriteErrorLogged)
             {
-                logError($"SDVKit Game Side couldn't write its lab status marker: {exception.Message}");
+                logError($"SDVKit couldn't write its lab status marker: {exception.Message}");
                 _activeWriteErrorLogged = true;
             }
 

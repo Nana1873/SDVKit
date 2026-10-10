@@ -731,7 +731,7 @@ internal static partial class ProjectModStager
             return Problem(
                 "foreignLabModCollision",
                 RelativePath(paths.ProjectRoot, entry),
-                "Project smoke requires an isolated mod group containing only SDVKit Game Side and its own target staging.");
+                "Project smoke requires an isolated mod group containing only the SDVKit game-side mod and its own target staging.");
         }
 
         return null;

@@ -64,11 +64,11 @@ internal static class OwnedReviewLogReader
         }
         byte[] prefix = new byte[(int)Math.Min(totalBytes, HeaderBytes)];
         stream.ReadExactly(prefix);
-        string activation = $"SDVKit Game Side activated for isolated lab launch '{context.State.LaunchId}'.";
+        string activation = $"SDVKit activated for isolated lab launch '{context.State.LaunchId}'.";
         bool bound = Encoding.UTF8.GetString(prefix).Split('\n').Any(line =>
         {
             Match match = Header.Match(line.TrimEnd('\r'));
-            return match.Success && match.Groups["logger"].Value == "SDVKit Game Side"
+            return match.Success && match.Groups["logger"].Value == "SDVKit"
                 && match.Groups["level"].Value == "INFO" && match.Groups["message"].Value == activation;
         });
         if (!bound)

@@ -108,7 +108,7 @@ internal static partial class ProjectModStager
                         return ReviewFailure(
                             "foreignLabModCollision",
                             RelativePath(singlePaths.ProjectRoot, entry),
-                            $"Project review requires the isolated {rolePath.Role} mod group to contain only SDVKit Game Side before its exact staging set is installed.");
+                            $"Project review requires the isolated {rolePath.Role} mod group to contain only the SDVKit game-side mod before its exact staging set is installed.");
                     }
                 }
             }

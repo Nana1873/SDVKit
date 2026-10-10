@@ -34,7 +34,7 @@ public sealed class ModEntry : Mod
                 out string stopRequestPath,
                 out string reason))
         {
-            Monitor.Log($"SDVKit Game Side is inert: {reason}", LogLevel.Warn);
+            Monitor.Log($"SDVKit is inert: {reason}", LogLevel.Warn);
             return;
         }
 
@@ -208,7 +208,7 @@ public sealed class ModEntry : Mod
         };
 
         Monitor.Log(
-            $"SDVKit Game Side activated for isolated lab launch '{launchId}'.",
+            $"SDVKit activated for isolated lab launch '{launchId}'.",
             LogLevel.Info);
     }
 
@@ -385,7 +385,7 @@ public sealed class ModEntry : Mod
             if (!_stopReadErrorLogged)
             {
                 Monitor.Log(
-                    $"SDVKit Game Side couldn't read its stop request: {exception.Message}",
+                    $"SDVKit couldn't read its stop request: {exception.Message}",
                     LogLevel.Error);
                 _stopReadErrorLogged = true;
             }
@@ -398,7 +398,7 @@ public sealed class ModEntry : Mod
             if (!_stopReadErrorLogged)
             {
                 Monitor.Log(
-                    "SDVKit Game Side ignored a stop request for another launch.",
+                    "SDVKit ignored a stop request for another launch.",
                     LogLevel.Error);
                 _stopReadErrorLogged = true;
             }
@@ -439,7 +439,7 @@ public sealed class ModEntry : Mod
         {
             restore = new BackgroundRunRestoreResult(false, null);
             Monitor.Log(
-                $"SDVKit Game Side couldn't restore the background-run option: {exception.Message}",
+                $"SDVKit couldn't restore the background-run option: {exception.Message}",
                 LogLevel.Error);
         }
 
