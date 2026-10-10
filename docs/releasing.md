@@ -53,9 +53,15 @@ if ($LASTEXITCODE -ne 0 -or $doctor.status -ne 'ready' -or @($doctor.installatio
 $gamePath = $doctor.installations[0].gamePath
 dotnet build (Join-Path $packageRoot 'src\SdvKit.GameSide\SdvKit.GameSide.csproj') -c Release "-p:SdvGamePath=$gamePath" --artifacts-path (Join-Path $packageRoot '.sdvkit\game-side-build')
 if ($LASTEXITCODE -ne 0) { throw 'The extracted GameSide build failed.' }
+foreach ($file in 'Stardew Valley.dll', 'StardewModdingAPI.dll') {
+    $version = (Get-Item -LiteralPath (Join-Path $gamePath $file)).VersionInfo
+    "$file $($version.FileMajorPart).$($version.FileMinorPart).$($version.FileBuildPart)"
+}
 ```
 
 Keep the selected ZIP unchanged. Its archive identity and extracted build proof are separate: the latter checks that the distributed source compiles against the selected installed game.
+
+CI never compiles the game-bound half, so do not publish without this build. Record the two versions it prints in the release acceptance.
 
 ## Run the selected live checks
 

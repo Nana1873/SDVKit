@@ -13,10 +13,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The pull-request merge commit and its base parent, for the GameSide change check.
+          fetch-depth: 2
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Flag game-bound changes
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          # The game-bound build also compiles the src/SdvKit.Cli files that the GameSide project links.
+          [xml]$project = Get-Content -Raw src/SdvKit.GameSide/SdvKit.GameSide.csproj
+          $linked = @($project.Project.ItemGroup.Compile |
+            Where-Object { $_.Include -like '..\*' } |
+            ForEach-Object { 'src/' + ($_.Include.Substring(3) -replace '\\', '/') })
+          $changed = @(git diff --name-only HEAD^1 HEAD -- src/SdvKit.GameSide @linked)
+          if ($changed.Count -gt 0) {
+            $message = 'This pull request changes code that the game-bound GameSide build compiles. CI does not compile that build; run scripts/build-gameside.ps1 locally and record its result in the pull request.'
+            Write-Output "::warning title=GameSide not compiled by CI::$message"
+            $files = ($changed | ForEach-Object { "- ``$_``" }) -join "`n"
+            "### GameSide not compiled by CI`n`n$message`n`n$files`n" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
 
       - name: Restore
         run: dotnet restore SDVKit.sln
