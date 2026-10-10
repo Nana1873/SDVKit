@@ -575,6 +575,25 @@ enabled_tools = [
 ]
 ```
 
+## Call a tool from the command line
+
+`project review call` runs one tool once, with the same selection, binding and
+opt-ins as `mcp serve`, and prints its structured result as JSON. Pass the
+tool's arguments as one JSON object, or omit it for tools without arguments:
+
+```powershell
+& $sdvkit project review call stardew_runtime_get
+& $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"before"}'
+& $sdvkit project review call stardew_input_press '{"button":"Escape"}' --allow-input
+& $sdvkit project review call stardew_inventory_get --topology network-2 --role farmhand
+```
+
+Exit `0` means the tool succeeded, and exit `3` means it returned an error or is
+not available for the selection and its opt-ins; the message lists the
+available tools. A virtual cursor set by one call stays set until
+`stardew_input_cursor_clear`. Ctrl+C cancels a pending input action and never
+retries it.
+
 ## Connect over HTTP
 
 Add `--http` to serve the same tools, with the same startup binding and opt-ins,
