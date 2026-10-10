@@ -184,7 +184,7 @@ public static partial class CliApplication
                 && string.Equals(arguments[2], "command", StringComparison.Ordinal))
             {
                 output.WriteLine(ReviewCommandUsage.TrimStart());
-                WriteReviewFixtureConsoleUsage(output);
+                WriteReviewConsoleCommandUsage(output);
             }
             else
             {
@@ -216,9 +216,13 @@ public static partial class CliApplication
             return UsageError;
         }
 
-        if (string.Equals(action, "command", StringComparison.Ordinal))
+        if (string.Equals(action, "command", StringComparison.Ordinal)
+            && IsSdvKitConsoleLine(command!)
+            && !(string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
+                && ProjectReviewConsoleLine.IsTitleInputOrViewport(command!)))
         {
-            WarnIfSdvKitConsoleLine(command!, error);
+            error.WriteLine(SdvKitConsoleLineRejection);
+            return UsageError;
         }
 
         LiveLabCommandResult result = string.Equals(

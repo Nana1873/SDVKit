@@ -137,17 +137,16 @@ public static partial class CliApplication
         return false;
     }
 
+    private const string SdvKitConsoleLineRejection =
+        "SDVKit's own console lines ('sdvkit ...') are internal. Use 'project review call <tool>' for input, screenshots, fixtures and lab state (see 'project review call --help'), or 'project review split-screen'/'project review network' for lifecycle. 'project review command' runs the reviewed mod's and SMAPI's console commands, plus 'sdvkit input' and 'sdvkit screenshot viewport' lines only while an owned test-save fixture is not loaded, such as at the title screen.";
+
     /// <summary>
-    /// SDVKit's own console grammar is internal from 2.0; lines through 'project review command'
-    /// still run for existing scripts, with a pointer to the supported surface.
+    /// SDVKit's own console grammar is internal from 2.0: the CLI reaches it only through tools and
+    /// the lifecycle commands, never through a quoted line.
     /// </summary>
-    private static void WarnIfSdvKitConsoleLine(string command, TextWriter error)
+    private static bool IsSdvKitConsoleLine(string command)
     {
         string[] tokens = ReviewCommandLine.Split(command);
-        if (tokens.Length > 0 && ReviewCommandLine.IsSdvKitCommand(tokens[0]))
-        {
-            error.WriteLine(
-                "warning: SDVKit console lines through 'project review command' are deprecated. Use 'project review call <tool>' for input, screenshots and fixtures, or 'project review split-screen'/'project review network' for lifecycle. 'project review command' remains for the reviewed mod's and SMAPI's console commands.");
-        }
+        return tokens.Length > 0 && ReviewCommandLine.IsSdvKitCommand(tokens[0]);
     }
 }

@@ -26,8 +26,8 @@ special objects and inferred purchase outcomes stay unavailable.
 The commands below use the CLI. Recorded acceptance used CLI lifecycle and
 captures together with native MCP `stardew_shop_get`, `stardew_menu_get`,
 diagnostics and opt-in `stardew_input_click` for the two completed clicks.
-The CLI console equivalents below deliver to the same input adapter; require
-the observed effect after delivery before continuing. Screenshots support the typed proof; they do
+The CLI steps below call the same tools through `project review call`; require
+the observed effect after each click before continuing. Screenshots support the typed proof; they do
 not replace it.
 
 ## Select the installation and lab
@@ -291,8 +291,19 @@ Create the disposable baseline only if it is absent and all roles are stopped.
 ```powershell
 & $sdvkit project review start $broken --game-path $gamePath --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-broken.json')
-& $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-broken.json')
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-broken.json')
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-broken.json')
 & $sdvkit project review diagnostics --mod ExampleAuthor.ShopPurchaseProof --limit 20 --topology single --json |
@@ -329,8 +340,19 @@ reload or alter staged files.
 ```powershell
 & $sdvkit project review start $fixed --game-path $gamePath --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-fixed.json')
-& $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-fixed.json')
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-fixed.json')
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
+}
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-fixed.json')
 & $sdvkit project review shop --topology single --json |
@@ -358,14 +380,7 @@ offer IDs.
 
 ## Buy once and prove the deltas
 
-> [!NOTE]
-> This recipe's script sends deprecated `sdvkit ...` console lines through
-> `project review command` and evaluates `commandWritten`, so it prints a
-> deprecation warning. New scripts should call `stardew_input_click` with
-> `project review call` and `--allow-input` instead. See
-> [opt-in input](mcp.md#opt-in-input).
-
-Send one bounded process-local click through the existing review console path:
+Send one bounded process-local click with the input tool:
 
 ```powershell
 $menuBefore = Get-Content (Join-Path $evidence 'menu-before.json') -Raw | ConvertFrom-Json
@@ -382,17 +397,23 @@ if ($saleRows.Count -lt 1) {
 $saleRow = $saleRows[0]
 $x = $saleRow.bounds.x + [int]($saleRow.bounds.width / 2)
 $y = $saleRow.bounds.y + [int]($saleRow.bounds.height / 2)
-$click = "sdvkit input click $x $y MouseLeft 1 $($menuBefore.uiRevision)"
-& $sdvkit project review command $click --topology single --json |
-    Tee-Object (Join-Path $evidence 'purchase-click.json')
+$clickArguments = @{
+    x = $x; y = $y; button = 'MouseLeft'; count = 1
+    uiRevision = [string]$menuBefore.uiRevision
+} | ConvertTo-Json -Compress
+$click = & $sdvkit project review call stardew_input_click $clickArguments --allow-input |
+    Tee-Object (Join-Path $evidence 'purchase-click.json') | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $click.succeeded -ne $true -or $click.released -ne $true) {
+    throw 'The purchase click did not complete; inspect the shop before any repeat.'
+}
 & $sdvkit project review shop --topology single --json |
     Tee-Object (Join-Path $evidence 'shop-after-purchase.json')
 ```
 
 Do not send another action until the fresh shop capture establishes what happened.
-An acknowledgement alone is not purchase proof. For a timeout or
-`mayHaveRun=true`, inspect current shop state before deciding whether any repeat
-is safe.
+A completed click alone is not purchase proof. If the click fails or is
+cancelled, inspect current shop state before deciding whether any repeat is safe;
+never retry it automatically.
 
 Compare only captures with the same launch ID, shop identity scope and player
 ID. Require money to decrease by exactly 10, offer 0 stock to change from 3 to 2,
@@ -428,9 +449,15 @@ if ($slotComponents.Count -ne 1) {
 $slot = $slotComponents[0]
 $slotX = $slot.bounds.x + [int]($slot.bounds.width / 2)
 $slotY = $slot.bounds.y + [int]($slot.bounds.height / 2)
-$place = "sdvkit input click $slotX $slotY MouseLeft 1 $($menuHeld.uiRevision)"
-& $sdvkit project review command $place --topology single --json |
-    Tee-Object (Join-Path $evidence 'place-held.json')
+$placeArguments = @{
+    x = $slotX; y = $slotY; button = 'MouseLeft'; count = 1
+    uiRevision = [string]$menuHeld.uiRevision
+} | ConvertTo-Json -Compress
+$place = & $sdvkit project review call stardew_input_click $placeArguments --allow-input |
+    Tee-Object (Join-Path $evidence 'place-held.json') | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $place.succeeded -ne $true -or $place.released -ne $true) {
+    throw 'The placement click did not complete; inspect the shop before any repeat.'
+}
 & $sdvkit project review shop --topology single --json |
     Tee-Object (Join-Path $evidence 'shop-final.json')
 ```

@@ -515,14 +515,6 @@ does not prove its runtime effect.
 
 ## Prove default and unsaved slider steps
 
-> [!NOTE]
-> This recipe's script sends deprecated `sdvkit ...` console lines through
-> `project review command` and evaluates `commandWritten`, so it prints a
-> deprecation warning. New scripts should call the equivalent tools with
-> `project review call` and `--allow-input`: `stardew_input_click`,
-> `stardew_input_drag`, `stardew_input_cursor_clear` and
-> `stardew_screenshot_capture`. See [opt-in input](mcp.md#opt-in-input).
-
 Prepare the disposable fixture only after exclusive ownership is granted and all
 previous roles are confirmed stopped/reset:
 
@@ -533,10 +525,18 @@ if ($LASTEXITCODE -ne 0) { throw 'Disposable baseline preparation failed.' }
     --companion $provider --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-default.json')
 if ($LASTEXITCODE -ne 0) { throw 'Default review start failed.' }
-$status = & $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-default.json') | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $status.state -cne 'running') {
-    throw 'Default review status failed.'
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-default.json')
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
 }
 $targets = @($status.artifacts | Where-Object {
     $_.role -ceq 'target' -and $_.uniqueId -ceq 'ExampleAuthor.GmcmArrivalRow'
@@ -657,51 +657,42 @@ function Invoke-OwnedViewportScreenshot(
     if (Test-Path -LiteralPath $screenshot) {
         throw "Choose a fresh screenshot label: $Label"
     }
-    $offset = (Get-Item -LiteralPath $smapiLog).Length
-    $requestedAt = [DateTime]::UtcNow
-    $commandJson = & $sdvkit project review command `
-        "sdvkit screenshot viewport $Label" --topology single --json
-    $commandExit = $LASTEXITCODE
-    $commandJson | Set-Content -LiteralPath (
-        Join-Path $evidence "$EvidenceName-command.json")
-    $delivery = ($commandJson -join [Environment]::NewLine) | ConvertFrom-Json
-    if ($commandExit -ne 0 -or $delivery.commandWritten -ne $true) {
-        throw "Screenshot command delivery failed: $Label"
+    $arguments = @{ mode = 'viewport'; label = $Label } | ConvertTo-Json -Compress
+    $resultJson = & $sdvkit project review call stardew_screenshot_capture $arguments
+    $resultExit = $LASTEXITCODE
+    $resultJson | Set-Content -LiteralPath (Join-Path $evidence "$EvidenceName-result.json")
+    $result = ($resultJson -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($resultExit -ne 0 -or $result.fileName -cne "SDVKit-$Label.png") {
+        throw "Screenshot capture failed: $Label"
     }
-    try {
-        $expectedSuccess = "Created isolated viewport screenshot '$screenshot'."
-        Wait-OwnedLogText $smapiLog $offset $expectedSuccess 10 |
-            Set-Content -LiteralPath (Join-Path $evidence "$EvidenceName-log-tail.txt")
-        $deadline = [DateTime]::UtcNow.AddSeconds(5)
-        $lastObserverFailure = $null
-        do {
-            try {
-                $file = Get-Item -LiteralPath $screenshot -Force
-                if ($file.PSIsContainer -or
-                    ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
-                    $file.Length -lt 1 -or
-                    $file.LastWriteTimeUtc -lt $requestedAt.AddSeconds(-2)) {
-                    throw 'The screenshot file is empty, linked, stale, or not regular.'
-                }
-                [pscustomobject]@{
-                    path = $file.FullName
-                    bytes = $file.Length
-                    sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
-                    lastWriteTimeUtc = $file.LastWriteTimeUtc.ToString('O')
-                } | ConvertTo-Json | Set-Content -LiteralPath (
-                    Join-Path $evidence "$EvidenceName-file.json")
-                return $file.FullName
-            }
-            catch { $lastObserverFailure = $_.Exception.Message }
-            Start-Sleep -Milliseconds 100
-        } while ([DateTime]::UtcNow -lt $deadline)
-        throw "Screenshot file confirmation timed out: $lastObserverFailure"
+    $file = Get-Item -LiteralPath $screenshot -Force
+    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($file.PSIsContainer -or
+        ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        "sha256:$hash" -cne $result.sha256) {
+        throw "The screenshot file does not match the capture result: $Label"
     }
-    catch {
-        $_ | Out-String | Set-Content -LiteralPath (
-            Join-Path $evidence "$EvidenceName-observer-failure.txt")
-        throw
+    return $file.FullName
+}
+
+function Invoke-OwnedInputTool(
+    [string] $Tool,
+    [hashtable] $Arguments,
+    [string] $EvidenceName
+) {
+    $callArguments = @($Tool)
+    if ($Arguments) { $callArguments += ($Arguments | ConvertTo-Json -Compress) }
+    $resultJson = & $sdvkit project review call @callArguments --allow-input
+    $resultExit = $LASTEXITCODE
+    $resultJson | Set-Content -LiteralPath (Join-Path $evidence "$EvidenceName-result.json")
+    $result = ($resultJson -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($resultExit -ne 0 -or $result.succeeded -ne $true) {
+        throw "Input tool did not complete: $Tool ($EvidenceName)"
     }
+    if ($Tool -cne 'stardew_input_cursor_clear' -and $result.released -ne $true) {
+        throw "Input tool did not confirm release: $Tool ($EvidenceName)"
+    }
+    return $result
 }
 
 function Get-OwnedMenuRevision([string] $EvidenceName) {
@@ -753,23 +744,23 @@ inspection may return no numeric components, so the screenshot owns slider
 location and value. Translate the observed screenshot point to screen-local UI
 coordinates when scaling differs.
 
-Set `$sliderMinX`, `$sliderMidX`, `$sliderMaxX`, and `$sliderY` from this exact
-screenshot. Here `$sliderMaxX` is the visible maximum tick or knob center, not
+Set `$sliderMinX`, `$sliderMidX`, `$sliderMaxX`, and `$sliderY` as integers from
+this exact screenshot. Here `$sliderMaxX` is the visible maximum tick or knob center, not
 the maximum drag endpoint. The displayed default at `$sliderMinX`
 proves the lower endpoint. Calculate one point strictly between the observed
 middle and maximum tick centers; this is an intentionally off-step pointer
 position, not a fourth valid value. Use a fresh menu revision for every action.
-The atomic click and drag commands prepare the process-local cursor through one
+The atomic click and drag tools prepare the process-local cursor through one
 neutral game update before pressing; the drag additionally holds its endpoint
 for one update before release. Move to the middle step with one click, then drag
 from that known middle handle to the off-step point, capturing each result:
 
 ```powershell
 $middleRevision = Get-OwnedMenuRevision 'menu-before-middle'
-Invoke-OwnedReviewCommand `
-    "sdvkit input click $sliderMidX $sliderY MouseLeft 1 $middleRevision" `
-    'The complete chord was observed and released.' `
-    'middle-click'
+[void](Invoke-OwnedInputTool 'stardew_input_click' @{
+    x = $sliderMidX; y = $sliderY; button = 'MouseLeft'; count = 1
+    uiRevision = $middleRevision
+} 'middle-click')
 [void](Invoke-OwnedViewportScreenshot 'gmcm-number-middle' 'screenshot-middle')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'middle-unsaved-state'
@@ -781,10 +772,10 @@ if ($sliderOffStepX -le $sliderMidX -or $sliderOffStepX -ge $sliderMaxX) {
     throw 'The observed slider is too narrow for a distinct off-step click.'
 }
 $offStepRevision = Get-OwnedMenuRevision 'menu-before-off-step'
-Invoke-OwnedReviewCommand `
-    "sdvkit input drag $sliderMidX $sliderY $sliderOffStepX $sliderY MouseLeft 6 $offStepRevision" `
-    'The complete chord was observed and released.' `
-    'off-step-drag'
+[void](Invoke-OwnedInputTool 'stardew_input_drag' @{
+    x = $sliderMidX; y = $sliderY; endX = $sliderOffStepX; endY = $sliderY
+    button = 'MouseLeft'; durationTicks = 6; uiRevision = $offStepRevision
+} 'off-step-drag')
 [void](Invoke-OwnedViewportScreenshot 'gmcm-number-off-step' 'screenshot-off-step')
 Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'off-step-unsaved-state'
@@ -814,10 +805,10 @@ if ($sliderMaxDragX -le $sliderMaxX) {
 }
 
 $maximumRevision = Get-OwnedMenuRevision 'menu-before-maximum'
-Invoke-OwnedReviewCommand `
-    "sdvkit input drag $sliderCurrentX $sliderY $sliderMaxDragX $sliderY MouseLeft 6 $maximumRevision" `
-    'The complete chord was observed and released.' `
-    'maximum-drag'
+[void](Invoke-OwnedInputTool 'stardew_input_drag' @{
+    x = $sliderCurrentX; y = $sliderY; endX = $sliderMaxDragX; endY = $sliderY
+    button = 'MouseLeft'; durationTicks = 6; uiRevision = $maximumRevision
+} 'maximum-drag')
 [void](Invoke-OwnedViewportScreenshot `
     'gmcm-number-unsaved-max' `
     'screenshot-unsaved-maximum')
@@ -825,7 +816,7 @@ Invoke-OwnedReviewCommand `
     'gmcm_arrival_row_state' 'ArrivalRow=15' 'maximum-unsaved-state'
 ```
 
-Require completed process-local click/drag release acknowledgements. The
+Require every click and drag result to report `succeeded=true` and `released=true`. The
 default, middle, and endpoint screenshots must show **Row 15**, **Row 17**, and
 **Row 19**. Inspect the off-step screenshot and record whether GMCM snapped that
 between-ticks drag to Row 17 or Row 19; any Row 16, Row 18, out-of-range value,
@@ -842,9 +833,11 @@ focus automation, or coordinates from another run.
 ## Save, reconcile, and retain the export
 
 Read the current screenshot again and set `$saveX`/`$saveY` to the exact Save
-control center. The legacy command reports delivery before game-side completion,
-so wait separately for the exact input acknowledgement and then for the saved
-file within a bounded interval. Preserve the last observer error if the file
+control center. GMCM writes the staged config during the click, so the click
+tool itself usually ends with exit `3` and `reviewStagingOwnershipDrifted`: the
+input ran, and SDVKit then refused to report on the changed staging. Accept only
+that outcome or success, never repeat the click, and wait separately for the
+saved file within a bounded interval. Preserve the last observer error if the file
 cannot be confirmed:
 
 ```powershell
@@ -869,10 +862,17 @@ function Wait-ArrivalRowFile(
 }
 
 $saveRevision = Get-OwnedMenuRevision 'menu-before-save'
-Invoke-OwnedReviewCommand `
-    "sdvkit input click $saveX $saveY MouseLeft 1 $saveRevision" `
-    'The complete chord was observed and released.' `
-    'save-click'
+$saveArguments = @{
+    x = $saveX; y = $saveY; button = 'MouseLeft'; count = 1; uiRevision = $saveRevision
+} | ConvertTo-Json -Compress
+$saveJson = & $sdvkit project review call stardew_input_click $saveArguments --allow-input
+$saveExit = $LASTEXITCODE
+$saveJson | Set-Content -LiteralPath (Join-Path $evidence 'save-click-result.json')
+$saveText = $saveJson -join [Environment]::NewLine
+if ($saveExit -ne 0 -and
+    -not ($saveExit -eq 3 -and $saveText.Contains('[reviewStagingOwnershipDrifted]'))) {
+    throw 'The Save click failed before GMCM changed the staged config.'
+}
 try {
     [void](Wait-ArrivalRowFile $stagedConfig 19 10)
 }
@@ -883,8 +883,8 @@ catch {
 }
 ```
 
-Now require one ordinary owned menu request to fail with staged-file drift. That
-failure is expected evidence that Save changed bytes; do not repeat input or edit
+Now require one ordinary owned menu request to fail with the same staged-file
+drift. That failure is expected evidence that Save changed bytes; do not repeat input or edit
 an ownership marker. Accept only the selected mod's valid root config:
 
 ```powershell
@@ -912,10 +912,7 @@ if ((Get-FileHash $export -Algorithm SHA256).Hash -ne
     (Get-FileHash $stagedConfig -Algorithm SHA256).Hash) {
     throw 'The retained export differs from the reconciled staged config.'
 }
-Invoke-OwnedReviewCommand `
-    'sdvkit input cursor clear' `
-    'Cleared the virtual review cursor.' `
-    'saved-cursor-clear'
+[void](Invoke-OwnedInputTool 'stardew_input_cursor_clear' $null 'saved-cursor-clear')
 ```
 
 Require old/new config hashes, unchanged non-config content identity, exact
@@ -982,13 +979,20 @@ if ((Get-FileHash $export -Algorithm SHA256).Hash -ne
     --companion $provider --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-configured.json')
 if ($LASTEXITCODE -ne 0) { throw 'Configured restart failed.' }
-$configuredStatusJson = & $sdvkit project review status --topology single --json
-$configuredStatusExit = $LASTEXITCODE
-$configuredStatusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-configured.json')
-$configuredStatus = ($configuredStatusJson -join [Environment]::NewLine) | ConvertFrom-Json
-if ($configuredStatusExit -ne 0 -or $configuredStatus.state -cne 'running') {
-    throw 'Configured review status failed.'
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $statusExit = $LASTEXITCODE
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until (($statusExit -eq 0 -and $status.lab.gameSide.testSave.phase -ceq 'passed') -or
+    [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-configured.json')
+if ($statusExit -ne 0 -or $status.state -cne 'running' -or
+    $status.lab.gameSide.testSave.phase -cne 'passed') {
+    throw 'The review did not become ready.'
 }
+$configuredStatus = $status
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $configuredStatus.labRoot $configuredStatus.persistentSavesPath))
 $stardewData = Split-Path $persistentSaves -Parent

@@ -80,19 +80,19 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 Each fixture operation is a native MCP tool. Call one from the command line with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`; for network-2, add `--topology network-2` and one explicit `--role`. Arguments are in [opt-in fixture actions](mcp.md#opt-in-fixture-actions), together with the lab tools for time, weather, season, warp, zoom and window.
 
-| Tool | Deprecated console line | Role / result |
-| --- | --- | --- |
-| `stardew_fixture_status_get` | `sdvkit fixture status` | Any verified role; owned fixture state |
-| `stardew_fixture_building_ensure` | `sdvkit fixture building ensure <alias> <building-kind> <x> <y>` | Single/host; idempotent building preparation |
-| `stardew_fixture_object_ensure` | `sdvkit fixture object ensure <alias-or-id> <qualified-item-id>` | Single/host; owned object |
-| `stardew_fixture_object_clear` | `sdvkit fixture object clear-owned <alias-or-id>` | Single/host; remove the exact owned object |
-| `stardew_fixture_animal_ensure` | `sdvkit fixture animal ensure <alias-or-id> <animal-kind>` | Single/host; compatible owned animal |
-| `stardew_fixture_enter` | `sdvkit fixture enter <alias-or-id>` | Any verified role; natural entry to an owned interior |
-| `stardew_fixture_enter` with `greenhouse` | `sdvkit fixture enter greenhouse` | Any verified role; exact loaded Greenhouse's natural entry |
-| `stardew_fixture_farm` | `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
-| `stardew_fixture_fishing_prepare` | `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
+| Tool | Role / result |
+| --- | --- |
+| `stardew_fixture_status_get` | Any verified role; owned fixture state |
+| `stardew_fixture_building_ensure` | Single/host; idempotent building preparation |
+| `stardew_fixture_object_ensure` | Single/host; owned object |
+| `stardew_fixture_object_clear` | Single/host; remove the exact owned object |
+| `stardew_fixture_animal_ensure` | Single/host; compatible owned animal |
+| `stardew_fixture_enter` | Any verified role; natural entry to an owned interior |
+| `stardew_fixture_enter` with `greenhouse` | Any verified role; exact loaded Greenhouse's natural entry |
+| `stardew_fixture_farm` | Any verified role; allowed natural Farm exit |
+| `stardew_fixture_fishing_prepare` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
 
-The console lines still run through `project review command` for existing scripts, but they are deprecated and print a warning. Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The operations are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. Require the GameSide result and direct effect evidence.
+Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The operations are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. Require the GameSide result and direct effect evidence.
 
 ### Fishing preparation
 

@@ -75,17 +75,17 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Canonical structured Data | `project review data` | Data tools | Exact active single player, network role, or local screen validates access to process-shared Data; no per-screen cache |
 | Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
 | Audio and observed mod assets | `project review audio/mod-assets` | Audio/mod-asset tools | Active single review; CLI-parity bounds, observed-only asset coverage, no audio or asset export |
-| Map / viewport screenshots | Quoted review console command | Screenshot tool | Active selected role or exact local screen; map needs loaded world; viewport is cropped to the selected local screen |
-| Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role or exact local screen; MCP requires `--allow-input`; screen-bound MCP omits shared-window text; gestures require an active menu and fresh UI revision |
-| Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
-| Fixture building / animal ensure | Quoted review console command | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
-| Fixture object ensure / clear | Quoted review console command or `project review call` | `stardew_fixture_object_ensure`, `stardew_fixture_object_clear` | Owned disposable world; single or host only; fixture opt-in |
-| Fishing preparation / rod observation | Quoted fixture command / runtime status | Observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
+| Map / viewport screenshots | `project review call stardew_screenshot_capture`; `sdvkit screenshot viewport` through `project review command` only while the owned fixture is not loaded | Screenshot tool | Active selected role or exact local screen; map needs loaded world; viewport is cropped to the selected local screen |
+| Button, chord, cursor, wheel, mouse gestures, and bounded text | `project review call stardew_input_*`; `sdvkit input` through `project review command` only while the owned fixture is not loaded | Input tools | Active selected role or exact local screen; MCP requires `--allow-input`; screen-bound MCP omits shared-window text; gestures require an active menu and fresh UI revision |
+| Fixture status / navigation | `project review call stardew_fixture_*` | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
+| Fixture building / animal ensure | `project review call stardew_fixture_*` | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
+| Fixture object ensure / clear | `project review call` | `stardew_fixture_object_ensure`, `stardew_fixture_object_clear` | Owned disposable world; single or host only; fixture opt-in |
+| Fishing preparation / rod observation | `project review call stardew_fixture_fishing_prepare` / runtime status | `stardew_fixture_fishing_prepare`; observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
 | Fixture save | No standalone fixture-save console command | `stardew_fixture_save` | Owned disposable world; single or host; MCP fixture opt-in |
 | Lab time, weather and season | `project review call stardew_lab_set_*` | `stardew_lab_set_time`, `stardew_lab_set_weather`, `stardew_lab_set_season` | Owned disposable world; single or host; fixture opt-in |
 | Lab warp, zoom and window | `project review call stardew_lab_*` | `stardew_lab_warp`, `stardew_lab_set_zoom`, `stardew_lab_set_window` | Owned disposable world; any role; fixture opt-in |
 
-`network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role or local-screen selection is fixed at server startup. Narrow CLI title/loading exceptions do not bypass MCP's own readiness checks.
+`network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role or local-screen selection is fixed at server startup. The CLI title/loading exception for console input and viewport lines does not bypass MCP's own readiness checks.
 
 ## Read a result
 

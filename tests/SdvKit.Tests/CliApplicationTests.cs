@@ -1773,12 +1773,40 @@ public sealed class CliApplicationTests
         Assert.Contains("console command of the reviewed mod or of SMAPI", output, StringComparison.Ordinal);
         Assert.Contains("project review call <tool>", output, StringComparison.Ordinal);
         Assert.Contains("project review split-screen", output, StringComparison.Ordinal);
-        Assert.Contains("deprecated", output, StringComparison.Ordinal);
+        Assert.Contains("rejected here", output, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error);
     }
 
-    [Fact]
-    public void SdvKitConsoleLinesStillDispatchWithADeprecationWarning()
+    [Theory]
+    [InlineData("sdvkit fixture status")]
+    [InlineData("  SDVKit input press C")]
+    [InlineData("sdvkit screenshot map label")]
+    [InlineData("sdvkit fixture farm")]
+    [InlineData("sdvkit input cancel aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("sdvkit input request aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa press F8")]
+    [InlineData("sdvkit screenshot capture aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa viewport x")]
+    [InlineData("sdvkit input press F8 screen=1")]
+    [InlineData("\"sdvkit\" split-screen join")]
+    public void SdvKitConsoleLinesAreRejectedWithoutDispatch(string line)
+    {
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", line, "--json");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, output);
+        Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
+        Assert.Contains("project review split-screen", error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("sdvkit input press MouseLeft")]
+    [InlineData("sdvkit input cursor 100 200")]
+    [InlineData("sdvkit screenshot viewport title-1")]
+    public void TitleInputAndViewportLinesReachTheConsoleService(string line)
     {
         string? received = null;
         ProjectReviewConsoleCommandRunner runner = (command, _, _, _) =>
@@ -1789,11 +1817,25 @@ public sealed class CliApplicationTests
         (int exitCode, _, string error) = RunWithProjectReview(
             (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
             runner,
-            "project", "review", "command", "sdvkit fixture status", "--json");
+            "project", "review", "command", line, "--json");
 
         Assert.Equal(0, exitCode);
-        Assert.Equal("sdvkit fixture status", received);
-        Assert.Contains("deprecated", error, StringComparison.Ordinal);
+        Assert.Equal(line, received);
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void TitleInputLinesAreRejectedForNetworkTwo()
+    {
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, _, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            "project", "review", "command", "sdvkit input press F8",
+            "--topology", "network-2", "--role", "host", "--json");
+
+        Assert.Equal(2, exitCode);
         Assert.Contains("project review call <tool>", error, StringComparison.Ordinal);
     }
 
