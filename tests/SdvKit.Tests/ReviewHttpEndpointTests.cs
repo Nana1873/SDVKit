@@ -243,6 +243,83 @@ public sealed class ReviewHttpEndpointTests
         }
     }
 
+    [Fact]
+    public void PublishedResponseIsTakenExactlyOnceThroughTheEndpoint()
+    {
+        using var lab = new FakeLab();
+        string responsePath = Path.Combine(lab.Runtime.Path, "review-data", Guid.NewGuid().ToString("N") + ".json");
+        HttpProjectReviewCommandSender sender = lab.Sender();
+
+        Assert.Equal(ReviewResponseReadStatus.Pending, sender.TryTake(responsePath, 1024).Status);
+        ReviewResponseMailbox.Publish(responsePath, "{\"ok\":true}"u8);
+        ReviewResponseRead first = sender.TryTake(responsePath, 1024);
+        ReviewResponseRead second = sender.TryTake(responsePath, 1024);
+
+        Assert.Equal(ReviewResponseReadStatus.Available, first.Status);
+        Assert.Equal("{\"ok\":true}", Encoding.UTF8.GetString(first.Bytes!));
+        Assert.Equal(ReviewResponseReadStatus.Pending, second.Status);
+    }
+
+    [Fact]
+    public void ResponsesOutsideTheRuntimeRootOrOverTheLimitAreNotReturned()
+    {
+        using var lab = new FakeLab();
+        using TemporaryDirectory other = new();
+        string foreign = Path.Combine(other.Path, Guid.NewGuid().ToString("N") + ".json");
+        string large = Path.Combine(lab.Runtime.Path, Guid.NewGuid().ToString("N") + ".json");
+        ReviewResponseMailbox.Publish(foreign, "{}"u8);
+        ReviewResponseMailbox.Publish(large, new byte[2048]);
+        HttpProjectReviewCommandSender sender = lab.Sender();
+
+        Assert.Equal(ReviewResponseReadStatus.Pending, sender.TryTake(foreign, 1024).Status);
+        Assert.Equal(ReviewResponseReadStatus.Invalid, sender.TryTake(large, 1024).Status);
+        Assert.True(ReviewResponseMailbox.TryTake(foreign, out _));
+    }
+
+    [Fact]
+    public void BusyEndpointLeavesTheResponsePendingForALaterTake()
+    {
+        using var lab = new FakeLab();
+        string responsePath = Path.Combine(lab.Runtime.Path, Guid.NewGuid().ToString("N") + ".json");
+        ReviewResponseMailbox.Publish(responsePath, "{}"u8);
+        var idle = new List<TcpClient>();
+        try
+        {
+            for (int index = 0; index < 8; index++)
+            {
+                var client = new TcpClient();
+                client.Connect(IPAddress.Loopback, lab.Endpoint.Port);
+                idle.Add(client);
+            }
+
+            Thread.Sleep(200);
+            Assert.Equal(ReviewResponseReadStatus.Pending, lab.Sender().TryTake(responsePath, 1024).Status);
+            Assert.True(ReviewResponseMailbox.Contains(responsePath));
+        }
+        finally
+        {
+            foreach (TcpClient client in idle)
+            {
+                client.Dispose();
+            }
+        }
+
+        Thread.Sleep(200);
+        Assert.Equal(ReviewResponseReadStatus.Available, lab.Sender().TryTake(responsePath, 1024).Status);
+    }
+
+    [Fact]
+    public void ResponseRouteRequiresTheToken()
+    {
+        using var lab = new FakeLab();
+        string responsePath = Path.Combine(lab.Runtime.Path, Guid.NewGuid().ToString("N") + ".json");
+        ReviewResponseMailbox.Publish(responsePath, "{}"u8);
+        var stranger = new HttpProjectReviewCommandSender(lab.Endpoint.Port, ReviewHttpContract.CreateToken(), lab.LaunchId);
+
+        Assert.Equal(ReviewResponseReadStatus.Invalid, stranger.TryTake(responsePath, 1024).Status);
+        Assert.True(ReviewResponseMailbox.Contains(responsePath));
+    }
+
     private sealed class FakeLab : IDisposable
     {
         private readonly CancellationTokenSource _stop = new();
@@ -250,7 +327,7 @@ public sealed class ReviewHttpEndpointTests
 
         public FakeLab(Func<string[], bool>? dispatch = null, TimeSpan? executionTimeout = null, bool pump = true)
         {
-            Endpoint = ReviewHttpEndpoint.Start(LaunchId, Token, Queue, _ => { }, executionTimeout);
+            Endpoint = ReviewHttpEndpoint.Start(LaunchId, Token, Queue, Runtime.Path, _ => { }, executionTimeout);
             Func<string[], bool> run = dispatch ?? (arguments => Record(Executed, arguments));
             if (pump)
             {
@@ -264,6 +341,8 @@ public sealed class ReviewHttpEndpointTests
                 });
             }
         }
+
+        public TemporaryDirectory Runtime { get; } = new();
 
         public string LaunchId { get; } = Guid.NewGuid().ToString("N");
 
@@ -282,6 +361,7 @@ public sealed class ReviewHttpEndpointTests
             _stop.Cancel();
             _pump?.Wait(TimeSpan.FromSeconds(5));
             Endpoint.Dispose();
+            Runtime.Dispose();
         }
     }
 }

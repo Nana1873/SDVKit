@@ -55,7 +55,10 @@ public sealed class ModEntry : Mod
         });
         BackgroundOptionsReplacement.Install(() => BackgroundRun, Monitor);
         _statusWriter = new StatusWriter(launchId, statusPath);
-        StartCommandEndpoint(launchId);
+        StartCommandEndpoint(
+            launchId,
+            Path.GetDirectoryName(statusPath)
+                ?? throw new InvalidOperationException("The GameSide status path has no runtime directory."));
         _launchId = launchId;
         _stopRequestPath = stopRequestPath;
         _labWindowModeRequired = string.Equals(
@@ -414,7 +417,7 @@ public sealed class ModEntry : Mod
         GameRunner.instance.Exit();
     }
 
-    private void StartCommandEndpoint(string launchId)
+    private void StartCommandEndpoint(string launchId, string runtimeRoot)
     {
         string? token = Environment.GetEnvironmentVariable(ReviewHttpContract.TokenVariable)?.Trim();
         if (!ReviewHttpContract.IsToken(token))
@@ -429,6 +432,7 @@ public sealed class ModEntry : Mod
                 launchId,
                 token!,
                 _commandQueue,
+                runtimeRoot,
                 message => Monitor.Log(message, LogLevel.Warn));
             _statusWriter!.HttpPort = _commandEndpoint.Port;
             Monitor.Log($"SDVKit review command endpoint listens on 127.0.0.1:{_commandEndpoint.Port}.", LogLevel.Trace);

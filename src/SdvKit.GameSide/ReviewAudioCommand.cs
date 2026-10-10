@@ -898,7 +898,7 @@ internal static class ReviewAudioResponseSerializer
     }
 }
 
-internal static class ReviewAudioResponseFile
+internal static class ReviewAudioResponsePublisher
 {
     public static ReviewAudioReport Write(
         string runtimePath,
@@ -916,7 +916,7 @@ internal static class ReviewAudioResponseFile
         byte[] bytes = ReviewAudioResponseSerializer.SerializeBounded(
             envelope,
             out ReviewAudioReport serializedReport);
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
         return serializedReport;
     }
 
@@ -1141,7 +1141,7 @@ internal static class ReviewAudioCommand
             report);
         try
         {
-            report = ReviewAudioResponseFile.Write(runtimePath, envelope);
+            report = ReviewAudioResponsePublisher.Write(runtimePath, envelope);
             monitor.Log(
                 $"SDVKit review-audio completed '{report.Operation}' with state '{report.State}'.",
                 report.Problems.Count == 0 ? LogLevel.Info : LogLevel.Error);

@@ -524,50 +524,7 @@ public sealed class ReviewModAssetCommandTests
     }
 
     [Fact]
-    public void ResponseWriterNeverDeletesPreExistingTemporaryTarget()
-    {
-        using TemporaryDirectory temporary = new();
-        string requestId = Guid.NewGuid().ToString("N");
-        string responsePath = ReviewModAssetContract.ResponsePath(
-            temporary.Path,
-            requestId);
-        string temporaryPath = responsePath + ".tmp";
-        byte[] foreignBytes = [1, 2, 3, 4];
-        File.WriteAllBytes(temporaryPath, foreignBytes);
-        ReviewModAssetResponseEnvelope envelope = EmptyEnvelope(requestId);
-
-        Assert.Throws<InvalidDataException>(() =>
-            ReviewModAssetResponseWriter.Write(temporary.Path, envelope));
-
-        Assert.Equal(foreignBytes, File.ReadAllBytes(temporaryPath));
-        Assert.False(File.Exists(responsePath));
-    }
-
-    [Fact]
-    public void ResponseWriterNeverRemovesPreExistingTemporaryDirectory()
-    {
-        using TemporaryDirectory temporary = new();
-        string requestId = Guid.NewGuid().ToString("N");
-        string responsePath = ReviewModAssetContract.ResponsePath(
-            temporary.Path,
-            requestId);
-        string temporaryPath = responsePath + ".tmp";
-        Directory.CreateDirectory(temporaryPath);
-        string marker = Path.Combine(temporaryPath, "foreign.txt");
-        File.WriteAllText(marker, "foreign");
-
-        Assert.Throws<InvalidDataException>(() =>
-            ReviewModAssetResponseWriter.Write(
-                temporary.Path,
-                EmptyEnvelope(requestId)));
-
-        Assert.True(Directory.Exists(temporaryPath));
-        Assert.Equal("foreign", File.ReadAllText(marker));
-        Assert.False(File.Exists(responsePath));
-    }
-
-    [Fact]
-    public void ResponseWriterPublishesOneCreateNewRegularResponse()
+    public void ResponseWriterPublishesOnceToTheMailbox()
     {
         using TemporaryDirectory temporary = new();
         string requestId = Guid.NewGuid().ToString("N");
@@ -578,13 +535,11 @@ public sealed class ReviewModAssetCommandTests
 
         ReviewModAssetResponseWriter.Write(temporary.Path, envelope);
 
-        Assert.True(File.Exists(responsePath));
-        Assert.False(File.Exists(responsePath + ".tmp"));
-        FileAttributes attributes = File.GetAttributes(responsePath);
-        Assert.False(attributes.HasFlag(FileAttributes.Directory));
-        Assert.False(attributes.HasFlag(FileAttributes.ReparsePoint));
+        Assert.False(File.Exists(responsePath));
+        Assert.True(ReviewResponseMailbox.Contains(responsePath));
         Assert.Throws<InvalidDataException>(() =>
             ReviewModAssetResponseWriter.Write(temporary.Path, envelope));
+        Assert.True(ReviewResponseMailbox.TryTake(responsePath, out _));
     }
 
     public static TheoryData<Type, object, string[], string, string> KnownShapes =>

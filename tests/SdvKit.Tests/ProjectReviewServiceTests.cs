@@ -3141,7 +3141,7 @@ public sealed class ProjectReviewServiceTests
                         Directory.CreateDirectory(Path.GetDirectoryName(selectedPngPath)!);
                         File.WriteAllBytes(selectedPngPath, expectedBytes);
                         File.SetLastWriteTimeUtc(selectedPngPath, capturedAtUtc.UtcDateTime);
-                        ReviewScreenshotResponseFile.Write(
+                        ReviewScreenshotResponsePublisher.Write(
                             selectedPaths.RuntimePath,
                             ReviewScreenshotResponse.Create(
                                 requestId,
@@ -3715,9 +3715,20 @@ public sealed class ProjectReviewServiceTests
 
     internal sealed class RecordingConsoleInputSender(
         ProjectReviewConsoleInputResult result,
-        Action<string>? onSend = null) : IProjectReviewConsoleInputSender
+        Action<string>? onSend = null) : IProjectReviewConsoleInputSender, IReviewResponseReader
     {
         public int CallCount { get; private set; }
+
+        /// <summary>
+        /// Stands in for the endpoint: responses published by linked game-side code come from the
+        /// in-process mailbox, and responses a test writes directly come from files.
+        /// </summary>
+        public ReviewResponseRead TryTake(string responsePath, int maximumBytes) =>
+            SdvKit.GameSide.ReviewResponseMailbox.TryTake(responsePath, out byte[] bytes)
+                ? bytes.Length <= maximumBytes
+                    ? new ReviewResponseRead(ReviewResponseReadStatus.Available, bytes)
+                    : new ReviewResponseRead(ReviewResponseReadStatus.Invalid, Error: "too large")
+                : FileReviewResponseReader.Instance.TryTake(responsePath, maximumBytes);
 
         public OwnedProcessIdentity? Identity { get; private set; }
 

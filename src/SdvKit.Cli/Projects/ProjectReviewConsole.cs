@@ -6,6 +6,27 @@ namespace SdvKit.Cli;
 
 internal static partial class ProjectReviewService
 {
+    private static readonly AsyncLocal<Action<IProjectReviewConsoleInputSender>?> SenderObserver = new();
+
+    /// <summary>
+    /// Reports every sender that <see cref="ExecuteCommand(string, string, string?, string, IProjectReviewConsoleInputSender?, LiveLabOperationLock?, Action{IProjectReviewConsoleInputSender}?)"/>
+    /// uses while the scope is active, including calls made inside a caller-supplied send delegate.
+    /// </summary>
+    internal static IDisposable ObserveSenders(Action<IProjectReviewConsoleInputSender> observer)
+    {
+        Action<IProjectReviewConsoleInputSender>? previous = SenderObserver.Value;
+        SenderObserver.Value = observer;
+        return new SenderObserverScope(previous);
+    }
+
+    /// <summary>Reports a sender to the active observer, as <c>ExecuteCommand</c> does.</summary>
+    internal static void ReportSender(IProjectReviewConsoleInputSender sender) => SenderObserver.Value?.Invoke(sender);
+
+    private sealed class SenderObserverScope(Action<IProjectReviewConsoleInputSender>? previous) : IDisposable
+    {
+        public void Dispose() => SenderObserver.Value = previous;
+    }
+
     internal static LiveLabCommandResult ExecuteCommand(
         string command,
         string labRoot,
@@ -23,8 +44,10 @@ internal static partial class ProjectReviewService
         string? role,
         string labRoot,
         IProjectReviewConsoleInputSender? inputSender = null,
-        LiveLabOperationLock? heldOperationLock = null)
+        LiveLabOperationLock? heldOperationLock = null,
+        Action<IProjectReviewConsoleInputSender>? useSender = null)
     {
+        useSender ??= SenderObserver.Value;
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
         ArgumentException.ThrowIfNullOrWhiteSpace(labRoot);
@@ -92,7 +115,8 @@ internal static partial class ProjectReviewService
                 role!,
                 paths,
                 inputSender,
-                canRunBeforeScenarioReady);
+                canRunBeforeScenarioReady,
+                useSender);
         }
 
         try
@@ -201,10 +225,12 @@ internal static partial class ProjectReviewService
                         "The exact owned review fixture is not currently loaded and identity-verified; no command was sent.")]);
             }
 
-            ProjectReviewConsoleInputResult sent =
-                (inputSender ?? HttpProjectReviewCommandSender.For(exactState, lab.GameSide)).SendLine(
-                    exactState.OwnedProcessIdentity,
-                    command);
+            IProjectReviewConsoleInputSender sender =
+                inputSender ?? HttpProjectReviewCommandSender.For(exactState, lab.GameSide);
+            useSender?.Invoke(sender);
+            ProjectReviewConsoleInputResult sent = sender.SendLine(
+                exactState.OwnedProcessIdentity,
+                command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
             return CommandResult(
                 paths,
@@ -231,7 +257,8 @@ internal static partial class ProjectReviewService
         string role,
         LiveLabPaths paths,
         IProjectReviewConsoleInputSender? inputSender,
-        bool canRunBeforeScenarioReady)
+        bool canRunBeforeScenarioReady,
+        Action<IProjectReviewConsoleInputSender>? useSender)
     {
         try
         {
@@ -346,10 +373,12 @@ internal static partial class ProjectReviewService
                             "The exact role and target mod have not reached their confirmed loaded state; no command was sent.")]);
             }
 
-            ProjectReviewConsoleInputResult sent =
-                (inputSender ?? HttpProjectReviewCommandSender.For(state!, lab.GameSide)).SendLine(
-                    state!.OwnedProcessIdentity,
-                    command);
+            IProjectReviewConsoleInputSender sender =
+                inputSender ?? HttpProjectReviewCommandSender.For(state!, lab.GameSide);
+            useSender?.Invoke(sender);
+            ProjectReviewConsoleInputResult sent = sender.SendLine(
+                state!.OwnedProcessIdentity,
+                command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
             return NetworkCommandResult(
                 paths,

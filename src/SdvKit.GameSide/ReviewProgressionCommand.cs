@@ -61,7 +61,7 @@ internal static class ReviewProgressionCommand
             byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewProgressionResponseEnvelope(1, args[1], report), JsonOptions);
             if (bytes.Length > ReviewProgressionContract.MaximumResponseBytes)
                 bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewProgressionResponseEnvelope(1, args[1], Failure("progressionResponseLimit")), JsonOptions);
-            ReviewResponseFile.Write(ReviewProgressionContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewProgressionContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception) { monitor.Log("SDVKit progression could not publish its bounded response.", LogLevel.Error); }
     }

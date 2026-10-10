@@ -1444,7 +1444,7 @@ internal static class ReviewModAssetResponseWriter
             throw new InvalidDataException(
                 "The bounded review-mod-assets response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 

@@ -186,7 +186,7 @@ internal static class ReviewContainerTransferCommand
             {
                 byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewContainerTransferResponseEnvelope(1, requestId, report), JsonOptions);
                 if (bytes.Length > ReviewContainerTransferContract.MaximumResponseBytes) throw new InvalidDataException("Transfer response limit exceeded.");
-                ReviewResponseFile.Write(ReviewContainerTransferContract.ResponsePath(runtimePath, requestId), bytes);
+                ReviewResponseMailbox.Publish(ReviewContainerTransferContract.ResponsePath(runtimePath, requestId), bytes);
             }
             catch (Exception exception) { monitor.Log($"SDVKit container transfer response failed: {exception.Message}", LogLevel.Error); }
         }

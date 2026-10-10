@@ -207,7 +207,7 @@ internal static class ReviewMapCommand
             throw new InvalidDataException(
                 "The bounded review-map response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 #endif

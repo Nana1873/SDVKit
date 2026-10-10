@@ -63,7 +63,7 @@ internal static class ReviewWorldCommand
             if (bytes.Length > ReviewWorldContract.MaximumResponseBytes)
                 bytes = JsonSerializer.SerializeToUtf8Bytes(
                     new ReviewWorldResponseEnvelope(1, args[1], Failure("worldResponseLimit")), JsonOptions);
-            ReviewResponseFile.Write(ReviewWorldContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewWorldContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception)
         {

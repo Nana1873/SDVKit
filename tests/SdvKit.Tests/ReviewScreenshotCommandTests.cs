@@ -148,7 +148,7 @@ public sealed class ReviewScreenshotCommandTests
     }
 
     [Fact]
-    public void TransportResponseIsAtomicBoundedAndContainsNoLocalPath()
+    public void TransportResponseIsPublishedOnceBoundedAndContainsNoLocalPath()
     {
         using TemporaryDirectory temporary = new();
         string requestId = Guid.NewGuid().ToString("N");
@@ -162,12 +162,14 @@ public sealed class ReviewScreenshotCommandTests
                 FileName: ReviewScreenshotContract.FileName(query.Label)),
             new DateTimeOffset(2026, 9, 4, 8, 0, 0, TimeSpan.Zero));
 
-        ReviewScreenshotResponseFile.Write(temporary.Path, envelope);
+        ReviewScreenshotResponsePublisher.Write(temporary.Path, envelope);
 
         string responsePath = ReviewScreenshotContract.ResponsePath(
             temporary.Path,
             requestId);
-        byte[] bytes = File.ReadAllBytes(responsePath);
+        Assert.Throws<InvalidDataException>(() =>
+            ReviewScreenshotResponsePublisher.Write(temporary.Path, envelope));
+        Assert.True(ReviewResponseMailbox.TryTake(responsePath, out byte[] bytes));
         Assert.InRange(bytes.Length, 1, ReviewScreenshotContract.MaximumResponseBytes);
         string json = System.Text.Encoding.UTF8.GetString(bytes);
         Assert.DoesNotContain(temporary.Path, json, StringComparison.OrdinalIgnoreCase);
@@ -176,10 +178,7 @@ public sealed class ReviewScreenshotCommandTests
             .GetProperty("report").GetProperty("state").GetString());
         Assert.Equal("SDVKit-proof_1.png", document.RootElement
             .GetProperty("report").GetProperty("fileName").GetString());
-        Assert.False(File.Exists(responsePath + ".tmp"));
-
-        Assert.Throws<InvalidDataException>(() =>
-            ReviewScreenshotResponseFile.Write(temporary.Path, envelope));
+        Assert.False(File.Exists(responsePath));
     }
 
     [Fact]
@@ -197,10 +196,12 @@ public sealed class ReviewScreenshotCommandTests
                 "screenshotAlreadyExists"),
             new DateTimeOffset(2026, 9, 4, 8, 0, 0, TimeSpan.Zero));
 
-        ReviewScreenshotResponseFile.Write(temporary.Path, envelope);
+        ReviewScreenshotResponsePublisher.Write(temporary.Path, envelope);
 
-        string json = File.ReadAllText(
-            ReviewScreenshotContract.ResponsePath(temporary.Path, requestId));
+        Assert.True(ReviewResponseMailbox.TryTake(
+            ReviewScreenshotContract.ResponsePath(temporary.Path, requestId),
+            out byte[] bytes));
+        string json = System.Text.Encoding.UTF8.GetString(bytes);
         Assert.DoesNotContain(temporary.Path, json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("screenshotAlreadyExists", json, StringComparison.Ordinal);
         Assert.DoesNotContain("Refusing path", json, StringComparison.Ordinal);

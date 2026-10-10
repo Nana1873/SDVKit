@@ -204,6 +204,24 @@ internal sealed record ProjectReviewConsoleInputResult(
     };
 }
 
+internal enum ReviewResponseReadStatus
+{
+    Pending,
+    Available,
+    Invalid,
+}
+
+internal sealed record ReviewResponseRead(
+    ReviewResponseReadStatus Status,
+    byte[]? Bytes = null,
+    string? Error = null);
+
+/// <summary>Takes one published review response, at most once.</summary>
+internal interface IReviewResponseReader
+{
+    ReviewResponseRead TryTake(string responsePath, int maximumBytes);
+}
+
 internal interface IProjectReviewConsoleInputSender
 {
     ProjectReviewConsoleInputResult SendLine(
@@ -219,7 +237,7 @@ internal interface IProjectReviewConsoleInputSender
 internal sealed class HttpProjectReviewCommandSender(
     int? port,
     string? token,
-    string launchId) : IProjectReviewConsoleInputSender
+    string launchId) : IProjectReviewConsoleInputSender, IReviewResponseReader
 {
     private const int MaximumReplyBytes = 64 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
@@ -333,6 +351,90 @@ internal sealed class HttpProjectReviewCommandSender(
                 _ => Unknown(reply?.Message ?? $"The command endpoint returned HTTP {status}."),
             };
         }
+    }
+
+    /// <summary>Takes the response with the path's file name from the exact launch's endpoint.</summary>
+    public ReviewResponseRead TryTake(string responsePath, int maximumBytes)
+    {
+        string name = Path.GetFileName(responsePath);
+        if (!ReviewHttpContract.IsResponseName(name))
+        {
+            return new(ReviewResponseReadStatus.Invalid, Error: "The response name is invalid.");
+        }
+
+        if (port is not (>= 1 and <= 65535) || !ReviewHttpContract.IsToken(token))
+        {
+            return new(ReviewResponseReadStatus.Invalid, Error: "The exact review has not published its command endpoint.");
+        }
+
+        try
+        {
+            using var client = new HttpClient(
+                new SocketsHttpHandler
+                {
+                    UseProxy = false,
+                    AllowAutoRedirect = false,
+                    ConnectTimeout = TimeSpan.FromSeconds(3),
+                },
+                disposeHandler: true)
+            {
+                Timeout = RequestTimeout,
+            };
+            string endpoint = string.Create(
+                CultureInfo.InvariantCulture,
+                $"http://127.0.0.1:{port.Value}{ReviewHttpContract.ResponsePathPrefix}{name}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using HttpResponseMessage response = client.Send(request);
+            // Not yet published, or the endpoint is busy: keep waiting within the caller's bound.
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
+                or System.Net.HttpStatusCode.ServiceUnavailable
+                or System.Net.HttpStatusCode.TooManyRequests)
+            {
+                return new(ReviewResponseReadStatus.Pending);
+            }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return new(
+                    ReviewResponseReadStatus.Invalid,
+                    Error: $"The command endpoint returned HTTP {(int)response.StatusCode} for the response.");
+            }
+
+            byte[]? bytes = ReadBounded(response, maximumBytes);
+            return bytes is { Length: > 0 }
+                ? new(ReviewResponseReadStatus.Available, bytes)
+                : new(ReviewResponseReadStatus.Invalid, Error: "The response is empty or exceeds its bounded maximum.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+        {
+            // A transient transport failure leaves the response in the mailbox; retry within the bound.
+            return new(ReviewResponseReadStatus.Pending, Error: exception.Message);
+        }
+    }
+
+    private static byte[]? ReadBounded(HttpResponseMessage response, int maximumBytes)
+    {
+        if (response.Content.Headers.ContentLength is long declared && declared > maximumBytes)
+        {
+            return null;
+        }
+
+        using Stream stream = response.Content.ReadAsStream();
+        using var buffer = new MemoryStream();
+        byte[] chunk = new byte[81920];
+        int read;
+        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        {
+            if (buffer.Length + read > maximumBytes)
+            {
+                return null;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
     }
 
     private static ProjectReviewConsoleInputResult Unknown(string message) =>

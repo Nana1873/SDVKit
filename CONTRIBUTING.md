@@ -20,6 +20,25 @@ The solution builds the CLI and game-free tests. Tests link selected GameSide so
 
 Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages. Ordinary .NET `bin/obj` outputs are ignored. The portable verifier deliberately extracts to a fresh external temporary directory to prove checkout independence; that retained directory is its explicit exception and must never be a normal Saves/Mods directory.
 
+## Checks before merge
+
+CI does not compile the game-bound half of `src/SdvKit.GameSide`. For any change there, build it against the local installation as well:
+
+```powershell
+dotnet build src\SdvKit.GameSide\SdvKit.GameSide.csproj -c Release "-p:SdvGamePath=$gamePath"
+```
+
+The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
+
+A pull request that changes the command transport, lab lifecycle, input or isolation needs both topologies live before merge. Identify the lab owner first (rule 10 in [AGENTS.md](AGENTS.md)).
+
+1. Run `project smoke --topology network-2` for a standalone C# mod.
+2. Start a `network-2` review. For each role, send one command and one native MCP read, then have the farmhand leave and rejoin.
+3. Start a single `--test-save` review. Join a local split-screen farmhand, send one `screen=<id>` command, run one screen-bound MCP read, then leave.
+4. Stop and reset every topology you used, and confirm that no game process remains.
+
+Documentation-only and offline toolkit changes need neither check. Record what ran in the pull request.
+
 ## Source navigation
 
 Command routing starts in `src/SdvKit.Cli/CliApplication.cs`; help is in `CliHelp.cs`, project commands in `ProjectCommand.cs` and `ProjectReviewCommand.cs`, and review queries in the matching `Review*Command.cs` partials.

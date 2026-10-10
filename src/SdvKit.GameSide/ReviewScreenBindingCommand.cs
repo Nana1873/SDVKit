@@ -94,7 +94,7 @@ internal static class ReviewScreenBindingCommand
             byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(response, JsonOptions);
             if (bytes.Length > ReviewScreenBindingContract.MaximumResponseBytes)
                 throw new InvalidDataException("The screen-binding response exceeds its bounded maximum.");
-            ReviewResponseFile.Write(
+            ReviewResponseMailbox.Publish(
                 ReviewScreenBindingContract.ResponsePath(runtimePath, requestId),
                 bytes);
         }

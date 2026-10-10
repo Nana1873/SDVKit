@@ -1138,7 +1138,7 @@ internal static class ReviewDataCommand
             throw new InvalidDataException(
                 "The bounded review-data response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 #endif
