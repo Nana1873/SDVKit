@@ -332,7 +332,24 @@ internal sealed class ReviewHttpEndpoint : IDisposable
             {
                 using var output = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
                 output.CancelAfter(TimeSpan.FromSeconds(1));
-                await Write(client.GetStream(), 503, null, output.Token).ConfigureAwait(false);
+                NetworkStream stream = client.GetStream();
+                await Write(stream, 503, null, output.Token).ConfigureAwait(false);
+
+                // Closing while request bytes are unread makes Windows reset the connection, which can
+                // discard the 503 before the client reads it. Finish sending, then drain briefly.
+                client.Client.Shutdown(SocketShutdown.Send);
+                byte[] discard = new byte[1024];
+                int drained = 0;
+                while (drained < ReviewHttpContract.MaximumBodyBytes + HeaderLimit)
+                {
+                    int read = await stream.ReadAsync(discard, output.Token).ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    drained += read;
+                }
             }
             catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
             {
