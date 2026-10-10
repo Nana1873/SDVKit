@@ -26,8 +26,8 @@ special objects and inferred purchase outcomes stay unavailable.
 The commands below use the CLI. Recorded acceptance used CLI lifecycle and
 captures together with native MCP `stardew_shop_get`, `stardew_menu_get`,
 diagnostics and opt-in `stardew_input_click` for the two completed clicks.
-The CLI console equivalents below deliver to the same input adapter; require
-the observed effect after delivery before continuing. Screenshots support the typed proof; they do
+The CLI steps below call the same tools through `project review call`; require
+the observed effect after each click before continuing. Screenshots support the typed proof; they do
 not replace it.
 
 ## Select the installation and lab
@@ -291,8 +291,14 @@ Create the disposable baseline only if it is absent and all roles are stopped.
 ```powershell
 & $sdvkit project review start $broken --game-path $gamePath --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-broken.json')
-& $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-broken.json')
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-broken.json')
+if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-broken.json')
 & $sdvkit project review diagnostics --mod ExampleAuthor.ShopPurchaseProof --limit 20 --topology single --json |
@@ -329,8 +335,14 @@ reload or alter staged files.
 ```powershell
 & $sdvkit project review start $fixed --game-path $gamePath --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-fixed.json')
-& $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-fixed.json')
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-fixed.json')
+if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
 & $sdvkit project review command 'shop_purchase_proof_open' --topology single --json |
     Tee-Object (Join-Path $evidence 'command-fixed.json')
 & $sdvkit project review shop --topology single --json |

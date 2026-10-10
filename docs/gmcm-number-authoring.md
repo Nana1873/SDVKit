@@ -525,11 +525,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Disposable baseline preparation failed.' }
     --companion $provider --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-default.json')
 if ($LASTEXITCODE -ne 0) { throw 'Default review start failed.' }
-$status = & $sdvkit project review status --topology single --json |
-    Tee-Object (Join-Path $evidence 'status-default.json') | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $status.state -cne 'running') {
-    throw 'Default review status failed.'
-}
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-default.json')
+if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
 $targets = @($status.artifacts | Where-Object {
     $_.role -ceq 'target' -and $_.uniqueId -ceq 'ExampleAuthor.GmcmArrivalRow'
 })
@@ -825,9 +828,11 @@ focus automation, or coordinates from another run.
 ## Save, reconcile, and retain the export
 
 Read the current screenshot again and set `$saveX`/`$saveY` to the exact Save
-control center. The click tool returns after the release, but GMCM writes the
-file afterwards, so wait separately for the saved file within a bounded
-interval. Preserve the last observer error if the file
+control center. GMCM writes the staged config during the click, so the click
+tool itself usually ends with exit `3` and `reviewStagingOwnershipDrifted`: the
+input ran, and SDVKit then refused to report on the changed staging. Accept only
+that outcome or success, never repeat the click, and wait separately for the
+saved file within a bounded interval. Preserve the last observer error if the file
 cannot be confirmed:
 
 ```powershell
@@ -852,9 +857,17 @@ function Wait-ArrivalRowFile(
 }
 
 $saveRevision = Get-OwnedMenuRevision 'menu-before-save'
-[void](Invoke-OwnedInputTool 'stardew_input_click' @{
+$saveArguments = @{
     x = $saveX; y = $saveY; button = 'MouseLeft'; count = 1; uiRevision = $saveRevision
-} 'save-click')
+} | ConvertTo-Json -Compress
+$saveJson = & $sdvkit project review call stardew_input_click $saveArguments --allow-input
+$saveExit = $LASTEXITCODE
+$saveJson | Set-Content -LiteralPath (Join-Path $evidence 'save-click-result.json')
+$saveText = $saveJson -join [Environment]::NewLine
+if ($saveExit -ne 0 -and
+    -not ($saveExit -eq 3 -and $saveText.Contains('[reviewStagingOwnershipDrifted]'))) {
+    throw 'The Save click failed before GMCM changed the staged config.'
+}
 try {
     [void](Wait-ArrivalRowFile $stagedConfig 19 10)
 }
@@ -865,8 +878,8 @@ catch {
 }
 ```
 
-Now require one ordinary owned menu request to fail with staged-file drift. That
-failure is expected evidence that Save changed bytes; do not repeat input or edit
+Now require one ordinary owned menu request to fail with the same staged-file
+drift. That failure is expected evidence that Save changed bytes; do not repeat input or edit
 an ownership marker. Accept only the selected mod's valid root config:
 
 ```powershell
@@ -961,13 +974,15 @@ if ((Get-FileHash $export -Algorithm SHA256).Hash -ne
     --companion $provider --topology single --test-save --json |
     Tee-Object (Join-Path $evidence 'start-configured.json')
 if ($LASTEXITCODE -ne 0) { throw 'Configured restart failed.' }
-$configuredStatusJson = & $sdvkit project review status --topology single --json
-$configuredStatusExit = $LASTEXITCODE
-$configuredStatusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-configured.json')
-$configuredStatus = ($configuredStatusJson -join [Environment]::NewLine) | ConvertFrom-Json
-if ($configuredStatusExit -ne 0 -or $configuredStatus.state -cne 'running') {
-    throw 'Configured review status failed.'
-}
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'status-configured.json')
+if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
+$configuredStatus = $status
 $persistentSaves = [IO.Path]::GetFullPath(
     (Join-Path $configuredStatus.labRoot $configuredStatus.persistentSavesPath))
 $stardewData = Split-Path $persistentSaves -Parent

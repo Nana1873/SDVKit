@@ -48,13 +48,17 @@ $sdvkit = (Resolve-Path 'C:\path\to\SDVKit\sdvkit.exe').Path
 $gamePath = 'C:\path\to\Stardew Valley'
 $probeSource = (Resolve-Path `
     'C:\path\to\SDVKit\docs\examples\crop-machine-recipe\RecipeProbe').Path
+$providerSource = (Resolve-Path 'C:\path\to\ContentPatcher').Path
 $pack = Join-Path $lab '.sdvkit\crop-machine\ObservedHarvestRecipe'
 $provider = Join-Path $lab '.sdvkit\crop-machine\ContentPatcher'
 $probe = Join-Path $lab '.sdvkit\crop-machine\RecipeProbe'
 $evidence = Join-Path $lab '.sdvkit\crop-machine\evidence'
 New-Item -ItemType Directory -Force $pack, $evidence | Out-Null
 if (Test-Path $probe) { throw "RecipeProbe destination must start absent." }
+if (Test-Path $provider) { throw "Provider destination must start absent." }
 Copy-Item $probeSource $probe -Recurse
+Remove-Item (Join-Path $probe 'README.md')
+Copy-Item $providerSource $provider -Recurse
 
 & $sdvkit doctor --game-path $gamePath --json |
     Tee-Object (Join-Path $evidence 'doctor.json')
@@ -154,9 +158,19 @@ and owned test save. The helper commands are `recipe_probe_prepare_crop`,
 ```powershell
 & $sdvkit project build $probe --game-path $gamePath --json |
     Tee-Object (Join-Path $evidence 'probe-build.json')
+& $sdvkit lab test-save --topology single --game-path $gamePath --json |
+    Tee-Object (Join-Path $evidence 'test-save.json')
 & $sdvkit project review start $pack --game-path $gamePath `
     --topology single --test-save --companion $provider --companion $probe --json |
     Tee-Object (Join-Path $evidence 'wrong-start.json')
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+do {
+    Start-Sleep -Seconds 2
+    $statusJson = & $sdvkit project review status --topology single --json
+    $status = ($statusJson -join [Environment]::NewLine) | ConvertFrom-Json
+} until ($status.lab.gameSide.testSave.phase -ceq 'passed' -or [DateTime]::UtcNow -gt $deadline)
+$statusJson | Set-Content -LiteralPath (Join-Path $evidence 'wrong-status.json')
+if ($status.lab.gameSide.testSave.phase -cne 'passed') { throw 'The review did not become ready.' }
 
 & $sdvkit project review cp-diagnose `
     --pack SDVKit.ObservedHarvestRecipe `
@@ -170,9 +184,12 @@ and owned test save. The helper commands are `recipe_probe_prepare_crop`,
 Require the patch to be loaded, its conditions to match, and the effective first
 rule to require `(O)399`. Then prepare a dry `(O)745` Strawberry crop whose
 harvest item is `(O)400`, verify the selected watering can and its remaining
-water, and use fresh world and inventory revisions for each native action:
+water, and use fresh world and inventory revisions for each native action. The
+fixture loads in the FarmHouse, and the helpers require the Farm, so leave
+through the natural Farm exit first:
 
 ```powershell
+& $sdvkit project review call stardew_fixture_farm --allow-fixture-actions
 & $sdvkit project review command "recipe_probe_prepare_crop" `
     --topology single --json
 & $sdvkit project review command "recipe_probe_report" `
@@ -197,7 +214,9 @@ native input lifecycle finished; require the same soil/crop to become watered.
 The public world/inventory reports do not expose `WaterLeft`, so claim a water
 resource decrease only when the selected sample helper report or separate UI
 evidence observes it. Synthetically mature only that already-watered crop,
-select an empty backpack slot through process-local input, and call
+select an empty toolbar slot through process-local input (for example
+`project review call stardew_input_press '{"button":"D7"}' --allow-input` for
+slot 6), and call
 `harvest` with the fresh crop and inventory revisions. Require the same regrowing
 crop to become not-ready and exactly one `(O)400` to appear in the backpack.
 
@@ -237,7 +256,8 @@ Change only the trigger value from `(O)399` to `(O)400`, then check and package
 again. Preserve the corrected source/archive hashes and compare the two source
 trees so the one semantic edit is explicit.
 
-Repeat the same diagnosis, effective `Data/Machines` record, native watering,
+Start the corrected pack the same way, wait for readiness, and leave through the
+Farm exit again. Repeat the same diagnosis, effective `Data/Machines` record, native watering,
 native harvest, and native Keg insertion sequence. The corrected run must show:
 
 - the same Keg instance changing from idle to processing;
@@ -273,8 +293,10 @@ identities. Separate fresh reads must show the same Keg idle with no output and
 the backpack changing from zero to two Cola. Retain the tool annotations:
 world interaction is destructive and non-idempotent.
 
-The permission is startup-bound. To test replacement safety without mutating the
-new launch, keep the old action server open, stop and start a replacement review,
+The permission is startup-bound. Save the collected Cola first with
+`stardew_fixture_save` on the action server, because the transfer below needs
+them after the restart. To test replacement safety without mutating the new
+launch, keep the old action server open, stop and start a replacement review,
 then submit one old action request with its retained old identities. Require
 `worldActionStartupBindingChanged` and `notDispatched`. Read-only unbound single
 tools may read the current owned single review; that does not extend the old
@@ -305,10 +327,12 @@ equals the observed Cola backpack slot, and click its center with the same fresh
 # Open the freshly reported chest with one process-local X press, then inspect it.
 $open = & $sdvkit project review call stardew_input_press '{"button":"X"}' --allow-input |
     ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $open.succeeded -ne $true -or $open.menuOpen -ne $true) {
-    throw "The chest did not open."
+if ($LASTEXITCODE -ne 0 -or $open.succeeded -ne $true) {
+    throw "The X press did not complete."
 }
+# The chest menu opens on a later tick, so confirm it from the menu read below.
 $menu = & $sdvkit project review menu --topology single --json | ConvertFrom-Json
+if (-not $menu.menuOpen) { throw "The chest menu is not open." }
 $container = & $sdvkit project review container --topology single --json |
     ConvertFrom-Json
 $sources = @($container.data.player.slots |
