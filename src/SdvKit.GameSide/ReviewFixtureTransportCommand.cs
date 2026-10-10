@@ -171,7 +171,7 @@ internal static class ReviewFixtureTransportCommand
                 monitor);
         }
 
-        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest)
+        if (request is ReviewFixtureEnterRequest or ReviewFixtureFarmRequest or ReviewFixtureWarpRequest)
         {
             try
             {
@@ -258,7 +258,8 @@ internal static class ReviewFixtureTransportCommand
             result.Navigation,
             result.Building,
             result.Animal,
-            save);
+            save,
+            Lab: result.Lab);
         var envelope = new ReviewFixtureResponseEnvelope(
             ReviewFixtureTransportContract.SchemaVersion,
             requestId,

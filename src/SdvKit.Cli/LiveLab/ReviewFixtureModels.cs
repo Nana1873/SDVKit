@@ -13,7 +13,47 @@ internal static class ReviewFixtureTransportContract
     public const string BuildingEnsureOperation = "buildingEnsure";
     public const string AnimalEnsureOperation = "animalEnsure";
     public const string SaveOperation = "save";
+    public const string ObjectEnsureOperation = "objectEnsure";
+    public const string ObjectClearOperation = "objectClear";
+    public const string FishingPrepareOperation = "fishingPrepare";
+    public const string SetTimeOperation = "setTime";
+    public const string SetWeatherOperation = "setWeather";
+    public const string SetSeasonOperation = "setSeason";
+    public const string WarpOperation = "warp";
+    public const string SetZoomOperation = "setZoom";
+    public const string SetWindowOperation = "setWindow";
     public const string SingleRoleToken = "single";
+    public const double MinimumZoom = 0.75;
+    public const double MaximumZoom = 2.0;
+    public const int MinimumWindowSize = 320;
+    public const int MaximumWindowSize = 7680;
+
+    public static readonly IReadOnlyList<string> Weathers = ["Sun", "Rain", "Storm", "Snow", "Wind", "GreenRain"];
+    public static readonly IReadOnlyList<string> Seasons = ["spring", "summer", "fall", "winter"];
+
+    /// <summary>Game time 6:00 to 25:50 in ten-minute steps; 26:00 is excluded because passing out saves the day.</summary>
+    public static bool IsValidTime(int time) =>
+        time is >= 600 and <= 2550 && time % 100 < 60 && time % 10 == 0;
+
+    public static bool IsLabOperation(string? operation) => operation is
+        SetTimeOperation
+        or SetWeatherOperation
+        or SetSeasonOperation
+        or WarpOperation
+        or SetZoomOperation
+        or SetWindowOperation;
+
+    /// <summary>Operations that change the shared world and are limited to single-player or the network-2 host.</summary>
+    public static bool RequiresWorldAuthority(string? operation) => operation is
+        BuildingEnsureOperation
+        or AnimalEnsureOperation
+        or SaveOperation
+        or ObjectEnsureOperation
+        or ObjectClearOperation
+        or FishingPrepareOperation
+        or SetTimeOperation
+        or SetWeatherOperation
+        or SetSeasonOperation;
 
     public static string ResponsePath(string runtimePath, string requestId)
     {
@@ -39,7 +79,11 @@ internal static class ReviewFixtureTransportContract
         or FarmOperation
         or BuildingEnsureOperation
         or AnimalEnsureOperation
-        or SaveOperation;
+        or SaveOperation
+        or ObjectEnsureOperation
+        or ObjectClearOperation
+        or FishingPrepareOperation
+        || IsLabOperation(value);
 }
 
 internal sealed record ReviewFixtureQuery(
@@ -48,7 +92,22 @@ internal sealed record ReviewFixtureQuery(
     string? Alias = null,
     string? Kind = null,
     int? X = null,
-    int? Y = null);
+    int? Y = null,
+    string? Value = null,
+    bool SkipTutorial = false,
+    double? Zoom = null);
+
+/// <summary>World, player and window state observed right after a lab action.</summary>
+internal sealed record ReviewFixtureLabReport(
+    int TimeOfDay,
+    string Season,
+    string Weather,
+    string LocationId,
+    int TileX,
+    int TileY,
+    double Zoom,
+    int WindowWidth,
+    int WindowHeight);
 
 internal sealed record ReviewFixtureRequestBinding(
     string LaunchId,
@@ -121,7 +180,9 @@ internal sealed record ReviewFixtureReport(
     ReviewFixtureSaveReport? Save = null,
     bool CommandWritten = false,
     bool MayHaveRun = false,
-    bool CancellationRequested = false);
+    bool CancellationRequested = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ReviewFixtureLabReport? Lab = null);
 
 internal sealed record ReviewFixtureResponseEnvelope(
     int SchemaVersion,

@@ -59,8 +59,26 @@ internal sealed record ReviewFixtureEnterRequest(string Building)
 internal sealed record ReviewFixtureFarmRequest()
     : ReviewFixtureRequest(RequiresMainPlayer: false);
 
-internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial)
+internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial, int? X = null, int? Y = null)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
+
+internal sealed record ReviewFixtureSetTimeRequest(int Time)
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
+internal sealed record ReviewFixtureSetWeatherRequest(string Weather)
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
+internal sealed record ReviewFixtureSetSeasonRequest(string Season)
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
+internal sealed record ReviewFixtureWarpRequest(string Location, int? X, int? Y)
+    : ReviewFixtureRequest(RequiresMainPlayer: false);
+
+internal sealed record ReviewFixtureSetZoomRequest(double Zoom)
+    : ReviewFixtureRequest(RequiresMainPlayer: false);
+
+internal sealed record ReviewFixtureSetWindowRequest(int Width, int Height)
+    : ReviewFixtureRequest(RequiresMainPlayer: false);
 
 internal static class ReviewFixtureArguments
 {

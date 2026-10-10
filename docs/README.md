@@ -79,9 +79,11 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Button, chord, cursor, wheel, mouse gestures, and bounded text | Quoted review console command | Input tools | Active selected role or exact local screen; MCP requires `--allow-input`; screen-bound MCP omits shared-window text; gestures require an active menu and fresh UI revision |
 | Fixture status / navigation | Quoted review console command | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
 | Fixture building / animal ensure | Quoted review console command | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
-| Fixture object ensure / clear | Quoted review console command | No | Owned disposable world; single or host only |
+| Fixture object ensure / clear | Quoted review console command or `project review call` | `stardew_fixture_object_ensure`, `stardew_fixture_object_clear` | Owned disposable world; single or host only; fixture opt-in |
 | Fishing preparation / rod observation | Quoted fixture command / runtime status | Observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
 | Fixture save | No standalone fixture-save console command | `stardew_fixture_save` | Owned disposable world; single or host; MCP fixture opt-in |
+| Lab time, weather and season | `project review call stardew_lab_set_*` | `stardew_lab_set_time`, `stardew_lab_set_weather`, `stardew_lab_set_season` | Owned disposable world; single or host; fixture opt-in |
+| Lab warp, zoom and window | `project review call stardew_lab_*` | `stardew_lab_warp`, `stardew_lab_set_zoom`, `stardew_lab_set_window` | Owned disposable world; any role; fixture opt-in |
 
 `network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role or local-screen selection is fixed at server startup. Narrow CLI title/loading exceptions do not bypass MCP's own readiness checks.
 

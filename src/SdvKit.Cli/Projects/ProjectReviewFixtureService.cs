@@ -276,8 +276,44 @@ internal static class ProjectReviewFixtureService
                 tokens.Add(query.Y!.Value.ToString(CultureInfo.InvariantCulture));
                 break;
             case ReviewFixtureTransportContract.AnimalEnsureOperation:
+            case ReviewFixtureTransportContract.ObjectEnsureOperation:
                 tokens.Add(ReviewTransportToken.Encode(query.Building!));
                 tokens.Add(ReviewTransportToken.Encode(query.Kind!));
+                break;
+            case ReviewFixtureTransportContract.ObjectClearOperation:
+                tokens.Add(ReviewTransportToken.Encode(query.Building!));
+                break;
+            case ReviewFixtureTransportContract.FishingPrepareOperation:
+                tokens.Add(query.SkipTutorial ? "skip" : "keep");
+                if (query.X is int fishX && query.Y is int fishY)
+                {
+                    tokens.Add(fishX.ToString(CultureInfo.InvariantCulture));
+                    tokens.Add(fishY.ToString(CultureInfo.InvariantCulture));
+                }
+
+                break;
+            case ReviewFixtureTransportContract.SetTimeOperation:
+                tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
+                break;
+            case ReviewFixtureTransportContract.SetWeatherOperation:
+            case ReviewFixtureTransportContract.SetSeasonOperation:
+                tokens.Add(ReviewTransportToken.Encode(query.Value!));
+                break;
+            case ReviewFixtureTransportContract.WarpOperation:
+                tokens.Add(ReviewTransportToken.Encode(query.Value!));
+                if (query.X is int warpX && query.Y is int warpY)
+                {
+                    tokens.Add(warpX.ToString(CultureInfo.InvariantCulture));
+                    tokens.Add(warpY.ToString(CultureInfo.InvariantCulture));
+                }
+
+                break;
+            case ReviewFixtureTransportContract.SetZoomOperation:
+                tokens.Add(query.Zoom!.Value.ToString("0.0##", CultureInfo.InvariantCulture));
+                break;
+            case ReviewFixtureTransportContract.SetWindowOperation:
+                tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
+                tokens.Add(query.Y!.Value.ToString(CultureInfo.InvariantCulture));
                 break;
         }
 
@@ -318,10 +354,7 @@ internal static class ProjectReviewFixtureService
                 "The fixture topology and role selection is invalid.");
         }
 
-        bool mutatesWorld = query.Operation is
-            ReviewFixtureTransportContract.BuildingEnsureOperation
-            or ReviewFixtureTransportContract.AnimalEnsureOperation
-            or ReviewFixtureTransportContract.SaveOperation;
+        bool mutatesWorld = ReviewFixtureTransportContract.RequiresWorldAuthority(query.Operation);
         if (mutatesWorld
             && network
             && !string.Equals(role, NetworkTwoContract.HostRole, StringComparison.Ordinal))
@@ -335,7 +368,20 @@ internal static class ProjectReviewFixtureService
             && query.Alias is null
             && query.Kind is null
             && query.X is null
-            && query.Y is null;
+            && query.Y is null
+            && query.Value is null
+            && !query.SkipTutorial
+            && query.Zoom is null;
+        if (ValidateExtended(query) is { } extended)
+        {
+            return extended.Problem;
+        }
+
+        bool legacyOperands = query.Value is null && !query.SkipTutorial && query.Zoom is null;
+        if (!legacyOperands)
+        {
+            return Problem("fixtureRequestInvalid", "The fixture operation has unexpected operands.");
+        }
         if (query.Operation is ReviewFixtureTransportContract.StatusOperation
             or ReviewFixtureTransportContract.FarmOperation
             or ReviewFixtureTransportContract.SaveOperation)
@@ -380,6 +426,73 @@ internal static class ProjectReviewFixtureService
                 : Problem(
                     "fixtureAnimalRequestInvalid",
                     "Animal ensure requires an exact fixture building and bounded kind.");
+    }
+
+    /// <summary>Validates the operations added after the original fixture set; null for the original ones.</summary>
+    private static (ReviewFixtureProblem? Problem, bool Handled)? ValidateExtended(ReviewFixtureQuery query)
+    {
+        bool none(ReviewFixtureQuery q, bool building = false, bool kind = false, bool x = false, bool y = false,
+            bool value = false, bool zoom = false) =>
+            (building || q.Building is null)
+            && q.Alias is null
+            && (kind || q.Kind is null)
+            && (x || q.X is null)
+            && (y || q.Y is null)
+            && (value || q.Value is null)
+            && (zoom || q.Zoom is null);
+        ReviewFixtureProblem? Check(bool valid, string code, string message) =>
+            valid ? null : Problem(code, message);
+
+        return query.Operation switch
+        {
+            ReviewFixtureTransportContract.ObjectEnsureOperation => (Check(
+                IsValidBuildingToken(query.Building) && IsValidKind(query.Kind) && !query.SkipTutorial
+                    && none(query, building: true, kind: true),
+                "fixtureObjectRequestInvalid",
+                "Object ensure requires an exact fixture building and a bounded qualified item ID."), true),
+            ReviewFixtureTransportContract.ObjectClearOperation => (Check(
+                IsValidBuildingToken(query.Building) && !query.SkipTutorial && none(query, building: true),
+                "fixtureObjectRequestInvalid",
+                "Object clear requires an exact fixture building."), true),
+            ReviewFixtureTransportContract.FishingPrepareOperation => (Check(
+                (query.X is null) == (query.Y is null) && query.X is null or >= 0 && query.Y is null or >= 0
+                    && none(query, x: true, y: true),
+                "fixtureRequestInvalid",
+                "Fishing preparation accepts the tutorial choice and an optional search start with both x and y."), true),
+            ReviewFixtureTransportContract.SetTimeOperation => (Check(
+                query.X is int time && ReviewFixtureTransportContract.IsValidTime(time) && !query.SkipTutorial
+                    && none(query, x: true),
+                "labTimeInvalid",
+                "Time must be 600 to 2550 in ten-minute steps."), true),
+            ReviewFixtureTransportContract.SetWeatherOperation => (Check(
+                query.Value is { } weather && ReviewFixtureTransportContract.Weathers.Contains(weather)
+                    && !query.SkipTutorial && none(query, value: true),
+                "labWeatherInvalid",
+                "Weather must be one of " + string.Join(", ", ReviewFixtureTransportContract.Weathers) + "."), true),
+            ReviewFixtureTransportContract.SetSeasonOperation => (Check(
+                query.Value is { } season && ReviewFixtureTransportContract.Seasons.Contains(season)
+                    && !query.SkipTutorial && none(query, value: true),
+                "labSeasonInvalid",
+                "Season must be one of " + string.Join(", ", ReviewFixtureTransportContract.Seasons) + "."), true),
+            ReviewFixtureTransportContract.WarpOperation => (Check(
+                IsValidKind(query.Value) && (query.X is null) == (query.Y is null)
+                    && query.X is null or >= 0 && query.Y is null or >= 0 && !query.SkipTutorial
+                    && none(query, x: true, y: true, value: true),
+                "labWarpInvalid",
+                "Warp requires a location name and either both tile coordinates or neither."), true),
+            ReviewFixtureTransportContract.SetZoomOperation => (Check(
+                query.Zoom is >= ReviewFixtureTransportContract.MinimumZoom and <= ReviewFixtureTransportContract.MaximumZoom
+                    && !query.SkipTutorial && none(query, zoom: true),
+                "labZoomInvalid",
+                "Zoom must be 0.75 to 2."), true),
+            ReviewFixtureTransportContract.SetWindowOperation => (Check(
+                query.X is >= ReviewFixtureTransportContract.MinimumWindowSize and <= ReviewFixtureTransportContract.MaximumWindowSize
+                    && query.Y is >= ReviewFixtureTransportContract.MinimumWindowSize and <= ReviewFixtureTransportContract.MaximumWindowSize
+                    && !query.SkipTutorial && none(query, x: true, y: true),
+                "labWindowInvalid",
+                "Window width and height must be 320 to 7680."), true),
+            _ => null,
+        };
     }
 
     internal static bool Matches(
@@ -449,7 +562,40 @@ internal static class ProjectReviewFixtureService
                 && report.Navigation is null
                 && report.Building is null
                 && report.Animal is null
-                && report.Save is null;
+                && report.Save is null
+                && report.Lab is null;
+        }
+
+        bool noPayload = report.Status is null
+            && report.Navigation is null
+            && report.Building is null
+            && report.Animal is null
+            && report.Save is null;
+        if (query.Operation is ReviewFixtureTransportContract.ObjectEnsureOperation
+            or ReviewFixtureTransportContract.ObjectClearOperation
+            or ReviewFixtureTransportContract.FishingPrepareOperation)
+        {
+            return string.Equals(report.State, "ready", StringComparison.Ordinal)
+                && report.Problems.Count == 0
+                && noPayload
+                && report.Lab is null;
+        }
+
+        if (ReviewFixtureTransportContract.IsLabOperation(query.Operation))
+        {
+            return string.Equals(report.State, "ready", StringComparison.Ordinal)
+                && report.Problems.Count == 0
+                && noPayload
+                && report.Lab is { } lab
+                && ReviewTransportText.IsWellFormedUtf16(lab.Season)
+                && ReviewTransportText.IsWellFormedUtf16(lab.Weather)
+                && ReviewTransportText.IsWellFormedUtf16(lab.LocationId)
+                && lab.LocationId.Length <= 256;
+        }
+
+        if (report.Lab is not null)
+        {
+            return false;
         }
 
         if (!string.Equals(report.State, "ready", StringComparison.Ordinal)

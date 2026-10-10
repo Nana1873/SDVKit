@@ -78,7 +78,7 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 ## Fixture command reference
 
-Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport.
+Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport. Every operation is also a native MCP tool, also callable with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`. The lab tools for time, weather, season, warp, zoom and window exist only as tools; see [opt-in fixture actions](mcp.md#opt-in-fixture-actions).
 
 | Console line | Role / result |
 | --- | --- |
@@ -99,7 +99,7 @@ Every invocation revalidates current review/process, load phase, fixture/Save id
 This console-only fixture action replaces the bank-search and rod-preparation
 helpers needed during Clearer Waters development. It requires the verified main
 player/host, an idle movable player, no menu/event/fade, an outdoor map no larger
-than 512x512, and enough empty inventory slots. It finds a standing position with
+than 512x512, and enough empty inventory slots. It finds the standing position nearest to the player, or to an explicit search start given through the `stardew_fixture_fishing_prepare` tool, using
 the game's farmer collision check and natural fishable water two tiles away;
 building fish ponds are excluded. It does not clear obstacles or change maps.
 

@@ -20,6 +20,15 @@ internal static class ProjectReviewMcpFixtureTools
     internal const string BuildingToolName = "stardew_fixture_building_ensure";
     internal const string AnimalToolName = "stardew_fixture_animal_ensure";
     internal const string SaveToolName = "stardew_fixture_save";
+    internal const string ObjectEnsureToolName = "stardew_fixture_object_ensure";
+    internal const string ObjectClearToolName = "stardew_fixture_object_clear";
+    internal const string FishingToolName = "stardew_fixture_fishing_prepare";
+    internal const string SetTimeToolName = "stardew_lab_set_time";
+    internal const string SetWeatherToolName = "stardew_lab_set_weather";
+    internal const string SetSeasonToolName = "stardew_lab_set_season";
+    internal const string WarpToolName = "stardew_lab_warp";
+    internal const string SetZoomToolName = "stardew_lab_set_zoom";
+    internal const string SetWindowToolName = "stardew_lab_set_window";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -62,6 +71,93 @@ internal static class ProjectReviewMcpFixtureTools
           "properties": {
             "building": { "type": "string", "minLength": 1, "maxLength": 128 },
             "kind": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+        """);
+    private static readonly JsonElement ObjectEnsureInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["building", "qualifiedItemId"],
+          "properties": {
+            "building": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "qualifiedItemId": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+        """);
+    private static readonly JsonElement FishingInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "skipTutorial": { "type": "boolean" },
+            "x": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "y": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+          },
+          "dependentRequired": { "x": ["y"], "y": ["x"] }
+        }
+        """);
+    private static readonly JsonElement TimeInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["time"],
+          "properties": { "time": { "type": "integer", "minimum": 600, "maximum": 2550, "multipleOf": 10 } }
+        }
+        """);
+    private static readonly JsonElement WeatherInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["weather"],
+          "properties": { "weather": { "type": "string", "enum": ["Sun", "Rain", "Storm", "Snow", "Wind", "GreenRain"] } }
+        }
+        """);
+    private static readonly JsonElement SeasonInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["season"],
+          "properties": { "season": { "type": "string", "enum": ["spring", "summer", "fall", "winter"] } }
+        }
+        """);
+    private static readonly JsonElement WarpInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["location"],
+          "properties": {
+            "location": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "x": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "y": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+          },
+          "dependentRequired": { "x": ["y"], "y": ["x"] }
+        }
+        """);
+    private static readonly JsonElement ZoomInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zoom"],
+          "properties": { "zoom": { "type": "number", "minimum": 0.75, "maximum": 2 } }
+        }
+        """);
+    private static readonly JsonElement WindowInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 320, "maximum": 7680 },
+            "height": { "type": "integer", "minimum": 320, "maximum": 7680 }
           }
         }
         """);
@@ -143,6 +239,22 @@ internal static class ProjectReviewMcpFixtureTools
                 "saveId": { "type": "string", "minLength": 1 },
                 "persistedAtUtc": { "type": "string", "format": "date-time" }
               }
+            },
+            "lab": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["timeOfDay", "season", "weather", "locationId", "tileX", "tileY", "zoom", "windowWidth", "windowHeight"],
+              "properties": {
+                "timeOfDay": { "type": "integer" },
+                "season": { "type": "string" },
+                "weather": { "type": "string" },
+                "locationId": { "type": "string" },
+                "tileX": { "type": "integer" },
+                "tileY": { "type": "integer" },
+                "zoom": { "type": "number" },
+                "windowWidth": { "type": "integer" },
+                "windowHeight": { "type": "integer" }
+              }
             }
           },
           "$defs": {
@@ -185,6 +297,10 @@ internal static class ProjectReviewMcpFixtureTools
     private static readonly JsonElement SaveOutputSchema = CreateOutputSchema(
         ReviewFixtureTransportContract.SaveOperation,
         "save");
+
+    private static JsonElement LabOutputSchema(string operation) => CreateOutputSchema(operation, "lab");
+
+    private static JsonElement MessageOutputSchema(string operation) => CreateOutputSchema(operation, null);
 
     public static IReadOnlyList<McpServerTool> Create(
         ProjectReviewMcpRuntimeReader runtimeReader,
@@ -247,6 +363,22 @@ internal static class ProjectReviewMcpFixtureTools
                 arguments => HasOnly(arguments, [])
                     ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FarmOperation)
                     : null),
+            Lab(runtimeReader, runQuery, topology, role, WarpToolName, ReviewFixtureTransportContract.WarpOperation,
+                "Warp the selected player to a permanent location, optionally to an on-map passable tile, and answer after arrival is confirmed.",
+                WarpInputSchema, idempotent: true, TryWarp),
+            Lab(runtimeReader, runQuery, topology, role, SetZoomToolName, ReviewFixtureTransportContract.SetZoomOperation,
+                "Set the selected player's zoom level (0.75 to 2) in the owned disposable world.",
+                ZoomInputSchema, idempotent: true,
+                arguments => HasOnly(arguments, ["zoom"]) && TryDouble(arguments, "zoom", out double zoom)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetZoomOperation, Zoom: zoom)
+                    : null),
+            Lab(runtimeReader, runQuery, topology, role, SetWindowToolName, ReviewFixtureTransportContract.SetWindowOperation,
+                "Switch the selected process to windowed mode and set its client size.",
+                WindowInputSchema, idempotent: true,
+                arguments => HasOnly(arguments, ["width", "height"])
+                    && TryInt(arguments, "width", out int width) && TryInt(arguments, "height", out int height)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWindowOperation, X: width, Y: height)
+                    : null),
         };
 
         if (string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal)
@@ -296,9 +428,125 @@ internal static class ProjectReviewMcpFixtureTools
                 arguments => HasOnly(arguments, [])
                     ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SaveOperation)
                     : null));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, ObjectEnsureToolName,
+                ReviewFixtureTransportContract.ObjectEnsureOperation,
+                "Idempotently place one owned object with a qualified item ID in an exact owned fixture building.",
+                ObjectEnsureInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.ObjectEnsureOperation),
+                readOnly: false, destructive: false, idempotent: true,
+                arguments => HasOnly(arguments, ["building", "qualifiedItemId"])
+                    && TryString(arguments, "building", out string? building)
+                    && TryString(arguments, "qualifiedItemId", out string? item)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.ObjectEnsureOperation, Building: building, Kind: item)
+                    : null));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, ObjectClearToolName,
+                ReviewFixtureTransportContract.ObjectClearOperation,
+                "Remove only the objects SDVKit owns in an exact owned fixture building.",
+                EnterInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.ObjectClearOperation),
+                readOnly: false, destructive: true, idempotent: true,
+                arguments => HasOnly(arguments, ["building"]) && TryString(arguments, "building", out string? building)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.ObjectClearOperation, Building: building)
+                    : null));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, FishingToolName,
+                ReviewFixtureTransportContract.FishingPrepareOperation,
+                "Position the main player at the fishable bank nearest to the optional search start (default: the player's tile) in the current outdoor location and select a rod; optionally bypass the first-fish tutorial.",
+                FishingInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.FishingPrepareOperation),
+                readOnly: false, destructive: false, idempotent: false,
+                TryFishing));
+            tools.Add(Lab(runtimeReader, runQuery, topology, role, SetTimeToolName, ReviewFixtureTransportContract.SetTimeOperation,
+                "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command. Time keeps running; at 2600 the player passes out and the day is saved.",
+                TimeInputSchema, idempotent: true,
+                arguments => HasOnly(arguments, ["time"]) && TryInt(arguments, "time", out int time)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetTimeOperation, X: time)
+                    : null));
+            tools.Add(Lab(runtimeReader, runQuery, topology, role, SetWeatherToolName, ReviewFixtureTransportContract.SetWeatherOperation,
+                "Set the current location context's weather.",
+                WeatherInputSchema, idempotent: true,
+                arguments => HasOnly(arguments, ["weather"]) && TryString(arguments, "weather", out string? weather)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWeatherOperation, Value: weather)
+                    : null));
+            tools.Add(Lab(runtimeReader, runQuery, topology, role, SetSeasonToolName, ReviewFixtureTransportContract.SetSeasonOperation,
+                "Set the season through the game's own season command; map tiles refresh at the next location change.",
+                SeasonInputSchema, idempotent: true,
+                arguments => HasOnly(arguments, ["season"]) && TryString(arguments, "season", out string? season)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.SetSeasonOperation, Value: season)
+                    : null));
         }
 
         return tools;
+    }
+
+    private static FixtureMcpTool Lab(
+        ProjectReviewMcpRuntimeReader runtimeReader,
+        ProjectReviewMcpFixtureQueryRunner runQuery,
+        string topology,
+        string? role,
+        string name,
+        string operation,
+        string description,
+        JsonElement inputSchema,
+        bool idempotent,
+        Func<IDictionary<string, JsonElement>?, ReviewFixtureQuery?> createQuery) =>
+        new(runtimeReader, runQuery, topology, role, name, operation, description, inputSchema,
+            LabOutputSchema(operation), readOnly: false, destructive: false, idempotent, createQuery);
+
+    private static ReviewFixtureQuery? TryFishing(IDictionary<string, JsonElement>? arguments)
+    {
+        if (!HasOnly(arguments, ["skipTutorial", "x", "y"]))
+        {
+            return null;
+        }
+
+        bool skip = arguments is not null
+            && arguments.TryGetValue("skipTutorial", out JsonElement value)
+            && value.ValueKind == JsonValueKind.True;
+        bool hasX = arguments?.ContainsKey("x") == true;
+        bool hasY = arguments?.ContainsKey("y") == true;
+        if (hasX != hasY)
+        {
+            return null;
+        }
+
+        if (!hasX)
+        {
+            return new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, SkipTutorial: skip);
+        }
+
+        return TryInt(arguments, "x", out int x) && TryInt(arguments, "y", out int y)
+            ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, X: x, Y: y, SkipTutorial: skip)
+            : null;
+    }
+
+    private static ReviewFixtureQuery? TryWarp(IDictionary<string, JsonElement>? arguments)
+    {
+        if (!HasOnly(arguments, ["location", "x", "y"]) || !TryString(arguments, "location", out string? location))
+        {
+            return null;
+        }
+
+        bool hasX = arguments!.ContainsKey("x");
+        bool hasY = arguments.ContainsKey("y");
+        if (hasX != hasY)
+        {
+            return null;
+        }
+
+        if (!hasX)
+        {
+            return new ReviewFixtureQuery(ReviewFixtureTransportContract.WarpOperation, Value: location);
+        }
+
+        return TryInt(arguments, "x", out int x) && TryInt(arguments, "y", out int y)
+            ? new ReviewFixtureQuery(ReviewFixtureTransportContract.WarpOperation, Value: location, X: x, Y: y)
+            : null;
+    }
+
+    private static bool TryDouble(IDictionary<string, JsonElement>? arguments, string name, out double value)
+    {
+        value = 0;
+        return arguments is not null
+            && arguments.TryGetValue(name, out JsonElement element)
+            && element.ValueKind == JsonValueKind.Number
+            && element.TryGetDouble(out value);
     }
 
     private sealed class FixtureMcpTool(
@@ -497,6 +745,10 @@ internal static class ProjectReviewMcpFixtureTools
             ReviewFixtureTransportContract.BuildingEnsureOperation => report.Building is not null,
             ReviewFixtureTransportContract.AnimalEnsureOperation => report.Animal is not null,
             ReviewFixtureTransportContract.SaveOperation => report.Save is not null,
+            ReviewFixtureTransportContract.ObjectEnsureOperation
+                or ReviewFixtureTransportContract.ObjectClearOperation
+                or ReviewFixtureTransportContract.FishingPrepareOperation => report.Lab is null,
+            _ when ReviewFixtureTransportContract.IsLabOperation(query.Operation) => report.Lab is not null,
             _ => false,
         };
     }
@@ -526,7 +778,7 @@ internal static class ProjectReviewMcpFixtureTools
 
     private static JsonElement CreateOutputSchema(
         string operation,
-        string payloadName)
+        string? payloadName)
     {
         JsonObject schema = JsonNode.Parse(OutputSchemaTemplate.GetRawText())!
             .AsObject();
@@ -543,6 +795,7 @@ internal static class ProjectReviewMcpFixtureTools
             "building",
             "animal",
             "save",
+            "lab",
         })
         {
             if (!string.Equals(candidate, payloadName, StringComparison.Ordinal))
@@ -578,22 +831,28 @@ internal static class ProjectReviewMcpFixtureTools
             ["state"] = new JsonObject { ["const"] = "blocked" },
             ["problems"] = new JsonObject { ["minItems"] = 1 },
         };
-        schema["oneOf"] = new JsonArray
-        {
-            new JsonObject
+        schema["oneOf"] = payloadName is null
+            ? new JsonArray
             {
-                ["required"] = new JsonArray(payloadName),
-                ["properties"] = readyProperties,
-            },
-            new JsonObject
+                new JsonObject { ["properties"] = readyProperties },
+                new JsonObject { ["properties"] = blockedProperties },
+            }
+            : new JsonArray
             {
-                ["properties"] = blockedProperties,
-                ["not"] = new JsonObject
+                new JsonObject
                 {
                     ["required"] = new JsonArray(payloadName),
+                    ["properties"] = readyProperties,
                 },
-            },
-        };
+                new JsonObject
+                {
+                    ["properties"] = blockedProperties,
+                    ["not"] = new JsonObject
+                    {
+                        ["required"] = new JsonArray(payloadName),
+                    },
+                },
+            };
         return ParseSchema(schema.ToJsonString());
     }
 

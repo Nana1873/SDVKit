@@ -14,6 +14,21 @@ public sealed class FishingBankSearchTests
     }
 
     [Fact]
+    public void ChoosesTheBankNearestToTheSearchStart()
+    {
+        // Water at (2,5) and (17,5); standing tiles two away on either side.
+        bool Water(int x, int y) => y == 5 && x is 2 or 17;
+        bool Stand(int x, int y) => y == 5 && x is 4 or 15;
+
+        Assert.Equal(new FishingBank(4, 5, 3, 2, 5), FishingBankSearch.Find(20, 10, Water, Stand, 5, 5));
+        Assert.Equal(new FishingBank(15, 5, 1, 17, 5), FishingBankSearch.Find(20, 10, Water, Stand, 14, 5));
+    }
+
+    [Fact]
+    public void SearchStartOutsideTheMapFindsNothing() =>
+        Assert.Null(FishingBankSearch.Find(10, 10, (_, _) => true, (_, _) => true, 10, 0));
+
+    [Fact]
     public void NeverQueriesOutsideTheMapAndDoesNotInventABank()
     {
         Assert.Null(FishingBankSearch.Find(3, 3,
