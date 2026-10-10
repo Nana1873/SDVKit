@@ -386,7 +386,10 @@ internal sealed class HttpProjectReviewCommandSender(
             using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using HttpResponseMessage response = client.Send(request);
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            // Not yet published, or the endpoint is busy: keep waiting within the caller's bound.
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
+                or System.Net.HttpStatusCode.ServiceUnavailable
+                or System.Net.HttpStatusCode.TooManyRequests)
             {
                 return new(ReviewResponseReadStatus.Pending);
             }
@@ -405,7 +408,8 @@ internal sealed class HttpProjectReviewCommandSender(
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
         {
-            return new(ReviewResponseReadStatus.Invalid, Error: $"The response could not be taken: {exception.Message}");
+            // A transient transport failure leaves the response in the mailbox; retry within the bound.
+            return new(ReviewResponseReadStatus.Pending, Error: exception.Message);
         }
     }
 

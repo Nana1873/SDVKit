@@ -5,6 +5,56 @@ namespace SdvKit.Tests;
 
 public sealed class ProjectReviewResponseTransportTests
 {
+    [Fact]
+    public void SendDelegateThatUsesARealSenderReadsThroughThatSender()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = Path.Combine(temporary.Path, "response.json");
+        var sender = new MemorySender("released");
+
+        var result = ProjectReviewResponseTransport.Execute("sdvkit input press K", path, 100,
+            "input", "review-input", temporary.Path,
+            bytes => Encoding.UTF8.GetString(bytes), text => text == "released",
+            responseTimeout: TimeSpan.Zero,
+            send: _ =>
+            {
+                ProjectReviewService.ReportSender(sender);
+                return new(0, new ProjectReviewCommandReport(1, null, temporary.Path, "ready", null, true, [], []));
+            });
+
+        Assert.Equal("released", result.Response);
+        Assert.Empty(result.Problems);
+        Assert.Equal(1, sender.Takes);
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void SenderObservationDoesNotLeakOutOfItsScope()
+    {
+        int seen = 0;
+        using (ProjectReviewService.ObserveSenders(_ => seen++))
+        {
+            ProjectReviewService.ReportSender(new MemorySender("x"));
+        }
+
+        ProjectReviewService.ReportSender(new MemorySender("x"));
+        Assert.Equal(1, seen);
+    }
+
+    private sealed class MemorySender(string response) : SdvKit.Cli.LiveLab.IProjectReviewConsoleInputSender, SdvKit.Cli.LiveLab.IReviewResponseReader
+    {
+        public int Takes { get; private set; }
+
+        public SdvKit.Cli.LiveLab.ProjectReviewConsoleInputResult SendLine(SdvKit.Cli.LiveLab.OwnedProcessIdentity expected, string line) =>
+            new(SdvKit.Cli.LiveLab.ProjectReviewConsoleInputStatus.Written);
+
+        public SdvKit.Cli.LiveLab.ReviewResponseRead TryTake(string responsePath, int maximumBytes)
+        {
+            Takes++;
+            return new(SdvKit.Cli.LiveLab.ReviewResponseReadStatus.Available, Encoding.UTF8.GetBytes(response));
+        }
+    }
+
     [Theory]
     [InlineData(false, "open")]
     [InlineData(true, "delete")]

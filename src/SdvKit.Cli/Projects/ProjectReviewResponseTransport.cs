@@ -86,17 +86,30 @@ internal static class ProjectReviewResponseTransport
                     $"The bounded {displayName} request was canceled before it was written."));
         }
 
-        // An injected send stands in for the whole game side and publishes response files.
-        IReviewResponseReader? responseReader = responses
-            ?? (send is not null ? FileReviewResponseReader.Instance : null);
-        LiveLabCommandResult sent = send is not null ? send(command) : ProjectReviewService.ExecuteCommand(
-            command,
-            topology,
-            role,
-            labRoot,
-            inputSender,
-            useSender: sender => responseReader ??=
-                sender as IReviewResponseReader ?? FileReviewResponseReader.Instance);
+        // Responses come back through the sender that delivered the command, including one used
+        // inside a caller-supplied send. Only a send that never reaches a real sender stands in for
+        // the whole game side; such test doubles publish response files.
+        IReviewResponseReader? responseReader = responses;
+        void ObserveSender(IProjectReviewConsoleInputSender sender) =>
+            responseReader ??= sender as IReviewResponseReader;
+        LiveLabCommandResult sent;
+        if (send is not null)
+        {
+            using (ProjectReviewService.ObserveSenders(ObserveSender))
+            {
+                sent = send(command);
+            }
+        }
+        else
+        {
+            sent = ProjectReviewService.ExecuteCommand(
+                command,
+                topology,
+                role,
+                labRoot,
+                inputSender,
+                useSender: ObserveSender);
+        }
         if (!drainAfterDispatchOnCancellation)
         {
             cancellationToken.ThrowIfCancellationRequested();

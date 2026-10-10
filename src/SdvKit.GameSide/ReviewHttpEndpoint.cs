@@ -406,6 +406,11 @@ internal sealed class ReviewHttpEndpoint : IDisposable
                 using var output = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
                 output.CancelAfter(TimeSpan.FromSeconds(5));
                 await Write(stream, status, body, output.Token).ConfigureAwait(false);
+                if (body is RawJson { DeliveredKey: { } delivered })
+                {
+                    // Remove a response only once it was written, so a failed write can be retried.
+                    ReviewResponseMailbox.Remove(delivered);
+                }
             }
             catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
             {
@@ -539,8 +544,8 @@ internal sealed class ReviewHttpEndpoint : IDisposable
             throw new EndpointRejection(404);
         }
 
-        return ReviewResponseMailbox.TryTakeByName(_runtimeRoot, name, out byte[] bytes)
-            ? (200, new RawJson(bytes))
+        return ReviewResponseMailbox.TryPeekByName(_runtimeRoot, name, out string key, out byte[] bytes)
+            ? (200, new RawJson(bytes, key))
             : (404, null);
     }
 
@@ -645,7 +650,7 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         _ => "Internal Server Error",
     };
 
-    private sealed record RawJson(byte[] Bytes);
+    private sealed record RawJson(byte[] Bytes, string? DeliveredKey = null);
 
     private sealed class EndpointRejection(int status) : Exception
     {

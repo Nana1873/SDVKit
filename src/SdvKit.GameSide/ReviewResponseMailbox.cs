@@ -36,7 +36,7 @@ internal static class ReviewResponseMailbox
 
             while (Entries.Count >= MaximumEntries || _totalBytes + bytes.Length > MaximumTotalBytes)
             {
-                Remove(Entries.MinBy(pair => pair.Value.PublishedAtUtc).Key);
+                RemoveEntry(Entries.MinBy(pair => pair.Value.PublishedAtUtc).Key);
             }
 
             Entries.Add(key, new Entry(bytes.ToArray(), now));
@@ -52,6 +52,35 @@ internal static class ReviewResponseMailbox
         {
             Prune(DateTimeOffset.UtcNow);
             return TryRemove(key, out bytes);
+        }
+    }
+
+    /// <summary>
+    /// Finds the response with this file name below the process's runtime root without removing it,
+    /// so the endpoint can remove it only after the reply was written.
+    /// </summary>
+    public static bool TryPeekByName(string runtimeRoot, string name, out string key, out byte[] bytes)
+    {
+        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(runtimeRoot)) + Path.DirectorySeparatorChar;
+        lock (Gate)
+        {
+            Prune(DateTimeOffset.UtcNow);
+            string? found = Entries.Keys.FirstOrDefault(candidate =>
+                candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetFileName(candidate), name, StringComparison.Ordinal));
+            key = found ?? string.Empty;
+            bytes = found is null ? [] : Entries[found].Bytes;
+            return found is not null;
+        }
+    }
+
+    /// <summary>Removes a response after it was delivered.</summary>
+    public static void Remove(string responsePath)
+    {
+        string key = Key(responsePath);
+        lock (Gate)
+        {
+            RemoveEntry(key);
         }
     }
 
@@ -97,7 +126,7 @@ internal static class ReviewResponseMailbox
     {
         foreach (string key in Entries.Where(pair => now - pair.Value.PublishedAtUtc > Lifetime).Select(pair => pair.Key).ToArray())
         {
-            Remove(key);
+            RemoveEntry(key);
         }
     }
 
@@ -109,12 +138,12 @@ internal static class ReviewResponseMailbox
             return false;
         }
 
-        Remove(key);
+        RemoveEntry(key);
         bytes = entry.Bytes;
         return true;
     }
 
-    private static void Remove(string key)
+    private static void RemoveEntry(string key)
     {
         if (Entries.Remove(key, out Entry? entry))
         {

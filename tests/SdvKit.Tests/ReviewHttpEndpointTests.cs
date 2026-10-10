@@ -277,6 +277,38 @@ public sealed class ReviewHttpEndpointTests
     }
 
     [Fact]
+    public void BusyEndpointLeavesTheResponsePendingForALaterTake()
+    {
+        using var lab = new FakeLab();
+        string responsePath = Path.Combine(lab.Runtime.Path, Guid.NewGuid().ToString("N") + ".json");
+        ReviewResponseMailbox.Publish(responsePath, "{}"u8);
+        var idle = new List<TcpClient>();
+        try
+        {
+            for (int index = 0; index < 8; index++)
+            {
+                var client = new TcpClient();
+                client.Connect(IPAddress.Loopback, lab.Endpoint.Port);
+                idle.Add(client);
+            }
+
+            Thread.Sleep(200);
+            Assert.Equal(ReviewResponseReadStatus.Pending, lab.Sender().TryTake(responsePath, 1024).Status);
+            Assert.True(ReviewResponseMailbox.Contains(responsePath));
+        }
+        finally
+        {
+            foreach (TcpClient client in idle)
+            {
+                client.Dispose();
+            }
+        }
+
+        Thread.Sleep(200);
+        Assert.Equal(ReviewResponseReadStatus.Available, lab.Sender().TryTake(responsePath, 1024).Status);
+    }
+
+    [Fact]
     public void ResponseRouteRequiresTheToken()
     {
         using var lab = new FakeLab();
