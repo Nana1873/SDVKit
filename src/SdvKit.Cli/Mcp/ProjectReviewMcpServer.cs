@@ -324,14 +324,34 @@ internal static class ProjectReviewMcpServer
                     .ConfigureAwait(false);
             }
 
-            await clientToServer.Writer.CompleteAsync().ConfigureAwait(false);
-            await running.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
             output.WriteLine(FormatCallResult(result));
+            await clientToServer.Writer.CompleteAsync().ConfigureAwait(false);
+            try
+            {
+                await running.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+            {
+                // The tool result is final; in-process server teardown is only bounded, not awaited.
+            }
+
             return result.IsError == true ? OperationFailed : 0;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            error.WriteLine("SDVKit review call was canceled; pending input was cancelled and the call was not retried.");
+            error.WriteLine("SDVKit review call was canceled; it was not retried.");
+            CompleteInputCleanup(prepared.InputSession, error);
+            return OperationFailed;
+        }
+        catch (Exception exception) when (exception is ModelContextProtocol.McpException
+            or IOException
+            or TimeoutException
+            or InvalidOperationException
+            or JsonException)
+        {
+            // A protocol failure leaves the outcome open: drain any pending action, and never retry.
+            error.WriteLine($"SDVKit review call failed [reviewCallFailed]: {exception.Message} The call was not retried.");
+            CompleteInputCleanup(prepared.InputSession, error);
             return OperationFailed;
         }
         finally

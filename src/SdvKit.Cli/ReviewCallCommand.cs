@@ -43,7 +43,7 @@ public static partial class CliApplication
     {
         output.WriteLine(ReviewCallUsage.TrimStart());
         output.WriteLine(
-            "Calls one native MCP tool once against the active review, with the same selection, binding and opt-ins as 'project review mcp serve', and prints its structured result as JSON. Exit 0 means the tool succeeded; exit 3 means it returned an error.");
+            "Calls one native MCP tool once against the active review, with the same selection, binding and opt-ins as 'project review mcp serve', and prints its structured result as JSON on stdout. Exit 0 means the tool succeeded. Exit 3 means the call failed: a tool error (its JSON is still printed), a startup or binding failure, a tool the selection and opt-ins do not provide, or a protocol failure (on stderr).");
         output.WriteLine(
             "The tool's arguments are one JSON object; omit it for tools without arguments. 'project review mcp serve --help' lists the tools for each selection and opt-in.");
     }

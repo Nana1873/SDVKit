@@ -588,9 +588,11 @@ tool's arguments as one JSON object, or omit it for tools without arguments:
 & $sdvkit project review call stardew_inventory_get --topology network-2 --role farmhand
 ```
 
-Exit `0` means the tool succeeded, and exit `3` means it returned an error or is
-not available for the selection and its opt-ins; the message lists the
-available tools. A virtual cursor set by one call stays set until
+Exit `0` means the tool succeeded. Exit `3` means the call failed: the tool
+returned an error, whose JSON is still printed; the review binding or startup
+failed; or the tool is not available for the selection and its opt-ins, in which
+case the message lists the available tools. A screenshot's `fileName` is in the
+selected role's isolated `Screenshots` folder. A virtual cursor set by one call stays set until
 `stardew_input_cursor_clear`. Ctrl+C cancels a pending input action and never
 retries it.
 
