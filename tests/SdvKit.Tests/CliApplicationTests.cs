@@ -1803,6 +1803,7 @@ public sealed class CliApplicationTests
     [InlineData("split-screen|leave|--screen|0|--json", "sdvkit split-screen leave screen=0", "single", null)]
     [InlineData("network|leave|--role|farmhand|--json", "sdvkit network leave", "network-2", "farmhand")]
     [InlineData("network|status|--role|host|--json", "sdvkit network status", "network-2", "host")]
+    [InlineData("network|join|--json|--role|farmhand", "sdvkit network join", "network-2", "farmhand")]
     public void LifecycleCommandsSendTheirExactLine(string suffix, string line, string topology, string? role)
     {
         string[] arguments = ["project", "review", .. suffix.Split('|')];
@@ -1819,9 +1820,34 @@ public sealed class CliApplicationTests
     [InlineData("network|join|--json")]
     [InlineData("network|join|--role|guest|--json")]
     [InlineData("network|kick|--role|farmhand|--json")]
+    [InlineData("split-screen|leave|--screen|1|--json")]
+    [InlineData("split-screen|join|--screen|0|--screen|0|--json")]
+    [InlineData("split-screen|status|--role|host|--json")]
+    [InlineData("network|leave|--role|host|--json")]
+    [InlineData("network|status|--screen|0|--role|host|--json")]
+    [InlineData("network|status|--role|host|--json|--json")]
     public void LifecycleCommandsRejectIncompleteOrUnknownForms(string suffix) =>
         Assert.False(CliApplication.TryParseProjectReviewLifecycle(
             ["project", "review", .. suffix.Split('|')], out _, out _, out _));
+
+    [Theory]
+    [InlineData("split-screen", "--help")]
+    [InlineData("split-screen", "join", "--help")]
+    [InlineData("network", "leave", "--role", "farmhand", "--help")]
+    public void LifecycleHelpExplainsTheCommandWithoutDispatch(params string[] suffix)
+    {
+        ProjectReviewConsoleCommandRunner runner = (_, _, _, _) =>
+            throw new InvalidOperationException("Console input should not run.");
+        (int exitCode, string output, string error) = RunWithProjectReview(
+            (_, _, _, _, _, _, _, _) => throw new InvalidOperationException("Review should not run."),
+            runner,
+            ["project", "review", .. suffix]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains($"project review {suffix[0]}", output, StringComparison.Ordinal);
+        Assert.Contains("commandWritten=true", output, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, error);
+    }
 
     [Theory]
     [InlineData("mcp", "--help")]

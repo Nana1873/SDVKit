@@ -21,21 +21,38 @@ public static partial class CliApplication
         TextWriter error,
         ProjectReviewConsoleCommandRunner runProjectReviewConsole)
     {
-        if (arguments.Count == 4 && IsHelp(arguments[3]))
+        bool network = arguments[2] == "network";
+        if (arguments.Skip(3).Any(IsHelp))
         {
-            output.WriteLine((arguments[2] == "network" ? ReviewNetworkUsage : ReviewSplitScreenUsage).TrimStart());
+            WriteProjectReviewLifecycleHelp(network, output);
             return Success;
         }
 
         if (!TryParseProjectReviewLifecycle(arguments, out string? line, out string? topology, out string? role))
         {
-            error.WriteLine((arguments[2] == "network" ? ReviewNetworkUsage : ReviewSplitScreenUsage).TrimStart());
+            error.WriteLine((network ? ReviewNetworkUsage : ReviewSplitScreenUsage).TrimStart());
             return UsageError;
         }
 
         LiveLabCommandResult result = runProjectReviewConsole(line!, topology!, role, Environment.CurrentDirectory);
         WriteJson(output, result.Report);
         return result.ExitCode;
+    }
+
+    private static void WriteProjectReviewLifecycleHelp(bool network, TextWriter output)
+    {
+        if (network)
+        {
+            output.WriteLine(ReviewNetworkUsage.TrimStart());
+            output.WriteLine("Runs one farmhand lifecycle step in the passed network-2 review: 'leave' and 'join' require --role farmhand; 'status' logs the selected role's phase.");
+        }
+        else
+        {
+            output.WriteLine(ReviewSplitScreenUsage.TrimStart());
+            output.WriteLine("Joins, removes or reports the local split-screen farmhand in the owned single --test-save review. 'join' and 'leave' run on the host screen (no --screen, or --screen 0); 'status' accepts any current screen ID.");
+        }
+
+        output.WriteLine("commandWritten=true confirms that the step ran on the game thread; confirm its effect in the owned SMAPI log or review status.");
     }
 
     internal static bool TryParseProjectReviewLifecycle(
@@ -47,44 +64,73 @@ public static partial class CliApplication
         line = null;
         topology = null;
         role = null;
-        if (arguments.Count < 5 || arguments[^1] != "--json")
+        if (arguments.Count < 4)
         {
             return false;
         }
 
         string family = arguments[2];
         string operation = arguments[3];
-        string[] options = arguments.Skip(4).Take(arguments.Count - 5).ToArray();
+        bool json = false;
+        int? screen = null;
+        string? selectedRole = null;
+        for (int index = 4; index < arguments.Count; index++)
+        {
+            switch (arguments[index])
+            {
+                case "--json" when !json:
+                    json = true;
+                    break;
+                case "--screen" when family == "split-screen"
+                    && screen is null
+                    && index + 1 < arguments.Count
+                    && int.TryParse(arguments[index + 1], NumberStyles.None, CultureInfo.InvariantCulture, out int parsedScreen):
+                    screen = parsedScreen;
+                    index++;
+                    break;
+                case "--role" when family == "network"
+                    && selectedRole is null
+                    && index + 1 < arguments.Count
+                    && NetworkTwoContract.IsRole(arguments[index + 1]):
+                    selectedRole = arguments[index + 1];
+                    index++;
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        if (!json)
+        {
+            return false;
+        }
+
         if (family == "split-screen" && operation is "join" or "leave" or "status")
         {
-            if (options.Length == 0)
-            {
-                line = $"sdvkit split-screen {operation}";
-            }
-            else if (options.Length == 2
-                && options[0] == "--screen"
-                && int.TryParse(options[1], NumberStyles.None, CultureInfo.InvariantCulture, out int screen))
-            {
-                line = $"sdvkit split-screen {operation} screen={screen.ToString(CultureInfo.InvariantCulture)}";
-            }
-            else
+            // The game runs join and leave only on the host screen; reject other screens up front.
+            if (operation != "status" && screen is not null and not 0)
             {
                 return false;
             }
 
+            line = screen is int id
+                ? $"sdvkit split-screen {operation} screen={id.ToString(CultureInfo.InvariantCulture)}"
+                : $"sdvkit split-screen {operation}";
             topology = LiveLabState.SingleTopology;
             return true;
         }
 
-        if (family == "network"
-            && operation is "leave" or "join" or "status"
-            && options.Length == 2
-            && options[0] == "--role"
-            && NetworkTwoContract.IsRole(options[1]))
+        if (family == "network" && operation is "leave" or "join" or "status" && selectedRole is not null)
         {
+            // Only the farmhand leaves and rejoins; the host only reports status.
+            if (operation != "status" && selectedRole != NetworkTwoContract.FarmhandRole)
+            {
+                return false;
+            }
+
             line = $"sdvkit network {operation}";
             topology = NetworkTwoContract.Topology;
-            role = options[1];
+            role = selectedRole;
             return true;
         }
 

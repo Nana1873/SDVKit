@@ -36,7 +36,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Verify and publish a version | [Release procedure](releasing.md) |
 | Find changes since an earlier version | [Changelog](../CHANGELOG.md) |
 
-PowerShell examples use `& $sdvkit`, the absolute executable path set during installation. Keep the current directory at the intended lab root for every live command. Placeholder operands such as `<asset>` must be replaced; examples naming companions require your explicit local mod selection.
+PowerShell examples use `& $sdvkit`, the absolute executable path set during installation. They require PowerShell 7.3 or later: earlier versions, including Windows PowerShell 5.1, strip the double quotes inside JSON tool arguments such as `'{"button":"C"}'`. Keep the current directory at the intended lab root for every live command. Placeholder operands such as `<asset>` must be replaced; examples naming companions require your explicit local mod selection.
 
 ## Capability matrix
 
@@ -51,7 +51,7 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 | Local split-screen | `project review split-screen join/leave/status [--screen <id>]`, `project review call --screen <id>`, native `screen=<id>` for mod commands, and `project review menu --screen <id>` | Exact startup `--screen <id>` for runtime/menu/viewport/input | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; screen/farmer/context binding invalidates on leave or replacement; shared-window text input unavailable; [workflow](live-review.md#local-split-screen-review) |
 | Network farmhand lifecycle | `project review network leave/join/status --role <host\|farmhand>` | Observation only; host remains readable during coordinated absence, farmhand requires a new client after rejoin | Passed `network-2` pair; host-authorized farmhand departure, retained processes/fixture, explicit rejoin; [workflow](live-review.md#leave-and-rejoin-the-network-farmhand) |
 | Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider; ready code/pack bundle single only, with every direct pack explicitly selected |
-| Runtime and selected-mod diagnostics | `project review status`; quoted split-screen status for local IDs | Runtime, review, mods tools | Active single, fixed host/farmhand role, or exact owned local screen where supported |
+| Runtime and selected-mod diagnostics | `project review status`; `project review split-screen status` for local IDs | Runtime, review, mods tools | Active single, fixed host/farmhand role, or exact owned local screen where supported |
 | Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single, fixed host/farmhand, or exact owned local screen; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
 | Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
 | Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | Exact world-ready single player, network role, or local screen; every empty/occupied/unavailable slot, no peer fallback, menu, or mutation; [contract](inventory-inspection.md) |

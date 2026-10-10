@@ -161,11 +161,13 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review config-reconcile --help Accept a selected staged config change.");
         output.WriteLine("  sdvkit project review mcp serve --help   Role-bound MCP tools over STDIO or loopback HTTP, and action opt-ins.");
         output.WriteLine("  sdvkit project review call --help        Call one MCP tool once from the command line.");
+        output.WriteLine("  sdvkit project review split-screen --help Join, leave or report the local split-screen farmhand.");
+        output.WriteLine("  sdvkit project review network --help     Leave, rejoin or report the network-2 farmhand.");
         output.WriteLine();
         output.WriteLine("Content-pack targets require --topology single and an explicit provider --companion.");
         output.WriteLine("Ready bundles support single: select their root and every direct pack child with --content-pack; exactly one root/direct-child code mod is required.");
         output.WriteLine("Map, texture, audio and mod-asset inspection require unbound single; Data and menu inspection support exact roles and local screens.");
-        output.WriteLine("Local split-screen: in a single --test-save review, use 'project review split-screen join|leave|status'; select a local screen with --screen <id> on call, menu and mcp serve.");
+        output.WriteLine("Local split-screen: in a single --test-save review, use 'project review split-screen join|leave|status'; select a local screen with --screen <id> on split-screen status, call, menu and mcp serve.");
     }
 
     private static void WriteProjectReviewMcpUsage(TextWriter output)

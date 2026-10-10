@@ -43,7 +43,7 @@ particular checkbox and Save control.
 
 ## Prepare the original project and selected provider
 
-Use PowerShell 7 and the [installed CLI](../README.md#install), with `$sdvkit`
+Use PowerShell 7.3 or later and the [installed CLI](../README.md#install), with `$sdvkit`
 set to its absolute executable path. For a checkout build, follow the
 [authoring setup](cp-authoring.md#prerequisites-and-one-lab-directory), omitting CP
 selection. Retain the exact SDVKit ZIP/hash/commit and use one lab directory as

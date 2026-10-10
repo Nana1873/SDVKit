@@ -293,10 +293,9 @@ limitations.
 > [!NOTE]
 > This recipe's script sends deprecated `sdvkit ...` console lines through
 > `project review command` and evaluates `commandWritten`, so it prints a
-> deprecation warning. New scripts should call the equivalent tools with
-> `project review call` and `--allow-input`: `stardew_input_click`,
-> `stardew_input_drag`, `stardew_input_cursor_clear` and
-> `stardew_screenshot_capture`. See [opt-in input](mcp.md#opt-in-input).
+> deprecation warning. New scripts should call `stardew_input_click` with
+> `project review call` and `--allow-input` instead. See
+> [opt-in input](mcp.md#opt-in-input).
 
 The accepted #190 run tested the native menu path. Its helper placed the chest at
 `(41,4)` and the player at `(40,4)`, but always use the freshly reported tiles.

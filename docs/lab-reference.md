@@ -78,7 +78,7 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 ## Fixture command reference
 
-Each fixture operation is a native MCP tool. Call one from the command line with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`; for network-2, select one explicit `--role`. Arguments are in [opt-in fixture actions](mcp.md#opt-in-fixture-actions), together with the lab tools for time, weather, season, warp, zoom and window.
+Each fixture operation is a native MCP tool. Call one from the command line with [`project review call`](mcp.md#call-a-tool-from-the-command-line) and `--allow-fixture-actions`; for network-2, add `--topology network-2` and one explicit `--role`. Arguments are in [opt-in fixture actions](mcp.md#opt-in-fixture-actions), together with the lab tools for time, weather, season, warp, zoom and window.
 
 | Tool | Deprecated console line | Role / result |
 | --- | --- | --- |

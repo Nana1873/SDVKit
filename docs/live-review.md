@@ -215,7 +215,7 @@ review; it does not enumerate people, infer historical completion or edit state.
 
 On Windows, the review console starts minimized and is shown without activation once SMAPI is ready. It remains available for manual commands.
 
-SDVKit sends commands to the review's [loopback command endpoint](lab-reference.md#command-endpoint), not by typing into the console, so manual use of the console window does not interfere with them. `commandWritten=true` means the command ran on the game thread; verify the actual effect through matching logs, state, or images.
+SDVKit sends commands to the review's [loopback command endpoint](lab-reference.md#command-endpoint), not by typing into the console, so manual use of the console window does not interfere with them. For a console command, `commandWritten=true` means it ran on the game thread. A tool called through `project review call` returns its own confirmed result instead. In both cases, verify the actual effect through matching logs, state, or images.
 
 ```powershell
 & $sdvkit project review call stardew_screenshot_capture '{"mode":"viewport","label":"menu-before"}'
