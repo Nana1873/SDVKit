@@ -73,7 +73,8 @@ internal interface IReviewFixtureRuntime
 
     ReviewFixtureResult Farm(ReviewFixtureAccess access);
 
-    ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial);
+    /// <summary>Prepares the nearest fishing bank to the origin, or to the player when no origin is given.</summary>
+    ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial, int? originX, int? originY);
 
     /// <summary>Applies one lab world, player or window change and reports the resulting state.</summary>
     ReviewFixtureResult ApplyLab(ReviewFixtureAccess access, ReviewFixtureRequest request) =>
@@ -142,7 +143,7 @@ internal static class ReviewFixtureOperation
                 animal.Kind),
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
-            ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial),
+            ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial, fishing.X, fishing.Y),
             ReviewFixtureSetTimeRequest
                 or ReviewFixtureSetWeatherRequest
                 or ReviewFixtureSetSeasonRequest

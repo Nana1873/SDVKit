@@ -13,41 +13,87 @@ internal static class FishingBankSearch
     // Bound a synchronous main-thread scan and keep every game query inside the map.
     public const int MaximumDimension = 512;
 
+    /// <summary>
+    /// Finds the standing tile closest to the origin from which natural water is two tiles away.
+    /// The search grows in square rings around the origin and stops once no closer bank can exist.
+    /// </summary>
     public static FishingBank? Find(
         int width, int height,
         Func<int, int, bool> isNaturalWater,
-        Func<int, int, bool> canStand)
+        Func<int, int, bool> canStand,
+        int originX = 0,
+        int originY = 0)
     {
-        if (width is < 3 or > MaximumDimension || height is < 3 or > MaximumDimension)
+        if (width is < 3 or > MaximumDimension || height is < 3 or > MaximumDimension
+            || originX < 0 || originY < 0 || originX >= width || originY >= height)
         {
             return null;
         }
 
         (int X, int Y, int Facing)[] offsets = [(2, 0, 1), (-2, 0, 3), (0, 2, 2), (0, -2, 0)];
-        for (int y = 1; y < height - 1; y++)
+        FishingBank? best = null;
+        long bestDistance = long.MaxValue;
+        int maximumRadius = Math.Max(width, height);
+        for (int radius = 0; radius <= maximumRadius; radius++)
         {
-            for (int x = 1; x < width - 1; x++)
+            if (best is not null && (long)radius * radius > bestDistance)
             {
-                foreach (var offset in offsets)
+                break;
+            }
+
+            // Walk only the ring's perimeter.
+            for (int x = originX - radius; x <= originX + radius; x++)
+            {
+                Visit(x, originY - radius);
+                if (radius > 0)
                 {
-                    int waterX = x + offset.X, waterY = y + offset.Y;
-                    if (waterX < 0 || waterY < 0 || waterX >= width || waterY >= height
-                        || !isNaturalWater(waterX, waterY) || !canStand(x, y))
-                    {
-                        continue;
-                    }
-                    return new FishingBank(x, y, offset.Facing, waterX, waterY);
+                    Visit(x, originY + radius);
                 }
             }
+
+            for (int y = originY - radius + 1; y <= originY + radius - 1; y++)
+            {
+                Visit(originX - radius, y);
+                Visit(originX + radius, y);
+            }
         }
-        return null;
+
+        return best;
+
+        void Visit(int x, int y)
+        {
+            if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1)
+            {
+                return;
+            }
+
+            long distance = (long)(x - originX) * (x - originX) + (long)(y - originY) * (y - originY);
+            if (distance >= bestDistance)
+            {
+                return;
+            }
+
+            foreach (var offset in offsets)
+            {
+                int waterX = x + offset.X, waterY = y + offset.Y;
+                if (waterX < 0 || waterY < 0 || waterX >= width || waterY >= height
+                    || !isNaturalWater(waterX, waterY) || !canStand(x, y))
+                {
+                    continue;
+                }
+
+                best = new FishingBank(x, y, offset.Facing, waterX, waterY);
+                bestDistance = distance;
+                return;
+            }
+        }
     }
 }
 
 #if SDVKIT_GAME_AVAILABLE
 internal sealed partial class StardewReviewFixtureRuntime
 {
-    public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial)
+    public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial, int? originX, int? originY)
     {
         // Operation dispatch has just verified the owned disposable save and main-player role.
         Farmer player = Game1.player;
@@ -69,13 +115,22 @@ internal sealed partial class StardewReviewFixtureRuntime
         {
             return new ReviewFixtureResult(false, "Fishing preparation needs one empty catch slot, plus one rod slot if no rod is selected; no items were replaced.");
         }
+        int startX = originX ?? player.TilePoint.X;
+        int startY = originY ?? player.TilePoint.Y;
+        if (startX < 0 || startY < 0 || startX >= layer.LayerWidth || startY >= layer.LayerHeight)
+        {
+            return new ReviewFixtureResult(false, $"The search start {startX},{startY} is outside the current map; fixture unchanged.");
+        }
+
         FishingBank? bank = FishingBankSearch.Find(layer.LayerWidth, layer.LayerHeight,
             (x, y) => location.isTileFishable(x, y) && !location.isTileBuildingFishable(x, y),
             (x, y) => !location.isWaterTile(x, y) && !location.isCollidingPosition(
                 new Rectangle(x * 64 + 8, y * 64 + 16, 48, 32), Game1.viewport,
                 isFarmer: true, damagesFarmer: 0, glider: false, character: player,
                 pathfinding: true, projectile: false, ignoreCharacterRequirement: false,
-                skipCollisionEffects: true));
+                skipCollisionEffects: true),
+            startX,
+            startY);
         if (bank is null)
         {
             return new ReviewFixtureResult(false, "No collision-free bank with natural water two tiles away was found (map limit: 512x512); fixture unchanged.");
@@ -98,7 +153,7 @@ internal sealed partial class StardewReviewFixtureRuntime
         player.faceDirection(bank.Facing);
         player.netItemStowed.Value = false;
         return new ReviewFixtureResult(true,
-            $"Fishing prepared: location={location.NameOrUniqueName}, bank={bank.X},{bank.Y}, "
+            $"Fishing prepared: location={location.NameOrUniqueName}, searchStart={startX},{startY}, bank={bank.X},{bank.Y}, "
             + $"facing={bank.Facing}, minimumCastWater={bank.WaterX},{bank.WaterY}, "
             + $"addedBambooRod={addedRod}, seededTutorialCollectionEntry={seededTutorial}. "
             + "No cast, bite, catch callback or save was triggered. Use normal review input to cast.");

@@ -502,8 +502,10 @@ With the explicit `--allow-fixture-actions` opt-in, a `single` server or a
 - `stardew_fixture_object_ensure { "building": "coop-a", "qualifiedItemId": "(O)388" }`
   and `stardew_fixture_object_clear { "building": "coop-a" }` place or remove
   only SDVKit-owned objects in an owned fixture building.
-- `stardew_fixture_fishing_prepare { "skipTutorial": true }` runs the
-  [fishing preparation](lab-reference.md#fishing-preparation).
+- `stardew_fixture_fishing_prepare { "skipTutorial": true, "x": 40, "y": 12 }`
+  runs the [fishing preparation](lab-reference.md#fishing-preparation) at the
+  bank nearest to the optional search start, or to the player when it is omitted.
+  Combine it with `stardew_lab_warp` to fish at a specific place.
 - `stardew_lab_set_time { "time": 1930 }` (600 to 2550 in ten-minute steps) and
   `stardew_lab_set_season { "season": "winter" }` use the game's own debug
   commands. Ambient light catches up at the next ten-minute tick, and map tiles

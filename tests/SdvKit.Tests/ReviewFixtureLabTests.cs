@@ -15,6 +15,7 @@ public sealed class ReviewFixtureLabTests
         new ReviewFixtureQuery(ReviewFixtureTransportContract.ObjectClearOperation, Building: "coop"),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, SkipTutorial: true),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, X: 40, Y: 12, SkipTutorial: true),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetTimeOperation, X: 1930),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWeatherOperation, Value: "Rain"),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetSeasonOperation, Value: "winter"),

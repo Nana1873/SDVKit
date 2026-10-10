@@ -91,7 +91,12 @@ internal static class ProjectReviewMcpFixtureTools
         {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "skipTutorial": { "type": "boolean" } }
+          "properties": {
+            "skipTutorial": { "type": "boolean" },
+            "x": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "y": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+          },
+          "dependentRequired": { "x": ["y"], "y": ["x"] }
         }
         """);
     private static readonly JsonElement TimeInputSchema = ParseSchema(
@@ -443,16 +448,10 @@ internal static class ProjectReviewMcpFixtureTools
                     : null));
             tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, FishingToolName,
                 ReviewFixtureTransportContract.FishingPrepareOperation,
-                "Position the main player at a fishable bank in the current outdoor location and select a rod; optionally bypass the first-fish tutorial.",
+                "Position the main player at the fishable bank nearest to the optional search start (default: the player's tile) in the current outdoor location and select a rod; optionally bypass the first-fish tutorial.",
                 FishingInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.FishingPrepareOperation),
                 readOnly: false, destructive: false, idempotent: false,
-                arguments => HasOnly(arguments, ["skipTutorial"])
-                    ? new ReviewFixtureQuery(
-                        ReviewFixtureTransportContract.FishingPrepareOperation,
-                        SkipTutorial: arguments is not null
-                            && arguments.TryGetValue("skipTutorial", out JsonElement skip)
-                            && skip.ValueKind == JsonValueKind.True)
-                    : null));
+                TryFishing));
             tools.Add(Lab(runtimeReader, runQuery, topology, role, SetTimeToolName, ReviewFixtureTransportContract.SetTimeOperation,
                 "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command. Time keeps running; at 2600 the player passes out and the day is saved.",
                 TimeInputSchema, idempotent: true,
@@ -489,6 +488,33 @@ internal static class ProjectReviewMcpFixtureTools
         Func<IDictionary<string, JsonElement>?, ReviewFixtureQuery?> createQuery) =>
         new(runtimeReader, runQuery, topology, role, name, operation, description, inputSchema,
             LabOutputSchema(operation), readOnly: false, destructive: false, idempotent, createQuery);
+
+    private static ReviewFixtureQuery? TryFishing(IDictionary<string, JsonElement>? arguments)
+    {
+        if (!HasOnly(arguments, ["skipTutorial", "x", "y"]))
+        {
+            return null;
+        }
+
+        bool skip = arguments is not null
+            && arguments.TryGetValue("skipTutorial", out JsonElement value)
+            && value.ValueKind == JsonValueKind.True;
+        bool hasX = arguments?.ContainsKey("x") == true;
+        bool hasY = arguments?.ContainsKey("y") == true;
+        if (hasX != hasY)
+        {
+            return null;
+        }
+
+        if (!hasX)
+        {
+            return new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, SkipTutorial: skip);
+        }
+
+        return TryInt(arguments, "x", out int x) && TryInt(arguments, "y", out int y)
+            ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, X: x, Y: y, SkipTutorial: skip)
+            : null;
+    }
 
     private static ReviewFixtureQuery? TryWarp(IDictionary<string, JsonElement>? arguments)
     {

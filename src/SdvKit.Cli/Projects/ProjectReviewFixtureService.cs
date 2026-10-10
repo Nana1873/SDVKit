@@ -285,6 +285,12 @@ internal static class ProjectReviewFixtureService
                 break;
             case ReviewFixtureTransportContract.FishingPrepareOperation:
                 tokens.Add(query.SkipTutorial ? "skip" : "keep");
+                if (query.X is int fishX && query.Y is int fishY)
+                {
+                    tokens.Add(fishX.ToString(CultureInfo.InvariantCulture));
+                    tokens.Add(fishY.ToString(CultureInfo.InvariantCulture));
+                }
+
                 break;
             case ReviewFixtureTransportContract.SetTimeOperation:
                 tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
@@ -449,9 +455,10 @@ internal static class ProjectReviewFixtureService
                 "fixtureObjectRequestInvalid",
                 "Object clear requires an exact fixture building."), true),
             ReviewFixtureTransportContract.FishingPrepareOperation => (Check(
-                none(query),
+                (query.X is null) == (query.Y is null) && query.X is null or >= 0 && query.Y is null or >= 0
+                    && none(query, x: true, y: true),
                 "fixtureRequestInvalid",
-                "Fishing preparation accepts only the tutorial choice."), true),
+                "Fishing preparation accepts the tutorial choice and an optional search start with both x and y."), true),
             ReviewFixtureTransportContract.SetTimeOperation => (Check(
                 query.X is int time && ReviewFixtureTransportContract.IsValidTime(time) && !query.SkipTutorial
                     && none(query, x: true),

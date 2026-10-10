@@ -59,7 +59,7 @@ internal sealed record ReviewFixtureEnterRequest(string Building)
 internal sealed record ReviewFixtureFarmRequest()
     : ReviewFixtureRequest(RequiresMainPlayer: false);
 
-internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial)
+internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial, int? X = null, int? Y = null)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 
 internal sealed record ReviewFixtureSetTimeRequest(int Time)

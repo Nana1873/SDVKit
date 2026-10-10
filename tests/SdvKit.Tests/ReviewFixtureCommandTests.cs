@@ -1303,7 +1303,7 @@ public sealed class ReviewFixtureCommandTests
 
         public ReviewFixtureResult Farm(ReviewFixtureAccess access) => Dispatched();
 
-        public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial) => Dispatched();
+        public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial, int? originX, int? originY) => Dispatched();
 
         public void BeginNavigation(
             ReviewFixtureAccess access,

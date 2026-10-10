@@ -179,11 +179,24 @@ internal static class ReviewFixtureTransportArguments
                 request = new ReviewFixtureObjectClearOwnedRequest(clearBuilding);
                 return true;
             case ReviewFixtureTransportContract.FishingPrepareOperation
-                when arguments.Count == 9 && arguments[8] is "skip" or "keep":
+                when arguments.Count is 9 or 11 && arguments[8] is "skip" or "keep":
                 bool skip = arguments[8] == "skip";
-                query = new ReviewFixtureQuery(operation, SkipTutorial: skip);
-                request = new ReviewFixtureFishingRequest(skip);
-                return true;
+                if (arguments.Count == 9)
+                {
+                    query = new ReviewFixtureQuery(operation, SkipTutorial: skip);
+                    request = new ReviewFixtureFishingRequest(skip);
+                    return true;
+                }
+
+                if (int.TryParse(arguments[9], NumberStyles.None, CultureInfo.InvariantCulture, out int fishX)
+                    && int.TryParse(arguments[10], NumberStyles.None, CultureInfo.InvariantCulture, out int fishY))
+                {
+                    query = new ReviewFixtureQuery(operation, X: fishX, Y: fishY, SkipTutorial: skip);
+                    request = new ReviewFixtureFishingRequest(skip, fishX, fishY);
+                    return true;
+                }
+
+                return false;
             case ReviewFixtureTransportContract.SetTimeOperation
                 when arguments.Count == 9
                     && int.TryParse(arguments[8], NumberStyles.None, CultureInfo.InvariantCulture, out int time)
