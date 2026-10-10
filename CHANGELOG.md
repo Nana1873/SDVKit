@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
+- `scripts/build-gameside.ps1` compiles the game-bound half of the game-side mod against the local Stardew Valley and SMAPI installation and prints both versions. CI cannot compile that half, so it now warns on every pull request that changes `src/SdvKit.GameSide`, and the release procedure makes the extracted build a mandatory gate (#252).
 - **Breaking (2.0):** SDVKit's game-side SMAPI mod is now called GameSide instead of AlwaysOn. SMAPI shows it as "SDVKit". Its mod ID is `SDVKit.GameSide`, its assembly `SdvKit.GameSide.dll`, and its source lives in `src/SdvKit.GameSide`. "Always on" now names only the background-run behavior it provides.
 - **Breaking (2.0):** JSON output follows the new name. `lab status` and network-2 reports use `gameSide` instead of `alwaysOn`; problem codes such as `alwaysOnPending` are now `gameSidePending`; the mod-asset coverage scope is `observedRequestsSinceGameSideSubscribed`. Build identities change because the assembly file name is part of the hash.
 - `SDVKit.AlwaysOn` stays reserved: user mods with that ID are still rejected.

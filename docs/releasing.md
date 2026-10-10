@@ -57,6 +57,8 @@ if ($LASTEXITCODE -ne 0) { throw 'The extracted GameSide build failed.' }
 
 Keep the selected ZIP unchanged. Its archive identity and extracted build proof are separate: the latter checks that the distributed source compiles against the selected installed game.
 
+This extracted build is a mandatory gate, because CI never compiles the game-bound half. Do not publish without it, and record the Stardew Valley and SMAPI versions it compiled against in the release acceptance.
+
 ## Run the selected live checks
 
 Use the extracted `$sdvkit` from one explicitly selected lab directory. Identify the lab owner first; wait for another task's verified stop/reset. Resolve target/companions once. Run doctor and review status, and establish the owned disposable baseline before a fixture-backed start if it is absent.

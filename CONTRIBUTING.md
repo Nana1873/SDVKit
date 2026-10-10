@@ -22,13 +22,13 @@ Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages.
 
 ## Checks before merge
 
-CI does not compile the game-bound half of `src/SdvKit.GameSide`. For any change there, build it against the local installation as well:
+CI does not compile the game-bound half of `src/SdvKit.GameSide`. Hosted runners cannot reference the proprietary game assemblies, and a self-hosted runner would run pull-request code on a maintainer's machine. For any change there, compile it against your local installation:
 
 ```powershell
-dotnet build src\SdvKit.GameSide\SdvKit.GameSide.csproj -c Release "-p:SdvGamePath=$gamePath"
+.\scripts\build-gameside.ps1
 ```
 
-The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
+The script uses `-GamePath`, `SDV_GAME_PATH`, or the single installation that `sdvkit doctor` finds, and builds below `.sdvkit/gameside-build`. Put its last line, which names the Stardew Valley and SMAPI versions, into the pull request. CI adds a warning to every pull request that touches `src/SdvKit.GameSide` as a reminder. The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
 
 A pull request that changes the command transport, lab lifecycle, input or isolation needs both topologies live before merge. Identify the lab owner first (rule 10 in [AGENTS.md](AGENTS.md)).
 
