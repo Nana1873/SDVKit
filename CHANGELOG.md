@@ -22,7 +22,7 @@ Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next
 
 ### Fixed
 
-- A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` when the target or backpack changed, or could not be read. Physical input could still act on the target in that window, so `notDispatched` again means that nothing ran (#264).
+- A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` while an action or tool button is held or a tool is in use, or when the target or backpack changed or could not be read. Physical input reaching the target in that window could previously run the action behind a `notDispatched` result (#264).
 
 ## [1.0.0] - 2026-10-01
 

@@ -40,9 +40,11 @@ contract.
 
 The result separates `notDispatched`, `completed`, and `mayHaveRun`. Once SDVKit
 has placed its cursor on the target, an outcome in which it sent no input is
-`notDispatched` only if a fresh read of the exact target and backpack is still
-unchanged. Physical or external input could otherwise have acted on the target,
-so a change or a failed read is reported as `mayHaveRun`. Completed
+`notDispatched` only if no action or tool button is held, no tool is in use, and
+a fresh read of the exact target and backpack is unchanged. Physical or external
+input could otherwise still act on the target, so anything else is reported as
+`mayHaveRun`. `notDispatched` means SDVKit sent nothing; physical input remains
+outside this contract. Completed
 means the native input lifecycle finished, not that watering, harvest, insertion,
 or collection changed the world. Always capture the target and inventory again
 and compare their fresh revisions, selected slot/tool/item, and slot facts. The

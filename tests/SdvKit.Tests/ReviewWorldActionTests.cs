@@ -18,19 +18,25 @@ public sealed class ReviewWorldActionTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Theory]
-    [InlineData(Instance, Revision, Inventory, "notDispatched")]
-    [InlineData(Instance, Revision, "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "mayHaveRun")]
-    [InlineData(Instance, "ffffffffffffffffffffffffffffffff", Inventory, "mayHaveRun")]
-    [InlineData(null, null, Inventory, "mayHaveRun")]
-    [InlineData(Instance, Revision, null, "mayHaveRun")]
-    public void UnsentActionIsNotDispatchedOnlyWhileTargetAndBackpackAreUnchanged(
+    [InlineData("harvest", true, Instance, Revision, Inventory, "notDispatched")]
+    [InlineData("water", true, Instance, Revision, Inventory, "notDispatched")]
+    [InlineData("machineCollect", true, Instance, Revision, Inventory, "notDispatched")]
+    [InlineData("harvest", false, Instance, Revision, Inventory, "mayHaveRun")]
+    [InlineData("water", false, Instance, Revision, Inventory, "mayHaveRun")]
+    [InlineData("harvest", true, Instance, Revision, "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "mayHaveRun")]
+    [InlineData("water", true, Instance, "ffffffffffffffffffffffffffffffff", Inventory, "mayHaveRun")]
+    [InlineData("harvest", true, null, null, Inventory, "mayHaveRun")]
+    [InlineData("machineInsert", true, Instance, Revision, null, "mayHaveRun")]
+    public void UnsentActionIsNotDispatchedOnlyWithSettledInputAndUnchangedState(
+        string action,
+        bool inputSettled,
         string? instance,
         string? revision,
         string? inventory,
         string expected) =>
         Assert.Equal(
             expected,
-            ReviewWorldActionDecision.UnsentDispatchState(Query("harvest"), instance, revision, inventory));
+            ReviewWorldActionDecision.UnsentDispatchState(Query(action), inputSettled, instance, revision, inventory));
 
     [Theory]
     [InlineData("water")]

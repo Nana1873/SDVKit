@@ -85,15 +85,18 @@ internal static class ReviewWorldActionDecision
 {
     /// <summary>
     /// Dispatch state for an action SDVKit did not send after its cursor was already on the target.
-    /// Physical or external input can still have acted there, so only an unchanged target and
-    /// backpack, observed after the outcome, prove that nothing ran.
+    /// Physical or external input can still act there, and the game applies it later in the same
+    /// tick or at the end of a tool animation. So <c>notDispatched</c> requires settled input (no
+    /// action or tool button held, no tool in use) and an unchanged target and backpack.
     /// </summary>
     public static string UnsentDispatchState(
         ReviewWorldActionQuery query,
+        bool inputSettled,
         string? targetInstanceId,
         string? targetRevision,
         string? inventoryRevision) =>
-        targetInstanceId == query.TargetInstanceId
+        inputSettled
+            && targetInstanceId == query.TargetInstanceId
             && targetRevision == query.TargetRevision
             && inventoryRevision == query.InventoryRevision
                 ? "notDispatched"

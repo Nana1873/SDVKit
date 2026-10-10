@@ -1,6 +1,7 @@
 #if SDVKIT_GAME_AVAILABLE
 using System.Text.Json;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewValley;
@@ -145,12 +146,13 @@ internal static class ReviewWorldActionCommand
 
     /// <summary>
     /// Rereads the exact target and backpack after an outcome in which SDVKit sent nothing.
-    /// Any change, or a failed read, is reported as <c>mayHaveRun</c>.
+    /// Held action input, a tool in use, any change, or a failed read is reported as <c>mayHaveRun</c>.
     /// </summary>
     private static string ObservedUnsentDispatchState(ReviewWorldActionQuery query, string launch)
     {
         try
         {
+            bool inputSettled = !ActionInputOrToolInProgress();
             ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"), launch);
             ReviewWorldReport world = ReviewWorldCommand.Capture(launch, new(query.X, query.Y, 1, 1));
             ReviewWorldTile? tile = inventory.State == "ready" && world.State == "ready"
@@ -165,6 +167,7 @@ internal static class ReviewWorldActionCommand
             };
             return ReviewWorldActionDecision.UnsentDispatchState(
                 query,
+                inputSettled,
                 instanceId,
                 revision,
                 inventory.State == "ready" ? inventory.Data?.InventoryRevision : null);
@@ -173,6 +176,28 @@ internal static class ReviewWorldActionCommand
         {
             return "mayHaveRun";
         }
+    }
+
+    /// <summary>
+    /// True while input that the game may still apply to the target is held, or a tool is in use.
+    /// The game handles a press after SDVKit's update and applies tool effects at the end of the
+    /// animation, so a reread in this state cannot show that nothing will happen.
+    /// </summary>
+    private static bool ActionInputOrToolInProgress()
+    {
+        Farmer? player = Game1.player;
+        if (player is null || player.UsingTool || !player.CanMove)
+            return true;
+        MouseState mouse = Game1.input.GetMouseState();
+        if (mouse.LeftButton == ButtonState.Pressed || mouse.RightButton == ButtonState.Pressed)
+            return true;
+        KeyboardState keyboard = Game1.input.GetKeyboardState();
+        if (Game1.isOneOfTheseKeysDown(keyboard, Game1.options.actionButton)
+            || Game1.isOneOfTheseKeysDown(keyboard, Game1.options.useToolButton))
+            return true;
+        GamePadState gamePad = Game1.input.GetGamePadState();
+        return gamePad.IsConnected
+            && (gamePad.IsButtonDown(Buttons.A) || gamePad.IsButtonDown(Buttons.X));
     }
 
     private static string? Validate(ReviewWorldActionQuery query, string launch,
