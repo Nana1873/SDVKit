@@ -16,19 +16,19 @@ dotnet test SDVKit.sln -c Release --no-build
 git diff --check
 ```
 
-The solution builds the CLI and game-free tests. Tests link selected GameSide source, but do **not** compile the full `SDVKIT_GAME_AVAILABLE` implementation. A game-bound change also needs a GameSide build against the discovered local installation and the affected real-game checks in the [release matrix](docs/releasing.md#select-the-checks).
+The solution builds the CLI and game-free tests. Tests link selected GameSide source, but do **not** compile the full `SDVKIT_GAME_AVAILABLE` implementation. A game-bound change also needs a GameSide build against the discovered local installation (see [checks before merge](#checks-before-merge)) and the affected real-game checks in the [release matrix](docs/releasing.md#select-the-checks).
 
 Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages. Ordinary .NET `bin/obj` outputs are ignored. The portable verifier deliberately extracts to a fresh external temporary directory to prove checkout independence; that retained directory is its explicit exception and must never be a normal Saves/Mods directory.
 
 ## Checks before merge
 
-CI does not compile the game-bound half of `src/SdvKit.GameSide`. Hosted runners cannot reference the proprietary game assemblies, and a self-hosted runner would run pull-request code on a maintainer's machine. For any change there, compile it against your local installation:
+CI does not compile the game-bound half of `src/SdvKit.GameSide`. Hosted runners cannot reference the proprietary game assemblies, and a self-hosted runner would run pull-request code on a maintainer's machine. For any change there, or to a `src/SdvKit.Cli` file that `SdvKit.GameSide.csproj` links, compile it against your local installation:
 
 ```powershell
 .\scripts\build-gameside.ps1
 ```
 
-The script uses `-GamePath`, `SDV_GAME_PATH`, or the single installation that `sdvkit doctor` finds, and builds below `.sdvkit/gameside-build`. Put its last line, which names the Stardew Valley and SMAPI versions, into the pull request. CI adds a warning to every pull request that touches `src/SdvKit.GameSide` as a reminder. The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
+The script uses `-GamePath`, `SDV_GAME_PATH`, or the single installation that `sdvkit doctor` finds, and builds only below `.sdvkit/gameside-build`, so a running lab's binaries stay untouched. Put its last line, which names the Stardew Valley and SMAPI versions, into the pull request. CI adds a warning to every pull request that touches `src/SdvKit.GameSide` as a reminder. The game runs .NET 6, so this also catches APIs that only exist in the .NET 8 test run.
 
 A pull request that changes the command transport, lab lifecycle, input or isolation needs both topologies live before merge. Identify the lab owner first (rule 10 in [AGENTS.md](AGENTS.md)).
 

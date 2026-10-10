@@ -25,9 +25,14 @@ jobs:
         if: github.event_name == 'pull_request'
         shell: pwsh
         run: |
-          $changed = @(git diff --name-only HEAD^1 HEAD -- src/SdvKit.GameSide)
+          # The game-bound build also compiles the src/SdvKit.Cli files that the GameSide project links.
+          [xml]$project = Get-Content -Raw src/SdvKit.GameSide/SdvKit.GameSide.csproj
+          $linked = @($project.Project.ItemGroup.Compile |
+            Where-Object { $_.Include -like '..\*' } |
+            ForEach-Object { 'src/' + ($_.Include.Substring(3) -replace '\\', '/') })
+          $changed = @(git diff --name-only HEAD^1 HEAD -- src/SdvKit.GameSide @linked)
           if ($changed.Count -gt 0) {
-            $message = 'This pull request changes src/SdvKit.GameSide. CI does not compile its game-bound half; run scripts/build-gameside.ps1 locally and record its result in the pull request.'
+            $message = 'This pull request changes code that the game-bound GameSide build compiles. CI does not compile that build; run scripts/build-gameside.ps1 locally and record its result in the pull request.'
             Write-Output "::warning title=GameSide not compiled by CI::$message"
             $files = ($changed | ForEach-Object { "- ``$_``" }) -join "`n"
             "### GameSide not compiled by CI`n`n$message`n`n$files`n" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
