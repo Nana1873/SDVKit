@@ -325,6 +325,7 @@ internal static class ProjectReviewMcpServer
                     screenId,
                     preflight.Context!.State.LaunchId,
                     port,
+                    inputSession,
                     error,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -335,9 +336,15 @@ internal static class ProjectReviewMcpServer
                 await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (IOException exception) when (httpPort is not null)
+        catch (Exception exception) when (httpPort is not null
+            && exception is IOException or UnauthorizedAccessException)
         {
             error.WriteLine($"SDVKit MCP startup failed [mcpHttpUnavailable]: {exception.Message}");
+            exitCode = OperationFailed;
+        }
+        catch (McpHttpAlreadyServingException exception)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [mcpHttpAlreadyServing]: {exception.Message}");
             exitCode = OperationFailed;
         }
         finally
@@ -367,6 +374,7 @@ internal static class ProjectReviewMcpServer
         int? screenId,
         string launchId,
         int port,
+        ProjectReviewMcpInputSession? inputSession,
         TextWriter error,
         CancellationToken cancellationToken)
     {
@@ -374,9 +382,24 @@ internal static class ProjectReviewMcpServer
         await using ProjectReviewMcpHttpHost host =
             await ProjectReviewMcpHttpHost.StartAsync(options, token, port, cancellationToken).ConfigureAwait(false);
         string connectionPath = ProjectReviewMcpHttpHost.ConnectionPath(projectRoot, topology, role, screenId);
-        ProjectReviewMcpHttpHost.WriteConnection(connectionPath, new ProjectReviewMcpHttpConnection(
-            1, host.Url, token, launchId, topology, role, screenId, Environment.ProcessId));
+        if (!ProjectReviewMcpHttpHost.TryClaimConnection(
+                connectionPath,
+                new ProjectReviewMcpHttpConnection(1, host.Url, token, launchId, topology, role, screenId, Environment.ProcessId),
+                out string? owner))
+        {
+            throw new McpHttpAlreadyServingException(
+                $"Another server already serves this review selection at {owner}; stop it first.");
+        }
+
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // ASP.NET Core can begin shutdown on its own (Ctrl+C, console close). Cancel pending input
+        // first, so Kestrel's graceful stop does not wait for an in-flight action.
+        using CancellationTokenRegistration hostStopping = host.Stopping.Register(() =>
+        {
+            inputSession?.CancelPending();
+            stop.Cancel();
+        });
         ConsoleCancelEventHandler onCancel = (_, args) =>
         {
             args.Cancel = true;
@@ -391,7 +414,8 @@ internal static class ProjectReviewMcpServer
                 + "The server stops when its review launch ends or on Ctrl+C.");
             while (!stop.IsCancellationRequested)
             {
-                if (!ProjectReviewMcpHttpHost.ReviewStillBound(projectRoot, topology, role, launchId))
+                if (ProjectReviewMcpHttpHost.CheckReview(projectRoot, topology, role, launchId)
+                    == ProjectReviewMcpBinding.Ended)
                 {
                     reviewEnded = true;
                     break;
@@ -410,18 +434,14 @@ internal static class ProjectReviewMcpServer
         finally
         {
             Console.CancelKeyPress -= onCancel;
-            try
-            {
-                File.Delete(connectionPath);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // A stale connection file names a stopped server and an unusable token.
-            }
+            inputSession?.CancelPending();
+            ProjectReviewMcpHttpHost.ReleaseConnection(connectionPath, Environment.ProcessId);
         }
 
         return reviewEnded;
     }
+
+    private sealed class McpHttpAlreadyServingException(string message) : Exception(message);
 
     internal static async Task RunUntilDisconnectAsync(
         McpServer server,

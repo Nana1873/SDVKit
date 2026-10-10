@@ -595,20 +595,40 @@ server stops when its review launch ends, when the review is stopped, or on
 Ctrl+C, and then deletes the connection file. Keep the token out of shared
 configuration; read it from the file into the client's environment instead.
 
-For example, Codex reads the token from an environment variable:
+Each start creates a new token. For a reusable client configuration, pass a
+fixed `--port`, set the token in the client's environment before you start the
+client, and keep only the variable name in the configuration:
+
+```powershell
+& $sdvkit project review mcp serve --topology single --http --port 47321
+$connection = Get-Content .\.sdvkit\lab\single\runtime\mcp-http.json -Raw | ConvertFrom-Json
+$env:SDVKIT_MCP_TOKEN = $connection.token
+```
+
+Codex:
 
 ```toml
 [mcp_servers.sdvkit_review]
-url = "http://127.0.0.1:<port>/mcp"
+url = "http://127.0.0.1:47321/mcp"
 bearer_token_env_var = "SDVKIT_MCP_TOKEN"
 ```
 
-Claude Code accepts the same URL with an `Authorization: Bearer <token>` header:
+Claude Code (`.mcp.json`, which expands environment variables):
 
-```powershell
-$connection = Get-Content .\.sdvkit\lab\singleuntime\mcp-http.json -Raw | ConvertFrom-Json
-claude mcp add --transport http sdvkit-review $connection.url --header "Authorization: Bearer $($connection.token)"
+```json
+{
+  "mcpServers": {
+    "sdvkit-review": {
+      "type": "http",
+      "url": "http://127.0.0.1:47321/mcp",
+      "headers": { "Authorization": "Bearer ${SDVKIT_MCP_TOKEN}" }
+    }
+  }
+}
 ```
+
+Only one HTTP server may serve the same launch and selection; a second one is
+refused with `mcpHttpAlreadyServing`.
 
 ## Binding and error contract
 

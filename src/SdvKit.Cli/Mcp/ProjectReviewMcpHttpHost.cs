@@ -8,12 +8,20 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using SdvKit.Cli.LiveLab;
 using SdvKit.GameSide;
 
 namespace SdvKit.Cli.Mcp;
+
+internal enum ProjectReviewMcpBinding
+{
+    Bound,
+    Ended,
+    Unknown,
+}
 
 internal sealed record ProjectReviewMcpHttpConnection(
     int SchemaVersion,
@@ -46,6 +54,10 @@ internal sealed class ProjectReviewMcpHttpHost : IAsyncDisposable
     public int Port { get; }
 
     public string Url => $"http://127.0.0.1:{Port}{EndpointPath}";
+
+    /// <summary>Signals when ASP.NET Core begins shutting the host down, for example on console close.</summary>
+    public CancellationToken Stopping =>
+        _application.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
 
     public static async Task<ProjectReviewMcpHttpHost> StartAsync(
         McpServerOptions options,
@@ -138,41 +150,115 @@ internal sealed class ProjectReviewMcpHttpHost : IAsyncDisposable
             ProjectReviewInputService.RuntimePath(projectRoot, topology, role),
             screenId is int screen ? $"mcp-http-screen-{screen}.json" : "mcp-http.json");
 
-    public static void WriteConnection(string path, ProjectReviewMcpHttpConnection connection)
+    /// <summary>
+    /// Writes the connection file unless another live server already serves the same launch and
+    /// selection from it.
+    /// </summary>
+    public static bool TryClaimConnection(string path, ProjectReviewMcpHttpConnection connection, out string? owner)
     {
-        string temporary = path + ".tmp";
+        owner = null;
+        if (TryReadConnection(path) is { } existing
+            && existing.ProcessId != connection.ProcessId
+            && string.Equals(existing.LaunchId, connection.LaunchId, StringComparison.Ordinal)
+            && ProcessRunning(existing.ProcessId))
+        {
+            owner = existing.Url;
+            return false;
+        }
+
+        string temporary = $"{path}.{connection.ProcessId}.tmp";
         File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(connection, LiveLabJsonOptions.CamelCase));
         File.Move(temporary, path, overwrite: true);
+        return true;
+    }
+
+    /// <summary>Deletes the connection file only while it still names this server process.</summary>
+    public static void ReleaseConnection(string path, int processId)
+    {
+        try
+        {
+            if (TryReadConnection(path)?.ProcessId == processId)
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A stale connection file names a stopped server and an unusable token.
+        }
+    }
+
+    private static ProjectReviewMcpHttpConnection? TryReadConnection(string path)
+    {
+        try
+        {
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize<ProjectReviewMcpHttpConnection>(File.ReadAllBytes(path), LiveLabJsonOptions.CamelCase)
+                : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool ProcessRunning(int processId)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
-    /// True while the owned lab state still names the startup launch and its exact process. The
-    /// HTTP server never outlives the review it is bound to.
+    /// Ended when the owned lab state is gone or names another launch, or its exact process exited.
+    /// A state that cannot be read right now is Unknown, so a transient sharing violation does not
+    /// stop the server.
     /// </summary>
-    public static bool ReviewStillBound(string projectRoot, string topology, string? role, string launchId)
+    public static ProjectReviewMcpBinding CheckReview(string projectRoot, string topology, string? role, string launchId)
     {
+        LiveLabState? state;
         try
         {
             LiveLabPaths single = LiveLabPaths.Resolve(projectRoot);
             LiveLabPaths paths = role is null ? single : LiveLabPaths.ResolveNetworkRole(single, role);
-            LiveLabState? state = new JsonLiveLabStateStore(paths.StatePath).Read();
-            if (state is null || !string.Equals(state.LaunchId, launchId, StringComparison.Ordinal))
-            {
-                return false;
-            }
+            state = new JsonLiveLabStateStore(paths.StatePath).Read();
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or InvalidDataException
+            or InvalidOperationException
+            or JsonException)
+        {
+            return ProjectReviewMcpBinding.Unknown;
+        }
 
+        if (state is null || !string.Equals(state.LaunchId, launchId, StringComparison.Ordinal))
+        {
+            return ProjectReviewMcpBinding.Ended;
+        }
+
+        try
+        {
             using var process = System.Diagnostics.Process.GetProcessById(state.OwnedProcessIdentity.ProcessId);
             return !process.HasExited
-                && process.StartTime.ToUniversalTime() == state.OwnedProcessIdentity.StartTimeUtc.UtcDateTime;
+                && process.StartTime.ToUniversalTime() == state.OwnedProcessIdentity.StartTimeUtc.UtcDateTime
+                    ? ProjectReviewMcpBinding.Bound
+                    : ProjectReviewMcpBinding.Ended;
         }
-        catch (Exception exception) when (exception is ArgumentException
-            or InvalidOperationException
-            or IOException
-            or UnauthorizedAccessException
-            or JsonException
+        catch (ArgumentException)
+        {
+            return ProjectReviewMcpBinding.Ended;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
             or System.ComponentModel.Win32Exception)
         {
-            return false;
+            return ProjectReviewMcpBinding.Unknown;
         }
     }
 }

@@ -86,18 +86,43 @@ public sealed class ProjectReviewMcpHttpHostTests
         Assert.NotEqual(Path.GetDirectoryName(single), Path.GetDirectoryName(host));
 
         Directory.CreateDirectory(Path.GetDirectoryName(single)!);
-        ProjectReviewMcpHttpHost.WriteConnection(single, new ProjectReviewMcpHttpConnection(
-            1, "http://127.0.0.1:1/mcp", "t", "l", "single", null, null, 7));
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(single));
-        Assert.Equal("http://127.0.0.1:1/mcp", document.RootElement.GetProperty("url").GetString());
-        Assert.False(File.Exists(single + ".tmp"));
+        Assert.True(ProjectReviewMcpHttpHost.TryClaimConnection(single, new ProjectReviewMcpHttpConnection(
+            1, "http://127.0.0.1:1/mcp", "t", "l", "single", null, null, 7), out _));
+        using (JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(single)))
+        {
+            Assert.Equal("http://127.0.0.1:1/mcp", document.RootElement.GetProperty("url").GetString());
+        }
+
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(single)!, "*.tmp"));
+        ProjectReviewMcpHttpHost.ReleaseConnection(single, processId: 8);
+        Assert.True(File.Exists(single));
+        ProjectReviewMcpHttpHost.ReleaseConnection(single, processId: 7);
+        Assert.False(File.Exists(single));
+    }
+
+    [Fact]
+    public void SecondLiveServerForTheSameLaunchCannotClaimTheConnection()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = Path.Combine(temporary.Path, "mcp-http.json");
+        int live = Environment.ProcessId;
+        Assert.True(ProjectReviewMcpHttpHost.TryClaimConnection(path, new ProjectReviewMcpHttpConnection(
+            1, "http://127.0.0.1:1/mcp", "t", "launch", "single", null, null, live), out _));
+
+        Assert.False(ProjectReviewMcpHttpHost.TryClaimConnection(path, new ProjectReviewMcpHttpConnection(
+            1, "http://127.0.0.1:2/mcp", "u", "launch", "single", null, null, live + 1), out string? owner));
+        Assert.Equal("http://127.0.0.1:1/mcp", owner);
+        Assert.True(ProjectReviewMcpHttpHost.TryClaimConnection(path, new ProjectReviewMcpHttpConnection(
+            1, "http://127.0.0.1:3/mcp", "v", "other-launch", "single", null, null, live + 1), out _));
     }
 
     [Fact]
     public void ServerIsUnboundWithoutAnOwnedLabState()
     {
         using TemporaryDirectory temporary = new();
-        Assert.False(ProjectReviewMcpHttpHost.ReviewStillBound(temporary.Path, "single", null, Guid.NewGuid().ToString("N")));
+        Assert.Equal(
+            ProjectReviewMcpBinding.Ended,
+            ProjectReviewMcpHttpHost.CheckReview(temporary.Path, "single", null, Guid.NewGuid().ToString("N")));
     }
 
     private static McpServerOptions Options() => new()
