@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SdvKit.Cli.LiveLab;
@@ -180,6 +181,222 @@ internal static class ProjectReviewMcpServer
         int? httpPort = null,
         CancellationToken cancellationToken = default)
     {
+        PreparedServer? prepared = Prepare(
+            projectRoot,
+            topology,
+            role,
+            screenId,
+            allowInput,
+            allowFixtureActions,
+            allowWorldActions,
+            allowContainerTransfer,
+            allowCpRefresh,
+            error);
+        if (prepared is null)
+        {
+            return OperationFailed;
+        }
+
+        McpServerOptions options = prepared.Options;
+        ProjectReviewMcpInputSession? inputSession = prepared.InputSession;
+        var exitCode = 0;
+        var reviewEnded = false;
+        try
+        {
+            if (httpPort is int port)
+            {
+                reviewEnded = await ServeHttpAsync(
+                    options,
+                    projectRoot,
+                    topology,
+                    role,
+                    screenId,
+                    prepared.LaunchId,
+                    port,
+                    inputSession,
+                    error,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await using var transport = new StdioServerTransport(options);
+                await using McpServer server = McpServer.Create(transport, options);
+                await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (httpPort is not null
+            && exception is IOException or UnauthorizedAccessException)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [mcpHttpUnavailable]: {exception.Message}");
+            exitCode = OperationFailed;
+        }
+        catch (McpHttpAlreadyServingException exception)
+        {
+            error.WriteLine($"SDVKit MCP startup failed [mcpHttpAlreadyServing]: {exception.Message}");
+            exitCode = OperationFailed;
+        }
+        finally
+        {
+            inputSession?.CancelPending();
+            if (reviewEnded)
+            {
+                // The game process left with its input state; there is nothing to clear.
+                error.WriteLine("SDVKit MCP stopped because its review launch ended.");
+            }
+            else
+            {
+                int cleanup = CompleteInputCleanup(inputSession, error);
+                exitCode = exitCode == 0 ? cleanup : exitCode;
+            }
+        }
+
+        return exitCode;
+    }
+
+    /// <summary>
+    /// Calls one tool once, in process, through the same server options and protocol as
+    /// <c>mcp serve</c>, and prints its structured result.
+    /// </summary>
+    internal static async Task<int> CallAsync(
+        ProjectReviewCallRequest request,
+        string projectRoot,
+        TextWriter output,
+        TextWriter error,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        PreparedServer? prepared = Prepare(
+            projectRoot,
+            request.Topology,
+            request.Role,
+            request.ScreenId,
+            request.AllowInput,
+            request.AllowFixtureActions,
+            request.AllowWorldActions,
+            request.AllowContainerTransfer,
+            request.AllowCpRefresh,
+            error);
+        if (prepared is null)
+        {
+            return OperationFailed;
+        }
+
+        string[] available = prepared.Options.ToolCollection?
+            .Select(tool => tool.ProtocolTool.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray() ?? [];
+        if (!available.Contains(request.Tool, StringComparer.Ordinal))
+        {
+            error.WriteLine(
+                $"SDVKit review call failed [toolUnavailable]: '{request.Tool}' is not available for this selection and its opt-ins. Available: {string.Join(", ", available)}.");
+            return OperationFailed;
+        }
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        ConsoleCancelEventHandler onCancel = (_, args) =>
+        {
+            args.Cancel = true;
+            prepared.InputSession?.CancelPending();
+            cancellation.Cancel();
+        };
+        Console.CancelKeyPress += onCancel;
+        var clientToServer = new System.IO.Pipelines.Pipe();
+        var serverToClient = new System.IO.Pipelines.Pipe();
+        try
+        {
+            await using var transport = new StreamServerTransport(
+                clientToServer.Reader.AsStream(),
+                serverToClient.Writer.AsStream(),
+                "sdvkit-review-call");
+            await using McpServer server = McpServer.Create(transport, prepared.Options);
+            Task running = server.RunAsync(cancellation.Token);
+            CallToolResult result;
+            await using (McpClient client = await McpClient.CreateAsync(
+                new StreamClientTransport(
+                    clientToServer.Writer.AsStream(),
+                    serverToClient.Reader.AsStream()),
+                cancellationToken: cancellation.Token).ConfigureAwait(false))
+            {
+                Dictionary<string, object?> arguments = request.Arguments is { } json
+                    ? json.EnumerateObject().ToDictionary(property => property.Name, property => (object?)property.Value.Clone())
+                    : [];
+                result = await client.CallToolAsync(request.Tool, arguments, cancellationToken: cancellation.Token)
+                    .ConfigureAwait(false);
+            }
+
+            output.WriteLine(FormatCallResult(result));
+            await clientToServer.Writer.CompleteAsync().ConfigureAwait(false);
+            try
+            {
+                await running.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+            {
+                // The tool result is final; in-process server teardown is only bounded, not awaited.
+            }
+
+            return result.IsError == true ? OperationFailed : 0;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            error.WriteLine("SDVKit review call was canceled; it was not retried.");
+            CompleteInputCleanup(prepared.InputSession, error);
+            return OperationFailed;
+        }
+        catch (Exception exception) when (exception is ModelContextProtocol.McpException
+            or IOException
+            or TimeoutException
+            or InvalidOperationException
+            or JsonException)
+        {
+            // A protocol failure leaves the outcome open: drain any pending action, and never retry.
+            error.WriteLine($"SDVKit review call failed [reviewCallFailed]: {exception.Message} The call was not retried.");
+            CompleteInputCleanup(prepared.InputSession, error);
+            return OperationFailed;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+        }
+    }
+
+    private static string FormatCallResult(CallToolResult result)
+    {
+        if (result.StructuredContent is { } structured)
+        {
+            return structured.GetRawText();
+        }
+
+        var content = result.Content.Select(block => block switch
+        {
+            TextContentBlock text => (object)new { type = "text", text = text.Text },
+            ImageContentBlock image => new { type = "image", mimeType = image.MimeType, base64Length = image.Data.Length },
+            _ => new { type = block.Type },
+        });
+        return JsonSerializer.Serialize(new { isError = result.IsError == true, content });
+    }
+
+    private sealed record PreparedServer(
+        McpServerOptions Options,
+        ProjectReviewMcpInputSession? InputSession,
+        string LaunchId);
+
+    /// <summary>
+    /// Runs the startup preflight for one exact review selection and builds the tool set its
+    /// opt-ins allow. Returns null after writing a startup diagnostic.
+    /// </summary>
+    private static PreparedServer? Prepare(
+        string projectRoot,
+        string topology,
+        string? role,
+        int? screenId,
+        bool allowInput,
+        bool allowFixtureActions,
+        bool allowWorldActions,
+        bool allowContainerTransfer,
+        bool allowCpRefresh,
+        TextWriter error)
+    {
         var reader = new ProjectReviewMcpRuntimeReader(
             projectRoot,
             topology,
@@ -190,33 +407,33 @@ internal static class ProjectReviewMcpServer
         {
             error.WriteLine(
                 $"SDVKit MCP startup failed [{selectedPreflight.ErrorCode}]: {selectedPreflight.ErrorMessage}");
-            return OperationFailed;
+            return null;
         }
         ProjectReviewMcpContextResult preflight = reader.ReadContext();
         if (!preflight.Succeeded)
         {
             error.WriteLine($"SDVKit MCP startup failed [{preflight.ErrorCode}]: {preflight.ErrorMessage}");
-            return OperationFailed;
+            return null;
         }
 
         if (screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh))
         {
             error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions, world interactions, container transfers, or CP refresh.");
-            return OperationFailed;
+            return null;
         }
 
         if (allowFixtureActions && preflight.Context!.TestSave is null)
         {
             error.WriteLine(
                 "SDVKit MCP startup failed [fixtureTestSaveRequired]: Fixture actions require the exact ready SDVKit-owned test save.");
-            return OperationFailed;
+            return null;
         }
 
         if (allowWorldActions && (topology != LiveLabState.SingleTopology || role is not null
             || preflight.Context!.TestSave is null || !preflight.Context.AllTargetsReady))
         {
             error.WriteLine("SDVKit MCP startup failed [worldActionTestSaveRequired]: World interactions require the exact ready SDVKit-owned single-player test save.");
-            return OperationFailed;
+            return null;
         }
 
         ProjectReviewMcpRuntimeSnapshot? transferPermission = null;
@@ -228,7 +445,7 @@ internal static class ProjectReviewMcpServer
                 || topology != LiveLabState.SingleTopology || role is not null)
             {
                 error.WriteLine("SDVKit MCP startup failed [containerTransferTestSaveRequired]: Container transfers require the exact ready owned unbound single disposable-world review.");
-                return OperationFailed;
+                return null;
             }
             transferPermission = permissionRead.Snapshot;
         }
@@ -236,7 +453,7 @@ internal static class ProjectReviewMcpServer
         if (allowCpRefresh && ProjectReviewMcpCpTools.RefreshPermissionError(preflight.Context!) is { } cpError)
         {
             error.WriteLine($"SDVKit MCP startup failed [{cpError}]: CP refresh requires the exact ready single root CP 2.9.1 selection.");
-            return OperationFailed;
+            return null;
         }
 
         ProjectReviewMcpDataQueryRunner runData = query =>
@@ -311,58 +528,7 @@ internal static class ProjectReviewMcpServer
             runWorldAction: runWorldAction,
             runContainerTransfer: runContainerTransfer,
             cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
-        var exitCode = 0;
-        var reviewEnded = false;
-        try
-        {
-            if (httpPort is int port)
-            {
-                reviewEnded = await ServeHttpAsync(
-                    options,
-                    projectRoot,
-                    topology,
-                    role,
-                    screenId,
-                    preflight.Context!.State.LaunchId,
-                    port,
-                    inputSession,
-                    error,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await using var transport = new StdioServerTransport(options);
-                await using McpServer server = McpServer.Create(transport, options);
-                await RunUntilDisconnectAsync(server, transport, inputSession, cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (Exception exception) when (httpPort is not null
-            && exception is IOException or UnauthorizedAccessException)
-        {
-            error.WriteLine($"SDVKit MCP startup failed [mcpHttpUnavailable]: {exception.Message}");
-            exitCode = OperationFailed;
-        }
-        catch (McpHttpAlreadyServingException exception)
-        {
-            error.WriteLine($"SDVKit MCP startup failed [mcpHttpAlreadyServing]: {exception.Message}");
-            exitCode = OperationFailed;
-        }
-        finally
-        {
-            inputSession?.CancelPending();
-            if (reviewEnded)
-            {
-                // The game process left with its input state; there is nothing to clear.
-                error.WriteLine("SDVKit MCP stopped because its review launch ended.");
-            }
-            else
-            {
-                int cleanup = CompleteInputCleanup(inputSession, error);
-                exitCode = exitCode == 0 ? cleanup : exitCode;
-            }
-        }
-
-        return exitCode;
+        return new PreparedServer(options, inputSession, preflight.Context!.State.LaunchId);
     }
 
     /// <returns>True when the server stopped because its review launch ended.</returns>

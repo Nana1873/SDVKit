@@ -109,7 +109,7 @@ See [live reviews](docs/live-review.md) for disposable worlds, companions, scree
 | Automated smoke | `project smoke` | Standalone C# mod; single or local host/farmhand |
 | Functional/visual review | `project review` | C# in either topology; content-pack target in single |
 | Inspect game content, inventories, and current world; transfer an exact supported chest quantity | `project review data/map/texture/audio/mod-assets/inventory/container/container-transfer/world` | Data/inventory/container/world support exact owned roles and local screens; other asset families remain single-only, and transfer additionally requires an owned disposable unbound single world and explicit MCP opt-in |
-| Agent observation/actions | `project review mcp serve` | Single or one fixed host/farmhand role; actions opt in |
+| Agent observation/actions | `project review mcp serve` or `project review call <tool>` | Single or one fixed host/farmhand role; actions opt in |
 
 The [capability matrix](docs/README.md#capability-matrix) lists fixture and role requirements.
 
