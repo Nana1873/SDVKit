@@ -86,8 +86,9 @@ internal static class ReviewWorldActionDecision
     /// <summary>
     /// Dispatch state for an action SDVKit did not send after its cursor was already on the target.
     /// Physical or external input can still act there, and the game applies it later in the same
-    /// tick or at the end of a tool animation. So <c>notDispatched</c> requires settled input (no
-    /// action or tool button held, no tool in use) and an unchanged target and backpack.
+    /// tick, on the next tick, or at the end of a tool animation. So <c>notDispatched</c> requires
+    /// settled input (no action or tool input held or queued, no tool in use) and an unchanged
+    /// target and backpack.
     /// </summary>
     public static string UnsentDispatchState(
         ReviewWorldActionQuery query,

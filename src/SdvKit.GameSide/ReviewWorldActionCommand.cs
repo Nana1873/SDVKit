@@ -179,9 +179,10 @@ internal static class ReviewWorldActionCommand
     }
 
     /// <summary>
-    /// True while input that the game may still apply to the target is held, or a tool is in use.
-    /// The game handles a press after SDVKit's update and applies tool effects at the end of the
-    /// animation, so a reread in this state cannot show that nothing will happen.
+    /// True while input that the game may still apply to the target is held or queued, or a tool is
+    /// in use. The game applies a press from SMAPI's snapshot later in the tick, a newer hardware
+    /// press on the next tick, and tool effects at the end of the animation, so a reread in this
+    /// state cannot show that nothing will happen.
     /// </summary>
     private static bool ActionInputOrToolInProgress()
     {
@@ -196,8 +197,10 @@ internal static class ReviewWorldActionCommand
             || Game1.isOneOfTheseKeysDown(keyboard, Game1.options.useToolButton))
             return true;
         GamePadState gamePad = Game1.input.GetGamePadState();
-        return gamePad.IsConnected
-            && (gamePad.IsButtonDown(Buttons.A) || gamePad.IsButtonDown(Buttons.X));
+        if (gamePad.IsConnected && (gamePad.IsButtonDown(Buttons.A) || gamePad.IsButtonDown(Buttons.X)))
+            return true;
+        // SMAPI's snapshot above can lag the live read that cancelled a pending press by one tick.
+        return ReviewVirtualCursor.ActionInputPendingLive();
     }
 
     private static string? Validate(ReviewWorldActionQuery query, string launch,
