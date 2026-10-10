@@ -79,17 +79,22 @@ internal static class ReviewCommandLine
         return arguments.Where(argument => !string.IsNullOrWhiteSpace(argument)).ToArray();
     }
 
+    public static bool IsSdvKitCommand(string name) =>
+        string.Equals(name, RootCommand, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
-    /// Returns the arguments after the root command with SMAPI's first <c>screen=N</c> argument removed.
+    /// Returns the command name followed by its arguments, with SMAPI's first <c>screen=N</c>
+    /// argument removed. The command can be SDVKit's own or any SMAPI console command, such as one
+    /// registered by the reviewed mod.
     /// </summary>
     public static bool TryParse(string line, out string[] arguments, out int screenId, out string error)
     {
         arguments = [];
         screenId = 0;
         string[] all = Split(line);
-        if (all.Length == 0 || !string.Equals(all[0], RootCommand, StringComparison.OrdinalIgnoreCase))
+        if (all.Length == 0)
         {
-            error = $"Only '{RootCommand}' review commands are accepted.";
+            error = "The command line is empty.";
             return false;
         }
 
@@ -112,7 +117,7 @@ internal static class ReviewCommandLine
             break;
         }
 
-        arguments = rest;
+        arguments = [all[0], .. rest];
         error = string.Empty;
         return true;
     }

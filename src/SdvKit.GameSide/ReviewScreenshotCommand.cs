@@ -361,7 +361,9 @@ internal static class ReviewCommand
                 commandQueue.Drain(
                     Context.ScreenId,
                     id => GameRunner.instance.gameInstances.Any(game => game.instanceId == id),
-                    Dispatch);
+                    command => ReviewCommandLine.IsSdvKitCommand(command[0])
+                        ? Dispatch(command[1..])
+                        : SmapiConsoleCommands.TryRun(command[0], command[1..], monitor));
         }
 
         bool Dispatch(string[] arguments)

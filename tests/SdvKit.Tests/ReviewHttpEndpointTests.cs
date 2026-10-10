@@ -13,11 +13,13 @@ public sealed class ReviewHttpEndpointTests
         new(1, DateTimeOffset.UnixEpoch, "StardewModdingAPI.exe");
 
     [Theory]
-    [InlineData("sdvkit input press K", "input|press|K", 0)]
-    [InlineData("SDVKIT  input   press K", "input|press|K", 0)]
-    [InlineData("sdvkit input press K screen=1", "input|press|K", 1)]
-    [InlineData("sdvkit screen=2 split-screen status", "split-screen|status", 2)]
-    [InlineData("sdvkit screenshot viewport \"two words\"", "screenshot|viewport|two words", 0)]
+    [InlineData("sdvkit input press K", "sdvkit|input|press|K", 0)]
+    [InlineData("SDVKIT  input   press K", "SDVKIT|input|press|K", 0)]
+    [InlineData("sdvkit input press K screen=1", "sdvkit|input|press|K", 1)]
+    [InlineData("sdvkit screen=2 split-screen status", "sdvkit|split-screen|status", 2)]
+    [InlineData("sdvkit screenshot viewport \"two words\"", "sdvkit|screenshot|viewport|two words", 0)]
+    [InlineData("recipe_probe_report", "recipe_probe_report", 0)]
+    [InlineData("migration-recipe fixture missing screen=1", "migration-recipe|fixture|missing", 1)]
     public void CommandLineMatchesSmapiParsing(string line, string expected, int expectedScreen)
     {
         Assert.True(ReviewCommandLine.TryParse(line, out string[] arguments, out int screen, out _));
@@ -26,10 +28,9 @@ public sealed class ReviewHttpEndpointTests
     }
 
     [Theory]
-    [InlineData("other input press K")]
     [InlineData("sdvkit input press K screen=one")]
     [InlineData("   ")]
-    public void CommandLineRejectsForeignRootsAndInvalidScreens(string line) =>
+    public void CommandLineRejectsEmptyLinesAndInvalidScreens(string line) =>
         Assert.False(ReviewCommandLine.TryParse(line, out _, out _, out _));
 
     [Fact]
@@ -80,7 +81,7 @@ public sealed class ReviewHttpEndpointTests
 
         Assert.Equal(ProjectReviewConsoleInputStatus.Written, result.Status);
         Assert.True(result.CommandWritten);
-        Assert.Equal(["input", "press", "K"], Assert.Single(lab.Executed));
+        Assert.Equal(["sdvkit", "input", "press", "K"], Assert.Single(lab.Executed));
     }
 
     [Fact]
