@@ -22,6 +22,7 @@ Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next
 
 ### Fixed
 
+- A world action could use the tool on a neighbouring tile while still reporting `completed`. Stardew aims a mouse tool use at the previous update's cursor position, and that could still be the physical pointer. World actions now first complete one cursor-only game update and revalidate the target before pressing, like menu clicks (#265).
 - A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` while action or tool input is held or queued, a tool is in use or the player cannot move, or when the target or backpack changed or could not be read. Physical input reaching the target in that window could previously run the action behind a `notDispatched` result (#264).
 
 ## [1.0.0] - 2026-10-01

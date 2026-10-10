@@ -100,7 +100,7 @@ internal static class ReviewWorldActionCommand
             }
             cursorOwned = true;
             cursorWasPlaced = true;
-            var request = new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0, RequestId: args[1]);
+            var request = new ReviewInputRequest(ReviewInputKind.Press, button, cursorX, cursorY, RequestId: args[1]);
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position
                     ? (cursorX, cursorY) : null,
