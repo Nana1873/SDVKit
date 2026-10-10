@@ -4,6 +4,14 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking (2.0):** SDVKit's game-side SMAPI mod is now called GameSide instead of AlwaysOn. Its mod ID is `SDVKit.GameSide`, its assembly `SdvKit.GameSide.dll`, and its source lives in `src/SdvKit.GameSide`. "Always on" now names only the background-run behavior it provides.
+- **Breaking (2.0):** JSON output follows the new name. `lab status` and network-2 reports use `gameSide` instead of `alwaysOn`; problem codes such as `alwaysOnPending` are now `gameSidePending`; the mod-asset coverage scope is `observedRequestsSinceGameSideSubscribed`. Build identities change because the assembly file name is part of the hash.
+- `SDVKit.AlwaysOn` stays reserved: user mods with that ID are still rejected.
+
+Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next start, smoke, or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
+
 ## [1.0.0] - 2026-10-01
 
 ### Added

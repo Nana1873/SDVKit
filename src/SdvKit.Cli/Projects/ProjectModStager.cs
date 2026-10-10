@@ -11,8 +11,8 @@ internal static partial class ProjectModStager
 {
     private const int OwnershipSchemaVersion = 1;
     private const string OwnershipFileName = "project-smoke-staging.json";
-    private const string AlwaysOnUniqueId = "SDVKit.AlwaysOn";
-    private const string AlwaysOnVersion = "1.0.0";
+    private const string GameSideUniqueId = "SDVKit.GameSide";
+    private const string GameSideVersion = "1.0.0";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -36,10 +36,10 @@ internal static partial class ProjectModStager
         return manifest.RequiredDependencies
             .Where(dependency => !string.Equals(
                     dependency.UniqueId,
-                    AlwaysOnUniqueId,
+                    GameSideUniqueId,
                     StringComparison.OrdinalIgnoreCase)
                 || !IsMinimumVersionSatisfied(
-                    AlwaysOnVersion,
+                    GameSideVersion,
                     dependency.MinimumVersion))
             .Select(dependency => dependency.MinimumVersion is null
                 ? dependency.UniqueId
@@ -121,6 +121,7 @@ internal static partial class ProjectModStager
             foreach (LiveLabPaths paths in rolePaths)
             {
                 paths.EnsureDirectories();
+                paths.RemoveLegacyGameSideDirectory();
             }
 
             string preparedParent = rolePaths[0].ModsPath;
@@ -138,15 +139,12 @@ internal static partial class ProjectModStager
                 package,
                 target);
             afterPrepare?.Invoke(prepared.ModPath);
-            if (string.Equals(
-                    prepared.Manifest.UniqueId,
-                    AlwaysOnUniqueId,
-                    StringComparison.OrdinalIgnoreCase))
+            if (LoadedModsContract.IsReservedUniqueId(prepared.Manifest.UniqueId))
             {
                 return FinishWithPreparedCleanup(Failure(
                     "reservedModIdentity",
                     target.Manifest.Path,
-                    $"Project smoke cannot stage the reserved {AlwaysOnUniqueId} mod identity."));
+                    $"Project smoke cannot stage the reserved {prepared.Manifest.UniqueId} mod identity."));
             }
 
             string[] unavailableDependencies =
@@ -161,12 +159,12 @@ internal static partial class ProjectModStager
 
             if (rolePaths.Any(paths => PathEquals(
                     Path.Combine(paths.ModsPath, prepared.TopLevelDirectory),
-                    paths.AlwaysOnModPath)))
+                    paths.GameSideModPath)))
             {
                 return FinishWithPreparedCleanup(Failure(
                     "reservedModStagingPath",
                     package.Archive,
-                    "The package top-level directory collides with the reserved SDVKit.AlwaysOn lab mod path."));
+                    "The package top-level directory collides with the reserved SDVKit.GameSide lab mod path."));
             }
 
             string ownershipPath = OwnershipPath(singlePaths, topology);
@@ -642,7 +640,7 @@ internal static partial class ProjectModStager
         {
             string path = Path.GetFullPath(ownership.StagingPaths[index]);
             if (!PathEquals(Path.GetDirectoryName(path)!, allowedParents[index])
-                || PathEquals(path, Path.Combine(allowedParents[index], "SDVKit.AlwaysOn"))
+                || PathEquals(path, Path.Combine(allowedParents[index], "SDVKit.GameSide"))
                 || !Directory.Exists(path)
                 || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
             {
@@ -697,7 +695,7 @@ internal static partial class ProjectModStager
                 continue;
             }
 
-            if (PathEquals(entry, paths.AlwaysOnModPath))
+            if (PathEquals(entry, paths.GameSideModPath))
             {
                 continue;
             }
@@ -733,7 +731,7 @@ internal static partial class ProjectModStager
             return Problem(
                 "foreignLabModCollision",
                 RelativePath(paths.ProjectRoot, entry),
-                "Project smoke requires an isolated mod group containing only SDVKit AlwaysOn and its own target staging.");
+                "Project smoke requires an isolated mod group containing only SDVKit Game Side and its own target staging.");
         }
 
         return null;

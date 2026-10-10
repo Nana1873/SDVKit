@@ -33,7 +33,7 @@ public sealed class NetworkTwoStatusReaderTests
             remotePlayerId);
         string path = WriteMarker(temporary, network);
 
-        AlwaysOnStatusReport report = Read(path, expected);
+        GameSideStatusReport report = Read(path, expected);
 
         Assert.Equal("active", report.State);
         NetworkTwoStatusReport networkReport = Assert.IsType<NetworkTwoStatusReport>(
@@ -89,7 +89,7 @@ public sealed class NetworkTwoStatusReaderTests
         };
         string path = WriteMarker(temporary, marker);
 
-        AlwaysOnStatusReport report = Read(path, expected);
+        GameSideStatusReport report = Read(path, expected);
 
         Assert.Equal("mismatch", report.NetworkTwo?.State);
     }
@@ -105,7 +105,7 @@ public sealed class NetworkTwoStatusReaderTests
         NetworkTwoStatusMarker wrong = Passed(expected, 303L, 101L);
         string path = WriteMarker(temporary, wrong);
 
-        AlwaysOnStatusReport report = Read(path, expected);
+        GameSideStatusReport report = Read(path, expected);
 
         Assert.Equal("invalid", report.NetworkTwo?.State);
     }
@@ -138,7 +138,7 @@ public sealed class NetworkTwoStatusReaderTests
         };
         string path = WriteMarker(temporary, invalid);
 
-        AlwaysOnStatusReport report = Read(path, expected);
+        GameSideStatusReport report = Read(path, expected);
 
         Assert.Equal("invalid", report.NetworkTwo?.State);
     }
@@ -167,7 +167,7 @@ public sealed class NetworkTwoStatusReaderTests
             foregroundProcessId,
             isActive);
 
-        AlwaysOnStatusReport report = Read(path, expected);
+        GameSideStatusReport report = Read(path, expected);
 
         Assert.Equal("invalid", report.NetworkTwo?.State);
     }
@@ -182,7 +182,7 @@ public sealed class NetworkTwoStatusReaderTests
             expectedFarmhandId: null);
         string withoutNetwork = WriteMarker(temporary, network: null);
 
-        AlwaysOnStatusReport pending = Read(withoutNetwork, expected);
+        GameSideStatusReport pending = Read(withoutNetwork, expected);
 
         Assert.Equal("pending", pending.NetworkTwo?.State);
         Assert.Equal(expected.Role, pending.NetworkTwo?.Role);
@@ -190,7 +190,7 @@ public sealed class NetworkTwoStatusReaderTests
         Assert.Equal(expected.NetworkLogPath, pending.NetworkTwo?.NetworkLogPath);
 
         string withNetwork = WriteMarker(temporary, Passed(expected, 101L, 202L));
-        AlwaysOnStatusReport unexpected = AlwaysOnStatusReader.Read(
+        GameSideStatusReport unexpected = GameSideStatusReader.Read(
             withNetwork,
             "11111111111111111111111111111111",
             Process(),
@@ -229,7 +229,7 @@ public sealed class NetworkTwoStatusReaderTests
             IdentityVerified = identityVerified,
         };
 
-        AlwaysOnStatusReport report = Read(WriteMarker(temporary, marker), expected);
+        GameSideStatusReport report = Read(WriteMarker(temporary, marker), expected);
 
         Assert.Equal(expectedState, report.NetworkTwo?.State);
     }
@@ -251,15 +251,15 @@ public sealed class NetworkTwoStatusReaderTests
             SessionId = sessionId,
         };
 
-        AlwaysOnStatusReport report = Read(WriteMarker(temporary, marker), expected);
+        GameSideStatusReport report = Read(WriteMarker(temporary, marker), expected);
 
         Assert.Equal("invalid", report.NetworkTwo?.State);
     }
 
-    private static AlwaysOnStatusReport Read(
+    private static GameSideStatusReport Read(
         string statusPath,
         NetworkTwoLaunchState expected) =>
-        AlwaysOnStatusReader.Read(
+        GameSideStatusReader.Read(
             statusPath,
             "11111111111111111111111111111111",
             Process(),
@@ -310,8 +310,8 @@ public sealed class NetworkTwoStatusReaderTests
         int? foregroundProcessId = 9001,
         bool isActive = false)
     {
-        string path = Path.Combine(temporary.Path, "always-on-status.json");
-        var marker = new AlwaysOnStatusMarker(
+        string path = Path.Combine(temporary.Path, "game-side-status.json");
+        var marker = new GameSideStatusMarker(
             1,
             "11111111111111111111111111111111",
             Process().ProcessId,

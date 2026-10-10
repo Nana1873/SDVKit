@@ -14,6 +14,7 @@ public sealed class ProjectReviewStagerTests
     [Theory]
     [InlineData("duplicate", "reviewModIdentityCollision")]
     [InlineData("reserved", "reservedModIdentity")]
+    [InlineData("reservedLegacy", "reservedModIdentity")]
     public void ReviewSetRejectsDuplicateAndReservedUniqueIds(
         string caseName,
         string expectedCode)
@@ -23,7 +24,12 @@ public sealed class ProjectReviewStagerTests
             temporary.Path,
             "Target",
             ProjectReviewArtifactRole.Target,
-            caseName == "reserved" ? "SDVKit.AlwaysOn" : "Nana.Target");
+            caseName switch
+            {
+                "reserved" => "SDVKit.GameSide",
+                "reservedLegacy" => "SDVKit.AlwaysOn",
+                _ => "Nana.Target",
+            });
         IReadOnlyList<ProjectReviewPreparedArtifact> artifacts = caseName == "duplicate"
             ?
             [
@@ -531,15 +537,15 @@ public sealed class ProjectReviewStagerTests
     }
 
     [Fact]
-    public void BatchStagingAndCleanupPreserveAlwaysOnAndPersistentSaves()
+    public void BatchStagingAndCleanupPreserveGameSideAndPersistentSaves()
     {
         using TemporaryDirectory temporary = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         paths.EnsureDirectories();
-        string alwaysOnSentinel = WriteSentinel(
-            paths.AlwaysOnModPath,
-            "always-on.txt",
-            "always-on");
+        string gameSideSentinel = WriteSentinel(
+            paths.GameSideModPath,
+            "game-side.txt",
+            "game-side");
         string saveSentinel = WriteSentinel(
             Path.Combine(paths.SavesPath, "SICQA_Review"),
             "SaveGameInfo",
@@ -592,7 +598,7 @@ public sealed class ProjectReviewStagerTests
             staging.Artifacts,
             artifact => Assert.False(Directory.Exists(artifact.StagingPath)));
         Assert.False(File.Exists(staging.OwnershipPath));
-        Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
+        Assert.Equal("game-side", File.ReadAllText(gameSideSentinel));
         Assert.Equal("persistent-save", File.ReadAllText(saveSentinel));
     }
 
@@ -609,14 +615,14 @@ public sealed class ProjectReviewStagerTests
             NetworkTwoContract.FarmhandRole);
         hostPaths.EnsureDirectories();
         farmhandPaths.EnsureDirectories();
-        string hostAlwaysOn = WriteSentinel(
-            hostPaths.AlwaysOnModPath,
-            "always-on.txt",
-            "host-always-on");
-        string farmhandAlwaysOn = WriteSentinel(
-            farmhandPaths.AlwaysOnModPath,
-            "always-on.txt",
-            "farmhand-always-on");
+        string hostGameSide = WriteSentinel(
+            hostPaths.GameSideModPath,
+            "game-side.txt",
+            "host-game-side");
+        string farmhandGameSide = WriteSentinel(
+            farmhandPaths.GameSideModPath,
+            "game-side.txt",
+            "farmhand-game-side");
         ProjectReviewPreparedArtifact target = Artifact(
             temporary.Path,
             "Target",
@@ -699,8 +705,8 @@ public sealed class ProjectReviewStagerTests
                 NetworkTwoContract.FarmhandRole)));
         });
         Assert.False(File.Exists(staging.OwnershipPath));
-        Assert.Equal("host-always-on", File.ReadAllText(hostAlwaysOn));
-        Assert.Equal("farmhand-always-on", File.ReadAllText(farmhandAlwaysOn));
+        Assert.Equal("host-game-side", File.ReadAllText(hostGameSide));
+        Assert.Equal("farmhand-game-side", File.ReadAllText(farmhandGameSide));
     }
 
     [Fact]
@@ -894,10 +900,10 @@ public sealed class ProjectReviewStagerTests
         using TemporaryDirectory temporary = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         paths.EnsureDirectories();
-        string alwaysOnSentinel = WriteSentinel(
-            paths.AlwaysOnModPath,
-            "always-on.txt",
-            "always-on");
+        string gameSideSentinel = WriteSentinel(
+            paths.GameSideModPath,
+            "game-side.txt",
+            "game-side");
         ProjectReviewPreparedArtifact target = Artifact(
             temporary.Path,
             "Target",
@@ -928,7 +934,7 @@ public sealed class ProjectReviewStagerTests
         Assert.Null(cleanup.Problem);
         Assert.False(Directory.Exists(staging.Target.StagingPath));
         Assert.False(File.Exists(staging.OwnershipPath));
-        Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
+        Assert.Equal("game-side", File.ReadAllText(gameSideSentinel));
     }
 
     [Fact]

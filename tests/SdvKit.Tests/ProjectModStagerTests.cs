@@ -12,7 +12,7 @@ public sealed class ProjectModStagerTests
     private const string ModUniqueId = "Nana.ExampleMod";
 
     [Fact]
-    public void SingleStageUsesOnlyTheValidatedPackageAndCleanupPreservesAlwaysOn()
+    public void SingleStageUsesOnlyTheValidatedPackageAndCleanupPreservesGameSide()
     {
         using TemporaryDirectory project = new();
         PackageFixture fixture = CreatePackage(
@@ -26,7 +26,7 @@ public sealed class ProjectModStagerTests
             });
         project.WriteFile("bin/Release/net6.0/ExampleMod.dll", "different bin assembly");
         LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
-        WriteAlwaysOn(paths, "always-on sentinel");
+        WriteGameSide(paths, "game-side sentinel");
 
         ProjectModStagingResult result = ProjectModStager.Stage(
             fixture.Package,
@@ -61,8 +61,8 @@ public sealed class ProjectModStagerTests
         Assert.False(Directory.Exists(stagedPath));
         Assert.False(File.Exists(staging.OwnershipPath));
         Assert.Equal(
-            "always-on sentinel",
-            File.ReadAllText(Path.Combine(paths.AlwaysOnModPath, "sentinel.txt")));
+            "game-side sentinel",
+            File.ReadAllText(Path.Combine(paths.GameSideModPath, "sentinel.txt")));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class ProjectModStagerTests
         using TemporaryDirectory project = new();
         PackageFixture fixture = CreatePackage(project, archiveName: "runtime-config.zip");
         LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
-        WriteAlwaysOn(paths, "always-on sentinel");
+        WriteGameSide(paths, "game-side sentinel");
         ProjectModStaging staging = AssertSuccessful(ProjectModStager.Stage(
             fixture.Package,
             fixture.Target,
@@ -92,8 +92,8 @@ public sealed class ProjectModStagerTests
         Assert.False(Directory.Exists(stagingPath));
         Assert.False(File.Exists(staging.OwnershipPath));
         Assert.Equal(
-            "always-on sentinel",
-            File.ReadAllText(Path.Combine(paths.AlwaysOnModPath, "sentinel.txt")));
+            "game-side sentinel",
+            File.ReadAllText(Path.Combine(paths.GameSideModPath, "sentinel.txt")));
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public sealed class ProjectModStagerTests
         LiveLabPaths farmhandPaths = LiveLabPaths.ResolveNetworkRole(
             singlePaths,
             NetworkTwoContract.FarmhandRole);
-        WriteAlwaysOn(hostPaths, "host always-on");
-        WriteAlwaysOn(farmhandPaths, "farmhand always-on");
+        WriteGameSide(hostPaths, "host game-side");
+        WriteGameSide(farmhandPaths, "farmhand game-side");
 
         ProjectModStagingResult result = ProjectModStager.Stage(
             fixture.Package,
@@ -145,8 +145,8 @@ public sealed class ProjectModStagerTests
 
         Assert.True(cleanup.Removed, cleanup.Problem?.Message);
         Assert.All(staging.StagingPaths, path => Assert.False(Directory.Exists(path)));
-        Assert.True(File.Exists(Path.Combine(hostPaths.AlwaysOnModPath, "sentinel.txt")));
-        Assert.True(File.Exists(Path.Combine(farmhandPaths.AlwaysOnModPath, "sentinel.txt")));
+        Assert.True(File.Exists(Path.Combine(hostPaths.GameSideModPath, "sentinel.txt")));
+        Assert.True(File.Exists(Path.Combine(farmhandPaths.GameSideModPath, "sentinel.txt")));
     }
 
     [Fact]
@@ -342,15 +342,15 @@ public sealed class ProjectModStagerTests
     }
 
     [Fact]
-    public void ReservedAlwaysOnDirectoryCollisionIsBlockedAndPreserved()
+    public void ReservedGameSideDirectoryCollisionIsBlockedAndPreserved()
     {
         using TemporaryDirectory project = new();
         PackageFixture fixture = CreatePackage(
             project,
             archiveName: "reserved-directory.zip",
-            modDirectoryName: "SDVKit.AlwaysOn");
+            modDirectoryName: "SDVKit.GameSide");
         LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
-        WriteAlwaysOn(paths, "always-on sentinel");
+        WriteGameSide(paths, "game-side sentinel");
 
         ProjectModStagingResult result = ProjectModStager.Stage(
             fixture.Package,
@@ -363,8 +363,8 @@ public sealed class ProjectModStagerTests
             "reservedModStagingPath",
             Assert.IsType<ProjectSmokeProblem>(result.Problem).Code);
         Assert.Equal(
-            "always-on sentinel",
-            File.ReadAllText(Path.Combine(paths.AlwaysOnModPath, "sentinel.txt")));
+            "game-side sentinel",
+            File.ReadAllText(Path.Combine(paths.GameSideModPath, "sentinel.txt")));
     }
 
     [Fact]
@@ -711,18 +711,18 @@ public sealed class ProjectModStagerTests
     [InlineData("1.0.0", null)]
     [InlineData("1.0.1", "runtimeDependencyUnavailable")]
     [InlineData("999.0.0", "runtimeDependencyUnavailable")]
-    public void RequiredAlwaysOnMinimumVersionMustBeProvidedByTheLab(
+    public void RequiredGameSideMinimumVersionMustBeProvidedByTheLab(
         string minimumVersion,
         string? expectedProblem)
     {
         using TemporaryDirectory project = new();
         PackageFixture fixture = CreatePackage(
             project,
-            archiveName: $"always-on-{minimumVersion}.zip",
+            archiveName: $"game-side-{minimumVersion}.zip",
             dependenciesJson: $$"""
                 [
                   {
-                    "UniqueID": "SDVKit.AlwaysOn",
+                    "UniqueID": "SDVKit.GameSide",
                     "IsRequired": true,
                     "MinimumVersion": "{{minimumVersion}}"
                   }
@@ -741,7 +741,7 @@ public sealed class ProjectModStagerTests
             ProjectModStaging staging = AssertSuccessful(result);
             ProjectModDependencyInfo dependency =
                 Assert.Single(staging.Artifact.Manifest.RequiredDependencies);
-            Assert.Equal("SDVKit.AlwaysOn", dependency.UniqueId);
+            Assert.Equal("SDVKit.GameSide", dependency.UniqueId);
             Assert.Equal(minimumVersion, dependency.MinimumVersion);
             Assert.True(ProjectModStager.Remove(staging).Removed);
         }
@@ -921,11 +921,11 @@ public sealed class ProjectModStagerTests
         writer.Write(contents);
     }
 
-    private static void WriteAlwaysOn(LiveLabPaths paths, string sentinel)
+    private static void WriteGameSide(LiveLabPaths paths, string sentinel)
     {
         paths.EnsureDirectories();
-        Directory.CreateDirectory(paths.AlwaysOnModPath);
-        File.WriteAllText(Path.Combine(paths.AlwaysOnModPath, "sentinel.txt"), sentinel);
+        Directory.CreateDirectory(paths.GameSideModPath);
+        File.WriteAllText(Path.Combine(paths.GameSideModPath, "sentinel.txt"), sentinel);
     }
 
     private static string[] ExpectedModFiles(ProjectPackageReport package)

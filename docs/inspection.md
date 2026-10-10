@@ -84,7 +84,7 @@ Cue IDs are case-sensitive. If a cue operand starts with `-` or matches an optio
 
 ## Inspect observed mod-owned asset namespaces
 
-The `mod-assets` subcommands expose a bounded read-only catalogue of conventional `Mods/<owner>/...` asset requests observed after AlwaysOn subscribed in the same exact, target-load-confirmed `single` review. This is lifecycle evidence, not a filesystem scan or a complete inventory of assets which no loaded mod requested during that interval.
+The `mod-assets` subcommands expose a bounded read-only catalogue of conventional `Mods/<owner>/...` asset requests observed after GameSide subscribed in the same exact, target-load-confirmed `single` review. This is lifecycle evidence, not a filesystem scan or a complete inventory of assets which no loaded mod requested during that interval.
 
 ```powershell
 & $sdvkit project review mod-assets assets --offset 0 --limit 100 --topology single --json

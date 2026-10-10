@@ -295,7 +295,7 @@ internal static class ProjectReviewMcpDiagnosticsTools
                 "running",
                 IdentityVerified: true,
                 StatusFresh: true,
-                context.AlwaysOn.ObservedAtUtc!.Value),
+                context.GameSide.ObservedAtUtc!.Value),
             new ProjectReviewMcpReviewTarget(
                 targetArtifact.UniqueId,
                 targetArtifact.Version,
@@ -334,7 +334,7 @@ internal static class ProjectReviewMcpDiagnosticsTools
             context!.State.LaunchId,
             context.State.Topology,
             context.Role,
-            context.AlwaysOn.ObservedAtUtc!.Value,
+            context.GameSide.ObservedAtUtc!.Value,
             capturedAtUtc,
             pageItems,
             new ProjectReviewMcpPage(
@@ -380,7 +380,7 @@ internal static class ProjectReviewMcpDiagnosticsTools
             return false;
         }
 
-        LoadedModsStatusReport? loaded = context!.AlwaysOn.LoadedMods;
+        LoadedModsStatusReport? loaded = context!.GameSide.LoadedMods;
         if (loaded is null
             || string.Equals(loaded.State, "pending", StringComparison.Ordinal))
         {
@@ -486,16 +486,16 @@ internal static class ProjectReviewMcpDiagnosticsTools
         var loadedById = loadedEntries.ToDictionary(
             entry => entry.UniqueId,
             StringComparer.OrdinalIgnoreCase);
-        if (expectedById.ContainsKey(LoadedModsContract.AlwaysOnUniqueId)
+        if (expectedById.ContainsKey(LoadedModsContract.GameSideUniqueId)
             || !loadedById.TryGetValue(
-                LoadedModsContract.AlwaysOnUniqueId,
-                out LoadedModEntry? alwaysOn)
-            || alwaysOn.IsContentPack
+                LoadedModsContract.GameSideUniqueId,
+                out LoadedModEntry? gameSide)
+            || gameSide.IsContentPack
             || loadedEntries.Any(entry =>
                 !expectedById.ContainsKey(entry.UniqueId)
                 && !string.Equals(
                     entry.UniqueId,
-                    LoadedModsContract.AlwaysOnUniqueId,
+                    LoadedModsContract.GameSideUniqueId,
                     StringComparison.OrdinalIgnoreCase)))
         {
             return false;
@@ -504,12 +504,12 @@ internal static class ProjectReviewMcpDiagnosticsTools
         var projected = new List<ProjectReviewMcpMod>(stagedArtifacts.Count + 1)
         {
             new(
-                alwaysOn.UniqueId,
+                gameSide.UniqueId,
                 "sdvkitSupport",
                 ExpectedKind: null,
                 LoadedKind: ProjectInspectionReport.SmapiMod,
                 ExpectedVersion: null,
-                alwaysOn.Version,
+                gameSide.Version,
                 "loaded",
                 [],
                 []),

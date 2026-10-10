@@ -26,7 +26,7 @@ internal static class ReviewModAssetContract
     public const string KeysOperation = "keys";
     public const string GetOperation = "get";
     public const string SingletonKey = "singleton";
-    public const string CoverageScope = "observedRequestsSinceAlwaysOnSubscribed";
+    public const string CoverageScope = "observedRequestsSinceGameSideSubscribed";
 
     public static string ResponsePath(string runtimePath, string requestId)
     {

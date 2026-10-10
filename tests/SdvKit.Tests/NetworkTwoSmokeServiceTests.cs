@@ -13,7 +13,7 @@ public sealed class NetworkTwoSmokeServiceTests
     public void RoleReportPreservesWarningsFromASuccessfulRoleStop()
     {
         const string restoreWarning =
-            "AlwaysOn could not confirm restoration of the isolated profile options.";
+            "GameSide could not confirm restoration of the isolated profile options.";
         var liveLab = new LiveLabReport(
             1,
             NetworkTwoContract.Topology,
@@ -43,9 +43,9 @@ public sealed class NetworkTwoSmokeServiceTests
     }
 
     [Theory]
-    [InlineData("joining", "alwaysOnStale", true)]
-    [InlineData("joining", "alwaysOnNotApplied", true)]
-    [InlineData("joined", "alwaysOnNotApplied", false)]
+    [InlineData("joining", "gameSideStale", true)]
+    [InlineData("joining", "gameSideNotApplied", true)]
+    [InlineData("joined", "gameSideNotApplied", false)]
     [InlineData("joining", "networkTwoPending", false)]
     public void SynchronousJoinLoadAllowsOnlyTheTwoExactTransientProblems(
         string phase,
@@ -68,7 +68,7 @@ public sealed class NetworkTwoSmokeServiceTests
             null,
             "C:\\network.log",
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        var alwaysOn = new AlwaysOnStatusReport(
+        var gameSide = new GameSideStatusReport(
             "active",
             1,
             true,
@@ -85,7 +85,7 @@ public sealed class NetworkTwoSmokeServiceTests
             null,
             null,
             null,
-            alwaysOn,
+            gameSide,
             [new LiveLabProblem(problemCode, "transient")],
             []);
 

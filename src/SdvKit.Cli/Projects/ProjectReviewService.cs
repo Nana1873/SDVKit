@@ -27,7 +27,7 @@ internal static partial class ProjectReviewService
     private static readonly string[] NetworkWarnings =
     [
         "This review is limited to exactly one local network-2 host and one local farmhand against the owned disposable fixture; it does not prove general multiplayer compatibility.",
-        "AlwaysOn is required in both roles. Each role uses its own project-local Stardew data root, saves path, standard SMAPI log, and exact copy of the selected review set below .sdvkit.",
+        "GameSide is required in both roles. Each role uses its own project-local Stardew data root, saves path, standard SMAPI log, and exact copy of the selected review set below .sdvkit.",
         "A clean network-2 review stop preserves the owned work fixture and exact staging for a real pair restart. Reset is explicit, requires both roles stopped, restores the baseline, and removes both role staging sets.",
         "This is process-level data isolation, not a Windows sandbox; reviewed mods can still access shared machine resources.",
     ];
@@ -201,7 +201,7 @@ internal static partial class ProjectReviewService
             var service = new LiveLabService(
                 paths,
                 stateStore,
-                new AlwaysOnBuilder(),
+                new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 discoverInstallations);
             return action switch

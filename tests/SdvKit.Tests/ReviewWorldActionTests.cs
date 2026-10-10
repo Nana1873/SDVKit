@@ -235,7 +235,7 @@ public sealed class ReviewWorldActionTests
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         LiveLabState state = Assert.IsType<LiveLabState>(new JsonLiveLabStateStore(paths.StatePath).Read());
         const string later = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-        AlwaysOnStatusMarker status = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker status = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(paths.StatusPath), LiveLabJsonOptions.CamelCase)!;
         int dispatches = 0;
         ReviewWorldActionReport result = ProjectReviewWorldActionService.Execute(reader, Query("water"),

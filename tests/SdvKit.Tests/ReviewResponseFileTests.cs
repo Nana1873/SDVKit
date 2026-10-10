@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using SdvKit.AlwaysOn;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 

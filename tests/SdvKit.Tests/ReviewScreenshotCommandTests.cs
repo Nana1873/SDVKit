@@ -1,6 +1,6 @@
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -361,7 +361,7 @@ public sealed class ReviewScreenshotCommandTests
             string path = Path.Combine(
                 directory.FullName,
                 "src",
-                "SdvKit.AlwaysOn",
+                "SdvKit.GameSide",
                 fileName);
             if (File.Exists(path))
             {

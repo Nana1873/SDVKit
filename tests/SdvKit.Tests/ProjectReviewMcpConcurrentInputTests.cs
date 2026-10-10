@@ -176,17 +176,17 @@ public sealed class ProjectReviewMcpConcurrentInputTests
 
     private static ReviewInputQuery Query() => new(ReviewInputContract.CursorSetAction, null, null, 20, 30);
 
-    private static AlwaysOnStatusMarker MissingForeground(AlwaysOnStatusMarker marker) =>
+    private static GameSideStatusMarker MissingForeground(GameSideStatusMarker marker) =>
         marker with { ForegroundWindowHandle = null, ForegroundProcessId = null };
 
-    private static void UpdateStatus(string path, Func<AlwaysOnStatusMarker, AlwaysOnStatusMarker> update)
+    private static void UpdateStatus(string path, Func<GameSideStatusMarker, GameSideStatusMarker> update)
     {
-        var marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
+        var marker = JsonSerializer.Deserialize<GameSideStatusMarker>(File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
         File.WriteAllText(path, JsonSerializer.Serialize(update(marker), LiveLabJsonOptions.CamelCase));
     }
 
     private static ProjectReviewInputExecutionResult Acknowledge(string path, ReviewInputQuery query,
-        Func<AlwaysOnStatusMarker, AlwaysOnStatusMarker> update)
+        Func<GameSideStatusMarker, GameSideStatusMarker> update)
     {
         ReviewInputResponseEnvelope? response = null;
         UpdateStatus(path, marker =>

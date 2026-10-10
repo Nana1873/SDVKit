@@ -1,6 +1,6 @@
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -21,7 +21,7 @@ public sealed class LoadedModsStatusReaderTests
             [
                 new LoadedModEntry("Zulu.Pack", "2.0", IsContentPack: true),
                 new LoadedModEntry(
-                    LoadedModsContract.AlwaysOnUniqueId,
+                    LoadedModsContract.GameSideUniqueId,
                     "0.6.1",
                     IsContentPack: false),
                 new LoadedModEntry("Alpha.Mod", "1.2.3-beta+local", IsContentPack: false),
@@ -29,7 +29,7 @@ public sealed class LoadedModsStatusReaderTests
             CapturedAt);
         string statusPath = WriteMarker(temporary, loadedMods);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -43,7 +43,7 @@ public sealed class LoadedModsStatusReaderTests
         Assert.Equal(CapturedAt, inventory.CapturedAtUtc);
         Assert.Null(inventory.ProblemCode);
         Assert.Equal(
-            ["Alpha.Mod", LoadedModsContract.AlwaysOnUniqueId, "Zulu.Pack"],
+            ["Alpha.Mod", LoadedModsContract.GameSideUniqueId, "Zulu.Pack"],
             inventory.Mods.Select(mod => mod.UniqueId).ToArray());
         Assert.True(inventory.Mods[^1].IsContentPack);
         Assert.Equal("2.0.0", inventory.Mods[^1].Version);
@@ -55,7 +55,7 @@ public sealed class LoadedModsStatusReaderTests
         using TemporaryDirectory temporary = new();
         string statusPath = WriteMarker(temporary, loadedMods: null);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -74,7 +74,7 @@ public sealed class LoadedModsStatusReaderTests
         string statusPath = WriteMarker(temporary, loadedMods);
 
         LoadedModsStatusReport report = Assert.IsType<LoadedModsStatusReport>(
-            AlwaysOnStatusReader.Read(
+            GameSideStatusReader.Read(
                 statusPath,
                 "launch-1",
                 Process(),
@@ -103,8 +103,8 @@ public sealed class LoadedModsStatusReaderTests
     [InlineData("nonCanonicalVersion")]
     [InlineData("duplicate")]
     [InlineData("unsorted")]
-    [InlineData("missingAlwaysOn")]
-    [InlineData("alwaysOnPack")]
+    [InlineData("missingGameSide")]
+    [InlineData("gameSidePack")]
     [InlineData("unknownProblem")]
     [InlineData("problemWithMods")]
     public void ReaderRejectsMalformedOrUnboundedInventories(string caseName)
@@ -130,7 +130,7 @@ public sealed class LoadedModsStatusReaderTests
                 Mods =
                 [
                     new LoadedModEntry("Example/Mod", "1.0.0", false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "longId" => marker with
@@ -141,7 +141,7 @@ public sealed class LoadedModsStatusReaderTests
                         new string('A', LoadedModsContract.MaximumUniqueIdLength + 1),
                         "1.0.0",
                         false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "emptyVersion" => marker with
@@ -149,7 +149,7 @@ public sealed class LoadedModsStatusReaderTests
                 Mods =
                 [
                     new LoadedModEntry("Example.Mod", string.Empty, false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "longVersion" => marker with
@@ -160,7 +160,7 @@ public sealed class LoadedModsStatusReaderTests
                         "Example.Mod",
                         new string('1', LoadedModsContract.MaximumVersionLength + 1),
                         false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "controlVersion" => marker with
@@ -168,7 +168,7 @@ public sealed class LoadedModsStatusReaderTests
                 Mods =
                 [
                     new LoadedModEntry("Example.Mod", "1.0.0\nsecret", false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "unsafeVersion" => marker with
@@ -176,7 +176,7 @@ public sealed class LoadedModsStatusReaderTests
                 Mods =
                 [
                     new LoadedModEntry("Example.Mod", "../../secret", false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "nonCanonicalVersion" => marker with
@@ -184,7 +184,7 @@ public sealed class LoadedModsStatusReaderTests
                 Mods =
                 [
                     new LoadedModEntry("Example.Mod", "1.2", false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "duplicate" => marker with
@@ -193,27 +193,27 @@ public sealed class LoadedModsStatusReaderTests
                 [
                     new LoadedModEntry("Example.Mod", "1.0.0", false),
                     new LoadedModEntry("example.mod", "1.0.0", false),
-                    AlwaysOn(),
+                    GameSide(),
                 ],
             },
             "unsorted" => marker with
             {
                 Mods =
                 [
-                    AlwaysOn(),
+                    GameSide(),
                     new LoadedModEntry("Example.Mod", "1.0.0", false),
                 ],
             },
-            "missingAlwaysOn" => marker with
+            "missingGameSide" => marker with
             {
                 Mods = [new LoadedModEntry("Example.Mod", "1.0.0", false)],
             },
-            "alwaysOnPack" => marker with
+            "gameSidePack" => marker with
             {
                 Mods =
                 [
                     new LoadedModEntry("Example.Mod", "1.0.0", false),
-                    AlwaysOn() with { IsContentPack = true },
+                    GameSide() with { IsContentPack = true },
                 ],
             },
             "unknownProblem" => marker with
@@ -230,7 +230,7 @@ public sealed class LoadedModsStatusReaderTests
         string statusPath = WriteMarker(temporary, marker);
 
         LoadedModsStatusReport report = Assert.IsType<LoadedModsStatusReport>(
-            AlwaysOnStatusReader.Read(
+            GameSideStatusReader.Read(
                 statusPath,
                 "launch-1",
                 Process(),
@@ -263,10 +263,10 @@ public sealed class LoadedModsStatusReaderTests
     {
         using TemporaryDirectory temporary = new();
         const string launchId = "11111111111111111111111111111111";
-        string statusPath = Path.Combine(temporary.Path, "always-on.json");
+        string statusPath = Path.Combine(temporary.Path, "game-side.json");
         var writer = new StatusWriter(launchId, statusPath);
         LoadedModsStatusMarker loadedMods = LoadedModsContract.CreateReady(
-            [AlwaysOn()],
+            [GameSide()],
             DateTimeOffset.UtcNow);
 
         writer.Write(
@@ -293,7 +293,7 @@ public sealed class LoadedModsStatusReaderTests
             .GetProperty("observedAtUtc")
             .GetDateTimeOffset();
         LoadedModsStatusReport report = Assert.IsType<LoadedModsStatusReport>(
-            AlwaysOnStatusReader.Read(
+            GameSideStatusReader.Read(
                 statusPath,
                 launchId,
                 process,
@@ -306,14 +306,14 @@ public sealed class LoadedModsStatusReaderTests
     public void ReaderRejectsAnOversizedStatusFileBeforeDeserialization()
     {
         using TemporaryDirectory temporary = new();
-        string statusPath = Path.Combine(temporary.Path, "always-on.json");
+        string statusPath = Path.Combine(temporary.Path, "game-side.json");
         File.WriteAllText(
             statusPath,
             "{\"padding\":\"" + new string(
                 'x',
-                AlwaysOnStatusReader.MaximumStatusBytes) + "\"}");
+                GameSideStatusReader.MaximumStatusBytes) + "\"}");
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -329,17 +329,17 @@ public sealed class LoadedModsStatusReaderTests
             CapturedAt,
             [
                 new LoadedModEntry("Example.Mod", "1.0.0", false),
-                AlwaysOn(),
+                GameSide(),
             ],
             ProblemCode: null);
 
-    private static LoadedModEntry AlwaysOn() =>
-        new(LoadedModsContract.AlwaysOnUniqueId, "0.6.1", IsContentPack: false);
+    private static LoadedModEntry GameSide() =>
+        new(LoadedModsContract.GameSideUniqueId, "0.6.1", IsContentPack: false);
 
     private static LoadedModEntry[] TooManyMods() =>
         Enumerable.Range(0, LoadedModsContract.MaximumEntries)
             .Select(index => new LoadedModEntry($"Example.Mod{index:D3}", "1.0.0", false))
-            .Append(AlwaysOn())
+            .Append(GameSide())
             .OrderBy(mod => mod.UniqueId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -350,8 +350,8 @@ public sealed class LoadedModsStatusReaderTests
         TemporaryDirectory temporary,
         LoadedModsStatusMarker? loadedMods)
     {
-        string path = Path.Combine(temporary.Path, "always-on.json");
-        var marker = new AlwaysOnStatusMarker(
+        string path = Path.Combine(temporary.Path, "game-side.json");
+        var marker = new GameSideStatusMarker(
             1,
             "launch-1",
             Process().ProcessId,

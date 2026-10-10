@@ -9,7 +9,7 @@ internal sealed partial class LiveLabService
     internal LiveLabCommandResult StartNetwork(
         TestSaveLaunchState? testSave,
         NetworkTwoLaunchState networkTwo,
-        AlwaysOnBuildResult preparedBuild,
+        GameSideBuildResult preparedBuild,
         ProjectModLaunchState? projectMod = null,
         bool interactiveConsole = false)
     {
@@ -58,10 +58,10 @@ internal sealed partial class LiveLabService
                 state,
                 "networkCleanCloseFailed",
                 $"The normal network-2 stop timed out and the exact-process window-close fallback did not complete ({DescribeCloseResult(closed)}).",
-                alwaysOn: ReadAlwaysOn(state));
+                gameSide: ReadGameSide(state));
         }
 
-        return CompleteControlledStop(state, ReadAlwaysOn(state));
+        return CompleteControlledStop(state, ReadGameSide(state));
     }
 
     private LiveLabCommandResult ReleaseExitedNetworkStateWithoutRestore(
@@ -96,15 +96,15 @@ internal sealed partial class LiveLabService
                 state,
                 "runtimeCleanupFailed",
                 $"The exact network-2 process exited without restore proof, and its retained ownership record could not be released: {exception.Message}",
-                alwaysOn: report.AlwaysOn);
+                gameSide: report.GameSide);
         }
 
         return Failure(
             "stopped",
             state,
             "networkRestoreUnconfirmed",
-            "The exact network-2 process exited without an AlwaysOn restore marker. Its ownership record was released for bounded recovery, but this run is not accepted as a clean stop.",
-            alwaysOn: report.AlwaysOn);
+            "The exact network-2 process exited without a GameSide restore marker. Its ownership record was released for bounded recovery, but this run is not accepted as a clean stop.",
+            gameSide: report.GameSide);
     }
 
     private static void AddNetworkTwoEnvironment(

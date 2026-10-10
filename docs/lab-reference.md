@@ -4,7 +4,7 @@ Use this page to interpret process, staging, fixture, and cleanup results. For c
 
 ## Process and profile lifecycle
 
-SDVKit discovers one ready installation, builds AlwaysOn against its local assemblies, and launches `StardewModdingAPI.exe` directly with SMAPI's absolute `--mods-path`. Game binaries/content remain in the installed game directory; SDVKit does not copy them.
+SDVKit discovers one ready installation, builds GameSide (SDVKit's game-side SMAPI mod, called AlwaysOn before 2.0) against its local assemblies, and launches `StardewModdingAPI.exe` directly with SMAPI's absolute `--mods-path`. Game binaries/content remain in the installed game directory; SDVKit does not copy them.
 
 | State | Location relative to the lab root |
 | --- | --- |
@@ -14,17 +14,17 @@ SDVKit discovers one ready installation, builds AlwaysOn against its local assem
 | Network user profiles | `.sdvkit/lab/profiles/network-2/{host,farmhand}` |
 | Registered disposable world | `.sdvkit/lab/single/test-save` |
 
-Per-process profile redirection keeps Stardew/SMAPI preferences, saves, screenshots, and standard logs below these isolated profiles. AlwaysOn verifies the exact game-side Stardew data path before activating. Normal saves and Mods are not automatically selected or read. This is process/data isolation, not an OS sandbox: arbitrary tested code and external services may access shared machine resources.
+Per-process profile redirection keeps Stardew/SMAPI preferences, saves, screenshots, and standard logs below these isolated profiles. GameSide verifies the exact game-side Stardew data path before activating. Normal saves and Mods are not automatically selected or read. This is process/data isolation, not an OS sandbox: arbitrary tested code and external services may access shared machine resources.
 
 ### Identity and exit
 
 Ownership binds the exact PID, UTC process start time, executable identity, and matching game-side marker. Status rechecks that binding. Stop publishes that launch's owned stop request, waits for the exact process handle and terminal marker, and clears ownership only after confirmed exit. Unknown identity, missing terminal evidence, or a timeout retains the process record.
 
-Status is a complete JSON snapshot, published by a same-directory atomic rename. An open reader can finish the old snapshot; later opens see the new one. Each read still validates launch/PID/start identity, nested role/build identity, bounded JSON and freshness; an active marker older than five seconds is stale. A partial or mismatched marker never establishes readiness. On Windows, publication uses `FileRenameInfoEx` with POSIX replacement semantics (Windows 10 version 1709 or later). Denied writes, read-only targets and filesystems that do not support the operation remain visible errors; no non-atomic fallback is used. AlwaysOn logs the first error of each uninterrupted failure period, and a later successful tick can publish fresh status again.
+Status is a complete JSON snapshot, published by a same-directory atomic rename. An open reader can finish the old snapshot; later opens see the new one. Each read still validates launch/PID/start identity, nested role/build identity, bounded JSON and freshness; an active marker older than five seconds is stale. A partial or mismatched marker never establishes readiness. On Windows, publication uses `FileRenameInfoEx` with POSIX replacement semantics (Windows 10 version 1709 or later). Denied writes, read-only targets and filesystems that do not support the operation remain visible errors; no non-atomic fallback is used. GameSide logs the first error of each uninterrupted failure period, and a later successful tick can publish fresh status again.
 
 Each status read opens the file again. A missing marker reports `pending`; an unreadable or malformed marker reports `invalid`; a marker for another launch or process reports `mismatch`. A later readable snapshot can recover on the next invocation, but it must still pass identity and freshness checks. SDVKit does not substitute an older cached snapshot for a failed read.
 
-AlwaysOn disables `pauseWhenOutOfFocus` in its isolated profile while running. On controlled exit it attempts to restore and read back the captured option, publishes `exiting` or `restoreFailed`, and asks the game to exit normally in either case. A failed final publication is logged separately even if active updates were already failing; it does not hold the game open. Without a matching terminal marker, process exit alone returns `cleanStopNotConfirmed` and retains ownership for inspection. A published `restoreFailed` marker instead reports an unconfirmed restoration as a warning after otherwise safe exit; the next start reapplies the lab option. Crashes or manual/forced termination do not promise restoration.
+GameSide disables `pauseWhenOutOfFocus` in its isolated profile while running. On controlled exit it attempts to restore and read back the captured option, publishes `exiting` or `restoreFailed`, and asks the game to exit normally in either case. A failed final publication is logged separately even if active updates were already failing; it does not hold the game open. Without a matching terminal marker, process exit alone returns `cleanStopNotConfirmed` and retains ownership for inspection. A published `restoreFailed` marker instead reports an unconfirmed restoration as a warning after otherwise safe exit; the next start reapplies the lab option. Crashes or manual/forced termination do not promise restoration.
 
 Normal stop has no process-name search or kill fallback. Only when Windows cannot establish the identity of a freshly created child can that child be aborted through its original creation handle before start returns.
 
@@ -38,15 +38,15 @@ Automation uses the [supported version bands](../README.md#requirements) plus ru
 
 ### Local host and farmhand
 
-`lab smoke --topology network-2` reuses the prepared baseline. It starts exactly one local host and farmhand, with separate profiles and the same AlwaysOn build. The pair must really join, expose reciprocal identities, and remain connected for 120 consecutive verified ticks while running unfocused with AlwaysOn active. Each result has its own process/foreground observations and logs.
+`lab smoke --topology network-2` reuses the prepared baseline. It starts exactly one local host and farmhand, with separate profiles and the same GameSide build. The pair must really join, expose reciprocal identities, and remain connected for 120 consecutive verified ticks while running unfocused with GameSide active. Each result has its own process/foreground observations and logs.
 
 Normal teardown stops farmhand then host, verifies exit/unmount, and resets the work fixture. Join, identity, background progress, exit, mount cleanup, or reset failure remains blocking. This proves that local two-role scenario only.
 
 ## Project smoke identity and teardown
 
-`project smoke` selects one standalone C# manifest/project and uses the existing inspector, Release builder, and validated package. Unsupported project shapes, reserved `SDVKit.AlwaysOn` identity, or missing required dependencies produce controlled failures; optional dependencies may be absent.
+`project smoke` selects one standalone C# manifest/project and uses the existing inspector, Release builder, and validated package. Unsupported project shapes, reserved `SDVKit.GameSide` identity, or missing required dependencies produce controlled failures; optional dependencies may be absent.
 
-The selected source project's `.sdvkit/` owns build/package output. The command's current directory owns live state. The validated ZIP is rechecked before extraction and staged as a sibling of AlwaysOn. Network roles receive the same prepared file set. Results retain package SHA-256, staged `buildIdentity`, manifest `declaredVersion`, and SMAPI's canonical `version` (for example, `1.0` becomes `1.0.0`).
+The selected source project's `.sdvkit/` owns build/package output. The command's current directory owns live state. The validated ZIP is rechecked before extraction and staged as a sibling of GameSide. Network roles receive the same prepared file set. Results retain package SHA-256, staged `buildIdentity`, manifest `declaredVersion`, and SMAPI's canonical `version` (for example, `1.0` becomes `1.0.0`).
 
 After `GameLaunched`, SMAPI's loaded-mod registry must confirm the expected target ID/version in each role. The disposable-world/tick/teardown path then runs. Acceptance requires `state=passed`, matching role identities, sufficient ticks, `fixtureReset=true`, and `stagingRemoved=true`. This does not measure an in-memory DLL hash or prove all target features.
 
@@ -68,7 +68,7 @@ See [finish or test persistence](live-review.md#finish-or-test-persistence): sin
 
 ## Fixture command reference
 
-Each row below is an AlwaysOn game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport.
+Each row below is a GameSide game-console line, quoted as the text argument to `project review command`, not a top-level CLI command. For network-2, select one explicit role on the transport.
 
 | Console line | Role / result |
 | --- | --- |
@@ -82,7 +82,7 @@ Each row below is an AlwaysOn game-console line, quoted as the text argument to 
 | `sdvkit fixture farm` | Any verified role; allowed natural Farm exit |
 | `sdvkit fixture fishing prepare [--skip-tutorial]` | Single/host; prepare a collision-free bank and selected rod in the current outdoor location |
 
-Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only delivery; require the AlwaysOn result and direct effect evidence.
+Every invocation revalidates current review/process, load phase, fixture/Save identities, ownership, and role. The commands are unavailable in plain single reviews, smoke sessions, or foreign/unverified saves. `commandWritten=true` proves only delivery; require the GameSide result and direct effect evidence.
 
 ### Fishing preparation
 
@@ -108,7 +108,7 @@ inventory fish is created. Omitting the flag preserves tutorial behavior.
 & $sdvkit project review command 'sdvkit input press C' --topology single --json
 ```
 
-Require the AlwaysOn `Fishing prepared` result in the isolated SMAPI log and
+Require the GameSide `Fishing prepared` result in the isolated SMAPI log and
 check the reported player location/selected rod before casting. Preparation is
 not evidence of a successful cast or catch. Read the additive
 [fishing snapshot](runtime-state.md#fishing-observations) during play. The normal

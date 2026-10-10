@@ -1,9 +1,9 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -1118,7 +1118,7 @@ public sealed class ReviewAudioCommandTests
     [Fact]
     public void GameAdapterSourceDefersGameAccessAndBoundsMetadataBeforeAllocation()
     {
-        string source = ReadAlwaysOnSource();
+        string source = ReadGameSideSource();
         int constructorStart = source.IndexOf(
             "public StardewReviewAudioSource(",
             StringComparison.Ordinal);
@@ -1616,10 +1616,10 @@ public sealed class ReviewAudioCommandTests
             new ReviewAudioQuery(operation, cueId, offset, limit),
             source);
 
-    private static string ReadAlwaysOnSource() =>
+    private static string ReadGameSideSource() =>
         ReadRepositoryFile(
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ReviewAudioCommand.cs");
 
     private static string ReadRepositoryFile(params string[] relativeSegments)

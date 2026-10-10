@@ -1,0 +1,9 @@
+{
+  "Name": "SDVKit Game Side",
+  "Author": "SDVKit contributors",
+  "Version": "1.0.0",
+  "Description": "SDVKit's game-side mod for its isolated test lab: background running, lab status, review commands, and disposable-world fixtures.",
+  "UniqueID": "SDVKit.GameSide",
+  "EntryDll": "SdvKit.GameSide.dll",
+  "MinimumApiVersion": "4.5.0"
+}

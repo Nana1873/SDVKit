@@ -171,7 +171,7 @@ The target/launch/process/save/build bindings, complete event log, typed MCP
 responses, screenshots, before/after desktop observations and final audit remain
 under the task's ignored `.sdvkit/issue-217/live/`; the source/package evidence is
 under `revision-2/`. The initial preparation and earlier candidate evidence remain
-separate. Restore/format/build, installed-game AlwaysOn and probe builds, package
+separate. Restore/format/build, installed-game GameSide and probe builds, package
 and extraction passed. The default local suite passed 2,213 with the two documented
 local stress skips; exact tested-head CI passed all 2,215 with zero skips plus
 packaging/portable checks. A local orchestration-script parse error occurred before

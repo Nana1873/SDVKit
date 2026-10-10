@@ -16,7 +16,7 @@ internal sealed record LiveLabReport(
     string? ExecutablePath,
     string? ModsPath,
     string? BuildLogPath,
-    AlwaysOnStatusReport? AlwaysOn,
+    GameSideStatusReport? GameSide,
     IReadOnlyList<LiveLabProblem> Problems,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string>? TestSaveLogPaths = null);

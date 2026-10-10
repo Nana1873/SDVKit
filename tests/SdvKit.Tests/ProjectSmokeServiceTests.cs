@@ -97,7 +97,7 @@ public sealed class ProjectSmokeServiceTests
     }
 
     [Fact]
-    public void UnavailableAlwaysOnMinimumVersionIsRejectedBeforeDoctor()
+    public void UnavailableGameSideMinimumVersionIsRejectedBeforeDoctor()
     {
         using TemporaryDirectory source = new();
         using TemporaryDirectory lab = new();
@@ -106,7 +106,7 @@ public sealed class ProjectSmokeServiceTests
             """
             [
               {
-                "UniqueID": "SDVKit.AlwaysOn",
+                "UniqueID": "SDVKit.GameSide",
                 "IsRequired": true,
                 "MinimumVersion": "999.0.0"
               }
@@ -127,7 +127,7 @@ public sealed class ProjectSmokeServiceTests
         Assert.Equal("unsupported", report.State);
         ProjectSmokeProblem problem = Assert.Single(report.Problems);
         Assert.Equal("runtimeDependencyUnavailable", problem.Code);
-        Assert.Contains("SDVKit.AlwaysOn >= 999.0.0", problem.Message, StringComparison.Ordinal);
+        Assert.Contains("SDVKit.GameSide >= 999.0.0", problem.Message, StringComparison.Ordinal);
         Assert.False(doctorCalled);
         AssertNoProjectState(source, lab);
     }

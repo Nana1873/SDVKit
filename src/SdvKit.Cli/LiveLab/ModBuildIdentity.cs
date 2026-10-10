@@ -11,7 +11,7 @@ internal static class ModBuildIdentity
 
     private static readonly string[] RequiredFiles =
     [
-        "SdvKit.AlwaysOn.dll",
+        "SdvKit.GameSide.dll",
         "manifest.json",
     ];
 
@@ -32,7 +32,7 @@ internal static class ModBuildIdentity
             if (!File.Exists(path))
             {
                 throw new FileNotFoundException(
-                    $"The declared AlwaysOn build is missing {fileName}.",
+                    $"The declared GameSide build is missing {fileName}.",
                     path);
             }
 

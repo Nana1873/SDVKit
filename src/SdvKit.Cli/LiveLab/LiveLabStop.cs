@@ -17,7 +17,7 @@ internal sealed partial class LiveLabService
         LabProcessInspectResult observation = _processHost.Inspect(state.OwnedProcessIdentity);
         if (observation.Status == LabProcessInspectStatus.Exited)
         {
-            AlwaysOnStatusReport exitedStatus = ReadAlwaysOn(state);
+            GameSideStatusReport exitedStatus = ReadGameSide(state);
             return CompleteControlledStop(state, exitedStatus);
         }
 
@@ -57,11 +57,11 @@ internal sealed partial class LiveLabService
             CleanStopTimeout);
         if (wait.Status == LabProcessWaitStatus.Exited)
         {
-            AlwaysOnStatusReport exitingStatus = ReadAlwaysOn(state);
+            GameSideStatusReport exitingStatus = ReadGameSide(state);
             return CompleteControlledStop(state, exitingStatus);
         }
 
-        AlwaysOnStatusReport stopStatus = ReadAlwaysOn(state);
+        GameSideStatusReport stopStatus = ReadGameSide(state);
         return wait.Status switch
         {
             LabProcessWaitStatus.IdentityMismatch => Failure(
@@ -69,34 +69,34 @@ internal sealed partial class LiveLabService
                 state,
                 "processIdentityMismatch",
                 wait.Error ?? "The PID no longer identifies the owned process.",
-                alwaysOn: stopStatus),
+                gameSide: stopStatus),
             LabProcessWaitStatus.Unreadable => Failure(
                 "unreadable",
                 state,
                 "processUnreadable",
                 wait.Error ?? "The exact process could not be observed while waiting for clean exit.",
-                alwaysOn: stopStatus),
+                gameSide: stopStatus),
             LabProcessWaitStatus.TimedOut => Failure(
                 "running",
                 state,
                 "cleanStopTimedOut",
                 wait.Error ?? "The exact process did not complete the game-side clean stop within 30 seconds.",
-                alwaysOn: stopStatus),
+                gameSide: stopStatus),
             _ => throw new InvalidOperationException("Unknown process wait result."),
         };
     }
 
     private LiveLabCommandResult CompleteControlledStop(
         LiveLabState state,
-        AlwaysOnStatusReport alwaysOn)
+        GameSideStatusReport gameSide)
     {
-        LastAlwaysOn = alwaysOn;
+        LastGameSide = gameSide;
         bool restoreUnconfirmed = string.Equals(
-            alwaysOn.State,
+            gameSide.State,
             "restoreFailed",
             StringComparison.Ordinal);
         if (!restoreUnconfirmed
-            && !string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
+            && !string.Equals(gameSide.State, "exiting", StringComparison.Ordinal))
         {
             if (state.TestSave is not null)
             {
@@ -114,7 +114,7 @@ internal sealed partial class LiveLabService
                         state,
                         "testSaveCleanupFailed",
                         $"The exact process exited and its test-save junction could not be safely removed: {exception.Message}",
-                        alwaysOn: alwaysOn);
+                        gameSide: gameSide);
                 }
             }
 
@@ -122,8 +122,8 @@ internal sealed partial class LiveLabService
                 "exited",
                 state,
                 "cleanStopNotConfirmed",
-                "The exact process exited, but AlwaysOn did not confirm restoration during normal game exit.",
-                alwaysOn: alwaysOn);
+                "The exact process exited, but GameSide did not confirm restoration during normal game exit.",
+                gameSide: gameSide);
         }
 
         bool testSaveSucceeded = true;
@@ -132,7 +132,7 @@ internal sealed partial class LiveLabService
         bool scenarioLogArchived = true;
         if (state.TestSave is not null)
         {
-            TestSaveStatusReport? testSave = alwaysOn.TestSave;
+            TestSaveStatusReport? testSave = gameSide.TestSave;
             string expectedPhase = string.Equals(
                 state.TestSave.Mode,
                 TestSaveContract.CreateMode,
@@ -158,14 +158,14 @@ internal sealed partial class LiveLabService
                     state,
                     "testSaveCleanupFailed",
                     $"The clean process stop was confirmed, but exact test-save cleanup failed: {exception.Message}",
-                    alwaysOn: alwaysOn);
+                    gameSide: gameSide);
             }
         }
 
 
         if (state.NetworkTwo is not null)
         {
-            NetworkTwoStatusReport? networkTwo = alwaysOn.NetworkTwo;
+            NetworkTwoStatusReport? networkTwo = gameSide.NetworkTwo;
             bool pairIdentitiesMatch = networkTwo?.LocalPlayerId is not (null or 0)
                 && networkTwo.RemotePlayerId is not (null or 0)
                 && networkTwo.LocalPlayerId != networkTwo.RemotePlayerId;
@@ -180,7 +180,7 @@ internal sealed partial class LiveLabService
 
         if (state.ProjectMod is not null)
         {
-            projectModSucceeded = ProjectModLoadSucceeded(alwaysOn, state.ProjectMod);
+            projectModSucceeded = ProjectModLoadSucceeded(gameSide, state.ProjectMod);
         }
 
         try
@@ -195,7 +195,7 @@ internal sealed partial class LiveLabService
                 state,
                 "runtimeCleanupFailed",
                 $"The clean stop was confirmed, but its project-local ownership record could not be removed: {exception.Message}",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         if (!projectModSucceeded)
@@ -204,9 +204,9 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 "projectModLoadUnconfirmed",
-                alwaysOn.ProjectMod?.Message
+                gameSide.ProjectMod?.Message
                     ?? "SMAPI did not confirm the expected project mod identity and version as loaded.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         if (!testSaveSucceeded)
@@ -215,9 +215,9 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 "testSaveIncomplete",
-                alwaysOn.TestSave?.Message
+                gameSide.TestSave?.Message
                     ?? "The game-side test-save workflow did not reach its verified terminal phase.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
 
@@ -227,9 +227,9 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 "networkTwoIncomplete",
-                alwaysOn.NetworkTwo?.Message
+                gameSide.NetworkTwo?.Message
                     ?? "The game-side network-2 workflow did not reach its verified terminal phase.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         if (!scenarioLogArchived)
@@ -239,7 +239,7 @@ internal sealed partial class LiveLabService
                 state,
                 "testSaveScenarioLogMissing",
                 "The exact process and fixture were cleaned up, but the required project-local test-save scenario log was not produced.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         return Result(
@@ -248,7 +248,7 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 [],
-                alwaysOn: alwaysOn,
+                gameSide: gameSide,
                 additionalWarnings: restoreUnconfirmed
                     ? RestoreUnconfirmedWarnings
                     : null));

@@ -1,5 +1,5 @@
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -1149,7 +1149,7 @@ public sealed class ReviewFixtureCommandTests
     [Fact]
     public void ReviewSaveTransportReusesTheOnlyDurableSaveIteratorAndPublishesAfterCompletion()
     {
-        string source = ReadRepositorySource("src", "SdvKit.AlwaysOn", "TestSaveAutomation.cs");
+        string source = ReadRepositorySource("src", "SdvKit.GameSide", "TestSaveAutomation.cs");
         string fixtureSource = ReadSource();
 
         Assert.Equal(
@@ -1217,18 +1217,18 @@ public sealed class ReviewFixtureCommandTests
 
     private static string ReadSource()
         => string.Join("\n",
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureArguments.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureTransportArguments.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureKindResolver.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureOperation.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixturePolicy.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureCommand.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "ReviewFixtureTransportCommand.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureRuntime.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureBuildings.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureObjects.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureAnimals.cs"),
-            ReadRepositorySource("src", "SdvKit.AlwaysOn", "StardewReviewFixtureNavigation.cs"));
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureTransportArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureKindResolver.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureOperation.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixturePolicy.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureCommand.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureTransportCommand.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureRuntime.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureBuildings.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureObjects.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureAnimals.cs"),
+            ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureNavigation.cs"));
 
     private static string ReadRepositorySource(params string[] parts)
     {

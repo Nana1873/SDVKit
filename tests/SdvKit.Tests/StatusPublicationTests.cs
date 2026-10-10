@@ -1,4 +1,4 @@
-using SdvKit.AlwaysOn;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 

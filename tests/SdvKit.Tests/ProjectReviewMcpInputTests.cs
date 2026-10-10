@@ -479,7 +479,7 @@ public sealed class ProjectReviewMcpInputTests
         ProjectReviewMcpRuntimeReader reader =
             ProjectReviewMcpTests.CreateReadyReview(temporary);
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
-        AlwaysOnStatusMarker marker = ReadStatus(paths.StatusPath);
+        GameSideStatusMarker marker = ReadStatus(paths.StatusPath);
         WriteStatus(paths.StatusPath, marker with
         {
             ForegroundWindowHandle = null,
@@ -506,7 +506,7 @@ public sealed class ProjectReviewMcpInputTests
     }
 
     [Fact]
-    public void AcknowledgementRequiresANewerAlwaysOnStatusAndTick()
+    public void AcknowledgementRequiresANewerGameSideStatusAndTick()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader =
@@ -538,8 +538,8 @@ public sealed class ProjectReviewMcpInputTests
             reader,
             (query, token) =>
             {
-                string statusPath = Path.Combine(runtimePath, "always-on-status.json");
-                AlwaysOnStatusMarker marker = ReadStatus(statusPath);
+                string statusPath = Path.Combine(runtimePath, "game-side-status.json");
+                GameSideStatusMarker marker = ReadStatus(statusPath);
                 DateTimeOffset acknowledgedAt = marker.ObservedAtUtc.AddMilliseconds(1);
                 DateTimeOffset confirmedAt = marker.ObservedAtUtc.AddMilliseconds(2);
                 WriteStatus(statusPath, marker with
@@ -615,8 +615,8 @@ public sealed class ProjectReviewMcpInputTests
         ReviewInputQuery query,
         CancellationToken _)
     {
-        string statusPath = Path.Combine(runtimePath, "always-on-status.json");
-        AlwaysOnStatusMarker marker = ReadStatus(statusPath);
+        string statusPath = Path.Combine(runtimePath, "game-side-status.json");
+        GameSideStatusMarker marker = ReadStatus(statusPath);
         DateTimeOffset acknowledgedAt = marker.ObservedAtUtc.AddMilliseconds(1);
         int acknowledgedTick = marker.Tick;
         DateTimeOffset confirmedAt = marker.ObservedAtUtc.AddMilliseconds(2);
@@ -688,13 +688,13 @@ public sealed class ProjectReviewMcpInputTests
             ActionMayHaveRun: true,
             CancellationRequested: false);
 
-    private static AlwaysOnStatusMarker ReadStatus(string statusPath) =>
-        JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+    private static GameSideStatusMarker ReadStatus(string statusPath) =>
+        JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(statusPath),
             LiveLabJsonOptions.CamelCase)
         ?? throw new InvalidDataException("The test status marker is invalid.");
 
-    private static void WriteStatus(string statusPath, AlwaysOnStatusMarker marker) =>
+    private static void WriteStatus(string statusPath, GameSideStatusMarker marker) =>
         File.WriteAllText(
             statusPath,
             JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase));

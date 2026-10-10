@@ -240,7 +240,7 @@ public sealed class ProjectReviewMcpTests
         ProjectReviewMcpRuntimeReader reader = CreateReadyReview(temporary);
         Assert.Equal(12345, reader.Read().Snapshot?.Runtime.LocalPlayer?.Data?.Money);
         string path = LiveLabPaths.Resolve(temporary.Path).StatusPath;
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
         RuntimeSnapshotMarker title = new(1, false, null, null, null, null, null, null, null, true, ObservedAt,
             LocalPlayerSnapshotContract.WithoutData("worldNotReady"));
@@ -261,7 +261,7 @@ public sealed class ProjectReviewMcpTests
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = CreateReadyNetworkReview(temporary, "host");
         string path = LiveLabPaths.ResolveNetworkRole(LiveLabPaths.Resolve(temporary.Path), "host").StatusPath;
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
         File.WriteAllText(path, JsonSerializer.Serialize(marker with
         {
@@ -326,7 +326,7 @@ public sealed class ProjectReviewMcpTests
         LiveLabPaths selectedPaths = LiveLabPaths.ResolveNetworkRole(
             LiveLabPaths.Resolve(temporary.Path),
             NetworkTwoContract.FarmhandRole);
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(selectedPaths.StatusPath),
             LiveLabJsonOptions.CamelCase)!;
         const string rejoinedSession = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -439,7 +439,7 @@ public sealed class ProjectReviewMcpTests
 
         Assert.False(rejected.Succeeded);
         Assert.Equal("reviewPairNotReady", rejected.ErrorCode);
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(selectedPaths.StatusPath),
             LiveLabJsonOptions.CamelCase)!;
         Assert.True(marker.NetworkTwo?.IdentityVerified);
@@ -506,7 +506,7 @@ public sealed class ProjectReviewMcpTests
     }
 
     [Fact]
-    public void RuntimeReadFailsClosedWhenAlwaysOnSnapshotIsStale()
+    public void RuntimeReadFailsClosedWhenGameSideSnapshotIsStale()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = CreateReadyReview(
@@ -1051,7 +1051,7 @@ public sealed class ProjectReviewMcpTests
         bool? ipConnectionsEnabled,
         int foregroundProcessId)
     {
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -1082,7 +1082,7 @@ public sealed class ProjectReviewMcpTests
         string? sessionId = null,
         bool? worldReady = null)
     {
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(path),
             LiveLabJsonOptions.CamelCase)!;
         File.WriteAllText(
@@ -1252,7 +1252,7 @@ public sealed class ProjectReviewMcpTests
             TestSave: testSave,
             ProjectMod: staging.TargetLaunchState);
         new JsonLiveLabStateStore(paths.StatePath).Write(state);
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             LaunchId,
             process.ProcessId,
@@ -1322,7 +1322,7 @@ public sealed class ProjectReviewMcpTests
         LoadedModsContract.CreateReady(
             [
                 new LoadedModEntry(
-                    LoadedModsContract.AlwaysOnUniqueId,
+                    LoadedModsContract.GameSideUniqueId,
                     "0.6.1",
                     IsContentPack: false),
                 new LoadedModEntry(

@@ -38,9 +38,9 @@ public sealed class NetworkTwoLiveLabServiceTests
                 Identity(gamePath)),
         };
         LiveLabService service = Service(paths, stateStore, builder, process, gamePath);
-        var prepared = new AlwaysOnBuildResult(
+        var prepared = new GameSideBuildResult(
             true,
-            Path.Combine(paths.BuildPath, "always-on-build.log"),
+            Path.Combine(paths.BuildPath, "game-side-build.log"),
             null);
 
         LiveLabCommandResult result = service.StartNetwork(testSave, launch, prepared);
@@ -112,9 +112,9 @@ public sealed class NetworkTwoLiveLabServiceTests
                 Identity(gamePath)),
         };
         LiveLabService service = Service(paths, stateStore, builder, process, gamePath);
-        var prepared = new AlwaysOnBuildResult(
+        var prepared = new GameSideBuildResult(
             true,
-            Path.Combine(hostPaths.BuildPath, "always-on-build.log"),
+            Path.Combine(hostPaths.BuildPath, "game-side-build.log"),
             null);
 
         LiveLabCommandResult result = service.StartNetwork(null, launch, prepared);
@@ -187,9 +187,9 @@ public sealed class NetworkTwoLiveLabServiceTests
             new FakeBuilder(),
             process,
             gamePath);
-        var prepared = new AlwaysOnBuildResult(
+        var prepared = new GameSideBuildResult(
             true,
-            Path.Combine(hostPaths.BuildPath, "always-on-build.log"),
+            Path.Combine(hostPaths.BuildPath, "game-side-build.log"),
             null);
 
         LiveLabCommandResult result = service.StartNetwork(
@@ -215,7 +215,7 @@ public sealed class NetworkTwoLiveLabServiceTests
     [Theory]
     [InlineData(NetworkTwoContract.HostRole)]
     [InlineData(NetworkTwoContract.FarmhandRole)]
-    public void ReviewRolesUseSeparateInteractiveConsolesWithAlwaysOnAndProjectBinding(
+    public void ReviewRolesUseSeparateInteractiveConsolesWithGameSideAndProjectBinding(
         string role)
     {
         using TemporaryDirectory temporary = new();
@@ -251,9 +251,9 @@ public sealed class NetworkTwoLiveLabServiceTests
             new FakeBuilder(),
             process,
             gamePath);
-        var prepared = new AlwaysOnBuildResult(
+        var prepared = new GameSideBuildResult(
             true,
-            Path.Combine(hostPaths.BuildPath, "always-on-build.log"),
+            Path.Combine(hostPaths.BuildPath, "game-side-build.log"),
             null);
 
         LiveLabCommandResult result = service.StartNetwork(
@@ -329,9 +329,9 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.Equal(0, result.ExitCode);
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("stopped", report.State);
-        Assert.Equal(restoredEnableServer, report.AlwaysOn?.EnableServer);
-        Assert.Equal(restoredIpConnectionsEnabled, report.AlwaysOn?.IpConnectionsEnabled);
-        Assert.Equal("passed", report.AlwaysOn?.NetworkTwo?.Phase);
+        Assert.Equal(restoredEnableServer, report.GameSide?.EnableServer);
+        Assert.Equal(restoredIpConnectionsEnabled, report.GameSide?.IpConnectionsEnabled);
+        Assert.Equal("passed", report.GameSide?.NetworkTwo?.Phase);
         Assert.Equal(1, fixtureStore.CompleteCount);
         Assert.Null(stateStore.State);
     }
@@ -383,7 +383,7 @@ public sealed class NetworkTwoLiveLabServiceTests
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("stopped", report.State);
         Assert.Empty(report.Problems);
-        Assert.Equal("restoreFailed", report.AlwaysOn?.State);
+        Assert.Equal("restoreFailed", report.GameSide?.State);
         Assert.Contains(
             report.Warnings,
             warning => warning.Contains(
@@ -394,7 +394,7 @@ public sealed class NetworkTwoLiveLabServiceTests
     }
 
     [Fact]
-    public void HostRunningStatusRequiresAlwaysOnToApplyBothNetworkOptions()
+    public void HostRunningStatusRequiresGameSideToApplyBothNetworkOptions()
     {
         using TemporaryDirectory temporary = new();
         string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
@@ -597,7 +597,7 @@ public sealed class NetworkTwoLiveLabServiceTests
         bool? enableServer,
         bool? ipConnectionsEnabled)
     {
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -633,14 +633,14 @@ public sealed class NetworkTwoLiveLabServiceTests
         public void Delete() => State = null;
     }
 
-    private sealed class FakeBuilder : IAlwaysOnBuilder
+    private sealed class FakeBuilder : IGameSideBuilder
     {
         public int CallCount { get; private set; }
 
-        public AlwaysOnBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
+        public GameSideBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
         {
             CallCount++;
-            return new AlwaysOnBuildResult(
+            return new GameSideBuildResult(
                 true,
                 Path.Combine(paths.BuildPath, "unexpected-build.log"),
                 null);

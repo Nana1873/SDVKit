@@ -492,11 +492,11 @@ internal static partial class ProjectReviewService
 
     private static bool NetworkPairRunningForPreScenarioCommand(
         NetworkTwoSmokeReport report) =>
-        RoleRunningWithActiveAlwaysOn(report.Host)
-        && RoleRunningWithActiveAlwaysOn(report.Farmhand);
+        RoleRunningWithActiveGameSide(report.Host)
+        && RoleRunningWithActiveGameSide(report.Farmhand);
 
-    private static bool RoleRunningWithActiveAlwaysOn(NetworkTwoRoleReport role) =>
+    private static bool RoleRunningWithActiveGameSide(NetworkTwoRoleReport role) =>
         string.Equals(role.State, "running", StringComparison.Ordinal)
-        && string.Equals(role.AlwaysOn?.State, "active", StringComparison.Ordinal)
-        && role.AlwaysOn?.PauseWhenOutOfFocus == false;
+        && string.Equals(role.GameSide?.State, "active", StringComparison.Ordinal)
+        && role.GameSide?.PauseWhenOutOfFocus == false;
 }

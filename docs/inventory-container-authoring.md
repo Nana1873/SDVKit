@@ -17,7 +17,7 @@ single-player disposable test save and never touches normal saves or Mods.
 
 Use the Windows-x64 ZIP from one green exact commit. Verify and extract it with
 the [portable procedure](releasing.md#verify-the-extracted-package), build its
-included AlwaysOn source against the selected game, and keep that ZIP unchanged.
+included GameSide source against the selected game, and keep that ZIP unchanged.
 Keep one lab directory as owner for the complete exercise:
 
 ```powershell

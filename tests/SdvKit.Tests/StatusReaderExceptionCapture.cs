@@ -15,7 +15,7 @@ internal sealed class StatusReaderExceptionCapture
 
     public Exception[] Exceptions => exceptions.Take(count).Cast<Exception>().ToArray();
 
-    public AlwaysOnStatusReport Read(Func<AlwaysOnStatusReport> read)
+    public GameSideStatusReport Read(Func<GameSideStatusReport> read)
     {
         Array.Clear(exceptions);
         count = 0;

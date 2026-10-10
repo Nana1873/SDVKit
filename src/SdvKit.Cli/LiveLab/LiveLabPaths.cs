@@ -14,7 +14,7 @@ internal sealed record LiveLabPaths(
     string StopRequestPath,
     string StandardOutputPath,
     string StandardErrorPath,
-    string AlwaysOnModPath,
+    string GameSideModPath,
     string TestSaveRoot,
     string TestSaveManifestPath,
     string TestSaveWorkPath,
@@ -57,11 +57,11 @@ internal sealed record LiveLabPaths(
             buildPath,
             userProfilePath,
             Path.Combine(runtimePath, "state.json"),
-            Path.Combine(runtimePath, "always-on-status.json"),
+            Path.Combine(runtimePath, "game-side-status.json"),
             Path.Combine(runtimePath, "stop.request"),
             Path.Combine(runtimePath, "smapi.stdout.log"),
             Path.Combine(runtimePath, "smapi.stderr.log"),
-            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            Path.Combine(modsPath, "SDVKit.GameSide"),
             testSaveRoot,
             Path.Combine(testSaveRoot, "fixture.json"),
             Path.Combine(testSaveRoot, "work"),
@@ -105,11 +105,11 @@ internal sealed record LiveLabPaths(
             buildPath,
             userProfilePath,
             Path.Combine(runtimePath, "state.json"),
-            Path.Combine(runtimePath, "always-on-status.json"),
+            Path.Combine(runtimePath, "game-side-status.json"),
             Path.Combine(runtimePath, "stop.request"),
             Path.Combine(runtimePath, "smapi.stdout.log"),
             Path.Combine(runtimePath, "smapi.stderr.log"),
-            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            Path.Combine(modsPath, "SDVKit.GameSide"),
             singlePaths.TestSaveRoot,
             singlePaths.TestSaveManifestPath,
             singlePaths.TestSaveWorkPath,
@@ -140,6 +140,61 @@ internal sealed record LiveLabPaths(
         EnsureDirectory(StardewDataPath);
         EnsureDirectory(SavesPath);
         RejectExistingManagedReparsePoints();
+    }
+
+    public string LegacyGameSideModPath =>
+        Path.Combine(ModsPath, LoadedModsContract.LegacyGameSideUniqueId);
+
+    /// <summary>
+    /// Removes the game-side mod that SDVKit 1.x installed under its former identity.
+    /// Only an exact SDVKit-generated install (manifest plus assembly, legacy ID and entry DLL)
+    /// is removed; anything else is left untouched for the existing ownership checks.
+    /// Call this only while preparing a new launch, never for status or stop.
+    /// </summary>
+    internal bool RemoveLegacyGameSideDirectory()
+    {
+        const string legacyAssembly = "SdvKit.AlwaysOn.dll";
+        string path = LegacyGameSideModPath;
+        if (!TryGetAttributes(path, out FileAttributes attributes)
+            || (attributes & FileAttributes.Directory) == 0
+            || (attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return false;
+        }
+
+        string[] entries = Directory.GetFileSystemEntries(path)
+            .Select(entry => Path.GetFileName(entry))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (entries.Length != 2
+            || !string.Equals(entries[0], "manifest.json", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(entries[1], legacyAssembly, StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(Path.Combine(path, legacyAssembly)))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var manifest = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllBytes(Path.Combine(path, "manifest.json")));
+            System.Text.Json.JsonElement root = manifest.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object
+                || !root.TryGetProperty("UniqueID", out System.Text.Json.JsonElement id)
+                || !string.Equals(id.GetString(), LoadedModsContract.LegacyGameSideUniqueId, StringComparison.Ordinal)
+                || !root.TryGetProperty("EntryDll", out System.Text.Json.JsonElement entry)
+                || !string.Equals(entry.GetString(), legacyAssembly, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return false;
+        }
+
+        Directory.Delete(path, recursive: true);
+        return true;
     }
 
     internal void RejectUserProfileReparsePoints()

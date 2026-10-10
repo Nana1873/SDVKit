@@ -11,7 +11,7 @@ internal sealed partial class LiveLabService
 
     private static readonly TimeSpan CleanStopTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StartupRollbackSignalGrace = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan AlwaysOnStartupGrace = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan GameSideStartupGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TestSaveTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan TestSavePollInterval = TimeSpan.FromMilliseconds(250);
 
@@ -29,7 +29,7 @@ internal sealed partial class LiveLabService
 
     private static readonly string[] RestoreUnconfirmedWarnings =
     [
-        "AlwaysOn could not confirm restoration of the isolated profile options before normal exit. The exact lab process still stopped safely; the next start reapplies the required lab values.",
+        "GameSide could not confirm restoration of the isolated profile options before normal exit. The exact lab process still stopped safely; the next start reapplies the required lab values.",
     ];
 
     private static readonly string[] TestSaveEnvironmentNames =
@@ -65,7 +65,7 @@ internal sealed partial class LiveLabService
 
     private readonly LiveLabPaths _paths;
     private readonly ILiveLabStateStore _stateStore;
-    private readonly IAlwaysOnBuilder _alwaysOnBuilder;
+    private readonly IGameSideBuilder _gameSideBuilder;
     private readonly ILabProcessHost _processHost;
     private readonly Func<DoctorReport> _discoverInstallations;
     private readonly Func<DateTimeOffset> _utcNow;
@@ -75,12 +75,12 @@ internal sealed partial class LiveLabService
     private readonly string _reportTopology;
     private IReadOnlyList<string> _lastTestSaveLogPaths = [];
 
-    internal AlwaysOnStatusReport? LastAlwaysOn { get; private set; }
+    internal GameSideStatusReport? LastGameSide { get; private set; }
 
     internal LiveLabService(
         LiveLabPaths paths,
         ILiveLabStateStore stateStore,
-        IAlwaysOnBuilder alwaysOnBuilder,
+        IGameSideBuilder gameSideBuilder,
         ILabProcessHost processHost,
         Func<DoctorReport> discoverInstallations,
         Func<DateTimeOffset>? utcNow = null,
@@ -91,7 +91,7 @@ internal sealed partial class LiveLabService
     {
         _paths = paths;
         _stateStore = stateStore;
-        _alwaysOnBuilder = alwaysOnBuilder;
+        _gameSideBuilder = gameSideBuilder;
         _processHost = processHost;
         _discoverInstallations = discoverInstallations;
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
@@ -137,7 +137,7 @@ internal sealed partial class LiveLabService
         var service = new LiveLabService(
             paths,
             new JsonLiveLabStateStore(paths.StatePath),
-            new AlwaysOnBuilder(),
+            new GameSideBuilder(),
             new WindowsLabProcessHost(),
             discoverInstallations);
         try
@@ -209,9 +209,9 @@ internal sealed partial class LiveLabService
         return state;
     }
 
-    private AlwaysOnStatusReport ReadAlwaysOn(LiveLabState state)
+    private GameSideStatusReport ReadGameSide(LiveLabState state)
     {
-        return AlwaysOnStatusReader.Read(
+        return GameSideStatusReader.Read(
             state.StatusPath,
             state.LaunchId,
             state.OwnedProcessIdentity,
@@ -227,7 +227,7 @@ internal sealed partial class LiveLabService
         string code,
         string message,
         string? buildLogPath = null,
-        AlwaysOnStatusReport? alwaysOn = null)
+        GameSideStatusReport? gameSide = null)
     {
         return Result(
             OperationFailed,
@@ -236,9 +236,9 @@ internal sealed partial class LiveLabService
                 state,
                 [Problem(code, message)],
                 buildLogPath,
-                alwaysOn,
+                gameSide,
                 additionalWarnings: string.Equals(
-                    alwaysOn?.State,
+                    gameSide?.State,
                     "restoreFailed",
                     StringComparison.Ordinal)
                         ? RestoreUnconfirmedWarnings
@@ -250,7 +250,7 @@ internal sealed partial class LiveLabService
         LiveLabState? state,
         IReadOnlyList<LiveLabProblem> problems,
         string? buildLogPath = null,
-        AlwaysOnStatusReport? alwaysOn = null,
+        GameSideStatusReport? gameSide = null,
         IReadOnlyList<string>? additionalWarnings = null)
     {
         OwnedProcessIdentity? process = state?.OwnedProcessIdentity;
@@ -271,7 +271,7 @@ internal sealed partial class LiveLabService
             process?.ExecutablePath,
             _paths.ModsPath,
             buildLogPath,
-            alwaysOn,
+            gameSide,
             problems,
             warnings,
             state?.TestSave is null ? [] : _lastTestSaveLogPaths);

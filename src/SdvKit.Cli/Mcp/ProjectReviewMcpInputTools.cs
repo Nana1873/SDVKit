@@ -176,7 +176,7 @@ internal sealed class ProjectReviewMcpInputSession
             {
                 return ProjectReviewMcpInputInvocation.Error(
                     "inputForegroundUnavailable",
-                    "AlwaysOn has not published a valid foreground window handle and process ID for the exact review binding.");
+                    "GameSide has not published a valid foreground window handle and process ID for the exact review binding.");
             }
 
             int previousCleanup = Interlocked.Exchange(ref _cleanupRequired, 1);
@@ -365,7 +365,7 @@ internal sealed class ProjectReviewMcpInputSession
                     return new ProjectReviewMcpReadResult(
                         null,
                         "inputForegroundUnavailable",
-                        "AlwaysOn no longer publishes a valid foreground observation; action completion is uncertain, not evidence of desktop control.");
+                        "GameSide no longer publishes a valid foreground observation; action completion is uncertain, not evidence of desktop control.");
                 }
                 if (!SameForeground(before, snapshot))
                 {
@@ -399,7 +399,7 @@ internal sealed class ProjectReviewMcpInputSession
                 return new ProjectReviewMcpReadResult(
                     null,
                     "inputPostStateTimedOut",
-                    "AlwaysOn did not publish a newer status tick after the acknowledgement; the action was not retried.");
+                    "GameSide did not publish a newer status tick after the acknowledgement; the action was not retried.");
             }
 
             _delay(TimeSpan.FromMilliseconds(50));

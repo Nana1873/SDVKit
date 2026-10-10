@@ -89,8 +89,8 @@ public sealed class ProjectModObserverSourceTests
     }
 
     [Theory]
-    [MemberData(nameof(AlwaysOnLinkedSourceFiles))]
-    public void PortablePackageIncludesAlwaysOnLinkedCliSource(string fileName)
+    [MemberData(nameof(GameSideLinkedSourceFiles))]
+    public void PortablePackageIncludesGameSideLinkedCliSource(string fileName)
     {
         string packageScript = ReadRepositoryFile(
             "scripts",
@@ -114,11 +114,11 @@ public sealed class ProjectModObserverSourceTests
         Assert.DoesNotContain("SendInput", source, StringComparison.Ordinal);
     }
 
-    public static TheoryData<string> AlwaysOnLinkedSourceFiles
+    public static TheoryData<string> GameSideLinkedSourceFiles
     {
         get
         {
-            XDocument project = XDocument.Parse(ReadRepositoryFile("src", "SdvKit.AlwaysOn", "SdvKit.AlwaysOn.csproj"));
+            XDocument project = XDocument.Parse(ReadRepositoryFile("src", "SdvKit.GameSide", "SdvKit.GameSide.csproj"));
             var files = new TheoryData<string>();
             foreach (XElement compile in project.Descendants("Compile").Where(element => element.Attribute("Link") is not null))
                 files.Add(Path.GetFileName(compile.Attribute("Include")!.Value));
@@ -130,7 +130,7 @@ public sealed class ProjectModObserverSourceTests
         => ReadSource("ProjectModObserver.cs");
 
     private static string ReadSource(string fileName)
-        => ReadRepositoryFile("src", "SdvKit.AlwaysOn", fileName);
+        => ReadRepositoryFile("src", "SdvKit.GameSide", fileName);
 
     private static string ReadRepositoryFile(params string[] segments)
     {

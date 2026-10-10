@@ -1,4 +1,4 @@
-using SdvKit.AlwaysOn;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -481,7 +481,7 @@ public sealed class BackgroundRunGuardTests
         string source = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ModEntry.cs"))
             .ReplaceLineEndings("\n");
 
@@ -531,7 +531,7 @@ public sealed class BackgroundRunGuardTests
         string source = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ModEntry.cs"))
             .ReplaceLineEndings("\n");
 
@@ -564,7 +564,7 @@ public sealed class BackgroundRunGuardTests
         string source = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ModEntry.cs"))
             .ReplaceLineEndings("\n");
 
@@ -605,7 +605,7 @@ public sealed class BackgroundRunGuardTests
         string source = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "BackgroundOptionsReplacement.cs"))
             .ReplaceLineEndings("\n");
 

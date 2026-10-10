@@ -89,7 +89,7 @@ internal sealed partial class LiveLabService
                 "blocked",
                 state,
                 "projectReviewStateMismatch",
-                "Only a retained single-player project-review process, optionally bound to its exact review fixture, can be finalized without an AlwaysOn exit marker.");
+                "Only a retained single-player project-review process, optionally bound to its exact review fixture, can be finalized without a GameSide exit marker.");
         }
 
         LabProcessInspectResult observation =
@@ -126,23 +126,23 @@ internal sealed partial class LiveLabService
                 "The owned review process returned an unknown observation state.");
         }
 
-        AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
-        bool projectModSucceeded = ProjectModLoadSucceeded(alwaysOn, state.ProjectMod);
+        GameSideStatusReport gameSide = ReadGameSide(state);
+        bool projectModSucceeded = ProjectModLoadSucceeded(gameSide, state.ProjectMod);
         bool testSaveSucceeded = state.TestSave is null
-            || (alwaysOn.TestSave is not null
+            || (gameSide.TestSave is not null
                 && string.Equals(
-                    alwaysOn.TestSave.State,
+                    gameSide.TestSave.State,
                     "ready",
                     StringComparison.Ordinal)
                 && string.Equals(
-                    alwaysOn.TestSave.Mode,
+                    gameSide.TestSave.Mode,
                     TestSaveContract.ReviewMode,
                     StringComparison.Ordinal)
                 && string.Equals(
-                    alwaysOn.TestSave.Phase,
+                    gameSide.TestSave.Phase,
                     "passed",
                     StringComparison.Ordinal)
-                && alwaysOn.TestSave.IdentityVerified == true);
+                && gameSide.TestSave.IdentityVerified == true);
         try
         {
             if (state.TestSave is not null)
@@ -163,7 +163,7 @@ internal sealed partial class LiveLabService
                 state,
                 "runtimeCleanupFailed",
                 $"The exact project-review process exited, but its fixture binding or retained ownership record could not be safely released: {exception.Message}",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         if (!projectModSucceeded)
@@ -172,9 +172,9 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 "projectModLoadUnconfirmed",
-                alwaysOn.ProjectMod?.Message
+                gameSide.ProjectMod?.Message
                     ?? "SMAPI did not confirm the expected project mod identity and version as loaded before the review process exited.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         if (!testSaveSucceeded)
@@ -183,14 +183,14 @@ internal sealed partial class LiveLabService
                 "stopped",
                 state,
                 "testSaveIncomplete",
-                alwaysOn.TestSave?.Message
+                gameSide.TestSave?.Message
                     ?? "The exact review fixture did not reach its verified loaded phase before the process exited.",
-                alwaysOn: alwaysOn);
+                gameSide: gameSide);
         }
 
         return Result(
             Success,
-            Report("stopped", state, [], alwaysOn: alwaysOn));
+            Report("stopped", state, [], gameSide: gameSide));
     }
 
     private LiveLabCommandResult CleanupFailedProjectReviewStart(

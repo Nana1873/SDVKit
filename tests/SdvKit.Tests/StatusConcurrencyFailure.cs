@@ -83,7 +83,7 @@ internal static class StatusConcurrencyFailure
         {
             using FileStream stream = new(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             long length = stream.Length;
-            if (length is < 0 or > AlwaysOnStatusReader.MaximumStatusBytes)
+            if (length is < 0 or > GameSideStatusReader.MaximumStatusBytes)
             {
                 File.WriteAllText(destination + ".txt", $"Snapshot exceeds the capture limit: {length} bytes.");
                 return;

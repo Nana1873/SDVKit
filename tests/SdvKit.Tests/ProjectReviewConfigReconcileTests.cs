@@ -30,7 +30,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         artifacts = artifacts.Select(a => a with { BuildIdentity = ModBuildIdentity.ComputeFileSet(a.SourceRoot) }).ToArray();
         var review = PrepareSingle(temporary, artifacts, ReadyLoadedMods(artifacts
             .Select(a => new LoadedModEntry(a.Manifest.UniqueId, a.Manifest.Version, a.Manifest.Kind == ProjectInspectionReport.ContentPack))
-            .Append(new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)).ToArray()));
+            .Append(new LoadedModEntry("SDVKit.GameSide", "0.8.0", false)).ToArray()));
         WriteLog(review.Reader, "");
         return review;
     }
@@ -203,7 +203,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             case "foreignLaunch": state = state with { LaunchId = Guid.NewGuid().ToString("N") }; break;
             case "foreignProcess": state = state with { OwnedProcessIdentity = state.OwnedProcessIdentity with { ProcessId = ProcessId + 1 } }; break;
             case "staleStatus":
-                var status = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(File.ReadAllText(paths.StatusPath), LiveLabJsonOptions.CamelCase)!;
+                var status = JsonSerializer.Deserialize<GameSideStatusMarker>(File.ReadAllText(paths.StatusPath), LiveLabJsonOptions.CamelCase)!;
                 File.WriteAllText(paths.StatusPath, JsonSerializer.Serialize(status with { ObservedAtUtc = StartedAt.AddHours(-1) }, LiveLabJsonOptions.CamelCase));
                 break;
             case "missingOwnership": File.Delete(review.Staging.OwnershipPath); break;

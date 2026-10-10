@@ -20,7 +20,7 @@ public sealed class ProjectModStatusReaderTests
         ProjectModLaunchState expected = Expected();
         string statusPath = WriteMarker(temporary, projectMod: null);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -46,7 +46,7 @@ public sealed class ProjectModStatusReaderTests
         ProjectModStatusMarker marker = Loaded(expected);
         string statusPath = WriteMarker(temporary, marker);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -80,7 +80,7 @@ public sealed class ProjectModStatusReaderTests
             "SMAPI did not expose the expected manifest.");
         string statusPath = WriteMarker(temporary, marker);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -121,7 +121,7 @@ public sealed class ProjectModStatusReaderTests
         };
         string statusPath = WriteMarker(temporary, marker);
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -137,7 +137,7 @@ public sealed class ProjectModStatusReaderTests
         using TemporaryDirectory temporary = new();
         string statusPath = WriteMarker(temporary, Loaded(Expected()));
 
-        AlwaysOnStatusReport report = AlwaysOnStatusReader.Read(
+        GameSideStatusReport report = GameSideStatusReader.Read(
             statusPath,
             "launch-1",
             Process(),
@@ -168,8 +168,8 @@ public sealed class ProjectModStatusReaderTests
         TemporaryDirectory temporary,
         ProjectModStatusMarker? projectMod)
     {
-        string path = Path.Combine(temporary.Path, "always-on.json");
-        var marker = new AlwaysOnStatusMarker(
+        string path = Path.Combine(temporary.Path, "game-side.json");
+        var marker = new GameSideStatusMarker(
             1,
             "launch-1",
             Process().ProcessId,

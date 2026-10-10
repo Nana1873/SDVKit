@@ -16,7 +16,7 @@ dotnet test SDVKit.sln -c Release --no-build
 git diff --check
 ```
 
-The solution builds the CLI and game-free tests. Tests link selected AlwaysOn source, but do **not** compile the full `SDVKIT_GAME_AVAILABLE` implementation. A game-bound change also needs an AlwaysOn build against the discovered local installation and the affected real-game checks in the [release matrix](docs/releasing.md#select-the-checks).
+The solution builds the CLI and game-free tests. Tests link selected GameSide source, but do **not** compile the full `SDVKIT_GAME_AVAILABLE` implementation. A game-bound change also needs a GameSide build against the discovered local installation and the affected real-game checks in the [release matrix](docs/releasing.md#select-the-checks).
 
 Use `.sdvkit/` for generated reports, fixtures, screenshots, logs, and packages. Ordinary .NET `bin/obj` outputs are ignored. The portable verifier deliberately extracts to a fresh external temporary directory to prove checkout independence; that retained directory is its explicit exception and must never be a normal Saves/Mods directory.
 
@@ -28,12 +28,12 @@ The larger workflows stay in their existing components, with files named for the
 
 | Workflow | Source files |
 | --- | --- |
-| Fixture review | AlwaysOn's `ReviewFixtureArguments`, `ReviewFixtureTransportArguments`, `ReviewFixtureOperation`, `ReviewFixturePolicy`, and `ReviewFixtureKindResolver`; `ReviewFixtureCommand` and `ReviewFixtureTransportCommand` dispatch to the `StardewReviewFixture*` runtime partials for buildings, objects, animals, and navigation. |
-| Map review | AlwaysOn's `ReviewMapOperation`, `ReviewMapResolution`, and `ReviewMapValidation`, with `ReviewMapSource`, `ReviewMapFileInventory`, `StardewReviewMapSource`, and `ReviewMapCommand` at the adapter boundary. |
+| Fixture review | GameSide's `ReviewFixtureArguments`, `ReviewFixtureTransportArguments`, `ReviewFixtureOperation`, `ReviewFixturePolicy`, and `ReviewFixtureKindResolver`; `ReviewFixtureCommand` and `ReviewFixtureTransportCommand` dispatch to the `StardewReviewFixture*` runtime partials for buildings, objects, animals, and navigation. |
+| Map review | GameSide's `ReviewMapOperation`, `ReviewMapResolution`, and `ReviewMapValidation`, with `ReviewMapSource`, `ReviewMapFileInventory`, `StardewReviewMapSource`, and `ReviewMapCommand` at the adapter boundary. |
 | Project review | `src/SdvKit.Cli/Projects/ProjectReviewService.cs` routes requests; `ProjectReviewSingle`, `ProjectReviewNetwork`, `ProjectReviewConsole`, and `ProjectReviewReports` contain the matching partial responsibilities. |
 | Lab lifecycle | `src/SdvKit.Cli/LiveLab/LiveLabService.cs` owns dependencies and shared state; `LiveLabStart`, `LiveLabStatus`, `LiveLabStop`, `LiveLabTestSave`, `LiveLabProjectReview`, and `LiveLabNetwork` contain the matching partial responsibilities. |
 
-Extend the file for the affected responsibility. Keep shared state in its existing partial type, and add explicit links in `tests/SdvKit.Tests/SdvKit.Tests.csproj` when splitting AlwaysOn source used by game-free tests.
+Extend the file for the affected responsibility. Keep shared state in its existing partial type, and add explicit links in `tests/SdvKit.Tests/SdvKit.Tests.csproj` when splitting GameSide source used by game-free tests.
 
 ## Documentation changes
 
@@ -64,7 +64,7 @@ finally {
 
 The concurrent reader test also retains up to four original first-chance exceptions from its last synchronous read, restricted to that managed thread and the reader's caught exception families. On failure, it describes their HRESULTs and bounded messages/stacks after unsubscribing. An exception need not reach the reader's outer catch; an empty capture does not exclude pending, invalid-length, or mismatch reports. This test-only observation changes scheduling and cannot identify an external actor or explain a nonreproducing historical failure.
 
-For native rename error 5 in those tests, test-only code also records the immediate thread-local native-status observation and old/new snapshots before publisher cleanup. The optional partial-method implementation exists only in the test assembly and is compiled out of AlwaysOn; this is not a syscall trace or a recovery policy.
+For native rename error 5 in those tests, test-only code also records the immediate thread-local native-status observation and old/new snapshots before publisher cleanup. The optional partial-method implementation exists only in the test assembly and is compiled out of GameSide; this is not a syscall trace or a recovery policy.
 
 The native launcher environment/argument test also retains failure observations under `.sdvkit/test-failures/`: the captured process identity and wait result, actual elapsed phases, observed exact-child cleanup outcome, and up to 16 KiB from the beginning of each stdout/stderr file. Missing results and files are explicit. Snapshots are taken after cleanup and before temporary-file disposal; they may differ from output at the failed wait. Diagnostics do not explain a timeout or alter the 15-second wait and 5-second cleanup bounds, and diagnostic/cleanup errors do not replace the original assertion.
 

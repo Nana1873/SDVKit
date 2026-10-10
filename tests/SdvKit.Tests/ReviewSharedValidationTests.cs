@@ -1,8 +1,8 @@
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 

@@ -6,7 +6,14 @@ internal static class LoadedModsContract
     public const int MaximumEntries = 257;
     public const int MaximumUniqueIdLength = 256;
     public const int MaximumVersionLength = 128;
-    public const string AlwaysOnUniqueId = "SDVKit.AlwaysOn";
+    public const string GameSideUniqueId = "SDVKit.GameSide";
+
+    // Identity used by SDVKit 1.x for the game-side mod; still reserved for user mods.
+    public const string LegacyGameSideUniqueId = "SDVKit.AlwaysOn";
+
+    public static bool IsReservedUniqueId(string? uniqueId) =>
+        string.Equals(uniqueId, GameSideUniqueId, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uniqueId, LegacyGameSideUniqueId, StringComparison.OrdinalIgnoreCase);
     public const string CaptureFailedProblemCode = "loadedModsCaptureFailed";
 
     public static LoadedModsStatusMarker CreateReady(
@@ -42,14 +49,14 @@ internal static class LoadedModsContract
             entries.Add(normalized);
         }
 
-        LoadedModEntry? alwaysOn = entries.SingleOrDefault(mod => string.Equals(
+        LoadedModEntry? gameSide = entries.SingleOrDefault(mod => string.Equals(
             mod.UniqueId,
-            AlwaysOnUniqueId,
+            GameSideUniqueId,
             StringComparison.Ordinal));
-        if (alwaysOn is null || alwaysOn.IsContentPack)
+        if (gameSide is null || gameSide.IsContentPack)
         {
             throw new InvalidDataException(
-                "The loaded-mod inventory does not contain the SDVKit AlwaysOn code mod.");
+                "The loaded-mod inventory does not contain the SDVKit Game Side code mod.");
         }
 
         return new LoadedModsStatusMarker(

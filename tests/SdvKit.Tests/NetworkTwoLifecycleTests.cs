@@ -47,14 +47,14 @@ public sealed class NetworkTwoLifecycleTests
         bool ipConnectionsEnabled,
         bool expected)
     {
-        AlwaysOnStatusReport host = Role(
+        GameSideStatusReport host = Role(
             NetworkTwoContract.HostRole,
             "departureArmed",
             101,
             202,
             enableServer,
             ipConnectionsEnabled);
-        AlwaysOnStatusReport farmhand = Role(
+        GameSideStatusReport farmhand = Role(
             NetworkTwoContract.FarmhandRole,
             "leaveRequested",
             202,
@@ -84,14 +84,14 @@ public sealed class NetworkTwoLifecycleTests
         string farmhandPhase,
         bool expected)
     {
-        AlwaysOnStatusReport host = Role(
+        GameSideStatusReport host = Role(
             NetworkTwoContract.HostRole,
             hostPhase,
             101,
             202,
             enableServer: true,
             ipConnectionsEnabled: true);
-        AlwaysOnStatusReport farmhand = Role(
+        GameSideStatusReport farmhand = Role(
             NetworkTwoContract.FarmhandRole,
             farmhandPhase,
             202,
@@ -105,7 +105,7 @@ public sealed class NetworkTwoLifecycleTests
                 BuildIdentity));
     }
 
-    private static AlwaysOnStatusReport Role(
+    private static GameSideStatusReport Role(
         string role,
         string phase,
         long localPlayerId,
