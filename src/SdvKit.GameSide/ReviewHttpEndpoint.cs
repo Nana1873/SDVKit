@@ -12,6 +12,7 @@ internal static class ReviewHttpContract
 {
     public const int SchemaVersion = 1;
     public const string CommandPath = "/v1/command";
+    public const string ResponsePathPrefix = "/v1/response/";
     public const string TokenVariable = "SDVKIT_LAB_HTTP_TOKEN";
     public const int TokenLength = 43;
     public const int MaximumBodyBytes = 16 * 1024;
@@ -22,6 +23,12 @@ internal static class ReviewHttpContract
     public const string NotExecuted = "notExecuted";
     public const string ScreenUnavailable = "screenUnavailable";
     public const string Unknown = "unknown";
+
+    /// <summary>Response names are the file-name part of a logical response path.</summary>
+    public static bool IsResponseName(string? value) =>
+        value is { Length: >= 1 and <= 200 }
+        && value.All(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_' or '.')
+        && value is not ("." or "..");
 
     public static bool IsToken(string? value) =>
         value is { Length: TokenLength }
@@ -221,6 +228,7 @@ internal sealed class ReviewHttpEndpoint : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly string _launchId;
+    private readonly string _runtimeRoot;
     private readonly byte[] _token;
     private readonly ReviewCommandQueue _queue;
     private readonly TimeSpan _executionTimeout;
@@ -233,10 +241,12 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         string launchId,
         string token,
         ReviewCommandQueue queue,
+        string runtimeRoot,
         TimeSpan executionTimeout,
         Action<string> log)
     {
         _launchId = launchId;
+        _runtimeRoot = runtimeRoot;
         _token = Encoding.ASCII.GetBytes(token);
         _queue = queue;
         _executionTimeout = executionTimeout;
@@ -254,9 +264,14 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         string launchId,
         string token,
         ReviewCommandQueue queue,
+        string runtimeRoot,
         Action<string> log,
         TimeSpan? executionTimeout = null)
     {
+        if (string.IsNullOrWhiteSpace(runtimeRoot))
+        {
+            throw new ArgumentException("A non-empty path is required.", nameof(runtimeRoot));
+        }
         if (!Guid.TryParseExact(launchId, "N", out _))
         {
             throw new ArgumentException("The review launch ID is invalid.", nameof(launchId));
@@ -269,7 +284,13 @@ internal sealed class ReviewHttpEndpoint : IDisposable
 
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(log);
-        return new ReviewHttpEndpoint(launchId, token, queue, executionTimeout ?? TimeSpan.FromSeconds(5), log);
+        return new ReviewHttpEndpoint(
+            launchId,
+            token,
+            queue,
+            Path.GetFullPath(runtimeRoot),
+            executionTimeout ?? TimeSpan.FromSeconds(5),
+            log);
     }
 
     public void Dispose()
@@ -408,6 +429,11 @@ internal sealed class ReviewHttpEndpoint : IDisposable
             throw new EndpointRejection(401);
         }
 
+        if (target.StartsWith(ReviewHttpContract.ResponsePathPrefix, StringComparison.Ordinal))
+        {
+            return TakeResponse(method, target[ReviewHttpContract.ResponsePathPrefix.Length..], headers);
+        }
+
         if (target != ReviewHttpContract.CommandPath)
         {
             throw new EndpointRejection(404);
@@ -496,6 +522,28 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         return (status, Reply(outcome, message));
     }
 
+    private (int Status, object? Body) TakeResponse(string method, string name, Dictionary<string, string> headers)
+    {
+        if (method != "GET")
+        {
+            throw new EndpointRejection(405);
+        }
+
+        if (headers.ContainsKey("Content-Length") || headers.ContainsKey("Transfer-Encoding"))
+        {
+            throw new EndpointRejection(400);
+        }
+
+        if (!ReviewHttpContract.IsResponseName(name))
+        {
+            throw new EndpointRejection(404);
+        }
+
+        return ReviewResponseMailbox.TryTakeByName(_runtimeRoot, name, out byte[] bytes)
+            ? (200, new RawJson(bytes))
+            : (404, null);
+    }
+
     private ReviewHttpCommandReply Reply(string outcome, string? message) =>
         new(ReviewHttpContract.SchemaVersion, _launchId, outcome, message);
 
@@ -563,7 +611,12 @@ internal sealed class ReviewHttpEndpoint : IDisposable
 
     private static async Task Write(NetworkStream stream, int status, object? body, CancellationToken cancellation)
     {
-        byte[] content = body is null ? [] : JsonSerializer.SerializeToUtf8Bytes(body, JsonOptions);
+        byte[] content = body switch
+        {
+            null => [],
+            RawJson raw => raw.Bytes,
+            _ => JsonSerializer.SerializeToUtf8Bytes(body, JsonOptions),
+        };
         string head =
             $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Length: {content.Length}\r\n"
             + (body is null ? string.Empty : "Content-Type: application/json\r\n")
@@ -591,6 +644,8 @@ internal sealed class ReviewHttpEndpoint : IDisposable
         504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
+
+    private sealed record RawJson(byte[] Bytes);
 
     private sealed class EndpointRejection(int status) : Exception
     {

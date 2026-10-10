@@ -48,7 +48,6 @@
     <Compile Include="..\..\src\SdvKit.GameSide\StardewReviewFixtureRuntime.cs" Link="GameSide\StardewReviewFixtureRuntime.cs" />
     <Compile Include="..\..\src\SdvKit.GameSide\StardewReviewMapSource.cs" Link="GameSide\StardewReviewMapSource.cs" />
     <Compile Include="..\..\src\SdvKit.GameSide\ReviewFishingPreparation.cs" Link="GameSide\ReviewFishingPreparation.cs" />
-    <Compile Include="..\..\src\SdvKit.GameSide\ReviewResponseFile.cs" Link="GameSide\ReviewResponseFile.cs" />
     <Compile Include="..\..\src\SdvKit.GameSide\ReviewException.cs" Link="GameSide\ReviewException.cs" />
     <Compile Include="..\..\src\SdvKit.GameSide\ReviewAudioCommand.cs" Link="GameSide\ReviewAudioCommand.cs" />
     <Compile Include="..\..\src\SdvKit.GameSide\ReviewDataCommand.cs" Link="GameSide\ReviewDataCommand.cs" />

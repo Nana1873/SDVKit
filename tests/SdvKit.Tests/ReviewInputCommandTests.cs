@@ -296,7 +296,7 @@ public sealed class ReviewInputCommandTests
     }
 
     [Fact]
-    public void ResponseFileIsRequestBoundCreateNewAndBounded()
+    public void ResponseIsRequestBoundPublishedOnceAndBounded()
     {
         using TemporaryDirectory temporary = new();
         var envelope = new ReviewInputResponseEnvelope(
@@ -314,17 +314,14 @@ public sealed class ReviewInputCommandTests
             false,
             null);
 
-        ReviewInputResponseFile.Write(temporary.Path, envelope);
+        ReviewInputResponsePublisher.Write(temporary.Path, envelope);
 
         string path = ReviewInputContract.ResponsePath(temporary.Path, RequestId);
-        Assert.True(File.Exists(path));
-        Assert.InRange(
-            new FileInfo(path).Length,
-            1,
-            ReviewInputContract.MaximumResponseBytes);
-        Assert.False(File.Exists(path + ".tmp"));
+        Assert.False(File.Exists(path));
         Assert.Throws<InvalidDataException>(() =>
-            ReviewInputResponseFile.Write(temporary.Path, envelope));
+            ReviewInputResponsePublisher.Write(temporary.Path, envelope));
+        Assert.True(ReviewResponseMailbox.TryTake(path, out byte[] bytes));
+        Assert.InRange(bytes.Length, 1, ReviewInputContract.MaximumResponseBytes);
     }
 
     private static string FindRepositoryRoot()

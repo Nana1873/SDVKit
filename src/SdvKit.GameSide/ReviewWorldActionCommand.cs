@@ -48,7 +48,7 @@ internal static class ReviewWorldActionCommand
                 byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(
                     new ReviewWorldActionResponseEnvelope(1, args[1], report), JsonOptions);
                 if (bytes.Length <= ReviewWorldActionContract.MaximumResponseBytes)
-                    ReviewResponseFile.Write(ReviewWorldActionContract.ResponsePath(runtimePath, args[1]), bytes);
+                    ReviewResponseMailbox.Publish(ReviewWorldActionContract.ResponsePath(runtimePath, args[1]), bytes);
             }
             catch (Exception exception)
             {

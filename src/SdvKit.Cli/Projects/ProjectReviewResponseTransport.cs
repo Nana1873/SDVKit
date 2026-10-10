@@ -53,6 +53,7 @@ internal static class ProjectReviewResponseTransport
         bool drainAfterDispatchOnCancellation = false,
         Func<string, LiveLabCommandResult>? send = null,
         Action? onCancellation = null,
+        IReviewResponseReader? responses = null,
         CancellationToken cancellationToken = default)
         where TResponse : class
     {
@@ -85,20 +86,17 @@ internal static class ProjectReviewResponseTransport
                     $"The bounded {displayName} request was canceled before it was written."));
         }
 
-        if (File.Exists(responsePath))
-        {
-            return Failure<TResponse>(
-                new ProjectReviewResponseTransportProblem(
-                    $"{problemPrefix}ResponseExists",
-                    $"The unique {displayName} response target already exists; no request was written."));
-        }
-
+        // An injected send stands in for the whole game side and publishes response files.
+        IReviewResponseReader? responseReader = responses
+            ?? (send is not null ? FileReviewResponseReader.Instance : null);
         LiveLabCommandResult sent = send is not null ? send(command) : ProjectReviewService.ExecuteCommand(
             command,
             topology,
             role,
             labRoot,
-            inputSender);
+            inputSender,
+            useSender: sender => responseReader ??=
+                sender as IReviewResponseReader ?? FileReviewResponseReader.Instance);
         if (!drainAfterDispatchOnCancellation)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -132,20 +130,27 @@ internal static class ProjectReviewResponseTransport
                         $"The bounded {displayName} request was not written to the exact owned review.")]);
         }
 
+        IReviewResponseReader reader = responseReader ?? FileReviewResponseReader.Instance;
         bool cancellationSignaled = false;
         ProjectReviewResponseTransportProblem? cancellationSignalFailure = null;
         var stopwatch = Stopwatch.StartNew();
         Action<TimeSpan> wait = delay ?? Thread.Sleep;
-        while (!File.Exists(responsePath) && stopwatch.Elapsed < timeout)
+        ReviewResponseRead read;
+        while (true)
         {
             ObserveCancellation();
+            read = reader.TryTake(responsePath, maximumResponseBytes);
+            if (read.Status != ReviewResponseReadStatus.Pending || stopwatch.Elapsed >= timeout)
+            {
+                break;
+            }
+
             wait(TimeSpan.FromMilliseconds(50));
-            ObserveCancellation();
         }
 
         ObserveCancellation();
 
-        if (!File.Exists(responsePath))
+        if (read.Status == ReviewResponseReadStatus.Pending)
         {
             return Failure<TResponse>(
                 commandWritten: true,
@@ -160,38 +165,27 @@ internal static class ProjectReviewResponseTransport
                         : $"The exact owned review did not publish the bounded {displayName} response in time; the request was not retried."));
         }
 
-        bool regularResponse = false;
-        string responseStage = "attributes";
+        if (read.Status == ReviewResponseReadStatus.Invalid)
+        {
+            return Failure<TResponse>(
+                commandWritten: true,
+                commandMayHaveBeenWritten: true,
+                cancellationRequested: cancellationRequested,
+                new ProjectReviewResponseTransportProblem(
+                    $"{problemPrefix}ResponseInvalid",
+                    $"The {displayName} response could not be taken: {read.Error}"));
+        }
+
+        string responseStage = "validation";
         try
         {
-            ObserveCancellation();
-            FileAttributes attributes = File.GetAttributes(responsePath);
-            if ((attributes & FileAttributes.ReparsePoint) != 0
-                || (attributes & FileAttributes.Directory) != 0)
-            {
-                return Failure<TResponse>(
-                    commandWritten: true,
-                    commandMayHaveBeenWritten: true,
-                    cancellationRequested: cancellationRequested,
-                    new ProjectReviewResponseTransportProblem(
-                        $"{problemPrefix}ResponseInvalid",
-                        $"The {displayName} response is not a regular file."));
-            }
-            regularResponse = true;
-
-            byte[] bytes = ReadBoundedResponse(responsePath, maximumResponseBytes, displayName, ref responseStage);
-            responseStage = "validation";
-            ObserveCancellation();
-            TResponse? response = deserialize(bytes);
+            TResponse? response = deserialize(read.Bytes!);
             if (response is null || !matchesRequest(response))
             {
                 throw new InvalidDataException(
                     $"The {displayName} response does not match the exact request.");
             }
 
-            responseStage = "delete";
-            File.Delete(responsePath);
-            regularResponse = false;
             ObserveCancellation();
             return new ProjectReviewResponseTransportResult<TResponse>(
                 response,
@@ -207,18 +201,6 @@ internal static class ProjectReviewResponseTransport
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {
-            if (regularResponse)
-            {
-                try
-                {
-                    File.Delete(responsePath);
-                }
-                catch (Exception cleanupException) when (IsControlledFailure(cleanupException))
-                {
-                    // The request still fails closed; a unique response name is never reused.
-                }
-            }
-
             return Failure<TResponse>(
                 commandWritten: true,
                 commandMayHaveBeenWritten: true,
@@ -268,6 +250,66 @@ internal static class ProjectReviewResponseTransport
             commandMayHaveBeenWritten,
             cancellationRequested);
 
+    private static bool IsControlledFailure(Exception exception) =>
+        exception is ArgumentException
+            or DirectoryNotFoundException
+            or IOException
+            or InvalidDataException
+            or InvalidOperationException
+            or JsonException
+            or NotSupportedException
+            or PathTooLongException
+            or SecurityException
+            or UnauthorizedAccessException;
+}
+
+/// <summary>
+/// Reads response files published by a test double that stands in for the game side. Production
+/// responses come from the exact launch's command endpoint.
+/// </summary>
+internal sealed class FileReviewResponseReader : IReviewResponseReader
+{
+    public static readonly FileReviewResponseReader Instance = new();
+
+    public ReviewResponseRead TryTake(string responsePath, int maximumBytes)
+    {
+        if (!File.Exists(responsePath))
+        {
+            return new(ReviewResponseReadStatus.Pending);
+        }
+
+        string responseStage = "attributes";
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(responsePath);
+            if ((attributes & FileAttributes.ReparsePoint) != 0
+                || (attributes & FileAttributes.Directory) != 0)
+            {
+                return new(ReviewResponseReadStatus.Invalid, Error: "The response is not a regular file.");
+            }
+
+            byte[] bytes = ReadBoundedResponse(responsePath, maximumBytes, "review", ref responseStage);
+            responseStage = "delete";
+            File.Delete(responsePath);
+            return new(ReviewResponseReadStatus.Available, bytes);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            try
+            {
+                File.Delete(responsePath);
+            }
+            catch (Exception cleanupException) when (cleanupException is IOException or UnauthorizedAccessException)
+            {
+                // The request still fails closed; a unique response name is never reused.
+            }
+
+            return new(
+                ReviewResponseReadStatus.Invalid,
+                Error: FormattableString.Invariant($"{exception.GetType().Name}; stage={responseStage}; HRESULT=0x{exception.HResult:X8}"));
+        }
+    }
+
     private static byte[] ReadBoundedResponse(
         string responsePath,
         int maximumResponseBytes,
@@ -313,15 +355,4 @@ internal static class ProjectReviewResponseTransport
         return bytes;
     }
 
-    private static bool IsControlledFailure(Exception exception) =>
-        exception is ArgumentException
-            or DirectoryNotFoundException
-            or IOException
-            or InvalidDataException
-            or InvalidOperationException
-            or JsonException
-            or NotSupportedException
-            or PathTooLongException
-            or SecurityException
-            or UnauthorizedAccessException;
 }

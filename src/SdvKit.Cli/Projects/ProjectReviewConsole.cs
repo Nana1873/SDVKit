@@ -23,7 +23,8 @@ internal static partial class ProjectReviewService
         string? role,
         string labRoot,
         IProjectReviewConsoleInputSender? inputSender = null,
-        LiveLabOperationLock? heldOperationLock = null)
+        LiveLabOperationLock? heldOperationLock = null,
+        Action<IProjectReviewConsoleInputSender>? useSender = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(topology);
@@ -92,7 +93,8 @@ internal static partial class ProjectReviewService
                 role!,
                 paths,
                 inputSender,
-                canRunBeforeScenarioReady);
+                canRunBeforeScenarioReady,
+                useSender);
         }
 
         try
@@ -201,10 +203,12 @@ internal static partial class ProjectReviewService
                         "The exact owned review fixture is not currently loaded and identity-verified; no command was sent.")]);
             }
 
-            ProjectReviewConsoleInputResult sent =
-                (inputSender ?? HttpProjectReviewCommandSender.For(exactState, lab.GameSide)).SendLine(
-                    exactState.OwnedProcessIdentity,
-                    command);
+            IProjectReviewConsoleInputSender sender =
+                inputSender ?? HttpProjectReviewCommandSender.For(exactState, lab.GameSide);
+            useSender?.Invoke(sender);
+            ProjectReviewConsoleInputResult sent = sender.SendLine(
+                exactState.OwnedProcessIdentity,
+                command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
             return CommandResult(
                 paths,
@@ -231,7 +235,8 @@ internal static partial class ProjectReviewService
         string role,
         LiveLabPaths paths,
         IProjectReviewConsoleInputSender? inputSender,
-        bool canRunBeforeScenarioReady)
+        bool canRunBeforeScenarioReady,
+        Action<IProjectReviewConsoleInputSender>? useSender)
     {
         try
         {
@@ -346,10 +351,12 @@ internal static partial class ProjectReviewService
                             "The exact role and target mod have not reached their confirmed loaded state; no command was sent.")]);
             }
 
-            ProjectReviewConsoleInputResult sent =
-                (inputSender ?? HttpProjectReviewCommandSender.For(state!, lab.GameSide)).SendLine(
-                    state!.OwnedProcessIdentity,
-                    command);
+            IProjectReviewConsoleInputSender sender =
+                inputSender ?? HttpProjectReviewCommandSender.For(state!, lab.GameSide);
+            useSender?.Invoke(sender);
+            ProjectReviewConsoleInputResult sent = sender.SendLine(
+                state!.OwnedProcessIdentity,
+                command);
             ProjectReviewProblem? inputProblem = ConsoleInputProblem(sent);
             return NetworkCommandResult(
                 paths,

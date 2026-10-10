@@ -590,7 +590,7 @@ internal sealed class ReviewOwnedButtonSample
     }
 }
 
-internal static class ReviewInputResponseFile
+internal static class ReviewInputResponsePublisher
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -616,7 +616,7 @@ internal static class ReviewInputResponseFile
             throw new InvalidDataException(
                 "The bounded review-input response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 
@@ -777,7 +777,7 @@ internal static class ReviewInputCommand
             ReviewInputResult result = ReviewInputOperation.Execute(request!, runtime);
             if (request!.RequestId is not null)
             {
-                ReviewInputResponseFile.Write(
+                ReviewInputResponsePublisher.Write(
                     runtimePath,
                     CreateResponse(request, runtime, result));
             }
@@ -820,7 +820,7 @@ internal static class ReviewInputCommand
             try
             {
                 if (request!.RequestId is not null)
-                    ReviewInputResponseFile.Write(runtimePath, CreateResponse(request, runtime, result));
+                    ReviewInputResponsePublisher.Write(runtimePath, CreateResponse(request, runtime, result));
                 monitor.Log(result.Message, result.Succeeded ? LogLevel.Info : LogLevel.Error);
             }
             catch (Exception exception)
@@ -896,7 +896,7 @@ internal static class ReviewInputCommand
     {
         try
         {
-            ReviewInputResponseFile.Write(
+            ReviewInputResponsePublisher.Write(
                 runtimePath,
                 CreateResponse(
                     request,

@@ -302,7 +302,7 @@ internal sealed class ReviewMenuCommand
                 bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewMenuResponseEnvelope(1, args[1],
                     Failure("menuResponseLimit") with { Truncated = true }), JsonOptions);
             }
-            ReviewResponseFile.Write(ReviewMenuContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewMenuContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception)
         {

@@ -300,7 +300,7 @@ internal static class ReviewFixtureTransportCommand
             throw new InvalidDataException(
                 "The bounded review-fixture response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 #endif

@@ -506,9 +506,9 @@ clearing, arbitrary commands, generic RPC, unrestricted warps, and other world
 editing are not MCP tools. Every call repeats the exact launch, role, process,
 target, fixture and Save identity preflight immediately before dispatch. One
 cross-process action lock rejects concurrent input or fixture work for that
-role instead of queueing it. Response files are unique, create-new, bounded,
-freshness checked, and bound to the request, launch, topology, role, fixture and
-Save. Cancellation before dispatch writes nothing. After confirmed dispatch,
+role instead of queueing it. Responses are published once, taken once through
+the launch's command endpoint, bounded, freshness checked, and bound to the
+request, launch, topology, role, fixture and Save. Cancellation before dispatch writes nothing. After confirmed dispatch,
 the action lock stays held while SDVKit drains and validates the acknowledgement
 up to that operation's bound (the existing two-minute save bound plus a bounded
 five-second acknowledgement grace), and the action is never retried. A missing or invalid acknowledgement returns

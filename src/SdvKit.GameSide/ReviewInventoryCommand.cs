@@ -46,7 +46,7 @@ internal static class ReviewInventoryCommand
                 bytes = JsonSerializer.SerializeToUtf8Bytes(
                     new ReviewInventoryResponseEnvelope(ReviewInventoryContract.SchemaVersion, args[1],
                         Failure("inventoryResponseLimit")), JsonOptions);
-            ReviewResponseFile.Write(ReviewInventoryContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewInventoryContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception)
         {

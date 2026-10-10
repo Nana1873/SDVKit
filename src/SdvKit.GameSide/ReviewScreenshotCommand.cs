@@ -277,7 +277,7 @@ internal static class ReviewScreenshotResponse
     };
 }
 
-internal static class ReviewScreenshotResponseFile
+internal static class ReviewScreenshotResponsePublisher
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -300,7 +300,7 @@ internal static class ReviewScreenshotResponseFile
             throw new InvalidDataException(
                 "The review-screenshot response exceeds its bounded maximum.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 
 }
@@ -589,7 +589,7 @@ internal static class ReviewScreenshotCommand
 
         try
         {
-            ReviewScreenshotResponseFile.Write(
+            ReviewScreenshotResponsePublisher.Write(
                 runtimePath,
                 ReviewScreenshotResponse.Create(
                     requestId,

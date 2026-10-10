@@ -234,7 +234,7 @@ public sealed class ProjectReviewScreenshotServiceTests
                         Directory.CreateDirectory(Path.GetDirectoryName(screenshotPath)!);
                         File.WriteAllBytes(screenshotPath, expectedBytes);
                         File.SetLastWriteTimeUtc(screenshotPath, now.UtcDateTime);
-                        ReviewScreenshotResponseFile.Write(
+                        ReviewScreenshotResponsePublisher.Write(
                             paths.RuntimePath,
                             ReviewScreenshotResponse.Create(
                                 requestId,

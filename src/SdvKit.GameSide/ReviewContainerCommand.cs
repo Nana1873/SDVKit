@@ -50,7 +50,7 @@ internal static class ReviewContainerCommand
                 bytes = JsonSerializer.SerializeToUtf8Bytes(
                     new ReviewContainerResponseEnvelope(ReviewContainerContract.SchemaVersion, args[1],
                         Failure("containerResponseLimit")), JsonOptions);
-            ReviewResponseFile.Write(ReviewContainerContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewContainerContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception)
         {

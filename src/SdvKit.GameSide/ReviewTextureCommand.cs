@@ -1152,7 +1152,7 @@ internal static class ReviewTextureCommand
             throw new InvalidDataException(
                 "The bounded review-texture response exceeds its maximum size.");
         }
-        ReviewResponseFile.Write(responsePath, bytes);
+        ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
 #endif

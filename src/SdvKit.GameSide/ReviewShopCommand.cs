@@ -41,7 +41,7 @@ internal static class ReviewShopCommand
             byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewShopResponseEnvelope(1, args[1], report), JsonOptions);
             if (bytes.Length > ReviewShopContract.MaximumResponseBytes)
                 bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewShopResponseEnvelope(1, args[1], Failure("shopResponseLimit")), JsonOptions);
-            ReviewResponseFile.Write(ReviewShopContract.ResponsePath(runtimePath, args[1]), bytes);
+            ReviewResponseMailbox.Publish(ReviewShopContract.ResponsePath(runtimePath, args[1]), bytes);
         }
         catch (Exception)
         {

@@ -1050,56 +1050,19 @@ public sealed class ReviewAudioCommandTests
     }
 
     [Fact]
-    public void ResponseFilePublishesOnlyItsOwnRegularCreateNewTarget()
+    public void ResponseIsPublishedToTheMailboxOnly()
     {
         using TemporaryDirectory temporary = new();
         string requestId = Guid.NewGuid().ToString("N");
         ReviewAudioResponseEnvelope envelope = ExactEnvelope(requestId, "MainTheme");
 
-        ReviewAudioReport report = ReviewAudioResponseFile.Write(temporary.Path, envelope);
+        ReviewAudioReport report = ReviewAudioResponsePublisher.Write(temporary.Path, envelope);
 
         string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
         Assert.Equal("ready", report.State);
-        Assert.True(File.Exists(responsePath));
-        FileAttributes attributes = File.GetAttributes(responsePath);
-        Assert.False(
-            (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0);
-        Assert.False(File.Exists(responsePath + ".tmp"));
-        Assert.NotNull(ProjectReviewAudioService.DeserializeResponse(File.ReadAllBytes(responsePath)));
-    }
-
-    [Fact]
-    public void ResponseFileNeverDeletesAPreexistingForeignTemporaryEntry()
-    {
-        using TemporaryDirectory temporary = new();
-        string requestId = Guid.NewGuid().ToString("N");
-        string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
-        string temporaryPath = responsePath + ".tmp";
-        File.WriteAllText(temporaryPath, "foreign");
-
-        Assert.Throws<InvalidDataException>(() => ReviewAudioResponseFile.Write(
-            temporary.Path,
-            ExactEnvelope(requestId, "MainTheme")));
-
-        Assert.Equal("foreign", File.ReadAllText(temporaryPath));
         Assert.False(File.Exists(responsePath));
-    }
-
-    [Fact]
-    public void ResponseFileNeverDeletesAPreexistingForeignTemporaryDirectory()
-    {
-        using TemporaryDirectory temporary = new();
-        string requestId = Guid.NewGuid().ToString("N");
-        string responsePath = ReviewAudioContract.ResponsePath(temporary.Path, requestId);
-        string temporaryPath = responsePath + ".tmp";
-        Directory.CreateDirectory(temporaryPath);
-
-        Assert.Throws<InvalidDataException>(() => ReviewAudioResponseFile.Write(
-            temporary.Path,
-            ExactEnvelope(requestId, "MainTheme")));
-
-        Assert.True(Directory.Exists(temporaryPath));
-        Assert.False(File.Exists(responsePath));
+        Assert.True(ReviewResponseMailbox.TryTake(responsePath, out byte[] bytes));
+        Assert.NotNull(ProjectReviewAudioService.DeserializeResponse(bytes));
     }
 
     [Fact]
