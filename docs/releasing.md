@@ -23,7 +23,7 @@ Feature acceptance belongs with its feature PR. Release acceptance checks integr
 
 ## Prepare the candidate
 
-1. Read current `main`, the previous tag, selected issues, and active PRs. Work on a focused `codex/` branch; do not change another task's checkout or lab.
+1. Read current `main`, the previous tag, selected issues, and active PRs. Work on a focused branch; do not change another task's checkout or lab.
 2. Move the applicable `CHANGELOG.md` Unreleased entries into a dated version section. Keep Added/Changed/Fixed bullets about observable behavior and include relevant upgrade steps. Update the CLI project, GameSide project/manifest, version-dependent tests, and README's version/download/tag links consistently.
 3. Run the [contributor checks](../CONTRIBUTING.md#build-and-check). A local package is useful for checking packaging changes, but publication uses the final green main CI product.
 4. Complete the release PR and require green CI for the exact resulting main commit. Select that run's `SDVKit-windows-x64` artifact once; retain its ZIP and sidecar under ignored `.sdvkit/`. Record commit, CI URL, sizes, and SHA-256. Do not rebuild it for publication.
@@ -91,7 +91,16 @@ An externally disturbed desktop observation is inconclusive about isolation; ret
 
 ## Publish and verify delivery
 
-After every required gate is green, tag the exact accepted green main commit and publish only its unchanged CI ZIP and sidecar. Preserve established repository release protection and authorization. No rebuild, tag move, or artifact replacement is part of delivery.
+After every required gate is green, tag the exact accepted green main commit and push the tag:
+
+```powershell
+git tag v1.0.0 <accepted-main-commit>
+git push origin v1.0.0
+```
+
+The `Release draft` workflow then finds the successful main CI run for that commit, downloads its unchanged `SDVKit-windows-x64` artifact, checks that the sidecar matches the ZIP and that the ZIP name matches the tag, and attaches both files to a draft release. Its body comes from `scripts/release-notes.ps1`. It never rebuilds. If no green main CI run exists for the commit, it fails instead of creating a draft.
+
+Before publishing the draft, confirm that its two assets have the same SHA-256 as the accepted candidate recorded in the release issue. Publishing stays a manual step. Preserve established repository release protection and authorization. No rebuild, tag move, or artifact replacement is part of delivery.
 
 Generate the user-facing body from the changelog:
 
@@ -99,7 +108,7 @@ Generate the user-facing body from the changelog:
 .\scripts\release-notes.ps1 -Version 1.0.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
 ```
 
-Use that file for the GitHub release body. The version section should link to the release acceptance and compare view. Keep detailed hashes, logs, and CI provenance in that linked acceptance; do not maintain a second editorial summary in README or a separate notes file. The helper only extracts text; it does not publish anything.
+The draft workflow uses the same helper for the release body; run it locally to preview or edit the text. The version section should link to the release acceptance and compare view. Keep detailed hashes, logs, and CI provenance in that linked acceptance; do not maintain a second editorial summary in README or a separate notes file. The helper only extracts text; it does not publish anything.
 
 Download the published assets freshly without relying on an authenticated cached copy. Compare both files byte-for-byte with the accepted CI products, then run the same short portable verifier on the downloaded ZIP. With identical bytes and unchanged relevant environment, the accepted live proof remains valid; do not run the entire live suite again merely because the download URL changed.
 

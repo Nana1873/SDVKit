@@ -1,0 +1,80 @@
+name: Release draft
+
+# Attaches the unchanged, green main CI artifact for a tagged commit to a draft release.
+# Nothing is rebuilt. Publishing the draft stays manual, after the live release checks.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  draft:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the green main CI run for the tagged commit
+        id: ci
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $runs = @(gh run list --workflow ci.yml --branch main --event push --commit $env:GITHUB_SHA `
+            --limit 5 --json databaseId,status,conclusion | ConvertFrom-Json)
+          if ($runs.Count -lt 1) {
+            throw "No main CI run exists for $env:GITHUB_SHA. Tag only a commit that main CI has built."
+          }
+          $run = $runs[0]
+          if ($run.status -ne 'completed') {
+            gh run watch $run.databaseId --exit-status | Out-Null
+            $run = gh run view $run.databaseId --json databaseId,status,conclusion | ConvertFrom-Json
+          }
+          if ($run.conclusion -ne 'success') {
+            throw "Main CI run $($run.databaseId) for $env:GITHUB_SHA concluded '$($run.conclusion)'."
+          }
+          "run-id=$($run.databaseId)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Download and check the CI artifact
+        id: artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.ci.outputs.run-id }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $dist = Join-Path $env:RUNNER_TEMP 'sdvkit-release'
+          gh run download $env:RUN_ID --name SDVKit-windows-x64 --dir $dist
+          $zip = Join-Path $dist "SDVKit-$version-win-x64.zip"
+          $sidecar = "$zip.sha256"
+          $files = @(Get-ChildItem -LiteralPath $dist -File -Recurse)
+          if ($files.Count -ne 2 -or -not (Test-Path -LiteralPath $zip) -or -not (Test-Path -LiteralPath $sidecar)) {
+            throw "Expected exactly SDVKit-$version-win-x64.zip and its .sha256 in the CI artifact; found: $($files.Name -join ', ')"
+          }
+          $expected = (Get-Content -LiteralPath $sidecar -Raw).Trim()
+          $actual = "$((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($zip))"
+          if ($expected -cne $actual) {
+            throw "The sidecar does not match the archive: '$expected' vs '$actual'."
+          }
+          "version=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "zip=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "sidecar=$sidecar" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Create the draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.artifact.outputs.version }}
+          ZIP: ${{ steps.artifact.outputs.zip }}
+          SIDECAR: ${{ steps.artifact.outputs.sidecar }}
+          RUN_ID: ${{ steps.ci.outputs.run-id }}
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          .\scripts\release-notes.ps1 -Version $env:VERSION | Set-Content -LiteralPath $notes -Encoding utf8
+          gh release create $env:GITHUB_REF_NAME $env:ZIP $env:SIDECAR --draft --verify-tag `
+            --title "SDVKit $env:VERSION" --notes-file $notes
+          "Draft release $env:GITHUB_REF_NAME created from main CI run $env:RUN_ID. Publish it manually after the live release checks." |
+            Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
