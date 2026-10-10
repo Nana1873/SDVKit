@@ -142,7 +142,7 @@ internal sealed partial class LiveLabService
     {
         DateTimeOffset startedAt = _utcNow().ToUniversalTime();
         DateTimeOffset deadline = startedAt + TestSaveTimeout;
-        DateTimeOffset alwaysOnSettleDeadline = startedAt + AlwaysOnStartupGrace;
+        DateTimeOffset gameSideSettleDeadline = startedAt + GameSideStartupGrace;
         string expectedPhase = string.Equals(
             expected.Mode,
             TestSaveContract.CreateMode,
@@ -154,15 +154,15 @@ internal sealed partial class LiveLabService
         {
             LiveLabCommandResult result = Status();
             LiveLabReport report = (LiveLabReport)result.Report;
-            TestSaveStatusReport? testSave = report.AlwaysOn?.TestSave;
+            TestSaveStatusReport? testSave = report.GameSide?.TestSave;
             if (result.ExitCode != Success)
             {
                 if (report.Problems.Count == 1
                     && string.Equals(
                         report.Problems[0].Code,
-                        "alwaysOnNotApplied",
+                        "gameSideNotApplied",
                         StringComparison.Ordinal)
-                    && _utcNow().ToUniversalTime() <= alwaysOnSettleDeadline)
+                    && _utcNow().ToUniversalTime() <= gameSideSettleDeadline)
                 {
                     _delay(TestSavePollInterval);
                     continue;
@@ -171,7 +171,7 @@ internal sealed partial class LiveLabService
                 if (report.Problems.Count == 1
                     && string.Equals(
                         report.Problems[0].Code,
-                        "alwaysOnInvalid",
+                        "gameSideInvalid",
                         StringComparison.Ordinal)
                     && !retriedInvalidStatus)
                 {
@@ -198,7 +198,7 @@ internal sealed partial class LiveLabService
                     testSave,
                     Problem(
                         "testSaveStatusMismatch",
-                        $"The AlwaysOn test-save marker is {testSave.State}."));
+                        $"The GameSide test-save marker is {testSave.State}."));
             }
 
             if (testSave is not null

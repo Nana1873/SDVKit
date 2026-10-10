@@ -323,8 +323,8 @@ public sealed class ProjectReviewMcpInputCancellationTests
 
     private static ProjectReviewInputExecutionResult Acknowledge(TemporaryDirectory temporary, ReviewInputQuery query)
     {
-        string path = Path.Combine(LiveLabPaths.Resolve(temporary.Path).RuntimePath, "always-on-status.json");
-        AlwaysOnStatusMarker before = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        string path = Path.Combine(LiveLabPaths.Resolve(temporary.Path).RuntimePath, "game-side-status.json");
+        GameSideStatusMarker before = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
         DateTimeOffset observed = before.ObservedAtUtc.AddMilliseconds(1);
         DateTimeOffset after = before.ObservedAtUtc.AddMilliseconds(2);

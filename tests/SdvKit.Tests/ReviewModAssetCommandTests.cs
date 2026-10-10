@@ -1,6 +1,6 @@
 using System.Reflection;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 

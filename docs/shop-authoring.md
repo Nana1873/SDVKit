@@ -470,7 +470,7 @@ evidence paths in a simple table. Keep these claims separate:
 
 The #159 candidate also needs its complete release checks: restore, formatting,
 Release build, all tests, product packaging, fresh portable verification,
-extracted game-backed AlwaysOn build and the affected single shop/input/cleanup
+extracted game-backed GameSide build and the affected single shop/input/cleanup
 gate. Follow [releasing](releasing.md). Map and texture MCP work from #155 is not
 required by this workflow; add it only if a later scope explicitly requires map
 or texture asset evidence.

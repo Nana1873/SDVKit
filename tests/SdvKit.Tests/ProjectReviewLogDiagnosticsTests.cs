@@ -132,8 +132,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
     {
         using TemporaryDirectory temporary = new();
         PreparedNetwork network = PrepareNetwork(temporary, NetworkArtifacts(temporary.Path),
-            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)),
-            ReadyLoadedMods(new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
+            ReadyLoadedMods(new LoadedModEntry("SDVKit.GameSide", "0.8.0", false)),
+            ReadyLoadedMods(new LoadedModEntry("SDVKit.GameSide", "0.8.0", false)));
         WriteLog(network.HostReader, "[08:00:04 WARN  Target] host-only warning");
         WriteLog(network.FarmhandReader, "[08:00:04 WARN  Target] farmhand-only warning");
         ProjectReviewMcpRuntimeReader reader = role == "host" ? network.HostReader : network.FarmhandReader;
@@ -151,7 +151,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
     private static PreparedReview LogReview(TemporaryDirectory temporary) => PrepareSingle(temporary,
         CompleteArtifacts(temporary.Path), ReadyLoadedMods(new LoadedModEntry("Zulu.Target", "1.0.0", false),
-            new LoadedModEntry("SDVKit.AlwaysOn", "0.8.0", false)));
+            new LoadedModEntry("SDVKit.GameSide", "0.8.0", false)));
 
     [Theory]
     [InlineData("file")]
@@ -276,7 +276,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         if (reader.Role is not null) paths = LiveLabPaths.ResolveNetworkRole(paths, reader.Role);
         string path = Path.Combine(paths.StardewDataPath, "ErrorLogs", "SMAPI-latest.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, $"[08:00:00 INFO  SDVKit AlwaysOn] SDVKit AlwaysOn activated for isolated lab launch '{context.State.LaunchId}'.\n" + text + "\n");
+        File.WriteAllText(path, $"[08:00:00 INFO  SDVKit] SDVKit activated for isolated lab launch '{context.State.LaunchId}'.\n" + text + "\n");
         return path;
     }
 

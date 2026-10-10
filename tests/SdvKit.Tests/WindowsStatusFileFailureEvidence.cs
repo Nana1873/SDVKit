@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using SdvKit.Tests;
 
-namespace SdvKit.AlwaysOn;
+namespace SdvKit.GameSide;
 
 internal static partial class WindowsStatusFile
 {

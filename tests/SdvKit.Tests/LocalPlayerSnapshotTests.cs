@@ -148,7 +148,7 @@ public sealed class LocalPlayerSnapshotTests
         Assert.Equal(12345, Read(temporary, marker).Runtime?.LocalPlayer?.Data?.Money);
         RuntimeSnapshotMarker title = new(1, false, null, null, null, null, null, null, null, true, Now,
             LocalPlayerSnapshotContract.WithoutData("worldNotReady"));
-        AlwaysOnStatusReport result = Read(temporary, title);
+        GameSideStatusReport result = Read(temporary, title);
         Assert.Equal("ready", result.Runtime?.State);
         Assert.Equal("worldNotReady", result.Runtime?.LocalPlayer?.Availability);
         Assert.Null(result.Runtime?.LocalPlayer?.Data);
@@ -161,7 +161,7 @@ public sealed class LocalPlayerSnapshotTests
     public void OldRuntimeSchemaRemainsReadableWithExplicitUnavailablePlayer()
     {
         using TemporaryDirectory temporary = new();
-        AlwaysOnStatusReport result = Read(temporary, Runtime(null));
+        GameSideStatusReport result = Read(temporary, Runtime(null));
         Assert.Equal("ready", result.Runtime?.State);
         Assert.Equal("Farm", result.Runtime?.LocationId);
         Assert.Equal("notPublished", result.Runtime?.LocalPlayer?.Reason);
@@ -176,7 +176,7 @@ public sealed class LocalPlayerSnapshotTests
         using TemporaryDirectory temporary = new();
         foreach (LocalPlayerSnapshot? player in new[] { null, Player() })
         {
-            AlwaysOnStatusReport report = Read(temporary, Runtime(player), phase, Now.AddSeconds(age));
+            GameSideStatusReport report = Read(temporary, Runtime(player), phase, Now.AddSeconds(age));
             Assert.Equal(state, report.Runtime?.State);
             Assert.Null(report.Runtime?.LocationId);
             Assert.Null(report.Runtime?.LocalPlayer);
@@ -203,7 +203,7 @@ public sealed class LocalPlayerSnapshotTests
         JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
         payload["runtime"]!["localPlayer"]!["data"]!.AsObject().Remove(field);
         File.WriteAllText(path, payload.ToJsonString());
-        AlwaysOnStatusReport result = AlwaysOnStatusReader.Read(path, "launch", Process, Now);
+        GameSideStatusReport result = GameSideStatusReader.Read(path, "launch", Process, Now);
         Assert.Equal("invalid", result.State);
         Assert.Null(result.Runtime);
     }
@@ -219,13 +219,13 @@ public sealed class LocalPlayerSnapshotTests
         var data = payload["runtime"]!["localPlayer"]!["data"]!.AsObject();
         data.Remove("fishing");
         File.WriteAllText(path, payload.ToJsonString());
-        Assert.Equal("ready", AlwaysOnStatusReader.Read(path, "launch", Process, Now).Runtime?.State);
+        Assert.Equal("ready", GameSideStatusReader.Read(path, "launch", Process, Now).Runtime?.State);
 
         Read(temporary, Runtime(player));
         payload = JsonNode.Parse(File.ReadAllText(path))!;
         payload["runtime"]!["localPlayer"]!["data"]!["fishing"]!.AsObject().Remove("catchReady");
         File.WriteAllText(path, payload.ToJsonString());
-        Assert.Equal("invalid", AlwaysOnStatusReader.Read(path, "launch", Process, Now).State);
+        Assert.Equal("invalid", GameSideStatusReader.Read(path, "launch", Process, Now).State);
     }
 
     [Fact]
@@ -235,21 +235,21 @@ public sealed class LocalPlayerSnapshotTests
         var player = Player() with { Data = Player().Data! with { Fishing = Rod } };
         Read(temporary, Runtime(player));
         string path = Path.Combine(temporary.Path, "status.json");
-        var marker = new AlwaysOnStatusMarker(1, "launch", Process.ProcessId, Process.StartTimeUtc,
+        var marker = new GameSideStatusMarker(1, "launch", Process.ProcessId, Process.StartTimeUtc,
                     "active", 600, false, false, Now, Runtime: Runtime(player));
         File.WriteAllText(path, JsonSerializer.Serialize(marker, WriterOptions));
-        Assert.Equal(Rod, AlwaysOnStatusReader.Read(path, "launch", Process, Now).Runtime?.LocalPlayer?.Data?.Fishing);
+        Assert.Equal(Rod, GameSideStatusReader.Read(path, "launch", Process, Now).Runtime?.LocalPlayer?.Data?.Fishing);
     }
 
-    private static AlwaysOnStatusReport Read(TemporaryDirectory temporary, RuntimeSnapshotMarker runtime,
+    private static GameSideStatusReport Read(TemporaryDirectory temporary, RuntimeSnapshotMarker runtime,
         string phase = "active", DateTimeOffset? now = null)
     {
         string path = Path.Combine(temporary.Path, "status.json");
-        var marker = new AlwaysOnStatusMarker(1, "launch", Process.ProcessId, Process.StartTimeUtc,
+        var marker = new GameSideStatusMarker(1, "launch", Process.ProcessId, Process.StartTimeUtc,
             phase, 600, false, false, Now, Runtime: runtime);
         string json = JsonSerializer.Serialize(marker, LiveLabJsonOptions.CamelCase);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(json) < 2048);
         File.WriteAllText(path, json);
-        return AlwaysOnStatusReader.Read(path, "launch", Process, now ?? Now);
+        return GameSideStatusReader.Read(path, "launch", Process, now ?? Now);
     }
 }

@@ -36,7 +36,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Alpha.Missing", "1.0.0", false),
                 new LoadedModEntry("Beta.Version", "2.0.0", false),
                 new LoadedModEntry("Gamma.Pack", "3.0.0", true),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)));
         await using McpTestClient singleHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             single.Reader,
@@ -78,12 +78,12 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Nana.Companion", "1.0.0", false),
                 new LoadedModEntry("Nana.Pack", "1.0.0", true),
                 new LoadedModEntry("Nana.Target", "1.0.0", false),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false)),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false)),
             ReadyLoadedMods(
                 new LoadedModEntry("Nana.Companion", "8.8.8-farmhand", false),
                 new LoadedModEntry("Nana.Pack", "1.0.0", true),
                 new LoadedModEntry("Nana.Target", "1.0.0", false),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false)));
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false)));
         await using McpTestClient networkHarness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             network.HostReader,
             runData: false ? _ => throw new InvalidOperationException(
@@ -126,7 +126,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             ReadyLoadedMods(
                 new LoadedModEntry("Beta.Version", "9.9.9", false),
                 new LoadedModEntry("Gamma.Pack", "3.0.0", false),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)),
             secret);
         await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
@@ -180,7 +180,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 "Alpha.Missing",
                 "Beta.Version",
                 "Gamma.Pack",
-                "SDVKit.AlwaysOn",
+                "SDVKit.GameSide",
                 "Zulu.Target",
             ],
             mods.GetProperty("mods").EnumerateArray()
@@ -217,7 +217,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             "modKindMismatch",
             "The role-local SMAPI registry reported a different mod kind than the selected staging metadata.");
         AssertMod(
-            FindMod(mods, "SDVKit.AlwaysOn"),
+            FindMod(mods, "SDVKit.GameSide"),
             "sdvkitSupport",
             expectedKind: null,
             "smapiMod",
@@ -254,7 +254,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 ProjectReviewArtifactRole.Target,
                 "Nana.Target")],
             ReadyLoadedMods(new LoadedModEntry(
-                LoadedModsContract.AlwaysOnUniqueId,
+                LoadedModsContract.GameSideUniqueId,
                 "0.6.1",
                 IsContentPack: false)),
             targetLoaded: false);
@@ -299,7 +299,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             ReadyLoadedMods(
                 new LoadedModEntry("Beta.Version", "2.0.0", false),
                 new LoadedModEntry("Gamma.Pack", "3.0.0", true),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)));
         await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
             prepared.Reader,
@@ -343,7 +343,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             ReadyLoadedMods(
                 new LoadedModEntry("Beta.Version", "2.0.0", false),
                 new LoadedModEntry("Gamma.Pack", "3.0.0", true),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 new LoadedModEntry("Zulu.Target", "1.0.0", false)),
             processHost: processHost);
         await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
@@ -382,7 +382,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
 
     [Theory]
     [InlineData("unexpectedIdentity", "reviewLoadedModsMismatch")]
-    [InlineData("missingAlwaysOn", "reviewLoadedModsInvalid")]
+    [InlineData("missingGameSide", "reviewLoadedModsInvalid")]
     [InlineData("malformedInventory", "reviewLoadedModsInvalid")]
     public async Task InvalidRoleLocalInventoriesFailClosedWithoutSentinelLeak(
         string failure,
@@ -395,8 +395,8 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
             "unexpectedIdentity" => ReadyLoadedMods(
                 new LoadedModEntry("DoNotLeakRegistrySentinel", "7.7.7", false),
                 new LoadedModEntry("Nana.Target", "1.0.0", false),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false)),
-            "missingAlwaysOn" => new LoadedModsStatusMarker(
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false)),
+            "missingGameSide" => new LoadedModsStatusMarker(
                 LoadedModsContract.SchemaVersion,
                 CapturedAt,
                 [new LoadedModEntry("Nana.Target", "1.0.0", false)],
@@ -406,7 +406,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 CapturedAt,
                 [
                     new LoadedModEntry("Nana.Target", "1.0.0", false),
-                    new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                    new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 ],
                 ProblemCode: sentinel),
             _ => throw new InvalidOperationException("Unknown inventory failure."),
@@ -466,13 +466,13 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
                 new LoadedModEntry("Nana.Companion", "1.0.0", false),
                 new LoadedModEntry("Nana.Pack", "1.0.0", true),
                 new LoadedModEntry("Nana.Target", "1.0.0", false),
-                new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false)),
+                new LoadedModEntry("SDVKit.GameSide", "0.6.1", false)),
             LoadedModsContract.CreateReady(
                 [
                     new LoadedModEntry("Nana.Companion", "8.8.8-farmhand", false),
                     new LoadedModEntry("Nana.Pack", "1.0.0", true),
                     new LoadedModEntry("Nana.Target", "1.0.0", false),
-                    new LoadedModEntry("SDVKit.AlwaysOn", "0.6.1", false),
+                    new LoadedModEntry("SDVKit.GameSide", "0.6.1", false),
                 ],
                 CapturedAt.AddMilliseconds(1)));
 
@@ -841,7 +841,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         ProjectModStatusMarker projectMod,
         LoadedModsStatusMarker loadedMods)
     {
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             SchemaVersion: 1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -1035,7 +1035,7 @@ public sealed partial class ProjectReviewMcpDiagnosticsTests
         int foregroundProcessId,
         RuntimeSnapshotMarker runtime)
     {
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             SchemaVersion: 1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,

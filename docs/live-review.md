@@ -38,7 +38,7 @@ To review one code project within an existing repository:
 & $sdvkit project review start .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --topology single --json
 ```
 
-The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, AlwaysOn, and the actual role launches. Source review stages one standalone code-mod package per target or companion. Build/package a source bundle and extract it before selecting its ready root; see [explicit ready bundles](#select-a-ready-bundle). Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
+The root-relative selector follows the [toolkit selection rules](toolkit.md#create-build-and-package). It is carried through both the isolated build and package and recorded as `projectFile` in owned review artifacts. It applies only to the target; each `--companion` project directory must still resolve uniquely. The selected game installation is shared by target/companion builds, GameSide, and the actual role launches. Source review stages one standalone code-mod package per target or companion. Build/package a source bundle and extract it before selecting its ready root; see [explicit ready bundles](#select-a-ready-bundle). Both single and network-2 support the selected standalone C# target. `project smoke` retains its unique-project rule and accepts only installation selection.
 
 A selected code project may have nested C# test projects and QA mods with their own
 code manifests. For a root mod plus a separate live-test companion, select both
@@ -224,7 +224,7 @@ Use an idle SMAPI console with no concurrent manual typing. Console delivery pro
 & $sdvkit project review command "sdvkit screenshot viewport menu-after" --topology single --json
 ```
 
-Coordinates are an example, not a known button location: inspect the current viewport before choosing them. A screenshot succeeds only when AlwaysOn confirms the path and that exact PNG exists below the selected profile; inspect the image for visual acceptance. Use new labels, 1–64 ASCII letters/digits/`-`/`_`; captures never overwrite.
+Coordinates are an example, not a known button location: inspect the current viewport before choosing them. A screenshot succeeds only when GameSide confirms the path and that exact PNG exists below the selected profile; inspect the image for visual acceptance. Use new labels, 1–64 ASCII letters/digits/`-`/`_`; captures never overwrite.
 
 `sdvkit screenshot <label>` captures the loaded map; `sdvkit screenshot viewport <label>` captures the rendered viewport, including menus/title/loading. Input and viewport console commands can diagnose pre-world state only while their exact process, staging, target-load, and role bindings remain valid. Other commands retain fixture/join readiness gates.
 
@@ -361,7 +361,7 @@ that target is reported as not loaded; it does not replace load/version diagnost
 The matching native tool is `stardew_mod_diagnostics { "modId": "Example.Mod", "limit": 20 }`.
 Both surfaces return the same projection from the selected role's isolated
 `StardewValley/ErrorLogs/SMAPI-latest.txt`. Only an active owned review with a fresh
-status, exact process/staging identity, and matching AlwaysOn activation launch ID
+status, exact process/staging identity, and matching GameSide activation launch ID
 in that log is accepted. Missing, stale, linked, replaced/unbound or rotated-away
 logs return `state=unavailable` with a bounded `errorCode`; old logs are never searched.
 

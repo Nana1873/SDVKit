@@ -105,7 +105,7 @@ internal static class ProjectReviewLogDiagnostics
             matching++;
             string attribution = named
                 ? staged.Count(a => string.Equals(a.Name, selected.Name, StringComparison.OrdinalIgnoreCase)) == 1
-                    && logger is not ("SMAPI" or "SDVKit AlwaysOn") ? "logger" : "ambiguousLogger"
+                    && logger is not ("SMAPI" or "SDVKit") ? "logger" : "ambiguousLogger"
                 : "sharedMention";
             var visible = new List<string>();
             int withheld = 0;

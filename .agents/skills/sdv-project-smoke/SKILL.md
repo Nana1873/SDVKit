@@ -26,7 +26,7 @@ See the [live guide](../../../docs/live-review.md#automated-smoke) for user-faci
    sdvkit project inspect [path] --json
    ```
 
-   Continue only when the exit code is `0`, `problems` is empty, `kind` is `smapiMod`, and the result describes exactly one code-mod manifest with `entryDll` plus exactly one C# project file. Reject content packs, hybrid or unknown trees, multiple manifests or projects, and the reserved `SDVKit.AlwaysOn` identity. Report the first rejected condition as an **Inspection** failure; do not reshape the project or bypass the current smoke command's remaining manifest and dependency checks.
+   Continue only when the exit code is `0`, `problems` is empty, `kind` is `smapiMod`, and the result describes exactly one code-mod manifest with `entryDll` plus exactly one C# project file. Reject content packs, hybrid or unknown trees, multiple manifests or projects, and the reserved `SDVKit.GameSide` identity. Report the first rejected condition as an **Inspection** failure; do not reshape the project or bypass the current smoke command's remaining manifest and dependency checks.
 
 ## Select and run one topology
 

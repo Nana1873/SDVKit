@@ -7,7 +7,7 @@ internal sealed record NetworkTwoRoleReport(
     int? ProcessId,
     DateTimeOffset? ProcessStartTimeUtc,
     string? ExecutablePath,
-    AlwaysOnStatusReport? AlwaysOn,
+    GameSideStatusReport? GameSide,
     bool ContinuedWhileUnfocused,
     int? FirstUnfocusedTick,
     int? LastUnfocusedTick,

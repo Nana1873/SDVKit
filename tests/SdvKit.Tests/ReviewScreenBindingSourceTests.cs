@@ -48,7 +48,7 @@ public sealed class ReviewScreenBindingSourceTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            string path = Path.Combine(directory.FullName, "src", "SdvKit.AlwaysOn", fileName);
+            string path = Path.Combine(directory.FullName, "src", "SdvKit.GameSide", fileName);
             if (File.Exists(path)) return File.ReadAllText(path).ReplaceLineEndings("\n");
             directory = directory.Parent;
         }

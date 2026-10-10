@@ -84,7 +84,7 @@ asset/code hot reload or network-2 refresh.
 
 ## Identity and interrupted operations
 
-The review's `buildIdentity` and AlwaysOn/runtime target identity retain the
+The review's `buildIdentity` and GameSide/runtime target identity retain the
 original **launch** file-set hash. They continue to bind the same process; they
 do not prove that reloaded JSON is active in memory. The existing ownership marker
 and review status's target `cpRefresh` contain a separate `stagedBuildIdentity`,

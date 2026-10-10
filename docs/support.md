@@ -7,7 +7,7 @@ SDVKit 1.0 establishes the delivered [modding toolkit](toolkit.md) and [isolated
 | Component | Requirement and verified scope |
 | --- | --- |
 | Platform | Windows x64; Windows 10 version 1709 or later for the native live lab. No Linux, macOS, remote fleet, or Windows ARM release is provided. |
-| SDK | .NET 8 SDK 8.0.419 or a later stable 8.0 SDK, selected by `global.json`. The portable CLI is framework-dependent and uses the .NET 8 runtime supplied by the SDK; C# mod and distributed AlwaysOn builds also require the SDK. AlwaysOn targets the game's .NET 6 runtime and references the selected installation's assemblies. |
+| SDK | .NET 8 SDK 8.0.419 or a later stable 8.0 SDK, selected by `global.json`. The portable CLI is framework-dependent and uses the .NET 8 runtime supplied by the SDK; C# mod and distributed GameSide builds also require the SDK. GameSide targets the game's .NET 6 runtime and references the selected installation's assemblies. |
 | Installation | A complete local Stardew Valley and SMAPI installation. `doctor --json` reports readiness; ambiguous installations require explicit supported `--game-path` selection for build/start/smoke. Providers and companions must already exist locally and be selected explicitly. |
 | Disposable-world runtime | Stardew game version `>=1.6.15, <1.7`, file version `>=1.6.15.24356, <1.7`, and SMAPI `>=4.5.0, <5.0`, plus runtime API checks. Historical live acceptance used Stardew 1.6.15.24356 and SMAPI 4.5.2. Accepted ranges do not mean every combination has been tested; the release issue records the actual tested versions. |
 | Content Patcher | Offline checks use bundled CP 2.9.x schemas with bounded file-reference checks. Live diagnosis, apply-order parsing and selected JSON refresh require exactly CP 2.9.1; other provider versions return an explicit unsupported result. |
@@ -30,6 +30,8 @@ Before upgrading from 0.x or another 1.x release:
 4. If an older inactive generated profile/fixture is rejected as incompatible, retain its diagnostics and prepare a fresh lab directory. SDVKit does not promise automatic migration of generated internal state or copy a personal save without explicit selection. Very old v0.1.0 active fixture junctions must be cleaned up by that version before upgrading.
 
 ## 1.x compatibility policy
+
+`main` is preparing **2.0**, which deliberately breaks parts of this policy. Every breaking change is listed under Unreleased in the [changelog](../CHANGELOG.md) with its upgrade step. The 1.0.0 release and its tagged documentation keep the policy below.
 
 | Public surface | Policy within 1.x |
 | --- | --- |

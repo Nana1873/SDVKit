@@ -14,7 +14,7 @@ internal sealed record LiveLabPaths(
     string StopRequestPath,
     string StandardOutputPath,
     string StandardErrorPath,
-    string AlwaysOnModPath,
+    string GameSideModPath,
     string TestSaveRoot,
     string TestSaveManifestPath,
     string TestSaveWorkPath,
@@ -57,11 +57,11 @@ internal sealed record LiveLabPaths(
             buildPath,
             userProfilePath,
             Path.Combine(runtimePath, "state.json"),
-            Path.Combine(runtimePath, "always-on-status.json"),
+            Path.Combine(runtimePath, "game-side-status.json"),
             Path.Combine(runtimePath, "stop.request"),
             Path.Combine(runtimePath, "smapi.stdout.log"),
             Path.Combine(runtimePath, "smapi.stderr.log"),
-            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            Path.Combine(modsPath, "SDVKit.GameSide"),
             testSaveRoot,
             Path.Combine(testSaveRoot, "fixture.json"),
             Path.Combine(testSaveRoot, "work"),
@@ -105,11 +105,11 @@ internal sealed record LiveLabPaths(
             buildPath,
             userProfilePath,
             Path.Combine(runtimePath, "state.json"),
-            Path.Combine(runtimePath, "always-on-status.json"),
+            Path.Combine(runtimePath, "game-side-status.json"),
             Path.Combine(runtimePath, "stop.request"),
             Path.Combine(runtimePath, "smapi.stdout.log"),
             Path.Combine(runtimePath, "smapi.stderr.log"),
-            Path.Combine(modsPath, "SDVKit.AlwaysOn"),
+            Path.Combine(modsPath, "SDVKit.GameSide"),
             singlePaths.TestSaveRoot,
             singlePaths.TestSaveManifestPath,
             singlePaths.TestSaveWorkPath,
@@ -140,6 +140,83 @@ internal sealed record LiveLabPaths(
         EnsureDirectory(StardewDataPath);
         EnsureDirectory(SavesPath);
         RejectExistingManagedReparsePoints();
+    }
+
+    public string LegacyGameSideModPath =>
+        Path.Combine(ModsPath, LoadedModsContract.LegacyGameSideUniqueId);
+
+    private const string LegacyGameSideAssembly = "SdvKit.AlwaysOn.dll";
+    private const string LegacyGameSideManifest = "manifest.json";
+
+    /// <summary>
+    /// Whether <see cref="LegacyGameSideModPath"/> holds the game-side mod that SDVKit 1.x
+    /// installed under its former identity, or what is left of it after an interrupted removal:
+    /// a plain directory with at most its manifest and assembly. A present manifest must carry
+    /// the legacy ID and entry DLL. The directory name itself is reserved for user mods.
+    /// </summary>
+    internal bool IsLegacyGameSideInstall()
+    {
+        string path = LegacyGameSideModPath;
+        if (!TryGetAttributes(path, out FileAttributes attributes)
+            || (attributes & FileAttributes.Directory) == 0
+            || (attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return false;
+        }
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            string name = Path.GetFileName(entry);
+            if ((!string.Equals(name, LegacyGameSideManifest, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(name, LegacyGameSideAssembly, StringComparison.OrdinalIgnoreCase))
+                || !TryGetAttributes(entry, out FileAttributes entryAttributes)
+                || (entryAttributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            {
+                return false;
+            }
+        }
+
+        string manifestPath = Path.Combine(path, LegacyGameSideManifest);
+        if (!File.Exists(manifestPath))
+        {
+            return true;
+        }
+
+        try
+        {
+            using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            System.Text.Json.JsonElement root = manifest.RootElement;
+            return root.ValueKind == System.Text.Json.JsonValueKind.Object
+                && root.TryGetProperty("UniqueID", out System.Text.Json.JsonElement id)
+                && string.Equals(id.GetString(), LoadedModsContract.LegacyGameSideUniqueId, StringComparison.Ordinal)
+                && root.TryGetProperty("EntryDll", out System.Text.Json.JsonElement entryDll)
+                && string.Equals(entryDll.GetString(), LegacyGameSideAssembly, StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a legacy 1.x game-side install (see <see cref="IsLegacyGameSideInstall"/>).
+    /// The assembly goes first and the manifest last, so an interrupted removal still leaves a
+    /// recognizable remainder that the next launch preparation finishes. Anything else is left
+    /// untouched for the existing ownership checks. Call this only while preparing a new launch,
+    /// never for status or stop.
+    /// </summary>
+    internal bool RemoveLegacyGameSideDirectory()
+    {
+        if (!IsLegacyGameSideInstall())
+        {
+            return false;
+        }
+
+        string path = LegacyGameSideModPath;
+        File.Delete(Path.Combine(path, LegacyGameSideAssembly));
+        File.Delete(Path.Combine(path, LegacyGameSideManifest));
+        Directory.Delete(path, recursive: false);
+        return true;
     }
 
     internal void RejectUserProfileReparsePoints()

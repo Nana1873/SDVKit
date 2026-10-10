@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
@@ -33,7 +33,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
                 ready ? 600 : null, ready ? "Farm" : null, ready ? 10 : null,
                 ready ? 20 : null, !ready, DateTimeOffset.UtcNow, snapshot);
             writer.Write("active", 600, false, false, runtime: runtime);
-            AlwaysOnStatusReport result = Read(path);
+            GameSideStatusReport result = Read(path);
             Assert.Equal("ready", result.Runtime?.State);
             Assert.Equal(snapshot, result.Runtime?.LocalPlayer);
             using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
@@ -80,7 +80,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
             for (int tick = 2; tick <= 5; tick++)
             {
                 writer.Write("active", tick, false, false);
-                AlwaysOnStatusReport current = Read(path);
+                GameSideStatusReport current = Read(path);
                 Assert.Equal("active", current.State);
                 Assert.Equal(tick, current.Tick);
             }
@@ -119,7 +119,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
                 Assert.Equal([path], Directory.GetFiles(directory.Path));
             }
 
-            AlwaysOnStatusReport stale = Read(path, DateTimeOffset.UtcNow.AddSeconds(6));
+            GameSideStatusReport stale = Read(path, DateTimeOffset.UtcNow.AddSeconds(6));
             Assert.Equal("stale", stale.State);
             Assert.Equal(1, stale.Tick);
         }
@@ -194,7 +194,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         int readIndex = 0;
         int previousTick = 0;
         DateTimeOffset now = default;
-        AlwaysOnStatusReport? report = null;
+        GameSideStatusReport? report = null;
         var readExceptions = new StatusReaderExceptionCapture();
         Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(path, () =>
         {
@@ -213,7 +213,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
             {
                 now = DateTimeOffset.UtcNow;
                 report = null;
-                report = readExceptions.Read(() => AlwaysOnStatusReader.Read(path, LaunchId, process, now));
+                report = readExceptions.Read(() => GameSideStatusReader.Read(path, LaunchId, process, now));
                 DateTimeOffset observed = Assert.IsType<DateTimeOffset>(report.ObservedAtUtc);
                 string expectedState = observed > now.AddSeconds(1) || now - observed > TimeSpan.FromSeconds(5)
                     ? "stale"
@@ -249,8 +249,8 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         Assert.Equal([path], Directory.GetFiles(directory.Path));
     }
 
-    private static AlwaysOnStatusReport Read(string path, DateTimeOffset? now = null) =>
-        AlwaysOnStatusReader.Read(path, LaunchId, CurrentProcess(), now ?? DateTimeOffset.UtcNow);
+    private static GameSideStatusReport Read(string path, DateTimeOffset? now = null) =>
+        GameSideStatusReader.Read(path, LaunchId, CurrentProcess(), now ?? DateTimeOffset.UtcNow);
 
     private static OwnedProcessIdentity CurrentProcess()
     {

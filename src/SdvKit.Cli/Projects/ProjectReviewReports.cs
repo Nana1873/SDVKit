@@ -146,7 +146,7 @@ internal static partial class ProjectReviewService
             artifacts,
             true,
             RelativePath(paths.ProjectRoot, paths.SavesPath),
-            lab?.AlwaysOn?.TestSave,
+            lab?.GameSide?.TestSave,
             fixtureReset,
             stagingRemoved,
             problems,

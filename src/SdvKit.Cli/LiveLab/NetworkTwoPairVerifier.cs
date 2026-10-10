@@ -3,15 +3,15 @@ namespace SdvKit.Cli.LiveLab;
 internal static class NetworkTwoPairVerifier
 {
     public static bool IsPassed(
-        AlwaysOnStatusReport? host,
-        AlwaysOnStatusReport? farmhand,
+        GameSideStatusReport? host,
+        GameSideStatusReport? farmhand,
         string expectedBuildIdentity) =>
         IsReady(host, farmhand)
         && HasExactIdentity(host!.NetworkTwo!, farmhand!.NetworkTwo!, expectedBuildIdentity);
 
     public static bool IsReady(
-        AlwaysOnStatusReport? host,
-        AlwaysOnStatusReport? farmhand)
+        GameSideStatusReport? host,
+        GameSideStatusReport? farmhand)
     {
         NetworkTwoStatusReport? hostNetwork = host?.NetworkTwo;
         NetworkTwoStatusReport? farmhandNetwork = farmhand?.NetworkTwo;
@@ -36,8 +36,8 @@ internal static class NetworkTwoPairVerifier
     }
 
     public static bool IsHostLifecycleReady(
-        AlwaysOnStatusReport? host,
-        AlwaysOnStatusReport? farmhand,
+        GameSideStatusReport? host,
+        GameSideStatusReport? farmhand,
         string expectedBuildIdentity)
     {
         NetworkTwoStatusReport? hostNetwork = host?.NetworkTwo;
@@ -62,7 +62,7 @@ internal static class NetworkTwoPairVerifier
             && HasExactIdentity(hostNetwork, farmhandNetwork, expectedBuildIdentity);
     }
 
-    private static bool RoleRuntimeReady(AlwaysOnStatusReport? role) =>
+    private static bool RoleRuntimeReady(GameSideStatusReport? role) =>
         role is not null
         && string.Equals(role.State, "active", StringComparison.Ordinal)
         && role.PauseWhenOutOfFocus == false

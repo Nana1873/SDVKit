@@ -1,7 +1,7 @@
 # Read world and local-player state
 
 Use `project review status --json` or native `stardew_runtime_get {}` from the
-[owned active review](live-review.md). Both read the existing AlwaysOn status;
+[owned active review](live-review.md). Both read the existing GameSide status;
 no console command, input opt-in or arbitrary game-object access is needed.
 For example, a reward mod test can compare money and the selected item's stack
 before and after its own feature runs. Confirm the exact target/companion,

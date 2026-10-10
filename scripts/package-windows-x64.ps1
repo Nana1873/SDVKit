@@ -16,16 +16,16 @@ if ($version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "The CLI project does not declare a package-safe semantic version."
 }
 
-$alwaysOnProjectPath = Join-Path $repositoryRoot "src\SdvKit.AlwaysOn\SdvKit.AlwaysOn.csproj"
-[xml]$alwaysOnProject = Get-Content -LiteralPath $alwaysOnProjectPath -Raw
-$alwaysOnVersion = [string](@($alwaysOnProject.Project.PropertyGroup.Version) |
+$gameSideProjectPath = Join-Path $repositoryRoot "src\SdvKit.GameSide\SdvKit.GameSide.csproj"
+[xml]$gameSideProject = Get-Content -LiteralPath $gameSideProjectPath -Raw
+$gameSideVersion = [string](@($gameSideProject.Project.PropertyGroup.Version) |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
     Select-Object -First 1)
-$alwaysOnManifestPath = Join-Path $repositoryRoot "src\SdvKit.AlwaysOn\manifest.json"
-$alwaysOnManifestVersion = [string](
-    (Get-Content -LiteralPath $alwaysOnManifestPath -Raw | ConvertFrom-Json).Version)
-if ($alwaysOnVersion -ne $version -or $alwaysOnManifestVersion -ne $version) {
-    throw "The CLI, AlwaysOn project, and AlwaysOn manifest versions must match."
+$gameSideManifestPath = Join-Path $repositoryRoot "src\SdvKit.GameSide\manifest.json"
+$gameSideManifestVersion = [string](
+    (Get-Content -LiteralPath $gameSideManifestPath -Raw | ConvertFrom-Json).Version)
+if ($gameSideVersion -ne $version -or $gameSideManifestVersion -ne $version) {
+    throw "The CLI, GameSide project, and GameSide manifest versions must match."
 }
 
 $packageName = "SDVKit-$version-win-x64"
@@ -99,20 +99,20 @@ foreach ($fileName in @(
         -Destination (Join-Path $packageRoot $fileName)
 }
 
-$alwaysOnSource = Join-Path $repositoryRoot "src\SdvKit.AlwaysOn"
+$gameSideSource = Join-Path $repositoryRoot "src\SdvKit.GameSide"
 Copy-Item `
     -LiteralPath (Join-Path $repositoryRoot "docs\portable-quickstart.txt") `
     -Destination (Join-Path $packageRoot "README.txt")
 
-$alwaysOnDestination = Join-Path $packageRoot "src\SdvKit.AlwaysOn"
-New-Item -ItemType Directory -Path $alwaysOnDestination -Force | Out-Null
-$alwaysOnFiles = @(
-    Get-ChildItem -LiteralPath $alwaysOnSource -File -Filter "*.cs"
+$gameSideDestination = Join-Path $packageRoot "src\SdvKit.GameSide"
+New-Item -ItemType Directory -Path $gameSideDestination -Force | Out-Null
+$gameSideFiles = @(
+    Get-ChildItem -LiteralPath $gameSideSource -File -Filter "*.cs"
 ) + @(
-    Get-Item -LiteralPath $alwaysOnProjectPath, $alwaysOnManifestPath
+    Get-Item -LiteralPath $gameSideProjectPath, $gameSideManifestPath
 )
-foreach ($file in $alwaysOnFiles) {
-    Copy-Item -LiteralPath $file.FullName -Destination $alwaysOnDestination
+foreach ($file in $gameSideFiles) {
+    Copy-Item -LiteralPath $file.FullName -Destination $gameSideDestination
 }
 
 $linkedSource = Join-Path $repositoryRoot "src\SdvKit.Cli\LiveLab"

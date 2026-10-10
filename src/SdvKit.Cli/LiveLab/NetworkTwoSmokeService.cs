@@ -14,7 +14,7 @@ internal sealed class NetworkTwoSmokeService
         public bool Continued => FirstTick is not null
             && LastTick > FirstTick;
 
-        public void Observe(AlwaysOnStatusReport? status)
+        public void Observe(GameSideStatusReport? status)
         {
             if (status?.State != "active"
                 || status.IsActive != false
@@ -72,7 +72,7 @@ internal sealed class NetworkTwoSmokeService
     private TestSaveLaunchState? _fixtureLaunch;
     private LiveLabReport? _hostReport;
     private LiveLabReport? _farmhandReport;
-    private AlwaysOnBuildResult? _hostBuild;
+    private GameSideBuildResult? _hostBuild;
     private string? _buildIdentity;
     private bool _fixturePrepared;
     private bool _fixtureReleased;
@@ -111,7 +111,7 @@ internal sealed class NetworkTwoSmokeService
         _interactiveReview = interactiveReview;
 
         var processHost = new WindowsLabProcessHost();
-        var unusedPreparedBuilder = new AlwaysOnBuilder();
+        var unusedPreparedBuilder = new GameSideBuilder();
         _hostService = new LiveLabService(
             _hostPaths,
             _hostStateStore,
@@ -412,7 +412,7 @@ internal sealed class NetworkTwoSmokeService
         {
             return Fail(
                 "networkTwoBuildFailed",
-                prepared.Error ?? "The shared network-2 AlwaysOn build could not be prepared.");
+                prepared.Error ?? "The shared network-2 GameSide build could not be prepared.");
         }
 
         try
@@ -651,8 +651,8 @@ internal sealed class NetworkTwoSmokeService
         LiveLabCommandResult farmhandStatus = _farmhandService.StatusNetwork();
         _hostReport = RequireReport(hostStatus);
         _farmhandReport = RequireReport(farmhandStatus);
-        _hostUnfocused.Observe(_hostReport.AlwaysOn);
-        _farmhandUnfocused.Observe(_farmhandReport.AlwaysOn);
+        _hostUnfocused.Observe(_hostReport.GameSide);
+        _farmhandUnfocused.Observe(_farmhandReport.GameSide);
 
         if (hostStatus.ExitCode != Success)
         {
@@ -674,7 +674,7 @@ internal sealed class NetworkTwoSmokeService
             && farmhandStatus.ExitCode == Success
             && string.Equals(_hostReport.State, "running", StringComparison.Ordinal)
             && string.Equals(_farmhandReport.State, "running", StringComparison.Ordinal)
-            && PairPassed(_hostReport.AlwaysOn, _farmhandReport.AlwaysOn);
+            && PairPassed(_hostReport.GameSide, _farmhandReport.GameSide);
         if (!running && _problems.Count == 0)
         {
             _problems.Add(Problem(
@@ -908,7 +908,7 @@ internal sealed class NetworkTwoSmokeService
         {
             LiveLabCommandResult status = _hostService.StatusNetwork();
             _hostReport = RequireReport(status);
-            _hostUnfocused.Observe(_hostReport.AlwaysOn);
+            _hostUnfocused.Observe(_hostReport.GameSide);
             if (status.ExitCode != Success)
             {
                 if (!retriedInvalidStatus && IsAtomicStatusReadRace(_hostReport))
@@ -927,7 +927,7 @@ internal sealed class NetworkTwoSmokeService
 
             retriedInvalidStatus = false;
 
-            NetworkTwoStatusReport? network = _hostReport.AlwaysOn?.NetworkTwo;
+            NetworkTwoStatusReport? network = _hostReport.GameSide?.NetworkTwo;
             if (network is not null
                 && string.Equals(network.State, "ready", StringComparison.Ordinal)
                 && string.Equals(network.Phase, "hosting", StringComparison.Ordinal)
@@ -957,8 +957,8 @@ internal sealed class NetworkTwoSmokeService
             LiveLabCommandResult farmhandStatus = _farmhandService.StatusNetwork();
             _hostReport = RequireReport(hostStatus);
             _farmhandReport = RequireReport(farmhandStatus);
-            _hostUnfocused.Observe(_hostReport.AlwaysOn);
-            _farmhandUnfocused.Observe(_farmhandReport.AlwaysOn);
+            _hostUnfocused.Observe(_hostReport.GameSide);
+            _farmhandUnfocused.Observe(_farmhandReport.GameSide);
 
             if (hostStatus.ExitCode != Success)
             {
@@ -1001,7 +1001,7 @@ internal sealed class NetworkTwoSmokeService
             }
             retriedInvalidFarmhandStatus = false;
 
-            if (PairPassed(_hostReport.AlwaysOn, _farmhandReport.AlwaysOn)
+            if (PairPassed(_hostReport.GameSide, _farmhandReport.GameSide)
                 && _hostUnfocused.Continued
                 && _farmhandUnfocused.Continued)
             {
@@ -1019,19 +1019,19 @@ internal sealed class NetworkTwoSmokeService
 
     internal static bool IsSynchronousJoinLoad(LiveLabReport report) =>
         report.Problems.Count == 1
-        && report.Problems[0].Code is "alwaysOnStale" or "alwaysOnNotApplied"
+        && report.Problems[0].Code is "gameSideStale" or "gameSideNotApplied"
         && string.Equals(
-            report.AlwaysOn?.NetworkTwo?.Phase,
+            report.GameSide?.NetworkTwo?.Phase,
             "joining",
             StringComparison.Ordinal);
 
     private static bool IsAtomicStatusReadRace(LiveLabReport report) =>
         report.Problems.Count == 1
-        && report.Problems[0].Code is "alwaysOnInvalid" or "alwaysOnPending";
+        && report.Problems[0].Code is "gameSideInvalid" or "gameSidePending";
 
     private bool PairPassed(
-        AlwaysOnStatusReport? host,
-        AlwaysOnStatusReport? farmhand)
+        GameSideStatusReport? host,
+        GameSideStatusReport? farmhand)
     {
         if (!NetworkTwoPairVerifier.IsReady(host, farmhand))
         {
@@ -1242,7 +1242,7 @@ internal sealed class NetworkTwoSmokeService
         {
             string destination = Path.Combine(
                 logsRoot,
-                $"{_smokeId}.{role}.always-on-build.log");
+                $"{_smokeId}.{role}.game-side-build.log");
             File.Copy(_hostBuild.LogPath, destination, overwrite: false);
             archived.Add(destination);
         }
@@ -1318,7 +1318,7 @@ internal sealed class NetworkTwoSmokeService
             report?.ProcessId,
             report?.ProcessStartTimeUtc,
             report?.ExecutablePath,
-            report?.AlwaysOn,
+            report?.GameSide,
             continuedWhileUnfocused,
             firstUnfocusedTick,
             lastUnfocusedTick,

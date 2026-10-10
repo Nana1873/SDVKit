@@ -75,10 +75,10 @@ internal static class ProjectReviewCpRefresh
             if (provider?.Manifest.Version != "2.9.1") return Result("rejected", "cpVersionUnsupported");
             packId = target.Manifest.UniqueId;
             providerId = provider.Manifest.UniqueId;
-            if (!context.AllTargetsReady || context.AlwaysOn.LoadedMods?.State != "ready"
-                || !context.AlwaysOn.LoadedMods.Mods.Any(m => m.UniqueId.Equals(packId, StringComparison.OrdinalIgnoreCase) && m.IsContentPack
+            if (!context.AllTargetsReady || context.GameSide.LoadedMods?.State != "ready"
+                || !context.GameSide.LoadedMods.Mods.Any(m => m.UniqueId.Equals(packId, StringComparison.OrdinalIgnoreCase) && m.IsContentPack
                     && m.Version == ProjectModLaunchState.NormalizeVersion(target.Manifest.Version))
-                || !context.AlwaysOn.LoadedMods.Mods.Any(m => m.UniqueId.Equals(providerId, StringComparison.OrdinalIgnoreCase) && !m.IsContentPack && m.Version == "2.9.1"))
+                || !context.GameSide.LoadedMods.Mods.Any(m => m.UniqueId.Equals(providerId, StringComparison.OrdinalIgnoreCase) && !m.IsContentPack && m.Version == "2.9.1"))
                 return Result("rejected", "cpSelectedModsNotLoaded");
             if (target.CpRefresh?.RequiresRestart == true)
             {

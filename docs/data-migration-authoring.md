@@ -56,7 +56,7 @@ inventory insertion, JSON serialization failures, and a crashed game.
 
 Select one exact SDVKit commit and portable ZIP using the
 [portable procedure](releasing.md#verify-the-extracted-package). Build the
-included AlwaysOn source against the selected game. Record the commit, ZIP hash,
+included GameSide source against the selected game. Record the commit, ZIP hash,
 extracted executable path, game/SMAPI versions, and lab owner. Keep the current
 directory at the same lab root for every live command.
 

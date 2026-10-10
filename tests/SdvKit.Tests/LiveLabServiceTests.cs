@@ -38,7 +38,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(0, result.ExitCode);
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("running", report.State);
-        Assert.Equal("pending", report.AlwaysOn?.State);
+        Assert.Equal("pending", report.GameSide?.State);
         Assert.Equal(gamePath, builder.GamePath);
         LabProcessStartSpec specification = Assert.IsType<LabProcessStartSpec>(process.Specification);
         Assert.Equal(System.IO.Path.Combine(gamePath, "StardewModdingAPI.exe"), specification.ExecutablePath);
@@ -434,7 +434,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(3, result.ExitCode);
         Assert.Equal("stopped", report.State);
         Assert.Equal("projectModLoadUnconfirmed", Assert.Single(report.Problems).Code);
-        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Equal("pending", report.GameSide?.ProjectMod?.State);
         Assert.Null(stateStore.State);
         Assert.False(File.Exists(paths.StopRequestPath));
         Assert.Equal(0, process.CloseCount);
@@ -819,7 +819,7 @@ public sealed class LiveLabServiceTests
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("stopped", report.State);
         Assert.Empty(report.Problems);
-        Assert.Equal("restoreFailed", report.AlwaysOn?.State);
+        Assert.Equal("restoreFailed", report.GameSide?.State);
         Assert.Contains(
             report.Warnings,
             warning => warning.Contains(
@@ -860,7 +860,7 @@ public sealed class LiveLabServiceTests
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("running", report.State);
         Assert.Equal("cleanStopIncomplete", Assert.Single(report.Problems).Code);
-        Assert.Equal("exiting", report.AlwaysOn?.State);
+        Assert.Equal("exiting", report.GameSide?.State);
         Assert.NotNull(stateStore.State);
         Assert.Equal(0, builder.CallCount);
         Assert.Equal(0, process.StartCount);
@@ -944,7 +944,7 @@ public sealed class LiveLabServiceTests
     }
 
     [Fact]
-    public void PendingAlwaysOnBecomesAControlledFailureAfterStartupGrace()
+    public void PendingGameSideBecomesAControlledFailureAfterStartupGrace()
     {
         using TemporaryDirectory temporary = new();
         string gamePath = temporary.WriteFile("game/.keep");
@@ -968,7 +968,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(3, result.ExitCode);
         LiveLabProblem problem = Assert.Single(
             Assert.IsType<LiveLabReport>(result.Report).Problems);
-        Assert.Equal("alwaysOnPending", problem.Code);
+        Assert.Equal("gameSidePending", problem.Code);
     }
 
     [Fact]
@@ -1005,7 +1005,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(3, result.ExitCode);
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("projectModPending", Assert.Single(report.Problems).Code);
-        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Equal("pending", report.GameSide?.ProjectMod?.State);
         Assert.NotNull(stateStore.State);
     }
 
@@ -1043,7 +1043,7 @@ public sealed class LiveLabServiceTests
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("stopped", report.State);
         Assert.Equal("projectModLoadUnconfirmed", Assert.Single(report.Problems).Code);
-        Assert.Equal("pending", report.AlwaysOn?.ProjectMod?.State);
+        Assert.Equal("pending", report.GameSide?.ProjectMod?.State);
         Assert.Equal(1, process.WaitCount);
         Assert.Null(stateStore.State);
     }
@@ -1082,10 +1082,10 @@ public sealed class LiveLabServiceTests
         LiveLabReport report = Assert.IsType<LiveLabReport>(result.Report);
         Assert.Equal("stopped", report.State);
         Assert.Empty(report.Problems);
-        Assert.Equal("ready", report.AlwaysOn?.ProjectMod?.State);
-        Assert.Equal(projectMod.UniqueId, report.AlwaysOn?.ProjectMod?.LoadedUniqueId);
-        Assert.Equal(projectMod.Version, report.AlwaysOn?.ProjectMod?.LoadedVersion);
-        Assert.Same(report.AlwaysOn, service.LastAlwaysOn);
+        Assert.Equal("ready", report.GameSide?.ProjectMod?.State);
+        Assert.Equal(projectMod.UniqueId, report.GameSide?.ProjectMod?.LoadedUniqueId);
+        Assert.Equal(projectMod.Version, report.GameSide?.ProjectMod?.LoadedVersion);
+        Assert.Same(report.GameSide, service.LastGameSide);
         Assert.Equal(1, process.WaitCount);
         Assert.Null(stateStore.State);
     }
@@ -1513,7 +1513,7 @@ public sealed class LiveLabServiceTests
         DateTimeOffset? observedAtUtc = null)
     {
         paths.EnsureDirectories();
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -1573,7 +1573,7 @@ public sealed class LiveLabServiceTests
         }
     }
 
-    private sealed class FakeBuilder : IAlwaysOnBuilder
+    private sealed class FakeBuilder : IGameSideBuilder
     {
         public int CallCount { get; private set; }
 
@@ -1581,7 +1581,7 @@ public sealed class LiveLabServiceTests
 
         public Exception? ExceptionToThrow { get; init; }
 
-        public AlwaysOnBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
+        public GameSideBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
         {
             CallCount++;
             GamePath = gamePath;
@@ -1590,9 +1590,9 @@ public sealed class LiveLabServiceTests
                 throw ExceptionToThrow;
             }
 
-            return new AlwaysOnBuildResult(
+            return new GameSideBuildResult(
                 true,
-                System.IO.Path.Combine(paths.BuildPath, "always-on-build.log"),
+                System.IO.Path.Combine(paths.BuildPath, "game-side-build.log"),
                 null);
         }
     }

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -37,8 +37,8 @@ public sealed class StatusReaderExceptionCaptureTests
 
         using (var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            AlwaysOnStatusReport report = capture.Read(() =>
-                AlwaysOnStatusReader.Read(path, launchId, identity, DateTimeOffset.UtcNow));
+            GameSideStatusReport report = capture.Read(() =>
+                GameSideStatusReader.Read(path, launchId, identity, DateTimeOffset.UtcNow));
 
             Assert.Equal("invalid", report.State);
             Assert.Null(report.ObservedAtUtc);
@@ -46,8 +46,8 @@ public sealed class StatusReaderExceptionCaptureTests
                 && exception.HResult == unchecked((int)0x80070020));
         }
 
-        AlwaysOnStatusReport recovered = capture.Read(() =>
-            AlwaysOnStatusReader.Read(path, launchId, identity, DateTimeOffset.UtcNow));
+        GameSideStatusReport recovered = capture.Read(() =>
+            GameSideStatusReader.Read(path, launchId, identity, DateTimeOffset.UtcNow));
         Assert.Equal("active", recovered.State);
         Assert.Equal(17, recovered.Tick);
         Assert.NotNull(recovered.ObservedAtUtc);
@@ -68,7 +68,7 @@ public sealed class StatusReaderExceptionCaptureTests
         catch (IOException) { }
         Assert.Same(original, Assert.Single(capture.Exceptions));
 
-        capture.Read(() => new AlwaysOnStatusReport("pending", null, null, null, null));
+        capture.Read(() => new GameSideStatusReport("pending", null, null, null, null));
         Assert.Empty(capture.Exceptions);
     }
 
@@ -94,7 +94,7 @@ public sealed class StatusReaderExceptionCaptureTests
                 try { throw new IOException("bounded read failure"); }
                 catch (IOException) { }
             }
-            return new AlwaysOnStatusReport("invalid", null, null, null, null);
+            return new GameSideStatusReport("invalid", null, null, null, null);
         });
 
         Assert.Equal(4, capture.Exceptions.Length);

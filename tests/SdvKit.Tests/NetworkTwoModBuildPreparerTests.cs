@@ -33,13 +33,13 @@ public sealed class NetworkTwoModBuildPreparerTests
         Assert.Equal(hostPaths.SingleRoot, builder.BuiltPaths.SingleRoot);
         Assert.Equal(
             result.BuildIdentity,
-            ModBuildIdentity.Compute(hostPaths.AlwaysOnModPath));
+            ModBuildIdentity.Compute(hostPaths.GameSideModPath));
         Assert.Equal(
             result.BuildIdentity,
-            ModBuildIdentity.Compute(farmhandPaths.AlwaysOnModPath));
+            ModBuildIdentity.Compute(farmhandPaths.GameSideModPath));
         Assert.Equal(
-            ["SdvKit.AlwaysOn.dll", "manifest.json"],
-            Directory.GetFileSystemEntries(farmhandPaths.AlwaysOnModPath)
+            ["SdvKit.GameSide.dll", "manifest.json"],
+            Directory.GetFileSystemEntries(farmhandPaths.GameSideModPath)
                 .Select(path => Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
@@ -58,8 +58,8 @@ public sealed class NetworkTwoModBuildPreparerTests
             singlePaths,
             NetworkTwoContract.FarmhandRole);
         farmhandPaths.EnsureDirectories();
-        Directory.CreateDirectory(farmhandPaths.AlwaysOnModPath);
-        File.WriteAllText(Path.Combine(farmhandPaths.AlwaysOnModPath, "stale.txt"), "stale");
+        Directory.CreateDirectory(farmhandPaths.GameSideModPath);
+        File.WriteAllText(Path.Combine(farmhandPaths.GameSideModPath, "stale.txt"), "stale");
         var builder = new FakeBuilder();
         var preparer = new NetworkTwoModBuildPreparer(builder);
 
@@ -70,7 +70,7 @@ public sealed class NetworkTwoModBuildPreparerTests
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal(1, builder.CallCount);
-        Assert.False(File.Exists(Path.Combine(farmhandPaths.AlwaysOnModPath, "stale.txt")));
+        Assert.False(File.Exists(Path.Combine(farmhandPaths.GameSideModPath, "stale.txt")));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class NetworkTwoModBuildPreparerTests
         Assert.Equal("build failed", result.Error);
         Assert.Null(result.BuildIdentity);
         Assert.Equal(1, builder.CallCount);
-        Assert.False(Directory.Exists(farmhandPaths.AlwaysOnModPath));
+        Assert.False(Directory.Exists(farmhandPaths.GameSideModPath));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class NetworkTwoModBuildPreparerTests
         Assert.Contains("must contain only", result.Error, StringComparison.Ordinal);
         Assert.Null(result.BuildIdentity);
         Assert.Equal(1, builder.CallCount);
-        Assert.False(Directory.Exists(farmhandPaths.AlwaysOnModPath));
+        Assert.False(Directory.Exists(farmhandPaths.GameSideModPath));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class NetworkTwoModBuildPreparerTests
         Assert.Equal(0, builder.CallCount);
     }
 
-    private sealed class FakeBuilder : IAlwaysOnBuilder
+    private sealed class FakeBuilder : IGameSideBuilder
     {
         private readonly bool _succeed;
         private readonly bool _addUndeclaredFile;
@@ -161,29 +161,29 @@ public sealed class NetworkTwoModBuildPreparerTests
 
         public LiveLabPaths BuiltPaths { get; private set; } = null!;
 
-        public AlwaysOnBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
+        public GameSideBuildResult BuildAndInstall(string gamePath, LiveLabPaths paths)
         {
             CallCount++;
             BuiltPaths = paths;
             if (!_succeed)
             {
-                return new AlwaysOnBuildResult(false, "build.log", "build failed");
+                return new GameSideBuildResult(false, "build.log", "build failed");
             }
 
             paths.EnsureDirectories();
-            Directory.CreateDirectory(paths.AlwaysOnModPath);
+            Directory.CreateDirectory(paths.GameSideModPath);
             File.WriteAllText(
-                Path.Combine(paths.AlwaysOnModPath, "SdvKit.AlwaysOn.dll"),
+                Path.Combine(paths.GameSideModPath, "SdvKit.GameSide.dll"),
                 "same build");
             File.WriteAllText(
-                Path.Combine(paths.AlwaysOnModPath, "manifest.json"),
-                "{\"UniqueID\":\"SDVKit.AlwaysOn\"}");
+                Path.Combine(paths.GameSideModPath, "manifest.json"),
+                "{\"UniqueID\":\"SDVKit.GameSide\"}");
             if (_addUndeclaredFile)
             {
-                File.WriteAllText(Path.Combine(paths.AlwaysOnModPath, "extra.pdb"), "extra");
+                File.WriteAllText(Path.Combine(paths.GameSideModPath, "extra.pdb"), "extra");
             }
 
-            return new AlwaysOnBuildResult(true, "build.log", null);
+            return new GameSideBuildResult(true, "build.log", null);
         }
     }
 }

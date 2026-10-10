@@ -9,7 +9,7 @@ internal sealed partial class LiveLabService
     private LiveLabCommandResult Start(
         TestSaveLaunchState? testSave = null,
         NetworkTwoLaunchState? networkTwo = null,
-        AlwaysOnBuildResult? preparedBuild = null,
+        GameSideBuildResult? preparedBuild = null,
         ProjectModLaunchState? projectMod = null,
         bool interactiveConsole = false)
     {
@@ -78,15 +78,15 @@ internal sealed partial class LiveLabService
         }
         _stateStore.VerifyWritable();
         string gamePath = doctor.Installations[0].GamePath;
-        AlwaysOnBuildResult build = preparedBuild
-            ?? _alwaysOnBuilder.BuildAndInstall(gamePath, _paths);
+        GameSideBuildResult build = preparedBuild
+            ?? _gameSideBuilder.BuildAndInstall(gamePath, _paths);
         if (!build.Succeeded)
         {
             return Failure(
                 "buildFailed",
                 null,
-                "alwaysOnBuildFailed",
-                build.Error ?? "AlwaysOn build failed.",
+                "gameSideBuildFailed",
+                build.Error ?? "GameSide build failed.",
                 build.LogPath);
         }
 
@@ -205,10 +205,10 @@ internal sealed partial class LiveLabService
                 writeException);
         }
 
-        AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
+        GameSideStatusReport gameSide = ReadGameSide(state);
         return Result(
             Success,
-            Report("running", state, [], build.LogPath, alwaysOn));
+            Report("running", state, [], build.LogPath, gameSide));
     }
 
     private LiveLabCommandResult HandleLaunchVerificationFailure(
@@ -373,12 +373,12 @@ internal sealed partial class LiveLabService
         LabProcessInspectResult observation = _processHost.Inspect(state.OwnedProcessIdentity);
         if (observation.Status == LabProcessInspectStatus.Exited)
         {
-            AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
-            if (alwaysOn.State is "exiting" or "restoreFailed")
+            GameSideStatusReport gameSide = ReadGameSide(state);
+            if (gameSide.State is "exiting" or "restoreFailed")
             {
                 if (state.TestSave is not null)
                 {
-                    LiveLabCommandResult finalized = CompleteControlledStop(state, alwaysOn);
+                    LiveLabCommandResult finalized = CompleteControlledStop(state, gameSide);
                     if (finalized.ExitCode != Success)
                     {
                         return finalized;
@@ -395,7 +395,7 @@ internal sealed partial class LiveLabService
                             state,
                             "runtimeCleanupFailed",
                             $"The confirmed stopped test-save runtime could not clear its status marker: {exception.Message}",
-                            alwaysOn: alwaysOn);
+                            gameSide: gameSide);
                     }
 
                     return null;
@@ -414,7 +414,7 @@ internal sealed partial class LiveLabService
                         state,
                         "runtimeCleanupFailed",
                         $"The confirmed stopped runtime could not be cleaned for a new start: {exception.Message}",
-                        alwaysOn: alwaysOn);
+                        gameSide: gameSide);
                 }
 
                 return null;
@@ -424,8 +424,8 @@ internal sealed partial class LiveLabService
                 "exited",
                 state,
                 "cleanStopNotConfirmed",
-                "The retained process exited without an AlwaysOn exiting marker; automatic recovery is outside this workflow.",
-                alwaysOn: alwaysOn);
+                "The retained process exited without a GameSide exiting marker; automatic recovery is outside this workflow.",
+                gameSide: gameSide);
         }
 
         if (observation.Status == LabProcessInspectStatus.Running)

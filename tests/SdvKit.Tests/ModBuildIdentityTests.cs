@@ -20,18 +20,18 @@ public sealed class ModBuildIdentityTests
     }
 
     [Fact]
-    public void ComputeRetainsTheDeclaredAlwaysOnIdentityFormat()
+    public void ComputeRetainsTheDeclaredGameSideIdentityFormat()
     {
         using TemporaryDirectory build = new();
         WriteDeclaredBuild(build, "assembly", "{\"version\":1}");
 
         Assert.Equal(
-            "sha256:0d36ea2b0af602f5bde4710eb09dddc1ba26bb2dde57c12a9a3e9a5d0d9ce382",
+            "sha256:152909112ca881eeb23af324461212f5de0d998b6b0951d049a2d11461995cf1",
             ModBuildIdentity.Compute(build.Path));
     }
 
     [Theory]
-    [InlineData("SdvKit.AlwaysOn.dll")]
+    [InlineData("SdvKit.GameSide.dll")]
     [InlineData("manifest.json")]
     public void ComputeChangesWhenADeclaredFileChanges(string fileName)
     {
@@ -47,7 +47,7 @@ public sealed class ModBuildIdentityTests
     }
 
     [Theory]
-    [InlineData("SdvKit.AlwaysOn.dll")]
+    [InlineData("SdvKit.GameSide.dll")]
     [InlineData("manifest.json")]
     public void ComputeRejectsAMissingDeclaredFile(string fileName)
     {
@@ -350,7 +350,7 @@ public sealed class ModBuildIdentityTests
         string assembly,
         string manifest)
     {
-        directory.WriteFile("SdvKit.AlwaysOn.dll", assembly);
+        directory.WriteFile("SdvKit.GameSide.dll", assembly);
         directory.WriteFile("manifest.json", manifest);
     }
 

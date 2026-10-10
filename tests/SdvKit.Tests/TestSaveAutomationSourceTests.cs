@@ -231,7 +231,7 @@ public sealed class TestSaveAutomationSourceTests
             string path = Path.Combine(
                 directory.FullName,
                 "src",
-                "SdvKit.AlwaysOn",
+                "SdvKit.GameSide",
                 "TestSaveAutomation.cs");
             if (File.Exists(path))
             {

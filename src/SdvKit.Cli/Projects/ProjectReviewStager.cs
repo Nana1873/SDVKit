@@ -68,6 +68,7 @@ internal static partial class ProjectModStager
             foreach (ReviewRolePaths rolePath in rolePaths)
             {
                 rolePath.Paths.EnsureDirectories();
+                rolePath.Paths.RemoveLegacyGameSideDirectory();
             }
 
             string ownershipPath = ReviewOwnershipPath(singlePaths, topology);
@@ -102,12 +103,12 @@ internal static partial class ProjectModStager
                 foreach (string entry in Directory.EnumerateFileSystemEntries(
                     rolePath.Paths.ModsPath))
                 {
-                    if (!PathEquals(entry, rolePath.Paths.AlwaysOnModPath))
+                    if (!PathEquals(entry, rolePath.Paths.GameSideModPath))
                     {
                         return ReviewFailure(
                             "foreignLabModCollision",
                             RelativePath(singlePaths.ProjectRoot, entry),
-                            $"Project review requires the isolated {rolePath.Role} mod group to contain only SDVKit AlwaysOn before its exact staging set is installed.");
+                            $"Project review requires the isolated {rolePath.Role} mod group to contain only the SDVKit game-side mod before its exact staging set is installed.");
                     }
                 }
             }
@@ -274,14 +275,16 @@ internal static partial class ProjectModStager
                         string? unownedArtifact = Directory
                             .EnumerateFileSystemEntries(rolePath.Paths.ModsPath)
                             .FirstOrDefault(entry => !PathEquals(
-                                entry,
-                                rolePath.Paths.AlwaysOnModPath));
+                                    entry,
+                                    rolePath.Paths.GameSideModPath)
+                                && !(PathEquals(entry, rolePath.Paths.LegacyGameSideModPath)
+                                    && rolePath.Paths.IsLegacyGameSideInstall()));
                         if (unownedArtifact is not null)
                         {
                             return ReviewFailure(
                                 "reviewStagingOwnershipMissing",
                                 RelativePath(singlePaths.ProjectRoot, unownedArtifact),
-                                $"The isolated {rolePath.Role} mod group contains a non-AlwaysOn artifact without a project-review ownership marker; it was left untouched.");
+                                $"The isolated {rolePath.Role} mod group contains a non-GameSide artifact without a project-review ownership marker; it was left untouched.");
                         }
                     }
                 }
@@ -488,19 +491,13 @@ internal static partial class ProjectModStager
                     "The explicit review source has the wrong manifest kind for its role.");
             }
 
-            if (string.Equals(
-                    artifact.Manifest.UniqueId,
-                    AlwaysOnUniqueId,
-                    StringComparison.OrdinalIgnoreCase)
-                || string.Equals(
-                    artifact.TopLevelDirectory,
-                    "SDVKit.AlwaysOn",
-                    StringComparison.OrdinalIgnoreCase))
+            if (LoadedModsContract.IsReservedUniqueId(artifact.Manifest.UniqueId)
+                || LoadedModsContract.IsReservedUniqueId(artifact.TopLevelDirectory))
             {
                 return ReviewProblem(
                     "reservedModIdentity",
                     artifact.SourceRoot,
-                    "The SDVKit.AlwaysOn identity and staging path are reserved.");
+                    "The SDVKit.GameSide identity, its former SDVKit.AlwaysOn identity, and their staging paths are reserved.");
             }
 
             if (!Directory.Exists(artifact.PreparedPath)
@@ -550,7 +547,7 @@ internal static partial class ProjectModStager
             artifact => artifact.Manifest.UniqueId,
             artifact => artifact.Manifest.Version,
             StringComparer.OrdinalIgnoreCase);
-        available.Add(AlwaysOnUniqueId, AlwaysOnVersion);
+        available.Add(GameSideUniqueId, GameSideVersion);
         foreach (ProjectReviewPreparedArtifact artifact in artifacts)
         {
             if (artifact.Manifest.ContentPackFor is not null)
@@ -776,7 +773,7 @@ internal static partial class ProjectModStager
                         OperatingSystem.IsWindows()
                             ? StringComparison.OrdinalIgnoreCase
                             : StringComparison.Ordinal)
-                    || PathEquals(stagingPath, expectedRole.Paths.AlwaysOnModPath)
+                    || PathEquals(stagingPath, expectedRole.Paths.GameSideModPath)
                     || File.Exists(stagingPath))
                 {
                     return ReviewProblem(
@@ -847,7 +844,7 @@ internal static partial class ProjectModStager
                 .EnumerateFileSystemEntries(expectedRole.Paths.ModsPath)
                 .FirstOrDefault(entry => !PathEquals(
                         entry,
-                        expectedRole.Paths.AlwaysOnModPath)
+                        expectedRole.Paths.GameSideModPath)
                     && !expectedPathsByRole[expectedRole.Role].Contains(
                         Path.GetFullPath(entry)));
             if (foreignEntry is not null)

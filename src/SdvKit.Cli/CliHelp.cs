@@ -244,7 +244,7 @@ public static partial class CliApplication
     private static void WriteReviewFixtureConsoleUsage(TextWriter output)
     {
         output.WriteLine(
-            "AlwaysOn review console lines (quote one as <text> for project review command; not top-level CLI):");
+            "GameSide review console lines (quote one as <text> for project review command; not top-level CLI):");
         output.WriteLine("  sdvkit split-screen join|leave|status (single --test-save review; append native screen=<id> to select a local screen)");
         output.WriteLine("  sdvkit network leave|join|status (network-2; leave/join are farmhand-only and host-authorized)");
         output.WriteLine("  sdvkit screenshot <label>");

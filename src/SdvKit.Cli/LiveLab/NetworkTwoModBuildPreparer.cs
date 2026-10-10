@@ -2,23 +2,23 @@ namespace SdvKit.Cli.LiveLab;
 
 internal sealed record NetworkTwoModBuildResult(
     bool Succeeded,
-    AlwaysOnBuildResult HostBuild,
+    GameSideBuildResult HostBuild,
     string? BuildIdentity,
     string? Error);
 
 internal sealed class NetworkTwoModBuildPreparer
 {
-    private const string AssemblyFileName = "SdvKit.AlwaysOn.dll";
+    private const string AssemblyFileName = "SdvKit.GameSide.dll";
     private const string ManifestFileName = "manifest.json";
 
-    private readonly IAlwaysOnBuilder _builder;
+    private readonly IGameSideBuilder _builder;
 
     public NetworkTwoModBuildPreparer()
-        : this(new AlwaysOnBuilder())
+        : this(new GameSideBuilder())
     {
     }
 
-    internal NetworkTwoModBuildPreparer(IAlwaysOnBuilder builder)
+    internal NetworkTwoModBuildPreparer(IGameSideBuilder builder)
     {
         _builder = builder;
     }
@@ -40,45 +40,46 @@ internal sealed class NetworkTwoModBuildPreparer
         }
 
         if (PathEquals(hostPaths.SingleRoot, farmhandPaths.SingleRoot)
-            || PathEquals(hostPaths.AlwaysOnModPath, farmhandPaths.AlwaysOnModPath))
+            || PathEquals(hostPaths.GameSideModPath, farmhandPaths.GameSideModPath))
         {
             throw new ArgumentException(
                 "Host and farmhand must use separate managed live-lab paths.",
                 nameof(farmhandPaths));
         }
 
-        AlwaysOnBuildResult hostBuild = _builder.BuildAndInstall(gamePath, hostPaths);
+        GameSideBuildResult hostBuild = _builder.BuildAndInstall(gamePath, hostPaths);
         if (!hostBuild.Succeeded)
         {
-            return Failure(hostBuild, hostBuild.Error ?? "The host AlwaysOn build failed.");
+            return Failure(hostBuild, hostBuild.Error ?? "The host GameSide build failed.");
         }
 
         string hostIdentity;
         try
         {
-            VerifyDeclaredModContents(hostPaths.AlwaysOnModPath);
-            hostIdentity = ModBuildIdentity.Compute(hostPaths.AlwaysOnModPath);
+            VerifyDeclaredModContents(hostPaths.GameSideModPath);
+            hostIdentity = ModBuildIdentity.Compute(hostPaths.GameSideModPath);
 
             farmhandPaths.EnsureDirectories();
+            farmhandPaths.RemoveLegacyGameSideDirectory();
             LiveLabPaths.RejectReparsePointsBelow(farmhandPaths.SingleRoot);
-            RecreateFarmhandModDirectory(farmhandPaths.AlwaysOnModPath);
+            RecreateFarmhandModDirectory(farmhandPaths.GameSideModPath);
             CopyDeclaredFile(
-                hostPaths.AlwaysOnModPath,
-                farmhandPaths.AlwaysOnModPath,
+                hostPaths.GameSideModPath,
+                farmhandPaths.GameSideModPath,
                 AssemblyFileName);
             CopyDeclaredFile(
-                hostPaths.AlwaysOnModPath,
-                farmhandPaths.AlwaysOnModPath,
+                hostPaths.GameSideModPath,
+                farmhandPaths.GameSideModPath,
                 ManifestFileName);
             LiveLabPaths.RejectReparsePointsBelow(farmhandPaths.SingleRoot);
 
-            VerifyDeclaredModContents(farmhandPaths.AlwaysOnModPath);
-            string farmhandIdentity = ModBuildIdentity.Compute(farmhandPaths.AlwaysOnModPath);
+            VerifyDeclaredModContents(farmhandPaths.GameSideModPath);
+            string farmhandIdentity = ModBuildIdentity.Compute(farmhandPaths.GameSideModPath);
             if (!string.Equals(hostIdentity, farmhandIdentity, StringComparison.Ordinal))
             {
                 return Failure(
                     hostBuild,
-                    "Host and farmhand AlwaysOn build identities do not match.");
+                    "Host and farmhand GameSide build identities do not match.");
             }
         }
         catch (Exception exception) when (exception is IOException
@@ -88,7 +89,7 @@ internal sealed class NetworkTwoModBuildPreparer
         {
             return Failure(
                 hostBuild,
-                $"The declared AlwaysOn build could not be prepared for network-2: {exception.Message}");
+                $"The declared GameSide build could not be prepared for network-2: {exception.Message}");
         }
 
         return new NetworkTwoModBuildResult(
@@ -99,7 +100,7 @@ internal sealed class NetworkTwoModBuildPreparer
     }
 
     private static NetworkTwoModBuildResult Failure(
-        AlwaysOnBuildResult hostBuild,
+        GameSideBuildResult hostBuild,
         string error)
     {
         return new NetworkTwoModBuildResult(false, hostBuild, null, error);
@@ -131,7 +132,7 @@ internal sealed class NetworkTwoModBuildPreparer
         string[] entries = Directory.GetFileSystemEntries(modPath)
             .Select(path => Path.GetFileName(path)
                 ?? throw new InvalidOperationException(
-                    $"The declared AlwaysOn mod contains an invalid path: {path}"))
+                    $"The declared GameSide mod contains an invalid path: {path}"))
             .Order(StringComparer.Ordinal)
             .ToArray()!;
         string[] expected =
@@ -143,7 +144,7 @@ internal sealed class NetworkTwoModBuildPreparer
         if (!entries.SequenceEqual(expected, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                "The declared AlwaysOn mod must contain only SdvKit.AlwaysOn.dll and manifest.json.");
+                "The declared GameSide mod must contain only SdvKit.GameSide.dll and manifest.json.");
         }
     }
 

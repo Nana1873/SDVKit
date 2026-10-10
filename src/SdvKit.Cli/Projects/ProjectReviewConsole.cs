@@ -146,7 +146,7 @@ internal static partial class ProjectReviewService
             var service = new LiveLabService(
                 paths,
                 stateStore,
-                new AlwaysOnBuilder(),
+                new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 () => throw new InvalidOperationException(
                     "Project-review console input must not run installation discovery."));
@@ -171,7 +171,7 @@ internal static partial class ProjectReviewService
             }
 
             LiveLabState exactState = state!;
-            if (!ProjectModReadyForConsole(lab.AlwaysOn, exactState.ProjectMod!))
+            if (!ProjectModReadyForConsole(lab.GameSide, exactState.ProjectMod!))
             {
                 return CommandResult(
                     paths,
@@ -187,7 +187,7 @@ internal static partial class ProjectReviewService
 
             if (exactState.TestSave is not null
                 && !canRunBeforeScenarioReady
-                && !TestSaveReadyForConsole(lab.AlwaysOn, exactState.TestSave))
+                && !TestSaveReadyForConsole(lab.GameSide, exactState.TestSave))
             {
                 return CommandResult(
                     paths,
@@ -319,7 +319,7 @@ internal static partial class ProjectReviewService
             var service = new LiveLabService(
                 rolePaths,
                 stateStore,
-                new AlwaysOnBuilder(),
+                new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 () => throw new InvalidOperationException(
                     "Network-2 review console input must not run installation discovery."),
@@ -328,7 +328,7 @@ internal static partial class ProjectReviewService
             LiveLabReport lab = (LiveLabReport)roleStatus.Report;
             if (!string.Equals(lab.State, "running", StringComparison.Ordinal)
                 || (!canRunBeforeScenarioReady && roleStatus.ExitCode != Success)
-                || !ProjectModReadyForConsole(lab.AlwaysOn, state!.ProjectMod!))
+                || !ProjectModReadyForConsole(lab.GameSide, state!.ProjectMod!))
             {
                 IReadOnlyList<ProjectReviewProblem> problems = LabProblems(lab).ToArray();
                 return NetworkCommandResult(
@@ -374,12 +374,12 @@ internal static partial class ProjectReviewService
     }
 
     private static bool ProjectModReadyForConsole(
-        AlwaysOnStatusReport? alwaysOn,
+        GameSideStatusReport? gameSide,
         ProjectModLaunchState expected)
     {
-        ProjectModStatusReport? projectMod = alwaysOn?.ProjectMod;
-        return string.Equals(alwaysOn?.State, "active", StringComparison.Ordinal)
-            && alwaysOn?.PauseWhenOutOfFocus == false
+        ProjectModStatusReport? projectMod = gameSide?.ProjectMod;
+        return string.Equals(gameSide?.State, "active", StringComparison.Ordinal)
+            && gameSide?.PauseWhenOutOfFocus == false
             && projectMod is not null
             && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
             && string.Equals(
@@ -402,10 +402,10 @@ internal static partial class ProjectReviewService
     }
 
     private static bool TestSaveReadyForConsole(
-        AlwaysOnStatusReport? alwaysOn,
+        GameSideStatusReport? gameSide,
         TestSaveLaunchState expected)
     {
-        TestSaveStatusReport? testSave = alwaysOn?.TestSave;
+        TestSaveStatusReport? testSave = gameSide?.TestSave;
         return string.Equals(
                 expected.Mode,
                 TestSaveContract.ReviewMode,

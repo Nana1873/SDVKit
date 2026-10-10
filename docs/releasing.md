@@ -10,21 +10,21 @@ Before starting, record the release's previous tag, candidate commit, changed ca
 | --- | --- |
 | Documentation/help | Links, examples and help routing; exercise changed executable examples without starting a game unless their behavior changed. |
 | Toolkit or packaging | Fresh extracted ZIP; create/inspect plus affected build/package paths. |
-| Game adapter, lifecycle, or MCP | Game-backed AlwaysOn build, live baseline, and affected features/roles. |
+| Game adapter, lifecycle, or MCP | Game-backed GameSide build, live baseline, and affected features/roles. |
 | Save, join, resume, or persistence | Actual save completion, exact host/farmhand stop and restart, retained identities/state, role restrictions, final reset. |
 | Input | Actual UI effect and pressed/released cleanup while unfocused; virtual-cursor/foreground boundaries and MCP EOF cleanup when affected. |
 | Isolation, ownership, or shared cleanup | Both supported topologies, verified exact exits, final staging/mount/reset checks, and protected-path comparison with attributable external changes recorded separately. |
 
 Existing CI remains complete for every PR/main run: restore, format, build, all tests, packaging, and portable verification. Do not shard or omit the inexpensive suite just to reduce test counts. Full asset catalogues are also cheap; retain them when their adapter is covered.
 
-For every product release, verify the exact extracted package and its game-backed AlwaysOn build. When product/runtime code changed, include a basic live single load/stop/reset plus the affected gates above. A documentation-only change does not itself require publishing a new product version.
+For every product release, verify the exact extracted package and its game-backed GameSide build. When product/runtime code changed, include a basic live single load/stop/reset plus the affected gates above. A documentation-only change does not itself require publishing a new product version.
 
 Feature acceptance belongs with its feature PR. Release acceptance checks integration and the actual distribution. A new failure is not permission to weaken a mandatory gate.
 
 ## Prepare the candidate
 
 1. Read current `main`, the previous tag, selected issues, and active PRs. Work on a focused `codex/` branch; do not change another task's checkout or lab.
-2. Move the applicable `CHANGELOG.md` Unreleased entries into a dated version section. Keep Added/Changed/Fixed bullets about observable behavior and include relevant upgrade steps. Update the CLI project, AlwaysOn project/manifest, version-dependent tests, and README's version/download/tag links consistently.
+2. Move the applicable `CHANGELOG.md` Unreleased entries into a dated version section. Keep Added/Changed/Fixed bullets about observable behavior and include relevant upgrade steps. Update the CLI project, GameSide project/manifest, version-dependent tests, and README's version/download/tag links consistently.
 3. Run the [contributor checks](../CONTRIBUTING.md#build-and-check). A local package is useful for checking packaging changes, but publication uses the final green main CI product.
 4. Complete the release PR and require green CI for the exact resulting main commit. Select that run's `SDVKit-windows-x64` artifact once; retain its ZIP and sidecar under ignored `.sdvkit/`. Record commit, CI URL, sizes, and SHA-256. Do not rebuild it for publication.
 
@@ -51,8 +51,8 @@ if ($LASTEXITCODE -ne 0 -or $doctor.status -ne 'ready' -or @($doctor.installatio
     throw 'One ready game and SMAPI installation is required.'
 }
 $gamePath = $doctor.installations[0].gamePath
-dotnet build (Join-Path $packageRoot 'src\SdvKit.AlwaysOn\SdvKit.AlwaysOn.csproj') -c Release "-p:SdvGamePath=$gamePath" --artifacts-path (Join-Path $packageRoot '.sdvkit\alwayson-build')
-if ($LASTEXITCODE -ne 0) { throw 'The extracted AlwaysOn build failed.' }
+dotnet build (Join-Path $packageRoot 'src\SdvKit.GameSide\SdvKit.GameSide.csproj') -c Release "-p:SdvGamePath=$gamePath" --artifacts-path (Join-Path $packageRoot '.sdvkit\game-side-build')
+if ($LASTEXITCODE -ne 0) { throw 'The extracted GameSide build failed.' }
 ```
 
 Keep the selected ZIP unchanged. Its archive identity and extracted build proof are separate: the latter checks that the distributed source compiles against the selected installed game.

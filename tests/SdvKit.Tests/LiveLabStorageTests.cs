@@ -1,12 +1,96 @@
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
 public sealed class LiveLabStorageTests(ITestOutputHelper output)
 {
+    [Fact]
+    public void RemoveLegacyGameSideDirectoryDeletesTheExactFormerInstall()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        WriteLegacyInstall(paths.LegacyGameSideModPath, "SDVKit.AlwaysOn", "SdvKit.AlwaysOn.dll");
+
+        Assert.True(paths.RemoveLegacyGameSideDirectory());
+        Assert.False(Directory.Exists(paths.LegacyGameSideModPath));
+        Assert.True(Directory.Exists(paths.ModsPath));
+    }
+
+    [Theory]
+    [InlineData("Nana.Other", "SdvKit.AlwaysOn.dll", false)]
+    [InlineData("SDVKit.AlwaysOn", "Other.dll", false)]
+    [InlineData("SDVKit.AlwaysOn", "SdvKit.AlwaysOn.dll", true)]
+    public void RemoveLegacyGameSideDirectoryLeavesAnythingElseUntouched(
+        string uniqueId,
+        string entryDll,
+        bool addExtraFile)
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        WriteLegacyInstall(paths.LegacyGameSideModPath, uniqueId, entryDll);
+        if (addExtraFile)
+        {
+            File.WriteAllText(Path.Combine(paths.LegacyGameSideModPath, "config.json"), "{}");
+        }
+
+        Assert.False(paths.RemoveLegacyGameSideDirectory());
+        Assert.True(Directory.Exists(paths.LegacyGameSideModPath));
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void RemoveLegacyGameSideDirectoryFinishesAnInterruptedRemoval(
+        bool keepAssembly,
+        bool keepManifest)
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        WriteLegacyInstall(paths.LegacyGameSideModPath, "SDVKit.AlwaysOn", "SdvKit.AlwaysOn.dll");
+        if (!keepAssembly)
+        {
+            File.Delete(Path.Combine(paths.LegacyGameSideModPath, "SdvKit.AlwaysOn.dll"));
+        }
+
+        if (!keepManifest)
+        {
+            File.Delete(Path.Combine(paths.LegacyGameSideModPath, "manifest.json"));
+        }
+
+        Assert.True(paths.RemoveLegacyGameSideDirectory());
+        Assert.False(Directory.Exists(paths.LegacyGameSideModPath));
+    }
+
+    [Fact]
+    public void RemoveLegacyGameSideDirectoryIgnoresAMissingDirectory()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+
+        Assert.False(paths.RemoveLegacyGameSideDirectory());
+    }
+
+    private static void WriteLegacyInstall(string path, string uniqueId, string entryDll)
+    {
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "SdvKit.AlwaysOn.dll"), "assembly");
+        File.WriteAllText(
+            Path.Combine(path, "manifest.json"),
+            JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["UniqueID"] = uniqueId,
+                ["EntryDll"] = entryDll,
+            }));
+    }
+
     [Fact]
     public void ResolveIsReadOnlyAndReturnsAbsoluteSingleLabPaths()
     {

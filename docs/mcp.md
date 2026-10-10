@@ -229,7 +229,7 @@ Every server also exposes one controlled evidence-capture tool:
 
 - `stardew_screenshot_capture { "mode": "viewport", "label": "menu-open" }`
   accepts exactly `map` or `viewport` and a 1-64 character ASCII label made of
-  letters, digits, `-`, or `_`. It reuses AlwaysOn's existing capture paths,
+  letters, digits, `-`, or `_`. It reuses GameSide's existing capture paths,
   creates `SDVKit-<label>.png` without overwriting, and returns compact
   launch/topology/role metadata followed by real `image/png` content. The PNG
   must be a fresh, complete, bounded 8-bit RGB or RGBA file at the exact selected role's
@@ -329,7 +329,7 @@ mismatch or response echo mismatch also fails closed. No call plays, records,
 reads, or exports audio bytes or paths.
 
 The mod-asset catalogue covers only conventional `Mods/<owner>/...` requests
-observed since AlwaysOn subscribed. It is not a filesystem scan or a claim that
+observed since GameSide subscribed. It is not a filesystem scan or a claim that
 unrequested assets do not exist. Catalogue entries retain lifecycle, generation,
 request/ready counts, collisions and adapter availability; an unsupported entry
 therefore has `shape: null` and remains visible, while exact keys or records for
@@ -444,8 +444,8 @@ owned console channel, drains the bounded action, and does not retry it.
 Each call is bound to the role or exact local-screen context selected at server startup, takes a closed JSON
 object, acquires the role-local cross-process action lock without queueing,
 revalidates the exact review and a valid published foreground observation before
-dispatch, waits for one request-ID-bound, fresh, create-new AlwaysOn
-acknowledgement, and accepts it only after a later AlwaysOn status timestamp and
+dispatch, waits for one request-ID-bound, fresh, create-new GameSide
+acknowledgement, and accepts it only after a later GameSide status timestamp and
 game tick preserve that review binding. Changes between foreground windows outside
 both owned review processes are accepted and reported as
 `externalForegroundChanged: true` in the acknowledgement. A transition involving
@@ -580,7 +580,7 @@ enabled_tools = [
 The threat boundary is the existing project review, not a general game or
 desktop API. The shared context revalidates the exact ownership marker,
 topology, target build identity, PID/start-time/executable identity, fresh outer
-AlwaysOn marker, optional fixture, and, for `network-2`, reciprocal joined-pair
+GameSide marker, optional fixture, and, for `network-2`, reciprocal joined-pair
 proof under the existing short operation lock. `stardew_runtime_get` and every
 Data call additionally require the target to be loaded and a valid fresh runtime
 snapshot. The diagnostic tools deliberately allow a selected target to be

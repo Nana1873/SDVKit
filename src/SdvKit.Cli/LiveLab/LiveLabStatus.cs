@@ -39,71 +39,71 @@ internal sealed partial class LiveLabService
 
     private LiveLabCommandResult RunningStatus(LiveLabState state)
     {
-        AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(state);
-        if (string.Equals(alwaysOn.State, "pending", StringComparison.Ordinal)
+        GameSideStatusReport gameSide = ReadGameSide(state);
+        if (string.Equals(gameSide.State, "pending", StringComparison.Ordinal)
             && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
-                > AlwaysOnStartupGrace)
+                > GameSideStartupGrace)
         {
             return Failure(
                 "running",
                 state,
-                "alwaysOnPending",
-                "The owned process is running, but AlwaysOn did not publish a status marker within 30 seconds.",
-                alwaysOn: alwaysOn);
+                "gameSidePending",
+                "The owned process is running, but GameSide did not publish a status marker within 30 seconds.",
+                gameSide: gameSide);
         }
 
-        if (string.Equals(alwaysOn.State, "restoreFailed", StringComparison.Ordinal))
+        if (string.Equals(gameSide.State, "restoreFailed", StringComparison.Ordinal))
         {
             return Failure(
                 "running",
                 state,
-                "alwaysOnRestoreFailed",
-                "AlwaysOn could not confirm restoration for the requested clean stop and requested normal exit, but the exact process is still running.",
-                alwaysOn: alwaysOn);
+                "gameSideRestoreFailed",
+                "GameSide could not confirm restoration for the requested clean stop and requested normal exit, but the exact process is still running.",
+                gameSide: gameSide);
         }
 
-        if (string.Equals(alwaysOn.State, "exiting", StringComparison.Ordinal))
+        if (string.Equals(gameSide.State, "exiting", StringComparison.Ordinal))
         {
             return Failure(
                 "running",
                 state,
                 "cleanStopIncomplete",
-                "AlwaysOn requested normal exit, but the exact process is still running.",
-                alwaysOn: alwaysOn);
+                "GameSide requested normal exit, but the exact process is still running.",
+                gameSide: gameSide);
         }
 
-        if (alwaysOn.State is "invalid" or "mismatch" or "stale")
+        if (gameSide.State is "invalid" or "mismatch" or "stale")
         {
             return Failure(
                 "running",
                 state,
-                $"alwaysOn{char.ToUpperInvariant(alwaysOn.State[0])}{alwaysOn.State[1..]}",
-                $"The AlwaysOn status marker is {alwaysOn.State}.",
-                alwaysOn: alwaysOn);
+                $"gameSide{char.ToUpperInvariant(gameSide.State[0])}{gameSide.State[1..]}",
+                $"The GameSide status marker is {gameSide.State}.",
+                gameSide: gameSide);
         }
 
-        if (string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
-            && alwaysOn.PauseWhenOutOfFocus != false)
+        if (string.Equals(gameSide.State, "active", StringComparison.Ordinal)
+            && gameSide.PauseWhenOutOfFocus != false)
         {
             return Failure(
                 "running",
                 state,
-                "alwaysOnNotApplied",
-                "AlwaysOn is active, but pauseWhenOutOfFocus is not false.",
-                alwaysOn: alwaysOn);
+                "gameSideNotApplied",
+                "GameSide is active, but pauseWhenOutOfFocus is not false.",
+                gameSide: gameSide);
         }
 
         if (state.TestSave is not null)
         {
-            TestSaveStatusReport? testSave = alwaysOn.TestSave;
+            TestSaveStatusReport? testSave = gameSide.TestSave;
             if (testSave?.State is "invalid" or "mismatch" or "unexpected")
             {
                 return Failure(
                     "running",
                     state,
                     "testSaveStatusMismatch",
-                    $"The AlwaysOn test-save marker is {testSave.State}.",
-                    alwaysOn: alwaysOn);
+                    $"The GameSide test-save marker is {testSave.State}.",
+                    gameSide: gameSide);
             }
 
             if (testSave is not null
@@ -114,34 +114,34 @@ internal sealed partial class LiveLabService
                     state,
                     "testSaveFailed",
                     testSave.Message ?? "The game-side test-save workflow failed.",
-                    alwaysOn: alwaysOn);
+                    gameSide: gameSide);
             }
 
             if ((testSave is null || string.Equals(testSave.State, "pending", StringComparison.Ordinal))
                 && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
-                    > AlwaysOnStartupGrace)
+                    > GameSideStartupGrace)
             {
                 return Failure(
                     "running",
                     state,
                     "testSavePending",
-                    "AlwaysOn did not publish the launch-bound test-save marker within 30 seconds.",
-                    alwaysOn: alwaysOn);
+                    "GameSide did not publish the launch-bound test-save marker within 30 seconds.",
+                    gameSide: gameSide);
             }
         }
 
 
         if (state.NetworkTwo is not null)
         {
-            NetworkTwoStatusReport? networkTwo = alwaysOn.NetworkTwo;
+            NetworkTwoStatusReport? networkTwo = gameSide.NetworkTwo;
             if (networkTwo?.State is "invalid" or "mismatch" or "unexpected")
             {
                 return Failure(
                     "running",
                     state,
                     "networkTwoStatusMismatch",
-                    $"The AlwaysOn network-2 marker is {networkTwo.State}.",
-                    alwaysOn: alwaysOn);
+                    $"The GameSide network-2 marker is {networkTwo.State}.",
+                    gameSide: gameSide);
             }
 
             if (networkTwo is not null
@@ -152,20 +152,20 @@ internal sealed partial class LiveLabService
                     state,
                     "networkTwoFailed",
                     networkTwo.Message ?? "The game-side network-2 workflow failed.",
-                    alwaysOn: alwaysOn);
+                    gameSide: gameSide);
             }
 
             if ((networkTwo is null
                     || string.Equals(networkTwo.State, "pending", StringComparison.Ordinal))
                 && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
-                    > AlwaysOnStartupGrace)
+                    > GameSideStartupGrace)
             {
                 return Failure(
                     "running",
                     state,
                     "networkTwoPending",
-                    "AlwaysOn did not publish the launch-bound network-2 marker within 30 seconds.",
-                    alwaysOn: alwaysOn);
+                    "GameSide did not publish the launch-bound network-2 marker within 30 seconds.",
+                    gameSide: gameSide);
             }
 
             bool isHost = string.Equals(
@@ -173,30 +173,30 @@ internal sealed partial class LiveLabService
                 NetworkTwoContract.HostRole,
                 StringComparison.Ordinal);
             if (isHost
-                && string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
-                && (alwaysOn.EnableServer != true
-                    || alwaysOn.IpConnectionsEnabled != true))
+                && string.Equals(gameSide.State, "active", StringComparison.Ordinal)
+                && (gameSide.EnableServer != true
+                    || gameSide.IpConnectionsEnabled != true))
             {
                 return Failure(
                     "running",
                     state,
                     "networkHostOptionsNotApplied",
-                    "AlwaysOn is active for the host, but the required LAN server options are not both true.",
-                    alwaysOn: alwaysOn);
+                    "GameSide is active for the host, but the required LAN server options are not both true.",
+                    gameSide: gameSide);
             }
         }
 
         if (state.ProjectMod is not null)
         {
-            ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
+            ProjectModStatusReport? projectMod = gameSide.ProjectMod;
             if (projectMod?.State is "invalid" or "mismatch" or "unexpected")
             {
                 return Failure(
                     "running",
                     state,
                     "projectModStatusMismatch",
-                    $"The AlwaysOn project-mod marker is {projectMod.State}.",
-                    alwaysOn: alwaysOn);
+                    $"The GameSide project-mod marker is {projectMod.State}.",
+                    gameSide: gameSide);
             }
 
             if (projectMod is not null
@@ -208,31 +208,31 @@ internal sealed partial class LiveLabService
                     "projectModLoadFailed",
                     projectMod.Message
                         ?? "SMAPI did not confirm the expected project mod as loaded.",
-                    alwaysOn: alwaysOn);
+                    gameSide: gameSide);
             }
 
             if ((projectMod is null
                     || string.Equals(projectMod.State, "pending", StringComparison.Ordinal))
                 && _utcNow().ToUniversalTime() - state.OwnedProcessIdentity.StartTimeUtc
-                    > AlwaysOnStartupGrace)
+                    > GameSideStartupGrace)
             {
                 return Failure(
                     "running",
                     state,
                     "projectModPending",
-                    "AlwaysOn did not publish the launch-bound project-mod load marker within 30 seconds.",
-                    alwaysOn: alwaysOn);
+                    "GameSide did not publish the launch-bound project-mod load marker within 30 seconds.",
+                    gameSide: gameSide);
             }
         }
 
-        return Result(Success, Report("running", state, [], alwaysOn: alwaysOn));
+        return Result(Success, Report("running", state, [], gameSide: gameSide));
     }
 
     private static bool ProjectModLoadSucceeded(
-        AlwaysOnStatusReport alwaysOn,
+        GameSideStatusReport gameSide,
         ProjectModLaunchState expected)
     {
-        ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
+        ProjectModStatusReport? projectMod = gameSide.ProjectMod;
         return projectMod is not null
             && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
             && string.Equals(

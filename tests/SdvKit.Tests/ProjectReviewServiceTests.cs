@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
-using SdvKit.AlwaysOn;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -1321,10 +1321,10 @@ public sealed class ProjectReviewServiceTests
         using TemporaryDirectory temporary = new();
         LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
         paths.EnsureDirectories();
-        string alwaysOnSentinel = WriteSentinel(
-            paths.AlwaysOnModPath,
-            "always-on.txt",
-            "always-on");
+        string gameSideSentinel = WriteSentinel(
+            paths.GameSideModPath,
+            "game-side.txt",
+            "game-side");
         string saveSentinel = WriteSentinel(
             Path.Combine(paths.SavesPath, "SICQA_Review"),
             "SaveGameInfo",
@@ -1352,7 +1352,7 @@ public sealed class ProjectReviewServiceTests
         Assert.False(File.Exists(paths.StopRequestPath));
         Assert.False(File.Exists(staging.OwnershipPath));
         Assert.False(Directory.Exists(staging.Target.StagingPath));
-        Assert.Equal("always-on", File.ReadAllText(alwaysOnSentinel));
+        Assert.Equal("game-side", File.ReadAllText(gameSideSentinel));
         Assert.Equal("persistent-save", File.ReadAllText(saveSentinel));
     }
 
@@ -2388,7 +2388,7 @@ public sealed class ProjectReviewServiceTests
     }
 
     [Fact]
-    public void AudioInventoryPreservesABoundedProbeFailureFromAlwaysOn()
+    public void AudioInventoryPreservesABoundedProbeFailureFromGameSide()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -3409,7 +3409,7 @@ public sealed class ProjectReviewServiceTests
         string topLevelState = "active",
         TestSaveStatusMarker? testSave = null)
     {
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -3455,7 +3455,7 @@ public sealed class ProjectReviewServiceTests
                 WaitedTicks: 0,
                 "Loading exact network review fixture.",
                 state.TestSave.ScenarioLogPath);
-        var marker = new AlwaysOnStatusMarker(
+        var marker = new GameSideStatusMarker(
             1,
             state.LaunchId,
             state.OwnedProcessIdentity.ProcessId,
@@ -3512,8 +3512,8 @@ public sealed class ProjectReviewServiceTests
         string remotePlayerName)
     {
         WriteNetworkStatus(paths, state, target, "passed");
-        AlwaysOnStatusMarker marker = Assert.IsType<AlwaysOnStatusMarker>(
-            JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = Assert.IsType<GameSideStatusMarker>(
+            JsonSerializer.Deserialize<GameSideStatusMarker>(
                 File.ReadAllText(paths.StatusPath),
                 LiveLabJsonOptions.CamelCase));
         NetworkTwoStatusMarker network = Assert.IsType<NetworkTwoStatusMarker>(
@@ -3581,8 +3581,8 @@ public sealed class ProjectReviewServiceTests
                 WaitedTicks: 0,
                 "Exact review fixture loaded.",
                 paths.TestSaveScenarioLogPath));
-        AlwaysOnStatusMarker marker = Assert.IsType<AlwaysOnStatusMarker>(
-            JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = Assert.IsType<GameSideStatusMarker>(
+            JsonSerializer.Deserialize<GameSideStatusMarker>(
                 File.ReadAllText(paths.StatusPath),
                 LiveLabJsonOptions.CamelCase));
         File.WriteAllText(

@@ -281,7 +281,7 @@ public sealed class NetworkTwoAutomationSourceTests
             string path = Path.Combine(
                 directory.FullName,
                 "src",
-                "SdvKit.AlwaysOn",
+                "SdvKit.GameSide",
                 fileName);
             if (File.Exists(path))
             {

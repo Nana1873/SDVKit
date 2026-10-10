@@ -70,7 +70,7 @@ internal sealed record ProjectReviewMcpReadResult(
 internal sealed record ProjectReviewMcpVerifiedContext(
     ProjectReviewStaging Staging,
     LiveLabState State,
-    AlwaysOnStatusReport AlwaysOn,
+    GameSideStatusReport GameSide,
     string? Role,
     ProjectReviewMcpTestSave? TestSave,
     bool AllTargetsReady,
@@ -278,18 +278,18 @@ internal sealed class ProjectReviewMcpRuntimeReader
             return ContextProcessFailure(process.Status, pair: false);
         }
 
-        AlwaysOnStatusReport alwaysOn = ReadAlwaysOn(
+        GameSideStatusReport gameSide = ReadGameSide(
             state,
             _utcNow().ToUniversalTime());
-        if (!StatusEnvelopeReady(alwaysOn))
+        if (!StatusEnvelopeReady(gameSide))
         {
             return ContextFailure(
                 "reviewRuntimeNotReady",
-                "AlwaysOn has not confirmed a fresh active review status.");
+                "GameSide has not confirmed a fresh active review status.");
         }
 
         if (state.TestSave is not null
-            && !TestSaveReady(alwaysOn, state.TestSave))
+            && !TestSaveReady(gameSide, state.TestSave))
         {
             return ContextFailure(
                 "reviewTestSaveNotReady",
@@ -300,14 +300,14 @@ internal sealed class ProjectReviewMcpRuntimeReader
             new ProjectReviewMcpVerifiedContext(
                 staging,
                 state,
-                alwaysOn,
+                gameSide,
                 Role: null,
                 state.TestSave is null
                     ? null
                     : new ProjectReviewMcpTestSave(
                         state.TestSave.Identity.FixtureId,
                         state.TestSave.Identity.SaveId),
-                ProjectModReady(alwaysOn, state.ProjectMod!)),
+                ProjectModReady(gameSide, state.ProjectMod!)),
             null,
             null);
     }
@@ -359,17 +359,17 @@ internal sealed class ProjectReviewMcpRuntimeReader
         }
 
         DateTimeOffset nowUtc = _utcNow().ToUniversalTime();
-        AlwaysOnStatusReport hostAlwaysOn = ReadAlwaysOn(verifiedHostState, nowUtc);
-        AlwaysOnStatusReport farmhandAlwaysOn = ReadAlwaysOn(verifiedFarmhandState, nowUtc);
-        if (!StatusEnvelopeReady(hostAlwaysOn)
-            || !StatusEnvelopeReady(farmhandAlwaysOn))
+        GameSideStatusReport hostGameSide = ReadGameSide(verifiedHostState, nowUtc);
+        GameSideStatusReport farmhandGameSide = ReadGameSide(verifiedFarmhandState, nowUtc);
+        if (!StatusEnvelopeReady(hostGameSide)
+            || !StatusEnvelopeReady(farmhandGameSide))
         {
             return ContextFailure(
                 "reviewRuntimeNotReady",
-                "AlwaysOn has not confirmed fresh active review status for both roles.");
+                "GameSide has not confirmed fresh active review status for both roles.");
         }
 
-        if (!TestSaveReady(hostAlwaysOn, verifiedHostState.TestSave!))
+        if (!TestSaveReady(hostGameSide, verifiedHostState.TestSave!))
         {
             return ContextFailure(
                 "reviewTestSaveNotReady",
@@ -381,26 +381,26 @@ internal sealed class ProjectReviewMcpRuntimeReader
             NetworkTwoContract.HostRole,
             StringComparison.Ordinal);
         bool pairPassed = NetworkTwoPairVerifier.IsPassed(
-                hostAlwaysOn,
-                farmhandAlwaysOn,
+                hostGameSide,
+                farmhandGameSide,
                 verifiedHostState.NetworkTwo!.BuildIdentity);
         bool hostLifecycleReady = selectHost && NetworkTwoPairVerifier.IsHostLifecycleReady(
-            hostAlwaysOn,
-            farmhandAlwaysOn,
+            hostGameSide,
+            farmhandGameSide,
             verifiedHostState.NetworkTwo.BuildIdentity);
         if (!pairPassed && !hostLifecycleReady)
         {
             return ContextFailure(
                 "reviewPairNotReady",
-                "AlwaysOn has not confirmed the exact joined network-2 review pair.");
+                "GameSide has not confirmed the exact joined network-2 review pair.");
         }
 
         LiveLabState selectedState = selectHost
             ? verifiedHostState
             : verifiedFarmhandState;
-        AlwaysOnStatusReport selectedAlwaysOn =
-            selectHost ? hostAlwaysOn : farmhandAlwaysOn;
-        string? selectedSession = selectedAlwaysOn.NetworkTwo?.SessionId;
+        GameSideStatusReport selectedGameSide =
+            selectHost ? hostGameSide : farmhandGameSide;
+        string? selectedSession = selectedGameSide.NetworkTwo?.SessionId;
         if (!ReviewTransportToken.IsRequestId(selectedSession))
             return ContextFailure("reviewBindingInvalid", "The selected network role session is invalid.");
         lock (_networkBindingSync)
@@ -428,14 +428,14 @@ internal sealed class ProjectReviewMcpRuntimeReader
             new ProjectReviewMcpVerifiedContext(
                 staging,
                 selectedState,
-                selectedAlwaysOn,
+                selectedGameSide,
                 _role,
                 new ProjectReviewMcpTestSave(
                     selectedNetwork.FixtureId,
                     selectedNetwork.SaveId),
-                ProjectModReady(hostAlwaysOn, verifiedHostState.ProjectMod!)
+                ProjectModReady(hostGameSide, verifiedHostState.ProjectMod!)
                     && ProjectModReady(
-                        farmhandAlwaysOn,
+                        farmhandGameSide,
                         verifiedFarmhandState.ProjectMod!),
                 NetworkPairPassed: pairPassed,
                 PeerProcessId: selectHost
@@ -449,12 +449,12 @@ internal sealed class ProjectReviewMcpRuntimeReader
         ProjectReviewMcpVerifiedContext context)
     {
         LiveLabState state = context.State;
-        AlwaysOnStatusReport alwaysOn = context.AlwaysOn;
+        GameSideStatusReport gameSide = context.GameSide;
         if (!context.AllTargetsReady)
         {
             return Failure(
                 "reviewRuntimeNotReady",
-                "AlwaysOn has not confirmed the exact active target build.");
+                "GameSide has not confirmed the exact active target build.");
         }
 
         RuntimeSnapshotReport? runtime = context.ScreenBinding is { } selected
@@ -472,7 +472,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 selected.Runtime.MenuOpen,
                 selected.Runtime.ObservedAtUtc,
                 selected.Runtime.LocalPlayer)
-            : alwaysOn.Runtime;
+            : gameSide.Runtime;
         if (runtime is null
             || !string.Equals(runtime.State, "ready", StringComparison.Ordinal)
             || runtime.SchemaVersion != RuntimeSnapshotContract.SchemaVersion
@@ -510,15 +510,15 @@ internal sealed class ProjectReviewMcpRuntimeReader
                     runtime.TileY,
                     runtime.MenuOpen.Value,
                     runtime.LocalPlayer),
-                alwaysOn.Tick!.Value,
-                alwaysOn.ObservedAtUtc!.Value,
-                alwaysOn.ForegroundWindowHandle,
-                alwaysOn.ForegroundProcessId,
+                gameSide.Tick!.Value,
+                gameSide.ObservedAtUtc!.Value,
+                gameSide.ForegroundWindowHandle,
+                gameSide.ForegroundProcessId,
                 context.ScreenBinding is null ? null : new ProjectReviewMcpScreen(
                     context.ScreenBinding.ScreenId,
                     context.ScreenBinding.FarmerId,
                     context.ScreenBinding.ContextId),
-                context.Role is null ? null : alwaysOn.NetworkTwo?.SessionId,
+                context.Role is null ? null : gameSide.NetworkTwo?.SessionId,
                 context.NetworkPairPassed,
                 state.OwnedProcessIdentity.ProcessId,
                 context.PeerProcessId),
@@ -528,7 +528,7 @@ internal sealed class ProjectReviewMcpRuntimeReader
 
     private ProjectReviewMcpContextResult ReadSelectedScreen(ProjectReviewMcpVerifiedContext context)
     {
-        if (context.TestSave is null || context.AlwaysOn.TestSave?.LocalSplitScreen != true)
+        if (context.TestSave is null || context.GameSide.TestSave?.LocalSplitScreen != true)
             return ContextFailure("reviewScreenUnavailable", "The owned review has no selected local split-screen context.");
 
         string requestId = Guid.NewGuid().ToString("N");
@@ -710,10 +710,10 @@ internal sealed class ProjectReviewMcpRuntimeReader
                 StringComparison.Ordinal);
     }
 
-    private static AlwaysOnStatusReport ReadAlwaysOn(
+    private static GameSideStatusReport ReadGameSide(
         LiveLabState state,
         DateTimeOffset nowUtc) =>
-        AlwaysOnStatusReader.Read(
+        GameSideStatusReader.Read(
             state.StatusPath,
             state.LaunchId,
             state.OwnedProcessIdentity,
@@ -746,12 +746,12 @@ internal sealed class ProjectReviewMcpRuntimeReader
             Path.Combine(paths.SavesPath, testSave.Identity.SaveId));
 
     private static bool ProjectModReady(
-        AlwaysOnStatusReport alwaysOn,
+        GameSideStatusReport gameSide,
         ProjectModLaunchState expected)
     {
-        ProjectModStatusReport? projectMod = alwaysOn.ProjectMod;
-        return string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
-            && alwaysOn.PauseWhenOutOfFocus == false
+        ProjectModStatusReport? projectMod = gameSide.ProjectMod;
+        return string.Equals(gameSide.State, "active", StringComparison.Ordinal)
+            && gameSide.PauseWhenOutOfFocus == false
             && projectMod is not null
             && string.Equals(projectMod.State, "ready", StringComparison.Ordinal)
             && string.Equals(projectMod.Phase, ProjectModContract.LoadedPhase, StringComparison.Ordinal)
@@ -761,17 +761,17 @@ internal sealed class ProjectReviewMcpRuntimeReader
             && string.Equals(projectMod.BuildIdentity, expected.BuildIdentity, StringComparison.Ordinal);
     }
 
-    private static bool StatusEnvelopeReady(AlwaysOnStatusReport alwaysOn)
+    private static bool StatusEnvelopeReady(GameSideStatusReport gameSide)
     =>
-        string.Equals(alwaysOn.State, "active", StringComparison.Ordinal)
-            && alwaysOn.PauseWhenOutOfFocus == false
-            && alwaysOn.ObservedAtUtc is not null;
+        string.Equals(gameSide.State, "active", StringComparison.Ordinal)
+            && gameSide.PauseWhenOutOfFocus == false
+            && gameSide.ObservedAtUtc is not null;
 
     private static bool TestSaveReady(
-        AlwaysOnStatusReport alwaysOn,
+        GameSideStatusReport gameSide,
         TestSaveLaunchState expected)
     {
-        TestSaveStatusReport? testSave = alwaysOn.TestSave;
+        TestSaveStatusReport? testSave = gameSide.TestSave;
         return testSave is not null
             && string.Equals(testSave.State, "ready", StringComparison.Ordinal)
             && string.Equals(testSave.Mode, TestSaveContract.ReviewMode, StringComparison.Ordinal)

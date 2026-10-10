@@ -312,7 +312,7 @@ public sealed class ReviewInventoryTests
     private static void MoveStatusToTitle(string root)
     {
         string path = LiveLabPaths.Resolve(root).StatusPath;
-        AlwaysOnStatusMarker marker = JsonSerializer.Deserialize<AlwaysOnStatusMarker>(
+        GameSideStatusMarker marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
             File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
         var title = new RuntimeSnapshotMarker(1, false, null, null, null, null, null, null, null, true,
             marker.ObservedAtUtc, LocalPlayerSnapshotContract.WithoutData("worldNotReady"));

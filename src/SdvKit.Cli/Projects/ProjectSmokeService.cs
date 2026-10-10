@@ -89,10 +89,7 @@ internal static class ProjectSmokeService
                     "The project manifest is invalid for project smoke.")]);
         }
 
-        if (string.Equals(
-                sourceManifest.Manifest.UniqueId,
-                "SDVKit.AlwaysOn",
-                StringComparison.OrdinalIgnoreCase))
+        if (LoadedModsContract.IsReservedUniqueId(sourceManifest.Manifest.UniqueId))
         {
             return Failure(
                 reportRoot,
@@ -102,7 +99,7 @@ internal static class ProjectSmokeService
                 [Problem(
                     "reservedModIdentity",
                     resolution.Target.Manifest.Path,
-                    "Project smoke cannot target the reserved SDVKit.AlwaysOn mod identity.")]);
+                    "Project smoke cannot target the reserved SDVKit.GameSide mod identity.")]);
         }
 
         string[] unavailableDependencies =
@@ -277,17 +274,17 @@ internal static class ProjectSmokeService
         Func<DoctorReport> discoverInstallations)
     {
         LiveLabCommandResult labResult;
-        AlwaysOnStatusReport? singleAlwaysOn = null;
+        GameSideStatusReport? singleGameSide = null;
         if (string.Equals(topology, LiveLabState.SingleTopology, StringComparison.Ordinal))
         {
             var service = new LiveLabService(
                 paths,
                 new JsonLiveLabStateStore(paths.StatePath),
-                new AlwaysOnBuilder(),
+                new GameSideBuilder(),
                 new WindowsLabProcessHost(),
                 discoverInstallations);
             labResult = service.RunProjectTestSave(staging.LaunchState);
-            singleAlwaysOn = service.LastAlwaysOn;
+            singleGameSide = service.LastGameSide;
         }
         else
         {
@@ -299,7 +296,7 @@ internal static class ProjectSmokeService
 
         IReadOnlyList<ProjectSmokeRoleReport> roles = CreateRoles(
             labResult.Report,
-            singleAlwaysOn,
+            singleGameSide,
             staging,
             labRoot);
         bool fixtureReset = labResult.Report switch
@@ -399,7 +396,7 @@ internal static class ProjectSmokeService
 
     private static IReadOnlyList<ProjectSmokeRoleReport> CreateRoles(
         object report,
-        AlwaysOnStatusReport? singleAlwaysOn,
+        GameSideStatusReport? singleGameSide,
         ProjectModStaging staging,
         string labRoot)
     {
@@ -412,7 +409,7 @@ internal static class ProjectSmokeService
                     single.State,
                     staging.StagingPaths[0],
                     staging.Artifact.BuildIdentity,
-                    singleAlwaysOn?.ProjectMod,
+                    singleGameSide?.ProjectMod,
                     single.ObservedTicks,
                     single.LogPaths,
                     labRoot),
@@ -428,8 +425,8 @@ internal static class ProjectSmokeService
                     network.Host.State,
                     staging.StagingPaths[0],
                     staging.Artifact.BuildIdentity,
-                    network.Host.AlwaysOn?.ProjectMod,
-                    network.Host.AlwaysOn?.NetworkTwo?.JoinedTicks,
+                    network.Host.GameSide?.ProjectMod,
+                    network.Host.GameSide?.NetworkTwo?.JoinedTicks,
                     network.Host.LogPaths,
                     labRoot),
                 Role(
@@ -437,8 +434,8 @@ internal static class ProjectSmokeService
                     network.Farmhand.State,
                     staging.StagingPaths[1],
                     staging.Artifact.BuildIdentity,
-                    network.Farmhand.AlwaysOn?.ProjectMod,
-                    network.Farmhand.AlwaysOn?.NetworkTwo?.JoinedTicks,
+                    network.Farmhand.GameSide?.ProjectMod,
+                    network.Farmhand.GameSide?.NetworkTwo?.JoinedTicks,
                     network.Farmhand.LogPaths,
                     labRoot),
             ];

@@ -106,8 +106,8 @@ internal static class ProjectReviewConfigReconcile
             if (!verified.Succeeded) return Result("rejected", verified.ErrorCode);
             context = verified.Context!;
             selected = context.Staging.Artifacts.Single(a => a.Manifest.UniqueId.Equals(uniqueId, StringComparison.OrdinalIgnoreCase));
-            if (!context.AllTargetsReady || context.AlwaysOn.LoadedMods?.State != "ready"
-                || !context.AlwaysOn.LoadedMods.Mods.Any(mod => mod.UniqueId.Equals(selected.Manifest.UniqueId, StringComparison.OrdinalIgnoreCase)
+            if (!context.AllTargetsReady || context.GameSide.LoadedMods?.State != "ready"
+                || !context.GameSide.LoadedMods.Mods.Any(mod => mod.UniqueId.Equals(selected.Manifest.UniqueId, StringComparison.OrdinalIgnoreCase)
                     && mod.Version == ProjectModLaunchState.NormalizeVersion(selected.Manifest.Version)
                     && mod.IsContentPack == (selected.Manifest.Kind == ProjectInspectionReport.ContentPack)))
                 return Result("rejected", "configReconcileSelectedModNotLoaded");

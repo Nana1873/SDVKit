@@ -1,5 +1,5 @@
-using SdvKit.AlwaysOn;
 using SdvKit.Cli.LiveLab;
+using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
@@ -253,7 +253,7 @@ public sealed class ReviewInputCommandTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ReviewInputCommand.cs"));
 
         Assert.DoesNotContain("SetCursorPos", source, StringComparison.Ordinal);
@@ -268,7 +268,7 @@ public sealed class ReviewInputCommandTests
             File.ReadAllText(Path.Combine(
                 FindRepositoryRoot(),
                 "src",
-                "SdvKit.AlwaysOn",
+                "SdvKit.GameSide",
                 "ModEntry.cs")),
             StringComparison.Ordinal);
     }
@@ -279,7 +279,7 @@ public sealed class ReviewInputCommandTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "src",
-            "SdvKit.AlwaysOn",
+            "SdvKit.GameSide",
             "ReviewInputCommand.cs"));
 
         Assert.Contains("chord.Helper.Press((SButton)b)", source, StringComparison.Ordinal);
@@ -335,8 +335,8 @@ public sealed class ReviewInputCommandTests
             if (File.Exists(Path.Combine(
                     directory.FullName,
                     "src",
-                    "SdvKit.AlwaysOn",
-                    "SdvKit.AlwaysOn.csproj")))
+                    "SdvKit.GameSide",
+                    "SdvKit.GameSide.csproj")))
             {
                 return directory.FullName;
             }
