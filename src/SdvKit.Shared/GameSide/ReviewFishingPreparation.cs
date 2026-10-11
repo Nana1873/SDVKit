@@ -8,7 +8,7 @@ internal static class FishingBankSearch
     public const int MaximumDimension = 512;
 
     /// <summary>
-    /// Finds the standing tile closest to the origin with natural water two tiles to its left or right.
+    /// Finds the standing tile closest to the origin with natural water two and three tiles to its left or right.
     /// The search grows in square rings around the origin and stops once no closer bank can exist.
     /// </summary>
     public static FishingBank? Find(
@@ -24,8 +24,8 @@ internal static class FishingBankSearch
             return null;
         }
 
-        // Vertical minimum casts have an unresolved intermittent landing failure (#305).
-        // Do not fall back to them when no side-facing bank exists.
+        // Down casts sometimes spent stamina without starting fishing; the cause is undetermined (#305).
+        // Up casts share the untested vertical path, so do not fall back to either vertical direction.
         (int X, int Y, int Facing)[] offsets = [(2, 0, 1), (-2, 0, 3)];
         FishingBank? best = null;
         long bestDistance = long.MaxValue;
@@ -72,8 +72,10 @@ internal static class FishingBankSearch
             foreach (var offset in offsets)
             {
                 int waterX = x + offset.X, waterY = y + offset.Y;
+                int beyondX = waterX + offset.X / 2, beyondY = waterY + offset.Y / 2;
                 if (waterX < 0 || waterY < 0 || waterX >= width || waterY >= height
-                    || !isNaturalWater(waterX, waterY) || !canStand(x, y))
+                    || beyondX < 0 || beyondY < 0 || beyondX >= width || beyondY >= height
+                    || !isNaturalWater(waterX, waterY) || !isNaturalWater(beyondX, beyondY) || !canStand(x, y))
                 {
                     continue;
                 }

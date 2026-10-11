@@ -8,7 +8,7 @@ public sealed class FishingBankSearchTests
     public void SkipsBlockedBanksAndReturnsReachableWaterAndFacing()
     {
         FishingBank? bank = FishingBankSearch.Find(10, 10,
-            (x, y) => x == 5 && y == 5,
+            (x, y) => x is 4 or 5 && y == 5,
             (x, y) => x == 7 && y == 5);
         Assert.Equal(new FishingBank(7, 5, 3, 5, 5), bank);
     }
@@ -16,8 +16,8 @@ public sealed class FishingBankSearchTests
     [Fact]
     public void ChoosesTheBankNearestToTheSearchStart()
     {
-        // Water at (2,5) and (17,5); standing tiles two away on either side.
-        bool Water(int x, int y) => y == 5 && x is 2 or 17;
+        // Both banks have water two and three tiles out.
+        bool Water(int x, int y) => y == 5 && x is 1 or 2 or 17 or 18;
         bool Stand(int x, int y) => y == 5 && x is 4 or 15;
 
         Assert.Equal(new FishingBank(4, 5, 3, 2, 5), FishingBankSearch.Find(20, 10, Water, Stand, 5, 5));
@@ -29,9 +29,10 @@ public sealed class FishingBankSearchTests
     [InlineData(7, 3)]
     public void SkipsACloserDownFacingBankForASideCast(int sideBankX, int facing)
     {
-        // The origin (5,3) can cast down to water, but preparation must use a side bank.
+        // The origin (5,3) has water two and three tiles down, but preparation must use a side bank.
+        int beyondX = sideBankX == 3 ? 6 : 4;
         FishingBank? bank = FishingBankSearch.Find(10, 10,
-            (x, y) => x == 5 && y == 5,
+            (x, y) => (x == 5 && y is 5 or 6) || (x == beyondX && y == 5),
             (x, y) => (x == 5 && y == 3) || (x == sideBankX && y == 5),
             5, 3);
 
@@ -44,9 +45,51 @@ public sealed class FishingBankSearchTests
     public void OnlyVerticalBanksFindNothing(int bankY)
     {
         Assert.Null(FishingBankSearch.Find(10, 10,
-            (x, y) => x == 5 && y == 5,
+            (x, y) => x == 5 && y is 4 or 5 or 6,
             (x, y) => x == 5 && y == bankY,
             5, bankY));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1)]
+    public void RejectsSideBankWhenOnlyMinimumLandingTileIsWater(int direction)
+    {
+        Assert.Null(FishingBankSearch.Find(10, 10,
+            (x, y) => x == 5 + direction * 2 && y == 5,
+            (x, y) => x == 5 && y == 5,
+            5, 5));
+    }
+
+    [Theory]
+    [InlineData(-1, 3)]
+    [InlineData(1, 1)]
+    public void SkipsShallowSideBankForBankWithWaterTwoAndThreeTilesOut(int direction, int facing)
+    {
+        int minimumX = 5 + direction * 2;
+        int beyondX = 5 + direction * 3;
+        FishingBank? bank = FishingBankSearch.Find(10, 10,
+            (x, y) => (x == minimumX && y is 3 or 6) || (x == beyondX && y == 6),
+            (x, y) => x == 5 && y is 3 or 6,
+            5, 3);
+
+        Assert.Equal(new FishingBank(5, 6, facing, minimumX, 6), bank);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void WaterBeyondMapEdgeRejectsBankWithoutOutOfBoundsQueries(int waterX)
+    {
+        Assert.Null(FishingBankSearch.Find(5, 5,
+            (x, y) =>
+            {
+                Assert.InRange(x, 0, 4);
+                Assert.InRange(y, 0, 4);
+                return x == waterX && y == 2;
+            },
+            (x, y) => x == 2 && y == 2,
+            2, 2));
     }
 
     [Fact]

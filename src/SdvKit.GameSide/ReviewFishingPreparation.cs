@@ -46,7 +46,7 @@ internal sealed partial class StardewReviewFixtureRuntime
             startY);
         if (bank is null)
         {
-            return new ReviewFixtureResult(false, "No collision-free side-facing bank with natural water two tiles away was found (map limit: 512x512); fixture unchanged.");
+            return new ReviewFixtureResult(false, "No collision-free side-facing bank with natural water two and three tiles away was found (map limit: 512x512); fixture unchanged.");
         }
 
         bool addedRod = rod is null;
@@ -62,7 +62,7 @@ internal sealed partial class StardewReviewFixtureRuntime
             player.fishCaught["(O)145"] = [1, 5];
         }
         player.Halt();
-        // Center StandingPixel on the bank: the rod's 120px minimum side cast then lands inside the reported tile.
+        // Center StandingPixel: the 120px minimum side cast lands two tiles out; the third tile covers longer short casts.
         player.setTileLocation(new Vector2(bank.X, bank.Y));
         player.faceDirection(bank.Facing);
         player.netItemStowed.Value = false;
