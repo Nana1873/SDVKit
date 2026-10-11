@@ -1336,6 +1336,19 @@ public sealed class LiveLabServiceTests
             Assert.Equal("failed", report.State);
             Assert.Null(report.ObservedTicks);
             Assert.Equal(expectedProblem, report.Problems[0].Code);
+            if (expectedProblem == "gameSideStale")
+            {
+                // Only a stale marker that is still loading or waiting earns the bounded grace; any other stale
+                // evidence fails at once.
+                if (markerCase == "waiting")
+                {
+                    Assert.True(clock >= StartedAt.AddSeconds(10 + 30));
+                }
+                else
+                {
+                    Assert.True(clock < StartedAt.AddSeconds(10 + 5));
+                }
+            }
             if (expectedProblem is "cleanStopTimedOut" or "cleanStopNotConfirmed")
             {
                 Assert.NotNull(stateStore.State);
@@ -1415,6 +1428,71 @@ public sealed class LiveLabServiceTests
             // The bound is 30 s of continuous staleness, not the two-minute workflow timeout.
             Assert.True(clock < StartedAt.AddSeconds(10 + 35));
         }
+    }
+
+    [Fact]
+    public void TestSaveRestartsTheStaleGraceAfterAFreshRead()
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths) { BaselineExists = true, ScenarioLogArchived = true };
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(LabProcessStartStatus.Started, Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+        DateTimeOffset clock = StartedAt.AddSeconds(10);
+
+        void Publish(string lifecycle, string testSavePhase, DateTimeOffset observedAt)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            WriteStatusMarker(paths, state, lifecycle, pauseWhenOutOfFocus: lifecycle != "active",
+                new TestSaveStatusMarker(TestSaveContract.SchemaVersion, launch.Mode, testSavePhase,
+                    launch.Identity.FixtureId, launch.Identity.SaveId, IdentityVerified: testSavePhase == "passed",
+                    WaitedTicks: testSavePhase == "passed" ? 120 : 0, Message: "simulated", launch.ScenarioLogPath),
+                observedAtUtc: observedAt);
+        }
+
+        // Stale for 20 s, one fresh loading heartbeat, stale for about 20 s again, then passed. Without a reset the
+        // second stale stretch would add up to more than 30 s and fail.
+        int step = 0;
+        process.BeforeInspectReturn = () =>
+        {
+            if (step == 0)
+            {
+                step = 1;
+                Publish("active", "loading", StartedAt.AddSeconds(1));
+            }
+            else if (step == 1 && clock >= StartedAt.AddSeconds(30))
+            {
+                step = 2;
+                Publish("active", "loading", clock);
+            }
+            else if (step == 2 && clock >= StartedAt.AddSeconds(55))
+            {
+                step = 3;
+                Publish("active", "passed", clock);
+            }
+        };
+        process.BeforeWaitReturn = () =>
+        {
+            process.InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited);
+            Publish("exiting", "passed", clock);
+        };
+        LiveLabService service = Service(
+            paths, stateStore, new FakeBuilder(), process, Ready(gamePath),
+            testSaveStore: fixtureStore, delay: interval => clock += interval, utcNow: () => clock);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Equal(3, step);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("passed", report.State);
     }
 
     [Fact]
