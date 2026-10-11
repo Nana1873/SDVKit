@@ -1,0 +1,222 @@
+#Requires -Version 7.3
+<#
+.SYNOPSIS
+Live acceptance: everyday keyboard-and-mouse player actions in a single review on the test save (#270).
+
+.DESCRIPTION
+Proves each action through a state read, not through the input acknowledgement:
+
+- walking in four directions (tile changes) and walking versus running (distance per tick count);
+- stardew_lab_warp (runtime location and tile) and a location change by walking through a map warp;
+- hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
+- the game menu: open with E, switch tab by clicking its component, close with Escape;
+- hoe, pickaxe and scythe on the faced tile (soil appears, the stone or weeds disappear, stamina drops);
+- fishing: preparation and a cast that puts the bobber in the water.
+
+The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
+parked in the screen corner before keyboard tool use, because Stardew aims at the tile under the cursor when it is
+within one tile of the player. Matrix and gaps: docs/player-actions.md.
+
+.EXAMPLE
+pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance
+#>
+param(
+    [Parameter(Mandatory)] [string] $SdvKit,
+    [Parameter(Mandatory)] [string] $GamePath,
+    [Parameter(Mandatory)] [string] $LabRoot,
+    [switch] $SkipProtectedCheck
+)
+
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
+$context = Initialize-Acceptance -Name 'player-actions' -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck
+
+$stones = @('(O)343', '(O)450', '(O)668', '(O)670', '(O)760', '(O)762')
+$weeds = @('(O)313', '(O)314', '(O)315', '(O)316', '(O)317', '(O)318', '(O)319', '(O)320', '(O)321', '(O)674', '(O)675', '(O)676', '(O)677', '(O)678', '(O)679', '(O)784', '(O)785', '(O)786', '(O)792', '(O)793', '(O)794')
+
+function Get-Runtime([string] $Label) {
+    (Invoke-Tool "runtime-$Label" 'stardew_runtime_get').Json.runtime
+}
+
+function Wait-Settled {
+    # Runtime is published about once per second; wait for a fresh sample.
+    Start-Sleep -Milliseconds 1500
+}
+
+function Invoke-Press([string] $Label, [string] $Button) {
+    $press = Invoke-Tool "press-$Label" 'stardew_input_press' @{ button = $Button } -OptIn '--allow-input'
+    Assert-That ($press.Json.succeeded -eq $true) "the $Button press did not complete."
+}
+
+function Invoke-Hold([string] $Label, [string[]] $Buttons, [int] $Ticks) {
+    $revision = (Invoke-SdvKit "menu-$Label" @('project', 'review', 'menu', '--json')).Json.uiRevision
+    $chord = Invoke-Tool "chord-$Label" 'stardew_input_chord' @{ buttons = $Buttons; durationTicks = $Ticks; uiRevision = $revision } -OptIn '--allow-input'
+    Assert-That ($chord.Json.succeeded -eq $true -and $chord.Json.released -eq $true) "holding $($Buttons -join '+') did not complete."
+}
+
+function Invoke-Warp([string] $Label, [string] $Location, [int] $X, [int] $Y) {
+    $warp = Invoke-Tool "warp-$Label" 'stardew_lab_warp' @{ location = $Location; x = $X; y = $Y } -OptIn '--allow-fixture-actions'
+    Assert-That ($warp.Json.state -ceq 'ready' -and $warp.Json.lab.locationId -ceq $Location -and $warp.Json.lab.tileX -eq $X -and $warp.Json.lab.tileY -eq $Y) "the warp to $Location $X,$Y did not land there."
+    Wait-Settled
+}
+
+function Get-Area([string] $Label, [int] $X, [int] $Y, [int] $Width, [int] $Height) {
+    (Invoke-SdvKit "world-$Label" @('project', 'review', 'world', $X, $Y, $Width, $Height, '--json')).Json.data.tiles
+}
+
+function Find-ToolSlot([string] $Label, [string] $ItemId) {
+    $slot = @((Invoke-SdvKit "inventory-$Label" @('project', 'review', 'inventory', '--json')).Json.data.slots |
+        Where-Object { $_.item.qualifiedItemId -ceq $ItemId })[0].slot
+    Assert-That ($null -ne $slot) "the backpack has no $ItemId."
+    return $slot
+}
+
+function Invoke-ToolDown([string] $Label, [string] $ItemId, $Tile, [switch] $NoStamina) {
+    # Stand on the free tile north of $Tile, face down, select the tool, park the cursor and use the tool once.
+    $slot = Find-ToolSlot $Label $ItemId
+    Invoke-Warp $Label 'Farm' $Tile.x ($Tile.y - 1)
+    Invoke-Press "$Label-face" 'S'
+    Invoke-Press "$Label-select" "D$($slot + 1)"
+    Invoke-Tool "park-$Label" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+    Wait-Settled
+    $before = Get-Runtime "$Label-before"
+    Assert-That ($before.localPlayer.data.selectedSlot -eq $slot) "$ItemId is not selected."
+    Invoke-Press "$Label-use" 'C'
+    Start-Sleep -Seconds 2
+    $after = Get-Runtime "$Label-after"
+    # The scythe costs no stamina in Stardew; the other tools do.
+    Assert-That ($NoStamina -or $after.localPlayer.data.stamina -lt $before.localPlayer.data.stamina) "using $ItemId did not cost stamina."
+    return (Get-Area "$Label-result" $Tile.x $Tile.y 1 1)[0]
+}
+
+$failed = $false
+try {
+    $mod = Join-Path $context.Evidence 'work\PlayerActionsTarget'
+    Invoke-SdvKit 'create' @('project', 'create', 'smapi-mod', $mod, '--name', 'Player Actions Target', '--author', 'SDVKit',
+        '--unique-id', 'SDVKit.PlayerActionsTarget', '--description', 'Empty target for the player-action acceptance.', '--json') | Out-Null
+    Invoke-SdvKit 'test-save' @('lab', 'test-save', '--topology', 'single', '--game-path', $context.GamePath, '--json') | Out-Null
+    Invoke-SdvKit 'start' @('project', 'review', 'start', $mod, '--game-path', $context.GamePath, '--topology', 'single', '--test-save', '--json') | Out-Null
+    Wait-ReviewReady -TestSave | Out-Null
+    Invoke-Tool 'farm' 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
+    Wait-Settled
+
+    Write-Step 'Walking: four directions, then walking versus running.'
+    Invoke-Warp 'walk-start' 'Farm' 64 16
+    $start = Get-Runtime 'walk-start'
+    $position = $start
+    foreach ($step in @(@{ key = 'S'; dx = 0; dy = 1 }, @{ key = 'D'; dx = 1; dy = 0 }, @{ key = 'A'; dx = -1; dy = 0 }, @{ key = 'W'; dx = 0; dy = -1 })) {
+        Invoke-Hold "walk-$($step.key)" @($step.key) 30
+        Wait-Settled
+        $next = Get-Runtime "walk-$($step.key)"
+        $moveX = $next.tileX - $position.tileX
+        $moveY = $next.tileY - $position.tileY
+        Assert-That ([Math]::Sign($moveX) -eq $step.dx -and [Math]::Sign($moveY) -eq $step.dy) "walking $($step.key) moved by $moveX,$moveY."
+        $position = $next
+    }
+
+    # Equal tick counts need not give equal distances (sub-tile position, acceleration), so no exact return is expected.
+    $still = Get-Runtime 'walk-stopped'
+    Assert-That ($still.tileX -eq $position.tileX -and $still.tileY -eq $position.tileY) 'the player kept moving after the input was released.'
+
+    Invoke-Warp 'run-start' 'Farm' 64 16
+    Invoke-Hold 'run' @('S') 30
+    Wait-Settled
+    $run = (Get-Runtime 'run').tileY - $start.tileY
+    Invoke-Warp 'walk-start-2' 'Farm' 64 16
+    Invoke-Hold 'walk-slow' @('LeftShift', 'S') 30
+    Wait-Settled
+    $walk = (Get-Runtime 'walk-slow').tileY - $start.tileY
+    Assert-That ($run -gt $walk -and $walk -ge 1) "30 ticks moved $run tiles normally and $walk with Shift; expected Shift to be slower but still moving."
+    Write-Step "Walked 4 directions; 30 ticks moved $run tiles normally, $walk with Shift."
+
+    Write-Step 'Location change by walking through the Farm-to-BusStop map warp.'
+    $warps = (Invoke-Tool 'warps' 'stardew_map_warps_list' @{ asset = 'Maps/Farm' }).Json.warps
+    $exit = @($warps | Where-Object { $_.targetName -ceq 'BusStop' } | Sort-Object fromY)[0]
+    Assert-That ($null -ne $exit) 'the Farm map has no warp to BusStop.'
+    Invoke-Warp 'edge' 'Farm' ($exit.fromX - 3) $exit.fromY
+    Invoke-Hold 'edge-walk' @('D') 90
+    Start-Sleep -Seconds 2
+    $arrived = Get-Runtime 'edge-arrived'
+    Assert-That ($arrived.locationId -ceq 'BusStop') "walking east ended in $($arrived.locationId) $($arrived.tileX),$($arrived.tileY), not BusStop."
+
+    Write-Step 'Hotbar: number keys select slots; the mouse wheel needs a menu.'
+    Invoke-Warp 'hotbar' 'Farm' 64 16
+    foreach ($slot in 2, 5) {
+        Invoke-Press "hotbar-$slot" "D$($slot + 1)"
+        Wait-Settled
+        Assert-That ((Get-Runtime "hotbar-$slot").localPlayer.data.selectedSlot -eq $slot) "D$($slot + 1) did not select slot $slot."
+    }
+
+    Invoke-Tool 'park-wheel' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+    $wheel = Invoke-Tool 'wheel-without-menu' 'stardew_input_wheel' @{ direction = 'down' } -OptIn '--allow-input' -AllowExit @(3)
+    Assert-That ($wheel.Json.problem.code -ceq 'inputMenuMissing') "the wheel without a menu returned $($wheel.Json.problem.code), expected inputMenuMissing."
+
+    Write-Step 'Game menu: open with E, click a tab, close with Escape.'
+    Invoke-Press 'menu-open' 'E'
+    Wait-Settled
+    $menu = (Invoke-SdvKit 'menu-opened' @('project', 'review', 'menu', '--json')).Json
+    $gameMenu = @($menu.menus | Where-Object adapter -ceq 'gameMenu')[0]
+    Assert-That ($null -ne $gameMenu -and $gameMenu.currentTab -eq 0) 'E did not open the game menu on its first tab.'
+    $tabs = @($gameMenu.components | Where-Object kind -ceq 'tab' | Sort-Object { $_.bounds.x })
+    Assert-That ($tabs.Count -ge 4) "the game menu shows $($tabs.Count) tabs."
+    Invoke-ComponentClick 'menu-tab' -Menu $menu -Component $tabs[3] | Out-Null
+    Wait-Settled
+    $switched = @((Invoke-SdvKit 'menu-switched' @('project', 'review', 'menu', '--json')).Json.menus | Where-Object adapter -ceq 'gameMenu')[0]
+    Assert-That ($switched.currentTab -eq 3) "clicking the fourth tab left currentTab at $($switched.currentTab)."
+    Invoke-Press 'menu-close' 'Escape'
+    Wait-Settled
+    Assert-That ((Invoke-SdvKit 'menu-closed' @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'Escape did not close the game menu.'
+
+    Write-Step 'Tools on the faced tile: hoe, pickaxe, scythe.'
+    $area = @(Get-Area 'scan' 58 18 16 16)
+    $byTile = @{}
+    foreach ($tile in $area) { $byTile["$($tile.x),$($tile.y)"] = $tile }
+    function Test-Free($tile) { $null -ne $tile -and $tile.objectState -ceq 'missing' -and $null -eq $tile.soil }
+    function Find-Target([scriptblock] $Match) {
+        @($area | Where-Object { (& $Match $_) -and (Test-Free $byTile["$($_.x),$($_.y - 1)"]) })[0]
+    }
+
+    $plain = Find-Target { param($t) Test-Free $t }
+    Assert-That ($null -ne $plain) 'no free tile with a free tile north of it in the scanned area.'
+    $hoed = Invoke-ToolDown 'hoe' '(T)Hoe' $plain
+    Assert-That ($null -ne $hoed.soil) "the hoe did not till $($plain.x),$($plain.y)."
+
+    $stone = Find-Target { param($t) $t.objectQualifiedItemId -cin $stones }
+    if ($null -ne $stone) {
+        $mined = Invoke-ToolDown 'pickaxe' '(T)Pickaxe' $stone
+        Assert-That ($mined.objectState -ceq 'missing') "the pickaxe left $($stone.objectQualifiedItemId) at $($stone.x),$($stone.y)."
+    }
+    else { Write-Step 'No reachable stone in the scanned area; pickaxe not checked.' }
+
+    $weed = Find-Target { param($t) $t.objectQualifiedItemId -cin $weeds }
+    if ($null -ne $weed) {
+        $cut = Invoke-ToolDown 'scythe' '(W)47' $weed -NoStamina
+        Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
+    }
+    else { Write-Step 'No reachable weeds in the scanned area; scythe not checked.' }
+
+    Write-Step 'Fishing: prepare and cast.'
+    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
+    Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
+    Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+    Wait-Settled
+    Invoke-Hold 'cast' @('C') 40
+    $deadline = [DateTime]::UtcNow.AddSeconds(8)
+    do {
+        Start-Sleep -Seconds 1
+        $fishing = (Get-Runtime 'cast').localPlayer.data.fishing
+    } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+    Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
+    Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY). Hooking and the minigame are not covered."
+
+    Stop-Review -Reset -Label 'final'
+}
+catch {
+    $failed = $true
+    Write-Host $_.Exception.Message -ForegroundColor Red
+}
+finally {
+    Complete-Acceptance -Failed:$failed
+}
+
+if ($failed) { exit 1 }

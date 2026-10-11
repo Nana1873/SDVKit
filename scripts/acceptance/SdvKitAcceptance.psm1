@@ -263,6 +263,16 @@ function Complete-Acceptance {
     param([switch] $Failed)
 
     $problems = [Collections.Generic.List[string]]::new()
+    if ($Failed) {
+        # Keep the game's own log of a failed run before cleanup or a later run replaces it.
+        foreach ($role in 'single', 'host', 'farmhand') {
+            $log = Join-Path $script:Context.Lab ".sdvkit\lab\profiles\$role\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt"
+            if (Test-Path -LiteralPath $log) {
+                Copy-Item -LiteralPath $log -Destination (Join-Path $script:Context.Evidence "smapi-$role.txt")
+            }
+        }
+    }
+
     # Stop and reset what this run started, including a test save left between a stop and a planned restart.
     foreach ($topology in @(@($script:Context.Running) + @($script:Context.ResetPending) | Select-Object -Unique)) {
         try { Stop-Review -Topology $topology -Reset -Label 'cleanup' }

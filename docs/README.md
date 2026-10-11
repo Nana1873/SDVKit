@@ -35,6 +35,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Look up a term such as owned, role, screen or test save | [Glossary](glossary.md) |
 | Prepare a lab root for Claude Code or Codex | [Set up the agent layer](toolkit.md#set-up-the-agent-layer) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
+| Walk, use tools, open menus and other player actions, with their proof | [Player actions](player-actions.md) |
 | Run SDVKit's live acceptance scripts | [Acceptance scripts](../scripts/acceptance/README.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
 | Find changes since an earlier version | [Changelog](../CHANGELOG.md) |
