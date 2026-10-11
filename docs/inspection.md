@@ -1,18 +1,22 @@
 # Inspect active game content
 
-Use this reference to query the final SMAPI content pipeline of an already-running, load-confirmed review. Canonical Data supports an exact single player, network role, or local screen; the remaining asset families stay single-only. Start with the [live guide](live-review.md#start-a-review). Examples use the executable variable from [installation](../README.md#install).
+Use these commands to read the final SMAPI content pipeline of a running review. SMAPI must have confirmed that the reviewed mod loaded. Data reads work in `single`, for one `network-2` role, or for one split-screen screen. The other asset families work only in `single`. Start with the [live guide](live-review.md#start-a-review). Examples use the executable variable from [installation](../README.md#install).
 
-Choose [Data](#read-canonical-data-definitions), [maps](#inspect-active-map-structure), [textures](#inspect-canonical-textures-safely), [audio](#inspect-active-audio-metadata), or [observed mod assets](#inspect-observed-mod-owned-asset-namespaces). All five families are also available through [MCP](mcp.md); maps and textures include their own typed metadata and checked preview surface, while audio and mod assets retain the CLI selections and bounds.
+Choose [Data](#read-canonical-data-definitions), [maps](#inspect-active-map-structure), [textures](#inspect-canonical-textures-safely), [audio](#inspect-active-audio-metadata), or [observed mod assets](#inspect-observed-mod-owned-asset-namespaces). All five families are also available through [MCP](mcp.md). The MCP map and texture tools add typed metadata and a checked preview. The MCP audio and mod-asset tools keep the CLI selections and limits.
 
 ## Shared rules
 
-Require exit `0`, the requested canonical identity, and a current matching review result. Follow pagination instead of assuming the first page is complete. A failed or partial inventory is not complete coverage. Save diagnostic previews only below the role's isolated profile.
-
-For operands beginning with `-` or matching option names, put all options before `--` and all operands after it. Unknown identities, unsupported shapes, ambiguous normalization, stale responses, or size limits are controlled problems; do not guess replacements or retry unchanged timeouts.
+- Require exit `0`, the identity you asked for, and a result from the current review.
+- Follow pagination. The first page is not the whole list.
+- A failed or partial inventory is not complete coverage.
+- Save diagnostic previews only below the role's isolated profile.
+- If an operand starts with `-` or matches an option name, put all options before `--` and all operands after it.
+- Unknown identities, unsupported shapes, ambiguous names, stale responses and size limits return controlled problems. SDVKit does not guess a replacement ("fails closed"). Do not guess one yourself, and do not retry an unchanged request that timed out.
+- Every command is read-only and [bounded](glossary.md#commands-and-results). None of them mutates the game, exports source files or reads your normal `Mods` folder.
 
 ## Read canonical Data definitions
 
-While an exact selected review is running and its target identity is load-confirmed, the `data` subcommands provide bounded read-only access to every canonical structured `Data/*` definition asset shipped by the installed Stardew version. The game-side reader discovers the installed `Content/Data` asset names independently instead of relying on a maintained allowlist, then loads each asset through SMAPI's live game-content pipeline. The returned values therefore include the content packs and edits active in that exact review process; localized physical siblings aren't treated as separate canonical identities.
+The `data` subcommands read every structured `Data/*` asset that the installed Stardew version ships. SDVKit finds the asset names in the installed `Content/Data` folder; it keeps no allowlist. It loads each asset through SMAPI's live content pipeline. Results therefore include the content packs and edits active in this review. Localized copies of an asset are not separate entries.
 
 ```powershell
 & $sdvkit project review data assets --offset 0 --limit 100 --topology single --json
@@ -22,15 +26,18 @@ While an exact selected review is running and its target identity is load-confir
 & $sdvkit project review data get "Data/Buildings" "Barn" --topology single --screen 1 --json
 ```
 
-`assets` reports the running game and file versions, each canonical asset name, loaded .NET data type, shape, and key kind. Its coverage object is complete only when every discovered asset is classified and safely queryable, with zero `unknown`, `unclassified`, and `unsupported` entries. Dictionaries use their canonical string or integer keys, lists use canonical zero-based indexes, and a singleton has the one explicit key `singleton`. `keys` returns those identities in deterministic order and never substitutes localized display values. `get` returns exactly one record with its canonical asset and key; object members are sorted deterministically in the JSON while source array order is retained.
-
-Asset and string-key lookup accepts case differences plus small space, hyphen, underscore, slash, and backslash separator differences. Normalization collisions are ambiguous and fail closed; an exact canonical key remains selectable. A missing canonical `Data/*` name is reported as unavailable in the running game version, separately from a name outside that namespace. Load failures, unsupported key types, unsafe or oversized records, reparse points, stale responses, mismatched requests, and unknown or colliding identities are returned as bounded problems rather than guessed results.
-
-Pages default to 50 entries and accept 1-100; offsets are non-negative. Asset and key tokens, one record, and the complete response are size-bounded. There is no unbounded full-dump default, mutation operation, new public RPC, or generic reflection surface. Network and screen selectors validate the exact client binding, while the active SMAPI Data pipeline remains process-shared rather than a fabricated per-player cache. Each request reuses the existing exact review lock, process, staging, target-load, console-input, and cleanup checks.
+- `assets` reports the running game and file versions. For each asset it reports the [canonical name](glossary.md#assets), the loaded .NET type, the shape and the key kind. Coverage is complete only with zero `unknown`, `unclassified` and `unsupported` entries.
+- Keys: dictionaries use their string or integer keys. Lists use zero-based indexes. A singleton has the one key `singleton`.
+- `keys` returns keys in a stable order. Keys are not replaced by localized display values.
+- `get` returns one record with its asset and key. JSON object members are sorted. Arrays keep their source order.
+- Asset and string-key lookup tolerates case differences and small separator differences (space, hyphen, underscore, slash, backslash). If two names collide after this, the lookup fails as ambiguous. The exact key still works.
+- A `Data/*` name that the running game version lacks is reported as unavailable. A name outside `Data/` is reported separately.
+- Load failures, unsupported key types, unsafe or oversized records and mismatched requests return problems.
+- Pages default to 50 entries and accept 1-100. Offsets are non-negative. There is no full dump.
 
 ## Inspect active map structure
 
-The `map` subcommands inspect the canonical map assets visible through SMAPI's active content pipeline in the same exact, load-confirmed `single` review. They do not read through the normal `Mods` directory, export source XNBs, return a tile matrix, or mutate a map.
+The `map` subcommands inspect map assets through SMAPI's active content pipeline in a load-confirmed `single` review. They do not return a whole tile matrix.
 
 ```powershell
 & $sdvkit project review map assets --offset 0 --limit 100 --topology single --json
@@ -43,15 +50,21 @@ The `map` subcommands inspect the canonical map assets visible through SMAPI's a
 & $sdvkit project review map property "Maps/Town" map "Outdoors" --topology single --json
 ```
 
-Run `& $sdvkit project review map --help` for the exact layer, direct-tile, and tile-index property forms. Supply only property names and coordinates known to exist in the selected map; SDVKit deliberately does not guess them, and an absent selection returns a machine-checkable `blocked` result. If a map, layer, or property operand starts with `-` or has the same spelling as an option, put every CLI option before the `--` end-of-options marker. Every following token is then treated as an operand.
+Run `& $sdvkit project review map --help` for the layer, direct-tile and tile-index property forms. Pass only property names and coordinates that exist in the map. SDVKit does not guess them. A missing selection returns a `blocked` result.
 
-`assets` independently scans the installed `Content/Maps` XNB candidates without following reparse points, excludes locale siblings, and classifies each pipeline result as a supported xTile map, a known non-map candidate, or an explicit gap. Unsafe physical candidate names are represented only by deterministic `invalid-map-asset-NNNN` labels and are never echoed into the report. This inventory describes physical game candidates only; an exact canonical `Maps/*` name introduced by a loaded mod can still be inspected through SMAPI's active content pipeline. Require `coverage.complete=true` before claiming complete physical-inventory support. A canonical name unavailable through that pipeline is reported separately from a name outside the namespace; load failures, normalized identity collisions, malformed warps, unsafe shapes, and oversized structures fail closed.
+- `assets` lists the map files found in the installed `Content/Maps` folder, without locale copies. Each is a supported xTile map, a known non-map, or a gap. Require `coverage.complete=true` before you claim complete coverage.
+- This inventory lists game files only. A `Maps/*` name that a loaded mod adds can still be inspected by name.
+- A map name the pipeline cannot provide is reported separately from a name outside `Maps/`. Load failures, name collisions, malformed warps, unsafe shapes and oversized structures return problems.
+- List commands are paged in a stable order. `get`, `layer`, `tile` and `property` return one selection.
+- Warps distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`).
+- `tile` reports an empty, static or animated tile, with frame references and property counts.
+- `property` keeps the value's JSON type. It needs a scope: map, layer, direct tile or tile index. A property on an animated tile index also needs its zero-based `--frame`. Direct-tile and tile-index properties stay separate.
 
-List operations are paged from stable collection order, while `get`, `layer`, `tile`, and `property` return one bounded selection. Warp entries distinguish general `Warp` routes (`playerAndNpc`) from NPC-only `NPCWarp` routes (`npc`). Tile output identifies an empty, static, or animated tile and returns stable frame references and property counts, never the layer's tile matrix. Exact property reads preserve their JSON type and require an explicit map, layer, direct-tile, or tile-index scope. An animated tile-index property additionally requires its stable zero-based `--frame`; direct and tile-index properties are never merged. The [single-review MCP adapters](mcp.md#maps-and-textures) reuse these selections and limits.
+The [single-review MCP adapters](mcp.md#maps-and-textures) use the same selections and limits.
 
 ## Inspect canonical textures safely
 
-During that same exact, target-load-confirmed `single` review, the `texture` subcommands measure the non-localized `Content/**/*.xnb` population. `assets` classifies the physical XNB root TypeReader without loading its object graph: an exact built-in `Texture2DReader` is a texture, a narrow set of built-in Stardew data, collection, map, font, and effect readers are known non-textures, and every malformed, custom, or unknown reader is a gap. It pages only the identities classified as textures while its coverage object records all candidates, textures, non-textures, and classification gaps.
+The `texture` subcommands work in the same load-confirmed `single` review. They cover the non-localized `Content/**/*.xnb` files.
 
 ```powershell
 & $sdvkit project review texture assets --offset 0 --limit 100 --topology single --json
@@ -59,32 +72,48 @@ During that same exact, target-load-confirmed `single` review, the `texture` sub
 & $sdvkit project review texture preview "LooseSprites/Cursors" --topology single --json
 ```
 
-The physical inventory bounds total traversed entries as well as candidate count, never follows reparse points, and uses SMAPI's parsed locale identity to exclude localized siblings without guessing from a filename regex. Classification reads at most the first 32 KiB output frame of each XNB through the already-loaded MonoGame decoder, with a 64 MiB aggregate input budget; it never instantiates or caches the asset. If an exact asset operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker; every following token is then an operand.
+- `assets` classifies each file by its XNB reader without loading the asset. The built-in `Texture2DReader` means texture. A short list of built-in data, collection, map, font and effect readers means non-texture. Any malformed, custom or unknown reader is a gap. Pages list only textures. The coverage object counts all candidates, textures, non-textures and gaps.
+- `get` loads one texture through the active pipeline. It returns dimensions, runtime format, mip level count, game versions and availability. Case and separator differences are tolerated when the name stays unambiguous. The result names the game's spelling of the asset.
+- Provenance: SMAPI's public API does not reliably say which mod loaded or edited a final texture. The typed provenance object therefore reports `final-post-pipeline` and marks provider details unavailable. A changed size or format can still prove that your fixture replaced a texture, without naming the mod.
+- `preview` writes one diagnostic PNG of one texture. It requires the RGBA8 `Color` runtime format. It rejects sources wider or taller than 8192, sources above 16,777,216 pixels and invalid metadata. Other formats still work with `get`, but preview fails.
+- A preview keeps the aspect ratio, never upscales and uses nearest-neighbor sampling. It is at most 512x512 and 2 MiB. The response holds the PNG path relative to `.sdvkit/lab/single/runtime`, the output size, the byte count and the SHA-256. The PNG stays below the ignored `.sdvkit` folder as review evidence. The game's cached texture is not changed or disposed.
+- Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched or unsafe requests return problems.
 
-`get` loads only the selected canonical texture through the active content pipeline and returns its dimensions, runtime format, mip level count, running game versions, and availability. Exact reads accept an unambiguous case/separator-normalized token, return the canonical physical identity, and fail closed if multiple candidates collide after normalization. The supported public SMAPI API does not expose a reliable per-mod loader/editor chain for an arbitrary final texture, so the typed provenance object reports `final-post-pipeline` and explicitly marks detailed provider provenance unavailable. A changed final dimension or format can still prove a deliberately replaced live fixture without inventing which mod performed the edit.
-
-`preview` reads back only that one selected texture after requiring the RGBA8 `Color` runtime format and rejecting source dimensions above 8192, source populations above 16,777,216 pixels, or invalid metadata. Unsupported compressed or differently packed formats remain metadata-readable through `get` but fail closed for preview instead of interpreting their bytes as RGBA. A supported preview preserves aspect ratio, never upscales, uses nearest-neighbor sampling, and writes at most one 512x512 diagnostic PNG with a 2 MiB encoded limit. The response contains only its GUID-derived path relative to `.sdvkit/lab/single/runtime`, output dimensions, byte count, and SHA-256; the PNG itself remains below ignored `.sdvkit` as review evidence. The cached game texture is not mutated or disposed.
-
-Every response and preview target is create-new, regular-file and reparse checked, request-bound, size bounded, and never reused. Unknown, colliding, non-texture, unclassified, oversized, stale, mismatched, or unsafe requests fail closed. The [MCP preview](mcp.md#maps-and-textures) returns the checked diagnostic PNG as image content alongside metadata. There is no bulk preview, raw-pixel response, crop API, source-XNB export, texture mutation, or network-role variant.
+The [MCP preview](mcp.md#maps-and-textures) returns the checked PNG as image content with its metadata. There is no bulk preview, raw-pixel response, crop, source export, texture change or network-role variant.
 
 ## Inspect active audio metadata
 
-An exact active `single` review can inventory the bounded audio identities visible through the final `Data/AudioChanges` and `Data/JukeboxTracks` assets, or probe one exact cue through Stardew's public soundbank API. Every request reads the current final asset state through SMAPI's active content pipeline, so normal SMAPI cache and invalidation behavior still applies and no audio file is read directly.
+In a `single` review, the `audio` subcommands list the audio IDs in the final `Data/AudioChanges` and `Data/JukeboxTracks` assets. They can also probe one cue through Stardew's public soundbank API. Each request reads the current assets through SMAPI's content pipeline, so normal SMAPI caching applies. No audio file is read directly.
 
 ```powershell
 & $sdvkit project review audio cues --offset 0 --limit 100 --topology single --json
 & $sdvkit project review audio cue "maintheme" --topology single --json
 ```
 
-`cues` returns stable ordinal pages from the union of current `AudioCueData.Id` values, jukebox track keys, and effective jukebox alternative-unlock IDs. The `Data/AudioChanges` dictionary key is only the modification key and is never reported as a playable cue; if multiple entries declare the same exact `Id`, the later final-pipeline entry wins just as Stardew's soundbank update does. Source categories and jukebox relationships remain distinct: an `alternativeUnlock` reference means only that hearing the old ID can unlock a jukebox entry, never that the ID is a playable soundbank alias. Alternative IDs are matched globally with ordinal-ignore-case semantics, and a later track replaces an earlier mapping. An alternative which matches exactly one playable data or primary-track identity case-insensitively annotates that canonical identity instead of inventing a second cue; multiple playable matches fail closed, while an unmatched alternative keeps the later effective spelling. Coverage's `jukeboxAlternativeReferences` still counts every bounded raw source reference, while each returned alternative identity has only its one effective relation. Each returned identity is probed without playback and reports only current soundbank existence, definition availability and variant counts, plus the bounded category, stream, loop, and reverb fields for a current `AudioChanges` entry. A null/omitted category is reported as Stardew's effective `Default`, while an explicitly empty or otherwise unsafe category fails closed; an unspecified file list and an explicitly empty file list remain distinct as `null` and `0` data-variant counts.
+`cues` pages through these IDs in a stable order:
 
-The public soundbank API can check an exact cue but cannot enumerate the built-in XACT cue bank. Coverage therefore reports `builtInCueCount: null` and `builtInCueInventoryStatus: "unavailableByPublicApi"`; an exact built-in probe does not expand or imply a complete built-in inventory. `dataDefined` describes the current post-pipeline `AudioChanges` entry, while `sessionResident` describes the current soundbank. Those values intentionally remain independent because Stardew keeps an applied audio override resident for the game session after its Data entry is removed.
+- each current `AudioCueData.Id`,
+- each jukebox track key,
+- each effective jukebox alternative-unlock ID.
 
-Cue IDs are case-sensitive. If a cue operand starts with `-` or matches an option name, put every CLI option before the `--` end-of-options marker. Known data-derived identities can remain explicit through `sessionResident: false` and nullable definition fields. Unknown, case-mismatched, non-exact ambiguous, malformed, oversized, unsafe-ID, dummy-bank, disposed-bank, stale-response, and unsafe-response cases fail closed. Results never expose modification keys, audio file paths, `CustomFields`, raw banks, PCM or wave data; they never play, record, mutate, or bulk-export audio. Pages default to 50 identities, accept limits of 1-100, and reuse the exact owned-review transport and cleanup boundary. The [single-review MCP adapters](mcp.md#audio-and-observed-mod-assets) preserve those selections, fields and no-play/no-export boundary.
+How the IDs are reported:
+
+- The `Data/AudioChanges` dictionary key is only an edit key. It is not reported as a cue. If several entries declare the same `Id`, the later one wins, as in Stardew's soundbank.
+- An `alternativeUnlock` reference only means that hearing the old ID can unlock a jukebox entry. It does not make the ID a playable alias.
+- Alternative IDs match ignoring case, and a later track replaces an earlier mapping. If an alternative matches exactly one playable ID, it annotates that ID instead of adding a second cue. Several matches fail. An unmatched alternative keeps the later spelling.
+- Coverage's `jukeboxAlternativeReferences` counts every raw source reference. Each returned alternative ID has one effective relation.
+- Each ID is probed without playback. The result reports whether the soundbank has it, whether its definition is available and its variant counts. For a current `AudioChanges` entry it adds category, stream, loop and reverb.
+- A missing category is reported as Stardew's effective `Default`. An empty or unsafe category fails. An unspecified file list reports `null` data variants; an empty file list reports `0`.
+
+The public soundbank API can check one cue but cannot list the built-in XACT cue bank. Coverage therefore reports `builtInCueCount: null` and `builtInCueInventoryStatus: "unavailableByPublicApi"`. A built-in probe does not imply a complete inventory.
+
+`dataDefined` describes the current `AudioChanges` entry. `sessionResident` describes the current soundbank. They can differ: Stardew keeps an applied audio override for the whole session after its Data entry is removed. A data-derived ID can show `sessionResident: false` with null definition fields.
+
+Cue IDs are case-sensitive. Unknown, case-mismatched, ambiguous, malformed, oversized or unsafe IDs fail, as do dummy or disposed soundbanks and stale or unsafe responses. Results do not include edit keys, audio file paths, `CustomFields`, raw banks, PCM or wave data. SDVKit never plays, records, changes or exports audio. Pages default to 50 IDs and accept 1-100. The [single-review MCP adapters](mcp.md#audio-and-observed-mod-assets) keep the same selections, fields and no-play, no-export rule.
 
 ## Inspect observed mod-owned asset namespaces
 
-The `mod-assets` subcommands expose a bounded read-only catalogue of conventional `Mods/<owner>/...` asset requests observed after GameSide subscribed in the same exact, target-load-confirmed `single` review. This is lifecycle evidence, not a filesystem scan or a complete inventory of assets which no loaded mod requested during that interval.
+The `mod-assets` subcommands list `Mods/<owner>/...` asset requests seen since GameSide subscribed in a load-confirmed `single` review. This is a record of what loaded mods requested. It is not a file scan, and it misses assets that no mod requested in that time.
 
 ```powershell
 & $sdvkit project review mod-assets assets --offset 0 --limit 100 --topology single --json
@@ -92,8 +121,26 @@ The `mod-assets` subcommands expose a bounded read-only catalogue of conventiona
 & $sdvkit project review mod-assets get "Mods/Example.Mod/Words" "Greeting" --topology single --json
 ```
 
-`assets` reports the observed runtime type, resolved namespace-owner identity when it matches one loaded mod ID, supported adapter shape, request and ready counts, lifecycle generation, and whether the current generation is requested, ready, invalidated, or unavailable. SMAPI identity casing and slash direction are treated as equivalent and consolidated, while stable hyphen/underscore name collisions and multiple requested runtime types stay visible and fail closed for exact reads. Coverage is complete only when no conventional observed request was dropped by a malformed identity or the 2048-entry catalogue bound. Detailed loader/editor provider attribution remains explicitly unavailable because the supported public SMAPI API does not reliably expose it for an arbitrary final asset.
+- `assets` reports, per asset:
+  - the observed runtime type and the supported shape,
+  - the owning mod, when the namespace matches one loaded mod ID,
+  - request and ready counts,
+  - the lifecycle generation and its state: requested, ready, invalidated or unavailable.
+- Case and slash direction differences are merged. Hyphen/underscore name collisions and assets requested with several runtime types stay visible, and exact reads of them fail.
+- Coverage is complete only when no request was dropped for a malformed name or the 2048-entry limit.
+- Provider attribution is unavailable, because SMAPI's public API does not reliably expose which mod loaded or edited a final asset.
+- `keys` and `get` read one already-observed asset. They support six shapes: string-to-string, string-to-integer, integer-to-string and integer-to-integer dictionaries, ordered string lists, and one string singleton. Unsupported entries appear in `assets` with `shape: null`, and key/value reads reject them.
+- Dictionary keys are sorted ordinally. List keys are zero-based indexes. The singleton key is `singleton`.
+- Pages default to 50 and accept 1-100. `get` takes no paging and returns one string or 32-bit integer.
+- Asset operands are `Mods/<owner>/...` paths. Asset case and separators are tolerated when unambiguous. String keys match exactly and are capped at 480 UTF-16 code units. Asset operands and string keys must be well-formed text.
+- Unknown, removed, unsafe, colliding, type-changing, unsupported, stale or mismatched requests return problems.
 
-`keys` and `get` load only one already-observed exact asset through SMAPI's active content pipeline and only through six reviewed adapters: string-to-string, string-to-integer, integer-to-string, and integer-to-integer dictionaries, ordered string lists, and one string singleton. Dictionary keys are ordinal-sorted, list keys are zero-based indexes, and the singleton key is `singleton`. Pages default to 50 with limits from 1 through 100; `get` accepts no pagination and returns only one primitive string or 32-bit integer. Asset operands stay canonical `Mods/<owner>/...` paths, keys are capped at 480 UTF-16 code units, and both require well-formed text. If an asset or key resembles an option, put every CLI option before `--`; all following tokens are operands.
+The [single-review MCP adapters](mcp.md#audio-and-observed-mod-assets) use the same response checks and coverage rules. There is no reflection, unknown-type serialization, bulk export, change, normal-`Mods` scan or network-role variant.
 
-Every response uses a request-bound create-new regular file below the ignored review runtime, with a bounded exact JSON shape and no reused or foreign temporary-file cleanup. Unknown, removed, unsafe, colliding, type-changing, unsupported, stale, or mismatched requests fail closed. The observed catalogue can retain unsupported entries with `shape: null`, while exact key/value reads reject them. Asset casing and separators normalize only when the selection stays unambiguous; string keys remain ordinal and exact. The [single-review MCP adapters](mcp.md#audio-and-observed-mod-assets) reuse the same service response validation and observed-coverage semantics. There is no arbitrary reflection, unknown-type serialization, bulk export, mutation, normal-`Mods` scan, or network-role variant.
+## Reference details
+
+- Every request reuses the review's existing lock, process, staging, target-load, console-input and cleanup checks.
+- Data: `--role` and `--screen` reads check the client binding. The SMAPI Data pipeline is shared by the whole process; SDVKit does not fake a per-player cache. Asset tokens, key tokens, one record and the whole response each have a size limit. There is no new public RPC and no generic reflection.
+- Maps: the `Content/Maps` scan does not follow reparse points. Unsafe file names appear only as `invalid-map-asset-NNNN` labels and are not echoed.
+- Textures: the scan limits both traversed entries and candidates. It does not follow reparse points. It drops localized copies by SMAPI's parsed locale, not a filename pattern. Classification reads at most the first 32 KiB output frame of each XNB through the loaded MonoGame decoder, within a 64 MiB total input budget. It does not create or cache the asset.
+- Textures and mod assets: each response file and preview file is created new below the ignored review runtime. It is checked as a regular file without reparse points, bound to its request, size-limited and not reused. SDVKit does not clean up temporary files it did not create.

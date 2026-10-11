@@ -92,7 +92,7 @@ Task skills live in `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex
 | `sdv-diagnose` | find out why a mod misbehaves: logs, Data, maps, textures, CP patches, saves |
 | `sdv-project-smoke` | run the automated load-and-tick smoke test for a C# mod |
 
-`KNOWLEDGEBASE.md`, when present, collects SMAPI 4 and Stardew 1.6 pitfalls.
+`KNOWLEDGEBASE.md` collects SMAPI 4, Stardew 1.6 and Content Patcher pitfalls that build cleanly and then misbehave, each with its source. Read the matching section before you touch item IDs, assets, events, Harmony, multiplayer, translations, CP patches or GMCM.
 
 ## MCP
 

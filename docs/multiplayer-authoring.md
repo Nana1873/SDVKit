@@ -1,10 +1,16 @@
 # Author and prove a per-player multiplayer mod
 
-> Verified for issue #196 with one local host and one farmhand in network-2, plus two owned screens in one local split-screen process. The steps below reproduce the accepted artifacts and capability-specific gates.
+> Verified for issue #196. The steps below reproduce the accepted artifacts and gates.
 
-This original SMAPI mod gives Stone to the current farmer on F7 and displays that farmer's inventory, persisted modData, and local inventory-event state on F8. The deliberate failure collapses both players into Game1.MasterPlayer.
+This original SMAPI mod gives Stone to the current farmer on F7. On F8 it shows that farmer's inventory, persisted `modData` and local inventory-event state. The deliberate bug collapses both players into `Game1.MasterPlayer`.
 
-The corrected authority boundary is exact: the host validates and authorizes a farmhand request; the owning client mutates its own native backpack and writes its own Farmer.modData; the client reports a correlated result for host validation. The host does **not** independently measure or write remote inventory.
+The fix splits authority this way:
+
+1. The host validates and authorizes a farmhand's request.
+2. The farmhand's own client adds Stone to its own backpack and writes its own `Farmer.modData`.
+3. The client reports a correlated result, which the host validates.
+
+The host does **not** measure or write a remote player's inventory.
 
 | Gate | State |
 | --- | --- |
@@ -16,13 +22,13 @@ The corrected authority boundary is exact: the host validates and authorizes a f
 | Corrected-probe network chest acceptance | Verified |
 | Local split-screen state, replacement, persistence, chest, and cleanup | Verified |
 
-This covers one local host and one farmhand in network-2, and two owned screens in one single `--test-save` process. It does not prove arbitrary or internet multiplayer.
+This covers one local host with one farmhand in `network-2`, and two screens in one `single --test-save` process. It does not prove other or internet multiplayer setups.
 
 ## Reproduce the source and packages
 
-Use project-local paths and keep generated files under the lab's ignored .sdvkit directory. Never use a normal save or normal/mod-manager-owned Mods directory.
+Use project-local paths. Keep generated files below the lab's ignored `.sdvkit` folder. Never use a normal save or your normal or mod-manager `Mods` folder.
 
-~~~powershell
+```powershell
 $sdvkit = 'sdvkit'
 $gamePath = '<Stardew Valley directory>'
 $lab = '<SDVKit lab root>'
@@ -33,17 +39,13 @@ $probe = Join-Path $work 'probe'
 $evidence = Join-Path $work 'evidence'
 New-Item -ItemType Directory -Force $broken,$fixed,$probe,$evidence | Out-Null
 Set-Location -LiteralPath $lab
-~~~
+```
 
-Every `project review mcp serve` line below is a separate long-running STDIO
-server/client session; initialize it as described in [Native MCP client
-setup](mcp.md#client-configuration). Run review lifecycle commands in a separate
-PowerShell window whose current directory is `$lab`. Do not paste an MCP server
-and the later lifecycle commands into one blocking terminal.
+Each `project review mcp serve` line below is its own long-running STDIO server. Connect a client as in [Native MCP client setup](mcp.md#client-configuration). Run the review lifecycle commands in a separate PowerShell window whose current folder is `$lab`. Do not paste an MCP server and later lifecycle commands into one blocking terminal.
 
-Copy Appendix A into broken, Appendix B into fixed, and Appendix C into probe. The target variants share a unique ID and must not be staged together.
+Copy Appendix A into `broken`, Appendix B into `fixed` and Appendix C into `probe`. The broken and fixed mods share one unique ID, so never stage them together.
 
-~~~powershell
+```powershell
 & $sdvkit project check $broken --json | Tee-Object (Join-Path $evidence 'broken-check.json')
 & $sdvkit project build $broken --project PerPlayerInventoryProof.csproj --game-path $gamePath --json | Tee-Object (Join-Path $evidence 'broken-build.json')
 & $sdvkit project package $broken --project PerPlayerInventoryProof.csproj --game-path $gamePath --json | Tee-Object (Join-Path $evidence 'broken-package.json')
@@ -96,172 +98,220 @@ Get-FileHash -Algorithm SHA256 -LiteralPath @(
     (Join-Path $probeReady 'manifest.json'),
     (Join-Path $probeReady 'PerPlayerProofChestProbe.dll')) |
     ConvertTo-Json | Set-Content (Join-Path $evidence 'ready-artifact-hashes.json')
-~~~
+```
 
-Require exit 0 for every check/build/package, one selected project, one safe top-level mod directory per ZIP, expected manifest/DLL entries, and no source, secrets, proprietary assets, or machine-local paths. Record complete archive entries and independently calculate SHA-256. Resolve each archive from its current JSON report, extract it into a distinct fresh ignored directory, and select the extracted ready target rather than mutable source output.
+Check the results:
 
-The accepted fixed-v4 source, DLL, and exact two-entry ZIP had SHA-256 `62239739d868e1ad60d77f05f00e613f3abd3a5d358bd7133c24a1cebd2e8226`, `d09d2e8072b5f27cb73d67b488d28be2977984c94fbde13caa72da501ad47b79`, and `9e3ca8e0e5912c4a28f5483e31ff7af15b26a8ee5a8197f02dde9fdf351ce568` respectively. The accepted corrected-probe v3 source, DLL, and exact two-entry ZIP had SHA-256 `a01826ef4e52e41c1f43a27137addea82d1c265e01fd850dba07513e661ec71e`, `0070994589090b6a861a9f0b58b2c2de6f1234bbfa289ac523d6f967a0342243`, and `ce592229c6d07659d24398d530377d7b065fbbce0247cc3c2f2cf76687b16e17` respectively. Preserve these as provenance for the accepted artifacts. A manually reconstructed appendix copy can differ byte-for-byte through newline or encoding changes, so hash the files actually built and do not require a reconstructed copy to match those provenance hashes.
+- Every check, build and package exits `0` and selects one project.
+- Each ZIP holds one safe top-level mod folder with the expected manifest and DLL.
+- No ZIP holds source, secrets, proprietary assets or machine-local paths.
+- Record all archive entries and compute SHA-256 yourself.
+- Resolve each archive from its current JSON report. Extract it into its own fresh ignored folder. Review that extracted copy, not the mutable build output.
 
-The acceptance used separate bounded runs; do not combine their identities or infer that one save supplied every result:
-
-| Evidence slice | Companion | Accepted result |
-| --- | --- | --- |
-| Network fixed-v4 state and persistence | Original guarded probe candidate | Host 1/farmhand 2; farmhand leave/rejoin with session rotation and stale-client rejection; explicit save and new-process reload |
-| Local fixed-v4 state and persistence | Probe v2 | Host Stone 1 / local farmhand Stone 2 on host screen 0; original screen 1 removed, replacement screen 2 freshly bound; explicit save and new-process reload |
-| Fresh network and local chest observation | Probe v3 | Exact selected clients each saw backpack Stone 0 and chest Stone 2 without transfer; the fresh local farmhand ID was `-3969011337315626278`, distinct from the persistence run's farmer `2954633391945246945` |
-
-`SaveLoaded` initializes the sample's displayed event fields. Matching event values after reload prove restored display state, not a fresh `InventoryChanged` event after restart.
+Hashes of the accepted artifacts are in [Reference details](#reference-details). A copy you rebuild from the appendices can differ through newline or encoding changes. Hash what you built; do not require it to match those hashes.
 
 ## Preserve the deliberate failure
 
-Run Appendix A first with its frozen ready target and the separately frozen probe companion:
+Run Appendix A first, with its frozen ready copy and the frozen probe companion:
 
-~~~powershell
+```powershell
 & $sdvkit project review start $brokenReady --game-path $gamePath --topology network-2 --companion $probeReady --json
-~~~
+```
 
-Accepted observation: baseline host 0/farmhand 0; host F7 made 1/0; farmhand F7 made 2/0. The host warning stated that the farmhand request was applied to the master. Both F8 dialogs showed the host farmer and Stone 2. Stop/reset before selecting Appendix B.
+Accepted observation:
+
+- Baseline: host 0, farmhand 0.
+- Host F7: host 1, farmhand 0.
+- Farmhand F7: host 2, farmhand 0. The host logged a warning that the farmhand's request went to the master.
+- Both F8 dialogs showed the host farmer and Stone 2.
+
+Stop and reset before you select Appendix B.
 
 ## Corrected network-2 recipe
 
-~~~powershell
+```powershell
 & $sdvkit project review start $fixedReady --game-path $gamePath --topology network-2 --companion $probeReady --json
 & $sdvkit project review status --topology network-2 --json
-~~~
+```
 
-Require exact loaded host/farmhand roles, target build identity, reciprocal join, and identityVerified=true. Start separate STDIO clients:
+Require loaded host and farmhand roles, the target build identity, a reciprocal join and `identityVerified=true`. Then start one STDIO server per role:
 
-~~~powershell
+```powershell
 & $sdvkit project review mcp serve --topology network-2 --role host --allow-input --allow-fixture-actions
 & $sdvkit project review mcp serve --topology network-2 --role farmhand --allow-input
-~~~
+```
 
-For each, retain initialize and tools/list. Call stardew_runtime_get {}, stardew_review_get {}, stardew_data_record_get for Data/Objects key 390, and stardew_inventory_get {}. Record distinct farmer IDs and baseline counts.
+On each, keep the `initialize` and `tools/list` responses. Call `stardew_runtime_get {}`, `stardew_review_get {}`, `stardew_data_record_get` for `Data/Objects` key `390`, and `stardew_inventory_get {}`. Record the two farmer IDs and baseline counts.
 
-1. Host: stardew_input_press {"button":"F7"} once.
-2. Farmhand: the same call twice, sequentially.
-3. Read both inventories; require host 1 and farmhand 2.
-4. Send F8 to each and call stardew_menu_get {}. Require each dialog farmer/eventFarmer/stone/actual/eventStone to match its own role and count.
-5. Treat screenshots as supplementary; structured inventory and menu data are primary.
+1. Host: call `stardew_input_press {"button":"F7"}` once.
+2. Farmhand: make the same call twice, one after the other.
+3. Read both inventories. Require host 1 and farmhand 2.
+4. Press F8 on each and call `stardew_menu_get {}`. Each dialog's `farmer`, `eventFarmer`, `stone`, `actual` and `eventStone` must match its own role and count.
+5. Screenshots are supplementary. The structured inventory and menu data are the primary evidence.
 
-This proves host-authorized client-local mutation, not host-side remote inventory mutation.
+This proves host-authorized, client-local changes, not host-side changes to a remote inventory.
 
 ### Leave and rejoin
 
-~~~powershell
+```powershell
 & $sdvkit project review network leave --role farmhand --json
 & $sdvkit project review status --topology network-2 --json
-~~~
+```
 
-Require farmhand at title, host still loaded and identity-verified, unchanged host session, and farmhand waiting for rejoin. The old farmhand MCP must reject as stale. On the prebound host client, only stardew_runtime_get may continue during the absence. Host inventory, world, Data, and action calls remain joined-pair-dependent and must fail closed. A new host MCP server must also be refused while the pair is absent.
+Require:
 
-~~~powershell
+- The farmhand is at the title screen and waits to rejoin.
+- The host is still loaded and identity-verified, with an unchanged session.
+- The old farmhand MCP client is rejected as stale.
+- On the host client started earlier, only `stardew_runtime_get` still works. Inventory, world, Data and action calls need the joined pair, so they fail.
+- A new host MCP server is refused while the farmhand is away.
+
+```powershell
 & $sdvkit project review network join --role farmhand --json
 & $sdvkit project review status --topology network-2 --json
-~~~
+```
 
-Require unchanged host session, rotated farmhand session, old farmhand client still stale, and a fresh --role farmhand client reading Stone 2 and the correct persisted dialog.
+Require an unchanged host session and a new farmhand session. The old farmhand client stays stale. A fresh `--role farmhand` client reads Stone 2 and the correct persisted dialog.
 
 ### Save boundaries
 
-The natural overnight observation advanced to day 2 and wrote host 1/farmhand 2 inventory and modData to disk. At capture time a whole-process restart was still pending, so preserve this as observation only.
+The natural overnight save reached day 2 and wrote host 1 / farmhand 2 inventory and `modData` to disk. No process restart had happened yet, so this counts only as an observation.
 
-For restart proof, call stardew_fixture_save {} from the host-authorized MCP client, retain exact save identity/hash, stop without reset, and start again against retained work. Require new host/farmhand process identities, same artifact and farmer IDs, fresh MCP clients, inventory 1/2, and F8 persisted=True with matching actual/event values.
+For restart proof:
 
-The issue196-v4 first-role, grant, distinct-player, departure, explicit-save, restart-role, and restart-persistence JSON evidence establishes this network scope only.
+1. Call `stardew_fixture_save {}` from the host MCP client that has fixture actions.
+2. Keep the save identity and hash.
+3. Stop without reset, then start again against the kept work save.
+4. Require new host and farmhand process identities, the same artifact and farmer IDs, and fresh MCP clients.
+5. Require inventory 1/2 and F8 `persisted=True` with matching actual and event values.
+
+The issue196-v4 JSON evidence for first roles, grants, distinct players, departure, explicit save, restart roles and restart persistence covers this network scope only.
 
 ## Corrected chest probe
 
-The first probe rejected a network farmhand because it compared the local folder name directly with the canonical review save ID. Probe v2 permitted the canonical unique-game-ID fallback only for a network farmhand, but still rejected an exact owned local split-screen client. Appendix C is the accepted probe v3: the fallback is allowed only for a real network farmhand or an exact local split-screen client whose farmer carries the matching fixture marker. Nonempty save, fixture, master-player, launch, role/build, and unique-game-ID guards remain required.
+Appendix C is the accepted probe v3. It allows a fallback save-ID check only for a real network farmhand, or for a local split-screen client whose farmer carries the matching fixture marker. Its save, fixture, master-player, launch, role/build and unique-game-ID guards stay in place. Earlier probe versions are listed under [Failed candidates retained](#failed-candidates-retained).
 
-The accepted gate prepared exactly one marked chest as host, waited for replication, opened it for the selected network farmhand and selected local client, and inspected both complete sides without transfer. Each capture showed the exact selected farmer, an empty held item, all 12 backpack slots, all 36 chest slots, backpack Stone 0, and chest Stone 2. The network farmhand remained unable to call `stardew_fixture_save` even when its MCP server was started with fixture opt-in. Host cleanup removed exactly the marked chest and left inventories unchanged. The initial network open attempt before replication found zero matching chests; it was retained as a failed attempt, and the later success was accepted only after the farmhand's world read observed the exact chest.
+The accepted gate:
 
-If clicking is necessary, first call stardew_menu_get {}, then call stardew_input_click with every required field:
+1. The host prepared one marked chest with Stone 2.
+2. The test waited until the farmhand's world read showed that chest.
+3. The chest was opened for the selected network farmhand and for the selected local client.
+4. Each capture showed the selected farmer, an empty held item, all 12 backpack slots and all 36 chest slots: backpack Stone 0, chest Stone 2. Nothing was transferred.
+5. The network farmhand still could not call `stardew_fixture_save`, even with fixture opt-in on its MCP server.
+6. Host cleanup removed only the marked chest. Inventories were unchanged.
 
-~~~json
+If you must click, call `stardew_menu_get {}` first. Then call `stardew_input_click` with every required field:
+
+```json
 {"x":320,"y":240,"uiRevision":"<fresh revision>","button":"MouseLeft","count":1}
-~~~
+```
 
-Require both topologies, exact fixture/role or screen guards, selected-player menu observation, unchanged inventory, and exact host cleanup before accepting this gate.
+Accept this gate only with both topologies, the fixture and role or screen guards, a menu read from the selected player, unchanged inventories and host cleanup.
 
 ## Local split-screen
 
-The following sequence produced the accepted local split-screen outcome.
+This sequence produced the accepted split-screen result:
 
-~~~powershell
+```powershell
 & $sdvkit project review start $fixedReady --game-path $gamePath --topology single --test-save --companion $probeReady --json
 & $sdvkit project review mcp serve --topology single --allow-fixture-actions
 & $sdvkit project review split-screen join --json
 & $sdvkit project review split-screen status --screen 0 --json
 & $sdvkit project review split-screen status --screen 1 --json
-~~~
+```
 
-The unbound single server above is the fixture-authority client. Before starting the valid screen clients, prove that fixture authority cannot be attached to a screen: the following startup must be refused because --allow-fixture-actions is unsupported with --screen.
+The [unbound](glossary.md#topology-roles-and-screens) server above holds fixture authority. Check that fixture authority cannot attach to a screen. This startup must be refused, because `--allow-fixture-actions` is not supported with `--screen`:
 
-~~~powershell
+```powershell
 & $sdvkit project review mcp serve --topology single --screen <host-screen-id> --allow-fixture-actions
-~~~
+```
 
-Discover actual screen IDs; do not assume the replacement remains screen 1. Start one exact input client per reported screen:
+Read the actual screen IDs from status; a replacement is not always screen 1. Start one input client per reported screen:
 
-~~~powershell
+```powershell
 & $sdvkit project review mcp serve --topology single --screen <host-screen-id> --allow-input
 & $sdvkit project review mcp serve --topology single --screen <farmhand-screen-id> --allow-input
-~~~
+```
 
-Record `screenId`, `farmerId`, and `contextId`. Run host-screen F7 once, second-screen F7 twice, then F8 per screen; require distinct 1/2 inventory and each dialog's own farmer/event values. The accepted run produced host Stone 1 and local farmhand Stone 2.
+Record `screenId`, `farmerId` and `contextId`. Press F7 once on the host screen and twice on the second screen. Then press F8 on each. Require inventories 1 and 2, and each dialog showing its own farmer and event values. The accepted run produced host Stone 1 and local farmhand Stone 2.
 
-The host screen is the authority that removes the second screen. Submit leave from screen 0; do not submit it from the departing farmhand screen:
+The host screen removes the second screen. Send leave from screen 0, not from the departing screen:
 
-~~~powershell
+```powershell
 & $sdvkit project review split-screen leave --screen 0 --json
-~~~
+```
 
-Require the departed screen's MCP client to become stale and inspect the retained host state. Submit the later join through host authority, then read status and select the actual replacement screen reported by the runtime:
+Require the departed screen's MCP client to become stale, and check the host state. Join again through the host screen. Read status and select the replacement screen that the runtime reports:
 
-~~~powershell
+```powershell
 & $sdvkit project review split-screen join --screen 0 --json
 & $sdvkit project review split-screen status --screen 0 --json
 & $sdvkit project review split-screen status --screen <reported-replacement-id> --json
-~~~
+```
 
-Rediscover the replacement farmer/context and start a fresh screen-bound client even if a numeric ID is ever reused.
+Read the replacement's farmer and context again. Start a fresh screen-bound client for it, even if a screen number is reused.
 
-Use authority MCP for `stardew_fixture_save {}`, stop without reset, restart the retained single `--test-save`, rejoin, rediscover, and verify 1/2 plus `persisted=True` with matching actual/event values. Run the corrected chest gate for both screens without transfer, then cleanup, stop, and reset.
+Then prove persistence:
 
-The accepted run removed the original local farmhand screen, proved its old MCP client failed closed, discovered a replacement as screen 2 with a new context, and bound a fresh client to it. An explicit authority save followed by a new-process restart preserved host 1/farmhand 2. Probe v3 then produced the selected local farmhand chest capture described above. Final cleanup stopped and reset both topologies; 41,612 protected normal-save, Mods, and staging entries matched the baseline with zero changed, missing, or added entries.
+1. Call `stardew_fixture_save {}` on the authority MCP client.
+2. Stop without reset and restart the kept `single --test-save` review.
+3. Rejoin and read the screens again.
+4. Require 1/2 and `persisted=True` with matching actual and event values.
+5. Run the chest gate for both screens without transfer. Then clean up, stop and reset.
+
+In the accepted run, the old farmhand client failed and the replacement appeared as screen 2 with a new context. Save and restart kept host 1 / farmhand 2, and probe v3 produced the chest capture above. Final cleanup stopped and reset both topologies. All 41,612 protected normal-save, `Mods` and staging entries matched the baseline, with nothing changed, missing or added.
 
 ## Failed candidates retained
 
-- v1: host 1, farmhand 0, with No inventory room from attempted host-side remote mutation.
-- v2: warning disappeared but farmhand remained 0; silence was not proof.
-- v3: farmhand inventory/event reached 1 but owning-player persisted state was absent.
-- v4: owning client mutation and modData plus correlated host validation; accepted network implementation.
-- Probe v1: failed the network farmhand exact-save guard.
-- Probe v2: fixed the network fallback but failed the owned local split-screen save guard.
-- Probe v3: retained the full ownership guards, added the exact local-farmer fallback, and passed both selected-client chest gates.
-- Overnight: day 2 disk state 1/2; reload proved only in the later explicit-save/new-process gate.
-- A premature local join during loading was refused before dispatch; the later owned join ran once. A duplicate chest prepare was refused because the marked chest already existed.
-- `inputBusy` was rejected before execution. `inputBindingChanged` meant completion was uncertain, so the menu was inspected before any further action; the existing dialogue proved completion and no blind retry was sent.
-- Navigation during the overnight attempt gained Fiber 8 but left Stone 2 unchanged; it was not used as restart proof.
-- The ordinary latest-SMAPI-log file is overwritten by later processes. Only native logs copied before each transition count as native-log evidence; the retained JSONL captures cover the separately recorded structured calls.
+- v1: host 1, farmhand 0, with "No inventory room" from a host-side remote change.
+- v2: the warning disappeared but the farmhand stayed at 0. Silence was not proof.
+- v3: farmhand inventory and event reached 1, but the farmhand's persisted state was missing.
+- v4: the client changes its own inventory and `modData`, and the host validates the correlated result. Accepted network implementation.
+- Probe v1: the network farmhand failed the save-ID guard. It compared the local folder name directly with the review save ID.
+- Probe v2: allowed the unique-game-ID fallback for a network farmhand, but still rejected the local split-screen client.
+- Probe v3: kept all guards, added the local-farmer fallback and passed both chest gates.
+- The first network chest open, before replication, found zero chests. It was kept as a failed attempt.
+- Overnight: day 2 disk state was 1/2. Reload was proved only by the later explicit-save, new-process gate.
+- A local join sent during loading was refused before dispatch. The later join ran once. A second chest prepare was refused because the marked chest already existed.
+- `inputBusy` was rejected before execution. `inputBindingChanged` meant completion was uncertain, so the menu was read before any further action. The open dialogue proved completion, and no blind retry was sent.
+- Moving around during the overnight attempt gained Fiber 8 but left Stone 2 unchanged. It was not used as restart proof.
+- Later processes overwrite the normal latest-SMAPI-log file. Only native logs copied before each transition count as log evidence. The kept JSONL captures cover the structured calls.
 
 ## Cleanup
 
-Close MCP clients first. Stop and reset only after the corresponding persistence evidence is complete. Require exited processes, released mounts, restored fixture baseline, removed network staging and probe chest, and unchanged protected normal saves/Mods.
+Close the MCP clients first. Stop and reset only after the matching persistence evidence is complete. Require exited processes, released mounts, a restored fixture baseline, removed network staging, a removed probe chest and unchanged normal saves and `Mods`.
 
-~~~powershell
+```powershell
 & $sdvkit project review stop --topology network-2 --json
 & $sdvkit project review reset --topology network-2 --json
 & $sdvkit project review stop --topology single --json
 & $sdvkit project review reset --topology single --json
-~~~
+```
+
+## Reference details
+
+`SaveLoaded` sets the sample's displayed event fields. Matching event values after a reload prove restored display state, not a fresh `InventoryChanged` event after restart.
+
+SHA-256 of the accepted artifacts, kept as provenance:
+
+| Artifact | Source | DLL | Two-entry ZIP |
+| --- | --- | --- | --- |
+| Fixed v4 | `62239739d868e1ad60d77f05f00e613f3abd3a5d358bd7133c24a1cebd2e8226` | `d09d2e8072b5f27cb73d67b488d28be2977984c94fbde13caa72da501ad47b79` | `9e3ca8e0e5912c4a28f5483e31ff7af15b26a8ee5a8197f02dde9fdf351ce568` |
+| Probe v3 | `a01826ef4e52e41c1f43a27137addea82d1c265e01fd850dba07513e661ec71e` | `0070994589090b6a861a9f0b58b2c2de6f1234bbfa289ac523d6f967a0342243` | `ce592229c6d07659d24398d530377d7b065fbbce0247cc3c2f2cf76687b16e17` |
+
+The acceptance used separate runs. Do not merge their identities or assume one save produced every result:
+
+| Evidence slice | Companion | Accepted result |
+| --- | --- | --- |
+| Network fixed-v4 state and persistence | Original guarded probe candidate | Host 1/farmhand 2; farmhand leave/rejoin with session rotation and stale-client rejection; explicit save and new-process reload |
+| Local fixed-v4 state and persistence | Probe v2 | Host Stone 1 / local farmhand Stone 2 on host screen 0; original screen 1 removed, replacement screen 2 freshly bound; explicit save and new-process reload |
+| Fresh network and local chest observation | Probe v3 | The selected clients each saw backpack Stone 0 and chest Stone 2 without transfer; the fresh local farmhand ID was `-3969011337315626278`, distinct from the persistence run's farmer `2954633391945246945` |
 
 ## Appendix A: complete broken target
 
 PerPlayerInventoryProof.csproj:
 
-~~~xml
+```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -278,11 +328,11 @@ PerPlayerInventoryProof.csproj:
   </ItemGroup>
 </Project>
 
-~~~
+```
 
 manifest.json:
 
-~~~json
+```json
 {
   "Name": "Per-Player Inventory Proof (Broken)",
   "Author": "SDVKitAcceptance",
@@ -294,11 +344,11 @@ manifest.json:
   "UpdateKeys": []
 }
 
-~~~
+```
 
 ModEntry.cs:
 
-~~~csharp
+```csharp
 using System.Globalization;
 using System.Linq;
 using StardewModdingAPI;
@@ -440,13 +490,13 @@ internal sealed class ModEntry : Mod
     }
 }
 
-~~~
+```
 
 ## Appendix B: complete corrected target
 
 PerPlayerInventoryProof.csproj:
 
-~~~xml
+```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -463,11 +513,11 @@ PerPlayerInventoryProof.csproj:
   </ItemGroup>
 </Project>
 
-~~~
+```
 
 manifest.json:
 
-~~~json
+```json
 {
   "Name": "Per-Player Inventory Proof",
   "Author": "SDVKitAcceptance",
@@ -479,11 +529,11 @@ manifest.json:
   "UpdateKeys": []
 }
 
-~~~
+```
 
 ModEntry.cs:
 
-~~~csharp
+```csharp
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -763,13 +813,13 @@ internal sealed class ModEntry : Mod
     private readonly record struct PendingGrant(string RequestId, int ExpectedCount);
 }
 
-~~~
+```
 
 ## Appendix C: complete corrected probe
 
 PerPlayerProofChestProbe.csproj:
 
-~~~xml
+```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -786,11 +836,11 @@ PerPlayerProofChestProbe.csproj:
   </ItemGroup>
 </Project>
 
-~~~
+```
 
 manifest.json:
 
-~~~json
+```json
 {
   "Name": "Per-Player Proof Chest Probe",
   "Author": "SDVKitAcceptance",
@@ -802,11 +852,11 @@ manifest.json:
   "UpdateKeys": []
 }
 
-~~~
+```
 
 ModEntry.cs:
 
-~~~csharp
+```csharp
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -1028,4 +1078,4 @@ internal sealed class ModEntry : Mod
         return Environment.GetEnvironmentVariable(name)?.Trim() ?? string.Empty;
     }
 }
-~~~
+```

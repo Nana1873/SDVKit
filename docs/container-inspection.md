@@ -1,11 +1,6 @@
 # Inspect the selected vanilla chest
 
-Use `project review container --json` or native `stardew_container_get {}` while
-a supported chest menu is already open for the exact selected player in a world-ready owned
-[review](live-review.md). The on-demand read captures the backing chest, both
-inventory sides, and the menu-held item together on Stardew's main thread. It
-does not open a chest, send input, move or sort items, invoke callbacks, scan a
-location, or inspect a save.
+Use `project review container --json` or the MCP tool `stardew_container_get {}` while a supported chest menu is open for the selected player. It needs an [owned](glossary.md#reviews-and-ownership), [world-ready](glossary.md#worlds-and-fixtures) review; see [live review](live-review.md). The read captures the chest, both inventory sides and the menu's held item together on the game's main thread. It does not open a chest, send input, move or sort items, invoke callbacks, scan a location or read a save.
 
 ```powershell
 & $sdvkit project review container --topology single --json
@@ -13,91 +8,54 @@ location, or inspect a save.
 & $sdvkit project review container --topology single --screen 1 --json
 ```
 
-The MCP tool is in every valid single, network-role, or local-screen observation
-profile and needs no input opt-in. It requires the exact selected menu, player,
-location, and chest and never falls back to another player or open menu.
+The MCP tool is available on every single, network-role and local-screen server and needs no opt-in. It reads only the selected player's menu, location and chest. It does not fall back to another player or another open menu.
 
-## Exact supported family
+## Supported chests
 
-This first contract supports only an exact vanilla `ItemGrabMenu` whose source
-is the exact placed `StardewValley.Objects.Chest` referenced by both the menu's
-public `context` and `sourceItem`. The source inventory must be the same native
-inventory returned by that chest for the selected player, and the lower menu
-inventory must be that player's current backpack.
+The menu is a vanilla `ItemGrabMenu` for a placed `StardewValley.Objects.Chest`. Both the menu's `context` and `sourceItem` point to that chest. The menu's upper inventory is that chest's inventory for the selected player. The lower inventory is the player's current backpack.
 
-The chest must be a regular local player chest at its current location/tile:
-vanilla wooden chest `(BC)130` or stone chest `(BC)232`, 36 slots, no child
-menu, fridge, gift box, special chest type, or global inventory ID. Big chests,
-Junimo/shared storage, Mini-Shipping Bins, auto-loaders, fridges, dressers,
-shipping bins, arbitrary mod containers, subclasses, copied lists, remote or
-closed chests, and unplaced chest menus are explicitly unavailable. The read
-never searches for an alternative backing object.
+The chest is a regular player chest at its current location and tile:
+
+- vanilla wooden chest `(BC)130` or stone chest `(BC)232`, with 36 slots;
+- no child menu, fridge, gift box, special chest type or global inventory ID.
+
+Not supported: big chests, Junimo or shared storage, Mini-Shipping Bins, auto-loaders, fridges, dressers, shipping bins, mod containers, subclasses, copied lists, remote or closed chests and unplaced chest menus. The read does not search for another backing object.
 
 ## Identity, revision, and fields
 
 A ready report contains:
 
-- `captureId`, unique to this request;
-- `identityScope`, the active-menu lifetime from bounded menu inspection;
-- `backingIdentity`, an opaque comparison token for the exact native chest
-  reference within that menu lifetime;
-- `selectionIdentity`, derived from the launch, menu lifetime, player,
-  backing identity, location/tile, and supported chest item ID.
-  Closing/reopening the menu, replacing the backing reference, or selecting
-  another placed chest changes it;
-- `containerRevision`, derived from the selection identity plus every exposed
-  player/chest slot and the held item. Replacing an exposed item, changing its
-  stack or quality, or changing either side changes it;
-- `playerId`, `locationName`, `tileX`, `tileY`, and `chestItemId`;
-- explicit `player` and `container` sides, each with `side`, `capacity`, and
-  every zero-based `slot` represented as `empty`, `occupied`, or `unavailable`;
-- `heldItem`, using the same three states independently of either side; and
-- `complete` and the sole current partial limitation
-  `itemDataUnavailable`.
+- `captureId`: unique to this request.
+- `identityScope`: the lifetime of the active menu, from [menu inspection](menu-inspection.md).
+- `backingIdentity`: a token for the native chest reference within that menu lifetime.
+- `selectionIdentity`: changes when you close and reopen the menu, the chest reference is replaced or you select another chest.
+- `containerRevision`: changes when any player or chest slot or the held item changes, including stack or quality.
+- `playerId`, `locationName`, `tileX`, `tileY` and `chestItemId`.
+- `player` and `container` sides, each with `side`, `capacity` and every zero-based `slot` as `empty`, `occupied` or `unavailable`.
+- `heldItem`, with the same three states.
+- `complete`, and the only partial limitation `itemDataUnavailable`.
 
-Occupied slots and held items reuse the [backpack item facts](inventory-inspection.md):
-bounded `qualifiedItemId`, positive `stack`, and nullable non-negative `quality`.
-Invalid or throwing item getters make only that observation unavailable; the
-other slots remain useful. Same-ID stacks with different stack counts or
-quality produce different revisions.
+Occupied slots and held items use the [backpack item facts](inventory-inspection.md): `qualifiedItemId`, positive `stack` and nullable non-negative `quality`. A failing item getter makes only that slot unavailable. Same-ID stacks with different counts or quality produce different revisions.
 
-Each non-empty observation additionally contains opaque `instanceIdentity` and
-`itemRevision` comparison tokens. The instance token changes if the native Item
-reference is replaced, even with identical public facts. For vanilla item types,
-the item revision hashes the installed game's complete base `canStackWith`
-comparison inputs: exact runtime type, maximum stack size, name, optional
-`ColoredObject.color`, optional `Object.orderData`, plus the already exposed
-quality and qualified ID in the enclosing content revision. This distinction is
-based on the installed Stardew 1.6.15 implementation, whose vanilla types do not
-override that method. Items implemented by another assembly are explicit
-`itemDataUnavailable`, because their stacking semantics are not assumed.
-Runtime type, name, and `orderData` are each bounded to 256 characters with no
-control characters before hashing. Exceeding a bound makes that item
-unavailable; values are never truncated. Native null and empty `orderData`
-remain distinct.
+Each non-empty slot also has `instanceIdentity` and `itemRevision` tokens. The instance token changes when the native item is replaced, even with identical facts. The item revision changes when the item's stacking behavior changes. Items from another assembly report `itemDataUnavailable`, because SDVKit does not assume how they stack.
 
-All identities are comparison tokens, never native object handles. Opaque
-continuity fields do not reveal object data and are meaningful only within the
-reported launch/menu lifetime.
-The separate [container transfer](container-transfer.md) action re-resolves the
-exact native menu/chest references and revalidates both fresh tokens immediately
-before dispatch. A prior read by itself never authorizes a transfer.
+All identities are comparison tokens, not object handles. They mean something only within the reported launch and menu lifetime. A read alone does not authorize a [container transfer](container-transfer.md); the transfer revalidates fresh tokens before it acts.
 
-The player side is limited to 144 slots, the supported chest has exactly 36,
-and the response envelope is capped at 96 KiB. Reports must remain within five
-seconds and the same launch, process, target/build, fixture, player, and
-world-ready binding through the final status read. Malformed, stale, oversized,
-ambiguous, unsupported, or out-of-bounds responses are unavailable. Exit `3`
-or MCP `isError=true` means no selected supported chest was established.
+Exit `3` or MCP `isError=true` means no supported chest was found for the selected player.
 
 ## Compare a chest change
 
-1. Confirm the exact owned review and disposable world with `project review status`.
-2. Open a known supported chest through deliberate native game behavior.
-3. Capture container state and retain both identities plus both sides.
-4. Close it and open a different known chest. Capture again and require a new
-   selection identity, the expected location/tile, and independently known contents.
-5. Finish with the owned stop/reset and retain evidence below ignored `.sdvkit/`.
+1. Confirm the review and its test save with `project review status`.
+2. Open a known supported chest in the game.
+3. Read the container and keep both identities and both sides.
+4. Close it and open a different known chest. Read again. Expect a new selection identity, the expected location and tile, and the contents you know.
+5. Finish with stop and reset. Keep evidence below the ignored `.sdvkit/`.
 
-Use [menu inspection](menu-inspection.md) to establish visible menu structure.
-Use [backpack inspection](inventory-inspection.md) when no chest menu is needed.
+Use [menu inspection](menu-inspection.md) for the visible menu structure. Use [backpack inspection](inventory-inspection.md) when no chest menu is needed.
+
+## Reference details
+
+- `selectionIdentity` derives from the launch, menu lifetime, player, backing identity, location, tile and chest item ID. `containerRevision` derives from the selection identity plus every exposed slot and the held item.
+- `itemRevision` hashes the inputs of the game's base `canStackWith` check: runtime type, maximum stack size, name, optional `ColoredObject.color` and optional `Object.orderData`. Quality and qualified ID are already in the content revision. This follows the installed Stardew 1.6.15 code, where vanilla types do not override that method.
+- Runtime type, name and `orderData` are limited to 256 characters without control characters. A longer value makes the item unavailable; values are not truncated. Null and empty `orderData` stay distinct.
+- Limits: at most 144 player slots, exactly 36 chest slots and a 96 KiB response. A report has five seconds to finish. Launch, process, target, build, fixture, player and world-ready state stay the same through the final status read, or the report is unavailable. Malformed, stale, oversized, ambiguous or unsupported responses are unavailable.
