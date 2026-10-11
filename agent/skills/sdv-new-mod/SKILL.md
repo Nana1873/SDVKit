@@ -5,7 +5,7 @@ description: Create a new Stardew Valley mod with SDVKit, either a SMAPI C# mod 
 
 # Create a mod
 
-1. Agree on the mod's name, author, a unique ID in the form `Author.ModName`, and a one-line description. Pick the kind:
+1. Agree on the mod's display name (spaces are fine), author, a unique ID in the form `Author.ModName` (no spaces), a folder name, and a one-line description. Pick the kind:
    - `smapi-mod` for C# code (events, console commands, Harmony, custom logic).
    - `content-pack` for Content Patcher edits (data, images, maps, dialogue) without code.
 2. Put it in `workspaces/<ModName>/` unless the user chose another path. Never overwrite an existing folder.

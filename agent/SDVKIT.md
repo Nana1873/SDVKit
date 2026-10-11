@@ -33,13 +33,27 @@ SDVKit has two halves: a **modding toolkit** (create, check, build, package) and
 .\sdvkit.cmd project review stop --json
 ```
 
+`project build` gives quick compile feedback; `project review start` builds and packages a source mod again by itself in isolation, so a separate build is not required before a review.
+
 `project review start` returns within seconds, before the game is ready. Poll `status` every 5 seconds until all of these hold:
 
 - `lab.gameSide.state` is `active`;
 - `lab.gameSide.projectMod.phase` is `loaded` and `lab.gameSide.projectMod.loadConfirmed` is `true`;
 - with `--test-save` only: `lab.gameSide.testSave.phase` is `passed`.
 
-Loading usually takes 10 to 60 seconds. If `problems` is not empty, or nothing is ready after 3 minutes, stop and report the status instead of retrying.
+Loading usually takes 10 to 60 seconds. If `problems` is not empty, or nothing is ready after 3 minutes, stop and report the status instead of retrying. In PowerShell:
+
+```powershell
+$deadline = (Get-Date).AddMinutes(3)
+do {
+    Start-Sleep -Seconds 5
+    $status = .\sdvkit.cmd project review status --json | ConvertFrom-Json
+    $mod = $status.lab.gameSide.projectMod
+} until (($status.lab.gameSide.state -eq 'active' -and $mod.phase -eq 'loaded' -and $mod.loadConfirmed) -or
+    @($status.problems).Count -gt 0 -or (Get-Date) -gt $deadline)
+```
+
+`lab.gameSide.loadedMods.mods` lists every mod SMAPI loaded, which is further evidence for a load claim. `project review diagnostics --mod <UniqueID> --json` reports the mod's warnings and exceptions in `diagnostics`; an empty list means none were found in the scanned part of the SMAPI log.
 
 A plain review without `--test-save` stays at the title screen: `stardew_runtime_get` reports `worldReady` `false` with a menu open. That is expected. For anything that needs a loaded farm, use `--test-save` (skill `sdv-test-world`); never load other saves.
 
