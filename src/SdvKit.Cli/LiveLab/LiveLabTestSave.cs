@@ -150,16 +150,35 @@ internal sealed partial class LiveLabService
             ? "created"
             : "passed";
         bool retriedInvalidStatus = false;
+        DateTimeOffset? staleSince = null;
         while (_utcNow().ToUniversalTime() <= deadline)
         {
             LiveLabCommandResult result = Status();
             LiveLabReport report = (LiveLabReport)result.Report;
             TestSaveStatusReport? testSave = report.GameSide?.TestSave;
+            bool stale = report.Problems.Count == 1 && report.Problems[0].Code == "gameSideStale";
             // Scenario completion is terminal evidence; Stop still has to confirm clean exit.
-            bool completedWithStaleHeartbeat = report.Problems.Count == 1
-                && report.Problems[0].Code == "gameSideStale"
+            bool completedWithStaleHeartbeat = stale
                 && testSave is { State: "ready", IdentityVerified: true }
                 && string.Equals(testSave.Phase, expectedPhase, StringComparison.Ordinal);
+            // A save load blocks the main thread and pauses the heartbeat. While the exact test save is still on its
+            // way (not terminal), wait a bounded time for the heartbeat to resume instead of failing.
+            if (stale && !completedWithStaleHeartbeat
+                && testSave is { State: "ready", Phase: "waitingForTitle" or "creating" or "loading" or "waiting" })
+            {
+                DateTimeOffset now = _utcNow().ToUniversalTime();
+                staleSince ??= now;
+                if (now - staleSince.Value <= TestSaveStaleLoadGrace)
+                {
+                    _delay(TestSavePollInterval);
+                    continue;
+                }
+            }
+            else if (!stale)
+            {
+                staleSince = null;
+            }
+
             if (result.ExitCode != Success && !completedWithStaleHeartbeat)
             {
                 if (report.Problems.Count == 1
