@@ -134,7 +134,7 @@ This fixture action replaces the bank-search and rod-preparation helpers needed 
 - an outdoor map of at most 512x512;
 - enough empty inventory slots.
 
-It finds the standing position nearest to the player, or to a search start given as `x` and `y`. The position passes the game's farmer collision check and faces natural fishable water two tiles away. Building fish ponds are excluded. It does not clear obstacles or change maps.
+It finds the standing position nearest to the player, or to a search start given as `x` and `y`, with natural fishable water two tiles to its left or right. The position passes the game's farmer collision check and is centered on the bank tile so a minimum-distance side cast lands inside the reported water tile. Vertical banks are excluded because short casts facing down have an unresolved intermittent landing failure (#305); if only vertical banks exist, preparation fails without changing the fixture. Building fish ponds are excluded. It does not clear obstacles or change maps.
 
 An already selected rod is kept, with its bait and tackle. Otherwise a Bamboo Pole is placed in an empty slot and selected. One more empty slot is required for the catch. The player is positioned and faced toward the reported water. No existing inventory item is overwritten.
 

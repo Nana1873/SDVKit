@@ -24,6 +24,31 @@ public sealed class FishingBankSearchTests
         Assert.Equal(new FishingBank(15, 5, 1, 17, 5), FishingBankSearch.Find(20, 10, Water, Stand, 14, 5));
     }
 
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(7, 3)]
+    public void SkipsACloserDownFacingBankForASideCast(int sideBankX, int facing)
+    {
+        // The origin (5,3) can cast down to water, but preparation must use a side bank.
+        FishingBank? bank = FishingBankSearch.Find(10, 10,
+            (x, y) => x == 5 && y == 5,
+            (x, y) => (x == 5 && y == 3) || (x == sideBankX && y == 5),
+            5, 3);
+
+        Assert.Equal(new FishingBank(sideBankX, 5, facing, 5, 5), bank);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(7)]
+    public void OnlyVerticalBanksFindNothing(int bankY)
+    {
+        Assert.Null(FishingBankSearch.Find(10, 10,
+            (x, y) => x == 5 && y == 5,
+            (x, y) => x == 5 && y == bankY,
+            5, bankY));
+    }
+
     [Fact]
     public void SearchStartOutsideTheMapFindsNothing() =>
         Assert.Null(FishingBankSearch.Find(10, 10, (_, _) => true, (_, _) => true, 10, 0));

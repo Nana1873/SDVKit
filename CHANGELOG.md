@@ -14,6 +14,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- Fishing preparation now selects the nearest collision-free bank facing left or right, with natural fishable water at the minimum cast landing tile. It skips vertical banks affected by intermittent short-cast landing failures and leaves the fixture unchanged when no side-facing bank exists (#305).
 - `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
 
 ## [2.0.0] - 2026-10-11

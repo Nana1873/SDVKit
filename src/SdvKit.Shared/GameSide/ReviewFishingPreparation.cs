@@ -8,7 +8,7 @@ internal static class FishingBankSearch
     public const int MaximumDimension = 512;
 
     /// <summary>
-    /// Finds the standing tile closest to the origin from which natural water is two tiles away.
+    /// Finds the standing tile closest to the origin with natural water two tiles to its left or right.
     /// The search grows in square rings around the origin and stops once no closer bank can exist.
     /// </summary>
     public static FishingBank? Find(
@@ -24,7 +24,9 @@ internal static class FishingBankSearch
             return null;
         }
 
-        (int X, int Y, int Facing)[] offsets = [(2, 0, 1), (-2, 0, 3), (0, 2, 2), (0, -2, 0)];
+        // Vertical minimum casts have an unresolved intermittent landing failure (#305).
+        // Do not fall back to them when no side-facing bank exists.
+        (int X, int Y, int Facing)[] offsets = [(2, 0, 1), (-2, 0, 3)];
         FishingBank? best = null;
         long bestDistance = long.MaxValue;
         int maximumRadius = Math.Max(width, height);
