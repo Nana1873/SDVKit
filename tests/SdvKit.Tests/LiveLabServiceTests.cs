@@ -1200,6 +1200,147 @@ public sealed class LiveLabServiceTests
                 StringComparison.Ordinal)));
     }
 
+    [Theory]
+    [InlineData("active", "clean", null)]
+    [InlineData("waiting", "clean", "gameSideStale")]
+    [InlineData("failed", "clean", "gameSideStale")]
+    [InlineData("pending", "clean", "gameSideStale")]
+    [InlineData("unverified", "clean", "gameSideStale")]
+    [InlineData("insufficientTicks", "clean", "gameSideStale")]
+    [InlineData("foreignLaunch", "clean", "gameSideMismatch")]
+    [InlineData("foreignPid", "clean", "gameSideMismatch")]
+    [InlineData("foreignStartTime", "clean", "gameSideMismatch")]
+    [InlineData("foreignFixture", "clean", "gameSideStale")]
+    [InlineData("active", "timedOut", "cleanStopTimedOut")]
+    [InlineData("active", "missing", "cleanStopNotConfirmed")]
+    [InlineData("active", "active", "cleanStopNotConfirmed")]
+    [InlineData("active", "foreignLaunch", "cleanStopNotConfirmed")]
+    [InlineData("active", "foreignPid", "cleanStopNotConfirmed")]
+    [InlineData("active", "foreignStartTime", "cleanStopNotConfirmed")]
+    [InlineData("active", "failed", "testSaveIncomplete")]
+    [InlineData("active", "waiting", "testSaveIncomplete")]
+    [InlineData("active", "pending", "testSaveIncomplete")]
+    [InlineData("active", "unverified", "testSaveIncomplete")]
+    [InlineData("active", "insufficientTicks", "testSaveIncomplete")]
+    [InlineData("active", "foreignFixture", "testSaveIncomplete")]
+    [InlineData("active", "missingScenarioLog", "testSaveScenarioLogMissing")]
+    public void TestSaveWithStaleStatusRequiresVerifiedCompletionAndRequestedCleanStop(
+        string markerCase,
+        string stopCase,
+        string? expectedProblem)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths)
+        {
+            BaselineExists = true,
+            ScenarioLogArchived = stopCase != "missingScenarioLog",
+        };
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(LabProcessStartStatus.Started, Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(stopCase == "timedOut"
+                ? LabProcessWaitStatus.TimedOut
+                : LabProcessWaitStatus.Exited),
+        };
+
+        void PublishMarker(string evidenceCase, string lifecyclePhase)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            LiveLabState markerState = evidenceCase switch
+            {
+                "foreignLaunch" => state with { LaunchId = "22222222222222222222222222222222" },
+                "foreignPid" => state with
+                {
+                    OwnedProcessIdentity = state.OwnedProcessIdentity with { ProcessId = 4243 },
+                },
+                "foreignStartTime" => state with
+                {
+                    OwnedProcessIdentity = state.OwnedProcessIdentity with { StartTimeUtc = StartedAt.AddTicks(1) },
+                },
+                _ => state,
+            };
+            WriteStatusMarker(
+                paths,
+                markerState,
+                lifecyclePhase,
+                pauseWhenOutOfFocus: lifecyclePhase != "active",
+                evidenceCase == "pending" ? null : new TestSaveStatusMarker(
+                    TestSaveContract.SchemaVersion,
+                    launch.Mode,
+                    evidenceCase is "failed" or "waiting" ? evidenceCase : "passed",
+                    evidenceCase == "foreignFixture" ? "cccccccccccccccccccccccccccccccc" : launch.Identity.FixtureId,
+                    launch.Identity.SaveId,
+                    IdentityVerified: evidenceCase != "unverified",
+                    WaitedTicks: evidenceCase == "insufficientTicks" ? 119 : 120,
+                    Message: "simulated scenario result",
+                    launch.ScenarioLogPath),
+                observedAtUtc: StartedAt.AddSeconds(1));
+        }
+
+        var markerWritten = false;
+        process.BeforeInspectReturn = () =>
+        {
+            // CompleteScenario publishes passed but does not exit; CLI Stop requests exit later.
+            Assert.Equal(LabProcessInspectStatus.Running, process.InspectResult.Status);
+            Assert.False(File.Exists(paths.StopRequestPath));
+            if (markerWritten) return;
+            markerWritten = true;
+            PublishMarker(markerCase, "active");
+        };
+        process.BeforeWaitReturn = () =>
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            Assert.Equal(state.OwnedProcessIdentity, process.WaitedIdentity);
+            Assert.Equal(state.LaunchId, File.ReadAllText(paths.StopRequestPath).Trim());
+            if (stopCase == "timedOut") return;
+
+            process.InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited);
+            if (stopCase == "missing")
+            {
+                File.Delete(paths.StatusPath);
+            }
+            else
+            {
+                PublishMarker(stopCase, stopCase == "active" ? "active" : "exiting");
+            }
+        };
+        LiveLabService service = Service(
+            paths, stateStore, new FakeBuilder(), process, Ready(gamePath),
+            testSaveStore: fixtureStore);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        Assert.Equal(1, process.WaitCount);
+        Assert.Equal(0, process.CloseCount);
+        if (expectedProblem is null)
+        {
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("passed", report.State);
+            Assert.Equal(120, report.ObservedTicks);
+            Assert.Empty(report.Problems);
+            Assert.Equal(1, fixtureStore.CompleteCount);
+            Assert.Equal(0, fixtureStore.AbortCount);
+            Assert.Null(stateStore.State);
+        }
+        else
+        {
+            Assert.Equal(3, result.ExitCode);
+            Assert.Equal("failed", report.State);
+            Assert.Null(report.ObservedTicks);
+            Assert.Equal(expectedProblem, report.Problems[0].Code);
+            if (expectedProblem is "cleanStopTimedOut" or "cleanStopNotConfirmed")
+            {
+                Assert.NotNull(stateStore.State);
+            }
+        }
+    }
+
     [Fact]
     public void TestSaveActionRefusesAnExistingLabBeforePreparingAnyFixture()
     {
@@ -1627,6 +1768,8 @@ public sealed class LiveLabServiceTests
 
         public Action? BeforeStartReturn { get; set; }
 
+        public Action? BeforeInspectReturn { get; set; }
+
         public LabProcessStartResult Start(LabProcessStartSpec specification)
         {
             StartCount++;
@@ -1637,6 +1780,7 @@ public sealed class LiveLabServiceTests
 
         public LabProcessInspectResult Inspect(OwnedProcessIdentity expected)
         {
+            BeforeInspectReturn?.Invoke();
             return InspectResult;
         }
 
@@ -1692,9 +1836,11 @@ public sealed class LiveLabServiceTests
 
         public bool ScenarioLogArchived { get; init; } = true;
 
+        public bool BaselineExists { get; init; }
+
         public TestSavePreparation PrepareForStart()
         {
-            string mode = PrepareCount++ == 0
+            string mode = PrepareCount++ == 0 && !BaselineExists
                 ? TestSaveContract.CreateMode
                 : TestSaveContract.ScenarioMode;
             return new TestSavePreparation(new TestSaveLaunchState(

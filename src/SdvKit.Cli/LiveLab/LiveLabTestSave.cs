@@ -155,7 +155,12 @@ internal sealed partial class LiveLabService
             LiveLabCommandResult result = Status();
             LiveLabReport report = (LiveLabReport)result.Report;
             TestSaveStatusReport? testSave = report.GameSide?.TestSave;
-            if (result.ExitCode != Success)
+            // Scenario completion is terminal evidence; Stop still has to confirm clean exit.
+            bool completedWithStaleHeartbeat = report.Problems.Count == 1
+                && report.Problems[0].Code == "gameSideStale"
+                && testSave is { State: "ready", IdentityVerified: true }
+                && string.Equals(testSave.Phase, expectedPhase, StringComparison.Ordinal);
+            if (result.ExitCode != Success && !completedWithStaleHeartbeat)
             {
                 if (report.Problems.Count == 1
                     && string.Equals(

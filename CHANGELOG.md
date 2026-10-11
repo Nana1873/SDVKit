@@ -14,6 +14,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - The local player runtime data has a `position` object with `facing` (`up`, `right`, `down`, `left`), the sub-tile `standingX`/`standingY`, Stardew's grab tile for the action button and the tile a tool would hit (`toolTileX`/`toolTileY`) (#289). It is optional, so status from an older GameSide stays readable.
 - `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
 
+### Fixed
+
+- `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
+
 ## [2.0.0] - 2026-10-11
 
 ### Added

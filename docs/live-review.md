@@ -110,6 +110,8 @@ While all lab roles are stopped, create the test save baseline if it does not ex
 & $sdvkit project review status --topology single --json
 ```
 
+A completed scenario can proceed to the normal clean-stop step even if its active heartbeat is older than five seconds: `lab test-save` requires the exact launch, process and fixture identity, `testSave.phase=passed`, `identityVerified=true` and at least 120 observed ticks. The workflow passes only after clean stop confirms exit and the final scenario result. Stale pending, failed or unverified scenarios still fail; missing or mismatching final markers remain `cleanStopNotConfirmed`, and a stop timeout remains `cleanStopTimedOut`. General `lab status` freshness checks are unchanged.
+
 Before fixture or world commands, require `testSave.state=ready`, `phase=passed`, the expected Save and fixture IDs, and `identityVerified=true`. Reuse an existing verified baseline. Do not recreate it for each read. A plain `single` review without `--test-save` uses its own persistent isolated profile instead.
 
 For a C# host and farmhand review, prepare the same baseline. Start with `--topology network-2`, without `--test-save`. Confirm both roles, the loaded target and build identity, and that each role sees the other joined. Each role has its own isolated profile.
