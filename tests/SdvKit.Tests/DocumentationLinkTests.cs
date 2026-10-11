@@ -60,7 +60,7 @@ public sealed partial class DocumentationLinkTests
             yield return Path.Combine(root, name);
         }
 
-        foreach (string folder in new[] { "docs", "agent" })
+        foreach (string folder in new[] { "docs", "agent", "scripts" })
         {
             foreach (string file in Directory.EnumerateFiles(Path.Combine(root, folder), "*.md", SearchOption.AllDirectories))
             {

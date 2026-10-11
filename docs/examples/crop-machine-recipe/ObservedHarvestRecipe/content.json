@@ -1,0 +1,38 @@
+{
+  "Format": "2.9.0",
+  "Changes": [
+    {
+      "LogName": "Observed strawberry Keg output",
+      "Action": "EditData",
+      "Target": "Data/Machines",
+      "TargetField": [ "(BC)12", "OutputRules" ],
+      "Entries": {
+        "SDVKit.ObservedHarvestRecipe_Strawberry": {
+          "Id": "SDVKit.ObservedHarvestRecipe_Strawberry",
+          "Triggers": [
+            {
+              "Trigger": "ItemPlacedInMachine",
+              "RequiredItemId": "(O)400",
+              "RequiredCount": 1
+            }
+          ],
+          "OutputItem": [
+            {
+              "Id": "SDVKit.ObservedHarvestRecipe_Cola",
+              "ItemId": "(O)167",
+              "MinStack": 2,
+              "MaxStack": 2
+            }
+          ],
+          "MinutesUntilReady": 20
+        }
+      },
+      "MoveEntries": [
+        {
+          "ID": "SDVKit.ObservedHarvestRecipe_Strawberry",
+          "ToPosition": "Top"
+        }
+      ]
+    }
+  ]
+}

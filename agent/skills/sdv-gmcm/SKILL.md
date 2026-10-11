@@ -29,4 +29,4 @@ description: Test a Stardew Valley mod's Generic Mod Config Menu integration in 
 8. For a value that applies on load, stop and start again and check the effect in the new process.
 9. Finish with stop and reset.
 
-References: {{docs}}/gmcm-authoring.md, {{docs}}/gmcm-number-authoring.md, {{docs}}/live-review.md
+References: {{docs}}/test-a-gmcm-option.md, {{docs}}/gmcm-authoring.md, {{docs}}/live-review.md
