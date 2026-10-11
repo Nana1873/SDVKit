@@ -14,8 +14,11 @@ permissions:
 jobs:
   draft:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Find the green main CI run for the tagged commit
         id: ci
@@ -23,8 +26,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $runs = @(gh run list --workflow ci.yml --branch main --event push --commit $env:GITHUB_SHA `
-            --limit 5 --json databaseId,status,conclusion | ConvertFrom-Json)
+          gh release view $env:GITHUB_REF_NAME --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            throw "A release or draft for $env:GITHUB_REF_NAME already exists; delete the draft first to recreate it."
+          }
+          $listed = gh run list --workflow ci.yml --branch main --event push --commit $env:GITHUB_SHA `
+            --limit 5 --json databaseId,status,conclusion
+          if ($LASTEXITCODE -ne 0) { throw 'Could not list CI runs.' }
+          $runs = @($listed | ConvertFrom-Json)
           if ($runs.Count -lt 1) {
             throw "No main CI run exists for $env:GITHUB_SHA. Tag only a commit that main CI has built."
           }
@@ -48,6 +57,9 @@ jobs:
           $version = $env:GITHUB_REF_NAME -replace '^v', ''
           $dist = Join-Path $env:RUNNER_TEMP 'sdvkit-release'
           gh run download $env:RUN_ID --name SDVKit-windows-x64 --dir $dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not download SDVKit-windows-x64 from CI run $env:RUN_ID. It may have expired; attach the retained candidate by hand (docs/releasing.md)."
+          }
           $zip = Join-Path $dist "SDVKit-$version-win-x64.zip"
           $sidecar = "$zip.sha256"
           $files = @(Get-ChildItem -LiteralPath $dist -File -Recurse)
@@ -62,6 +74,7 @@ jobs:
           "version=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "zip=$zip" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "sidecar=$sidecar" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "sha256=$($expected.Split(' ')[0])" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
       - name: Create the draft release
         shell: pwsh
@@ -70,11 +83,15 @@ jobs:
           VERSION: ${{ steps.artifact.outputs.version }}
           ZIP: ${{ steps.artifact.outputs.zip }}
           SIDECAR: ${{ steps.artifact.outputs.sidecar }}
+          SHA256: ${{ steps.artifact.outputs.sha256 }}
           RUN_ID: ${{ steps.ci.outputs.run-id }}
         run: |
           $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           .\scripts\release-notes.ps1 -Version $env:VERSION | Set-Content -LiteralPath $notes -Encoding utf8
-          gh release create $env:GITHUB_REF_NAME $env:ZIP $env:SIDECAR --draft --verify-tag `
+          # A version with a suffix, such as 2.0.0-rc.1, must never become the latest release.
+          $prerelease = @(if ($env:VERSION -match '-') { '--prerelease' })
+          gh release create $env:GITHUB_REF_NAME $env:ZIP $env:SIDECAR --draft --verify-tag @prerelease `
             --title "SDVKit $env:VERSION" --notes-file $notes
-          "Draft release $env:GITHUB_REF_NAME created from main CI run $env:RUN_ID. Publish it manually after the live release checks." |
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "Draft release $env:GITHUB_REF_NAME created from main CI run $env:RUN_ID (ZIP SHA-256 $env:SHA256). Compare it with the accepted candidate, then publish manually after the live release checks." |
             Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY

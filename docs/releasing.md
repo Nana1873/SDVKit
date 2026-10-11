@@ -94,15 +94,15 @@ An externally disturbed desktop observation is inconclusive about isolation; ret
 After every required gate is green, tag the exact accepted green main commit and push the tag:
 
 ```powershell
-git tag v1.0.0 <accepted-main-commit>
+git tag -a v1.0.0 <accepted-main-commit> -m "SDVKit 1.0.0"
 git push origin v1.0.0
 ```
 
-The `Release draft` workflow then finds the successful main CI run for that commit, downloads its unchanged `SDVKit-windows-x64` artifact, checks that the sidecar matches the ZIP and that the ZIP name matches the tag, and attaches both files to a draft release. Its body comes from `scripts/release-notes.ps1`. It never rebuilds. If no green main CI run exists for the commit, it fails instead of creating a draft.
+The `Release draft` workflow then finds the successful main CI run for that commit, downloads its unchanged `SDVKit-windows-x64` artifact, checks that the sidecar matches the ZIP and that the ZIP name matches the tag, and attaches both files to a draft release. Its body comes from `scripts/release-notes.ps1`. A version with a suffix, such as `2.0.0-rc.1`, is marked as a prerelease so it never becomes the latest release. It never rebuilds. It fails instead of creating a draft when no green main CI run exists for the commit, or when a release or draft for the tag already exists.
 
-Before publishing the draft, confirm that its two assets have the same SHA-256 as the accepted candidate recorded in the release issue. Publishing stays a manual step. Preserve established repository release protection and authorization. No rebuild, tag move, or artifact replacement is part of delivery.
+Before publishing the draft, confirm that its two assets have the same SHA-256 as the accepted candidate recorded in the release issue. The workflow's run summary shows the ZIP hash. If they differ, for example because CI was re-run, or if the download failed because the artifact expired after 90 days, do not publish that draft. Delete its assets and attach the retained candidate ZIP and sidecar from `.sdvkit/` by hand, then compare the hashes again. If the retained candidate is missing too, stop and choose a new candidate. Publishing stays a manual step. Preserve established repository release protection and authorization. No rebuild, tag move, or artifact replacement is part of delivery.
 
-Generate the user-facing body from the changelog:
+To preview or edit the user-facing body that the draft uses, generate it locally from the changelog:
 
 ```powershell
 .\scripts\release-notes.ps1 -Version 1.0.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
