@@ -292,6 +292,11 @@ internal static class ProjectReviewFixtureService
                 }
 
                 break;
+            case ReviewFixtureTransportContract.NpcPlaceOperation:
+                tokens.Add(ReviewTransportToken.Encode(query.Value!));
+                tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
+                tokens.Add(query.Y!.Value.ToString(CultureInfo.InvariantCulture));
+                break;
             case ReviewFixtureTransportContract.ItemAddOperation:
                 tokens.Add(ReviewTransportToken.Encode(query.Kind!));
                 tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
@@ -464,6 +469,11 @@ internal static class ProjectReviewFixtureService
                     && none(query, x: true, y: true),
                 "fixtureRequestInvalid",
                 "Fishing preparation accepts the tutorial choice and an optional search start with both x and y."), true),
+            ReviewFixtureTransportContract.NpcPlaceOperation => (Check(
+                ReviewFixtureTransportContract.IsValidNpcName(query.Value) && query.X is >= 0 && query.Y is >= 0
+                    && !query.SkipTutorial && none(query, x: true, y: true, value: true),
+                "fixtureNpcRequestInvalid",
+                "NPC placement requires an internal NPC name and non-negative tile coordinates."), true),
             ReviewFixtureTransportContract.ItemAddOperation => (Check(
                 ReviewFixtureTransportContract.IsValidItemAdd(query.Kind, query.X, query.Y) && !query.SkipTutorial
                     && none(query, kind: true, x: true, y: true),
@@ -639,6 +649,16 @@ internal static class ProjectReviewFixtureService
                 report.Status is not null
                 && report.Status.Buildings is not null
                 && report.Navigation is null
+                && report.Building is null
+                && report.Animal is null
+                && report.Save is null,
+            ReviewFixtureTransportContract.NpcPlaceOperation =>
+                report.Navigation is { } placed
+                && placed.TileX == query.X
+                && placed.TileY == query.Y
+                && ReviewTransportText.IsWellFormedUtf16(placed.LocationId)
+                && placed.LocationId.Length is >= 1 and <= 256
+                && report.Status is null
                 && report.Building is null
                 && report.Animal is null
                 && report.Save is null,

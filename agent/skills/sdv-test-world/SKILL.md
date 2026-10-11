@@ -27,7 +27,7 @@ The test world is an SDVKit-owned save copy. Each review changes a work copy; `r
 
 - `stardew_fixture_farm` and `stardew_fixture_enter` move through natural doors; `stardew_lab_warp` jumps to a permanent location.
 - `stardew_fixture_building_ensure`, `animal_ensure`, `object_ensure` and `object_clear` place SDVKit-owned buildings, animals and objects.
-- `stardew_lab_set_season`, `set_zoom` and `set_window` adjust the rest; `stardew_fixture_fishing_prepare` stands the player at water with a rod; `stardew_fixture_item_add` puts an item (food, a gift, ingredients, a modded item) into an empty backpack slot.
+- `stardew_lab_set_season`, `set_zoom` and `set_window` adjust the rest; `stardew_fixture_fishing_prepare` stands the player at water with a rod; `stardew_fixture_item_add` puts an item (food, a gift, ingredients, a modded item) into an empty backpack slot; `stardew_fixture_npc_place` brings a villager next to the player (find villagers in `stardew_runtime_get` `npcs`).
 - Time, weather, season, objects and fishing need the host or single player.
 
 ## Act on the world

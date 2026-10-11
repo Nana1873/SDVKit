@@ -54,6 +54,7 @@ public sealed class ProjectReviewMcpFixtureTests
                 ProjectReviewMcpFixtureTools.FarmToolName,
                 ProjectReviewMcpFixtureTools.FishingToolName,
                 ProjectReviewMcpFixtureTools.ItemAddToolName,
+                ProjectReviewMcpFixtureTools.NpcPlaceToolName,
                 ProjectReviewMcpFixtureTools.ObjectClearToolName,
                 ProjectReviewMcpFixtureTools.ObjectEnsureToolName,
                 ProjectReviewMcpFixtureTools.SaveToolName,
@@ -101,6 +102,8 @@ public sealed class ProjectReviewMcpFixtureTests
         AssertOutput(ProjectReviewMcpFixtureTools.SetTimeToolName, "setTime", "lab");
         AssertOutput(ProjectReviewMcpFixtureTools.WarpToolName, "warp", "lab");
         AssertOutput(ProjectReviewMcpFixtureTools.ItemAddToolName, "itemAdd", "item");
+        AssertOutput(ProjectReviewMcpFixtureTools.NpcPlaceToolName, "npcPlace", "navigation");
+        Assert.False(Find(ProjectReviewMcpFixtureTools.NpcPlaceToolName).Annotations?.IdempotentHint);
         Assert.False(Find(ProjectReviewMcpFixtureTools.ItemAddToolName).Annotations?.IdempotentHint);
 
         Tool building = Assert.Single(
@@ -599,7 +602,9 @@ public sealed class ProjectReviewMcpFixtureTests
             Status: query.Operation == ReviewFixtureTransportContract.StatusOperation
                 ? new ReviewFixtureStatusReport("Farm", 101, true, false, [])
                 : null,
-            Navigation: query.Operation is ReviewFixtureTransportContract.EnterOperation
+            Navigation: query.Operation == ReviewFixtureTransportContract.NpcPlaceOperation
+                ? new ReviewFixtureNavigationReport("Farm", query.X!.Value, query.Y!.Value, Changed: true)
+                : query.Operation is ReviewFixtureTransportContract.EnterOperation
                 or ReviewFixtureTransportContract.FarmOperation
                     ? new ReviewFixtureNavigationReport(
                         query.Operation == ReviewFixtureTransportContract.FarmOperation
@@ -684,6 +689,50 @@ public sealed class ProjectReviewMcpFixtureTests
             Assert.True(rejected.IsError);
         }
         Assert.Equal(2, sent.Count);
+    }
+
+    [Fact]
+    public async Task NpcPlaceSendsTheNameAndTileAndChecksTheArrival()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+        var sent = new List<ReviewFixtureQuery>();
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            reader,
+            runFixture: (query, _, _) =>
+            {
+                sent.Add(query);
+                return Ready(query, expected);
+            }));
+
+        JsonElement placed = await Call(harness, ProjectReviewMcpFixtureTools.NpcPlaceToolName,
+            ("name", "Lewis"), ("x", 65), ("y", 16));
+        Assert.Equal(65, placed.GetProperty("navigation").GetProperty("tileX").GetInt32());
+        Assert.Equal([new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: "Lewis", X: 65, Y: 16)], sent);
+        foreach (Dictionary<string, object?> invalid in new[]
+        {
+            new Dictionary<string, object?> { ["name"] = "Lewis", ["x"] = 65 },
+            new Dictionary<string, object?> { ["name"] = "", ["x"] = 65, ["y"] = 16 },
+            new Dictionary<string, object?> { ["name"] = "Lewis", ["x"] = -1, ["y"] = 16 },
+            new Dictionary<string, object?> { ["name"] = "Lewis", ["x"] = 65, ["y"] = 16, ["facing"] = "up" },
+        })
+        {
+            CallToolResult rejected = await harness.Client.CallToolAsync(
+                ProjectReviewMcpFixtureTools.NpcPlaceToolName, invalid, cancellationToken: harness.Token);
+            Assert.True(rejected.IsError);
+        }
+        Assert.Single(sent);
+
+        var query = new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: "Lewis", X: 65, Y: 16);
+        ReviewFixtureResponseEnvelope ready = Envelope(query, expected, DateTimeOffset.UtcNow);
+        DateTimeOffset requestedAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        Assert.True(ProjectReviewFixtureService.Matches(ready, ready.RequestId, ready.Binding, query, expected, requestedAt));
+        ReviewFixtureResponseEnvelope elsewhere = ready with
+        {
+            Report = ready.Report with { Navigation = ready.Report.Navigation! with { TileX = 64 } },
+        };
+        Assert.False(ProjectReviewFixtureService.Matches(elsewhere, elsewhere.RequestId, elsewhere.Binding, query, expected, requestedAt));
     }
 
     [Fact]

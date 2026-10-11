@@ -24,6 +24,7 @@ internal static class ProjectReviewMcpFixtureTools
     internal const string ObjectClearToolName = "stardew_fixture_object_clear";
     internal const string FishingToolName = "stardew_fixture_fishing_prepare";
     internal const string ItemAddToolName = "stardew_fixture_item_add";
+    internal const string NpcPlaceToolName = "stardew_fixture_npc_place";
     internal const string SetTimeToolName = "stardew_lab_set_time";
     internal const string SetWeatherToolName = "stardew_lab_set_weather";
     internal const string SetSeasonToolName = "stardew_lab_set_season";
@@ -110,6 +111,19 @@ internal static class ProjectReviewMcpFixtureTools
             "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^\\([^\\s)]+\\)\\S+$" },
             "stack": { "type": "integer", "minimum": 1, "maximum": 999 },
             "quality": { "type": "integer", "enum": [0, 1, 2, 4], "default": 0 }
+          }
+        }
+        """);
+    private static readonly JsonElement NpcPlaceInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "x", "y"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Internal NPC name, as in stardew_runtime_get localPlayer.data.npcs[].name." },
+            "x": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "y": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
           }
         }
         """);
@@ -484,6 +498,16 @@ internal static class ProjectReviewMcpFixtureTools
                 ItemAddInputSchema, CreateOutputSchema(ReviewFixtureTransportContract.ItemAddOperation, "item"),
                 readOnly: false, destructive: false, idempotent: false,
                 TryItemAdd));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, NpcPlaceToolName,
+                ReviewFixtureTransportContract.NpcPlaceOperation,
+                "Test setup: warp one named villager to a free tile in the main player's current location, stop its current path and turn it toward the player. Refuses invisible villagers and temporary locations such as mine levels. The villager can move again at any time; read stardew_runtime_get npcs before acting. Not proof of game behaviour.",
+                NpcPlaceInputSchema, CreateOutputSchema(ReviewFixtureTransportContract.NpcPlaceOperation, "navigation"),
+                readOnly: false, destructive: false, idempotent: false,
+                arguments => HasOnly(arguments, ["name", "x", "y"])
+                    && TryString(arguments, "name", out string? npc)
+                    && TryInt(arguments, "x", out int x) && TryInt(arguments, "y", out int y)
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: npc, X: x, Y: y)
+                    : null));
             tools.Add(Lab(runtimeReader, runQuery, topology, role, SetTimeToolName, ReviewFixtureTransportContract.SetTimeOperation,
                 "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command. Time keeps running; at 2600 the player passes out and the day is saved.",
                 TimeInputSchema, idempotent: true,
@@ -792,6 +816,8 @@ internal static class ProjectReviewMcpFixtureTools
             ReviewFixtureTransportContract.StatusOperation => report.Status is not null,
             ReviewFixtureTransportContract.EnterOperation
                 or ReviewFixtureTransportContract.FarmOperation => report.Navigation is not null,
+            ReviewFixtureTransportContract.NpcPlaceOperation => report.Navigation is { } placed
+                && placed.TileX == query.X && placed.TileY == query.Y,
             ReviewFixtureTransportContract.BuildingEnsureOperation => report.Building is not null,
             ReviewFixtureTransportContract.AnimalEnsureOperation => report.Animal is not null,
             ReviewFixtureTransportContract.SaveOperation => report.Save is not null,

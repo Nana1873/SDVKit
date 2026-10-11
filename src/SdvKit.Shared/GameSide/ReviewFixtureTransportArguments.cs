@@ -195,6 +195,15 @@ internal static class ReviewFixtureTransportArguments
                 query = new ReviewFixtureQuery(operation, Kind: itemId, X: stack, Y: quality);
                 request = new ReviewFixtureItemAddRequest(itemId, stack, quality);
                 return true;
+            case ReviewFixtureTransportContract.NpcPlaceOperation
+                when arguments.Count == 11
+                    && TryDecode(arguments[8], out string npcName)
+                    && ReviewFixtureTransportContract.IsValidNpcName(npcName)
+                    && int.TryParse(arguments[9], NumberStyles.None, CultureInfo.InvariantCulture, out int npcX)
+                    && int.TryParse(arguments[10], NumberStyles.None, CultureInfo.InvariantCulture, out int npcY):
+                query = new ReviewFixtureQuery(operation, Value: npcName, X: npcX, Y: npcY);
+                request = new ReviewFixtureNpcPlaceRequest(npcName, npcX, npcY);
+                return true;
             case ReviewFixtureTransportContract.SetTimeOperation
                 when arguments.Count == 9
                     && int.TryParse(arguments[8], NumberStyles.None, CultureInfo.InvariantCulture, out int time)

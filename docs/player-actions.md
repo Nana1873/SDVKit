@@ -33,7 +33,10 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Get an item to test with | `stardew_fixture_item_add` (`--allow-fixture-actions`, test save) | Its `item.slot` and `inventoryRevision`; `stardew_inventory_get` | script (a chest) | Setup, not proof |
 | Place an item or object | Select it, then `stardew_world_act` with `check` on the tile | `objectQualifiedItemId` on the tile; the slot empties | script (a chest from `stardew_fixture_item_add`) | — |
 | Eat or drink | Select it, `stardew_world_act` with `check` on a free neighbouring tile, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | Not in the script yet |
-| Talk to an NPC, give a gift | `stardew_world_act` with `check` on the NPC's tile (with the gift selected) | `menu_get` dialogue; `stardew_progression_get` friendship | — | No NPC positions ([#292](https://github.com/Nana1873/SDVKit/issues/292)) |
+| Find villagers | `stardew_runtime_get` `localPlayer.data.npcs` (name, tile, facing) | The list itself | script | Villagers only; current location only |
+| Bring a villager next to the player | `stardew_fixture_npc_place` (`--allow-fixture-actions`, test save) | Its `navigation` tile; `npcs` | script (Lewis) | Setup, not proof; its schedule can move it again |
+| Talk to an NPC | Select a tool, `stardew_world_act` with `check` on the NPC's tile; close the dialogue by clicking it | `menu_get` `DialogueBox`; `stardew_progression_get` friendship rises | script (Lewis) | Progression reads are single only |
+| Give a gift | Select the gift (for example from `stardew_fixture_item_add`), then `check` on the NPC's tile | Friendship rises; the slot empties | script (a parsnip to Lewis) | Progression reads are single only |
 | Read a property-backed sign or the town mailbox | Find `Message` or `TownMailbox` with `stardew_map_actions_list`, then `stardew_world_act` with `check` on that tile from a neighbouring tile | `menu_get` dialogue or letter; progression mail | script (`check` on the Farm sign) | Single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Read the Farm mailbox | `stardew_world_act` with `check` on its known position from a neighbouring tile | `menu_get` letter; progression mail | — | Handled by game code, not a map tile property, so `stardew_map_actions_list` does not list it |
 

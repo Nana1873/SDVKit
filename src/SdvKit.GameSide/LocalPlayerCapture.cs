@@ -46,7 +46,8 @@ internal static class LocalPlayerCapture
                     rod.timeUntilFishingBite,
                     rod.fishCaught ? rod.whichFish?.QualifiedItemId : null,
                     rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null,
-                CapturePosition(player));
+                CapturePosition(player),
+                CaptureNpcs(player));
             return LocalPlayerSnapshotContract.ValuesValid(values)
                 ? new LocalPlayerSnapshot(LocalPlayerSnapshotContract.SchemaVersion, "available", null, values)
                 : LocalPlayerSnapshotContract.WithoutData("error", "invalidValues");
@@ -56,6 +57,44 @@ internal static class LocalPlayerCapture
             // Modded item getters can fail. Publish an explicit error, never last-known values.
             return LocalPlayerSnapshotContract.WithoutData("error", "captureFailed");
         }
+    }
+
+    private static LocationNpcValues[]? CaptureNpcs(Farmer player)
+    {
+        if (player.currentLocation is not { } location)
+        {
+            return [];
+        }
+
+        // Event and festival actors live in the event, not in location.characters, so they are not listed.
+        var npcs = new List<LocationNpcValues>();
+        foreach (NPC npc in location.characters)
+        {
+            // A modded NPC whose getters throw or whose values are unusable is left out rather than failing the
+            // whole player snapshot. Invisible villagers (for example on hospital days) cannot be talked to.
+            try
+            {
+                if (npc is null || !npc.IsVillager || npc.IsInvisible || string.IsNullOrWhiteSpace(npc.Name))
+                {
+                    continue;
+                }
+
+                var values = new LocationNpcValues(npc.Name,
+                    string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName,
+                    npc.TilePoint.X, npc.TilePoint.Y, LocalPlayerSnapshotContract.FacingName(npc.FacingDirection) ?? "");
+                if (LocalPlayerSnapshotContract.NpcValid(values))
+                {
+                    npcs.Add(values);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return npcs.OrderBy(npc => npc.Name, StringComparer.Ordinal)
+            .Take(LocalPlayerSnapshotContract.MaximumNpcs)
+            .ToArray();
     }
 
     private static PlayerPositionValues? CapturePosition(Farmer player)

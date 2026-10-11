@@ -54,6 +54,9 @@ internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial, int? X = n
 internal sealed record ReviewFixtureItemAddRequest(string QualifiedItemId, int Stack, int Quality)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 
+internal sealed record ReviewFixtureNpcPlaceRequest(string Name, int X, int Y)
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
 internal sealed record ReviewFixtureSetTimeRequest(int Time)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 

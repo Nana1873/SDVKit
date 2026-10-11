@@ -17,6 +17,7 @@ internal static class ReviewFixtureTransportContract
     public const string ObjectClearOperation = "objectClear";
     public const string FishingPrepareOperation = "fishingPrepare";
     public const string ItemAddOperation = "itemAdd";
+    public const string NpcPlaceOperation = "npcPlace";
     public const string SetTimeOperation = "setTime";
     public const string SetWeatherOperation = "setWeather";
     public const string SetSeasonOperation = "setSeason";
@@ -42,6 +43,13 @@ internal static class ReviewFixtureTransportContract
         value is { Length: >= 4 and <= MaximumItemIdLength }
         && value[0] == '(' && value.IndexOf(')') is > 1 and var close && close < value.Length - 1
         && !value.Any(c => char.IsControl(c) || char.IsWhiteSpace(c));
+
+    /// <summary>An NPC's internal name: printable, at most 128 characters, no leading or trailing space.</summary>
+    public static bool IsValidNpcName(string? value) =>
+        value is { Length: >= 1 and <= MaximumTokenLength }
+        && value.Trim() == value
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     public static bool IsValidItemAdd(string? qualifiedItemId, int? stack, int? quality) =>
         IsQualifiedItemId(qualifiedItemId)
@@ -69,6 +77,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectClearOperation
         or FishingPrepareOperation
         or ItemAddOperation
+        or NpcPlaceOperation
         or SetTimeOperation
         or SetWeatherOperation
         or SetSeasonOperation;
@@ -102,6 +111,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectClearOperation
         or FishingPrepareOperation
         or ItemAddOperation
+        or NpcPlaceOperation
         || IsLabOperation(value);
 }
 
