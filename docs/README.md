@@ -1,6 +1,6 @@
 # SDVKit documentation
 
-Start with [installation and the two quickstarts](../README.md). These pages describe `main`; [published versions](https://github.com/Nana1873/SDVKit/releases) link to their corresponding tags.
+Start with [installation and the two quickstarts](../README.md). The [glossary](glossary.md) defines the terms these pages use. These pages describe `main`; [published versions](https://github.com/Nana1873/SDVKit/releases) link to their corresponding tags.
 
 | Task | Guide |
 | --- | --- |
@@ -32,6 +32,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
+| Look up a term such as owned, role, screen or test save | [Glossary](glossary.md) |
 | Prepare a lab root for Claude Code or Codex | [Set up the agent layer](toolkit.md#set-up-the-agent-layer) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
@@ -41,52 +42,64 @@ PowerShell examples use `& $sdvkit`, the absolute executable path set during ins
 
 ## Capability matrix
 
-| Capability | CLI | Native MCP | Topology / prerequisites |
-| --- | --- | --- | --- |
-| Create, inspect, package | `project` | No | C# mods or content packs; no live review |
-| Offline save inspection | `save sections/inspect` | Deliberately deferred | Explicit local file or registered single fixture; isolated copy, Stardew 1.6 |
-| Offline authoring check | `project check` | No | One C# mod or CP 2.9.x root; manifest, CP content, bounded literal Includes/FromFile existence, direct i18n; conditional/tokenized references warn; no game/network |
-| Locale key and placeholder comparison | `project check` | No | Direct top-level i18n files; see [i18n authoring](i18n-authoring.md) |
-| Build | `project build` | No | One C# project/manifest and complete game/SMAPI; unique defaults or explicit selectors |
-| Automated project smoke | `project smoke` | No | Standalone C# target; single or network-2 |
-| Local split-screen | `project review split-screen join/leave/status [--screen <id>]`, `project review call --screen <id>`, native `screen=<id>` for mod commands, and `project review menu --screen <id>` | Exact startup `--screen <id>` for runtime/menu/viewport/input | Explicit opt-in within an owned single `--test-save` review; exactly one local farmhand; screen/farmer/context binding invalidates on leave or replacement; shared-window text input unavailable; [workflow](live-review.md#local-split-screen-review) |
-| Network farmhand lifecycle | `project review network leave/join/status --role <host\|farmhand>` | Observation only; host remains readable during coordinated absence, farmhand requires a new client after rejoin | Passed `network-2` pair; host-authorized farmhand departure, retained processes/fixture, explicit rejoin; [workflow](live-review.md#leave-and-rejoin-the-network-farmhand) |
-| Review lifecycle | `project review start/status/stop/reset` | No | Selected standalone C# source or extracted ready code mod in either topology; content-pack target single only, with explicit provider; ready code/pack bundle single only, with every direct pack explicitly selected |
-| Runtime and selected-mod diagnostics | `project review status`; `project review split-screen status` for local IDs | Runtime, review, mods tools | Active single, fixed host/farmhand role, or exact owned local screen where supported |
-| Active menu geometry and public controls | `project review menu` | `stardew_menu_get` | World-ready single, fixed host/farmhand, or exact owned local screen; bounded inventory/shop/dialogue/question/crafting adapters and partial custom coverage |
-| Supported Gold-shop offers and purchase observations | `project review shop` | `stardew_shop_get` | World-ready single; bounded vanilla SeedShop semantics and explicit unsupported offers; [contract](shop-inspection.md) |
-| Complete bounded backpack | `project review inventory` | `stardew_inventory_get` | Exact world-ready single player, network role, or local screen; every empty/occupied/unavailable slot, no peer fallback, menu, or mutation; [contract](inventory-inspection.md) |
-| Bounded current-location crops, soil, and machines | `project review world` | `stardew_world_area_get` | Exact single player, network role, or local screen; complete in-map rectangle of at most 256 tiles as observed by that selection; [contract](world-inspection.md) |
-| Selected NPC friendship, mail membership and quest-log counts | `project review progression --npc --mail --quest` | `stardew_progression_get` | Exact owned disposable unbound single-player review; one explicit ID per family, fresh farmer/fixture/launch binding, no mutation or historical completion; [contract and original recipe](progression-authoring.md) |
-| Selected regular vanilla chest and both sides | `project review container` | `stardew_container_get` | Exact single player, network role, or local screen; selected open 36-slot wooden/stone chest, local player/chest slots and held item, no mutation; [contract](container-inspection.md) |
-| Exact supported chest quantity transfer | `project review container-transfer` | `stardew_container_transfer` | Owned disposable unbound single world, screen 0; 1-99 stackable vanilla objects, fresh container identities; MCP requires `--allow-container-transfer`; [contract](container-transfer.md) |
-| One adjacent crop/soil or machine interaction | `project review interact` | `stardew_world_interact`, separate `--allow-world-actions` | Exact owned disposable single-player review; fresh target and inventory revisions; completion is dispatch evidence only; [contract](world-interaction.md) |
-| Original shop purchase authoring recipe | Existing check/build/package, ready review, shop/menu/diagnostics and process-local input | Optional matching observation and opt-in input tools | Single disposable world; original SeedShop Stone offer, deliberate config failure and observed money/stock/inventory deltas; [recipe and limits](shop-authoring.md) |
-| Original GMCM Boolean authoring recipe | Existing build/package, ready review, screenshot/cursor/press and explicit config export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own Enabled checkbox; [observed workflow and limits](gmcm-authoring.md) |
-| Original GMCM integer-slider authoring recipe | Existing build/package, ready review, screenshot/cursor/press, config reconciliation and explicit export/restage | Optional existing observation and opt-in input equivalents | Single; explicit GMCM 1.16.0, own ArrivalRow 15/17/19 slider; [workflow and limits](gmcm-number-authoring.md) |
-| Original inventory/chest persistence recipe | Existing check/build/package, inventory/container reads, diagnostics, exact transfer and fixture save/restart | Default observations plus separately granted transfer, fixture, and input tools | Owned disposable unbound single; wrong packaged quantity 12, corrected 10, native deposit/withdrawal and save/reload; [recipe and limits](inventory-container-authoring.md) |
-| Original crop-to-machine authoring recipe | Existing check/package, CP diagnosis, world/inventory/container reads, native world actions, fixture save and cleanup | Default observations plus separately granted world/fixture actions | Single/screen 0 disposable world; Strawberry harvest, corrected Keg output, two Cola and chest persistence; [recipe and retained limits](crop-machine-authoring.md) |
-| Original per-player multiplayer recipe | Existing check/build/package, role/screen-selected inventory, container, world, Data, menu, lifecycle, and fixture save | Default observations plus separately granted input and host/authority fixture tools | One owned network-2 host/farmhand pair and one owned two-screen local process; deliberate shared-player bug, distinct state, stale-binding rejection, save/reload, and exact chest observation; [recipe and limits](multiplayer-authoring.md) |
-| Original mod-owned data migration recipe | Existing check/package, ready review, selected diagnostics/inventory, fixture save and stop/restart | Existing observation and separately granted fixture-save tool | Owned disposable single; distinct v1/broken-v2/v2 artifacts, stable SMAPI save-data key, preserved values, idempotence, missing/future schema; [recipe and limits](data-migration-authoring.md) |
-| World/local farmer and selected inventory slot | `project review status` | `stardew_runtime_get` | Same active roles; bounded snapshot, explicit unavailable states |
-| Selected Content Patcher diagnosis and asset patch order | `project review cp-diagnose` | `stardew_cp_diagnose` | Active single; explicit pack and CP 2.9.1 provider; order requires one canonical asset |
-| Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Exact active role and staged mod ID; bounded isolated log |
-| Refresh selected CP patch JSON | `project review cp-refresh` | `stardew_cp_refresh`, separate `--allow-cp-refresh` | Owned single root CP 2.9.1 target; startup-bound source, explicit files and Data observation |
-| Reconcile one staged mod's intentional root config save | `project review config-reconcile --mod` | No; existing tools continue after reconciliation | Exact owned single; config-only drift, JSON validation, unchanged code/content and audit/export; separate from CP refresh; [contract](live-review.md#accept-an-intentional-configuration-change) |
-| Canonical structured Data | `project review data` | Data tools | Exact active single player, network role, or local screen validates access to process-shared Data; no per-screen cache |
-| Maps and textures | `project review map/texture` | Map/texture tools; preview includes PNG image content | Active single review |
-| Audio and observed mod assets | `project review audio/mod-assets` | Audio/mod-asset tools | Active single review; CLI-parity bounds, observed-only asset coverage, no audio or asset export |
-| Map / viewport screenshots | `project review call stardew_screenshot_capture`; `sdvkit screenshot viewport` through `project review command` only while the owned fixture is not loaded | Screenshot tool | Active selected role or exact local screen; map needs loaded world; viewport is cropped to the selected local screen |
-| Button, chord, cursor, wheel, mouse gestures, and bounded text | `project review call stardew_input_*`; `sdvkit input` through `project review command` only while the owned fixture is not loaded | Input tools | Active selected role or exact local screen; MCP requires `--allow-input`; screen-bound MCP omits shared-window text; gestures require an active menu and fresh UI revision |
-| Fixture status / navigation | `project review call stardew_fixture_*` | Fixture tools | Owned disposable world; MCP requires `--allow-fixture-actions`; any role |
-| Fixture building / animal ensure | `project review call stardew_fixture_*` | Fixture tools | Owned disposable world; single or host only; MCP fixture opt-in |
-| Fixture object ensure / clear | `project review call` | `stardew_fixture_object_ensure`, `stardew_fixture_object_clear` | Owned disposable world; single or host only; fixture opt-in |
-| Fishing preparation / rod observation | `project review call stardew_fixture_fishing_prepare` / runtime status | `stardew_fixture_fishing_prepare`; observation via `stardew_runtime_get` | Preparation: owned disposable single/host. Observation: selected local player in the existing supported runtime roles. |
-| Fixture save | No standalone fixture-save console command | `stardew_fixture_save` | Owned disposable world; single or host; MCP fixture opt-in |
-| Lab time, weather and season | `project review call stardew_lab_set_*` | `stardew_lab_set_time`, `stardew_lab_set_weather`, `stardew_lab_set_season` | Owned disposable world; single or host; fixture opt-in |
-| Lab warp, zoom and window | `project review call stardew_lab_*` | `stardew_lab_warp`, `stardew_lab_set_zoom`, `stardew_lab_set_window` | Owned disposable world; any role; fixture opt-in |
+Terms such as owned, role, screen, test save and opt-in are defined in the [glossary](glossary.md). The task recipes above combine these capabilities; they are not listed again here.
 
-`network-2` means exactly one local host and one farmhand. It does not establish general multiplayer compatibility. MCP role or local-screen selection is fixed at server startup. The CLI title/loading exception for console input and viewport lines does not bypass MCP's own readiness checks.
+### Toolkit: no game needed
+
+| Capability | Command | Notes |
+| --- | --- | --- |
+| Create, inspect and package a mod | `project create/inspect/package` | C# mods and content packs |
+| Offline authoring check | `project check` | Manifest, CP 2.9.x content, literal `Include`/`FromFile` targets and direct i18n files; tokenized references only warn |
+| Translation keys and placeholders | `project check` | Direct top-level i18n files; see [i18n authoring](i18n-authoring.md) |
+| Build | `project build` | One C# project against a complete game and SMAPI installation |
+| Read a save offline | `save sections/inspect` | A selected local save file or the registered test save, read from an isolated copy; Stardew 1.6; not in MCP |
+| Prepare a lab root for agents | `lab init` | See [set up the agent layer](toolkit.md#set-up-the-agent-layer) |
+
+### Live lab: lifecycle
+
+| Capability | CLI | Topology and prerequisites |
+| --- | --- | --- |
+| Automated smoke | `project smoke` | A standalone C# mod; `single` or `network-2` |
+| Review lifecycle | `project review start/status/stop/reset` | C# source or a ready code mod in either topology. A content pack only in `single`, with its provider. A ready code and pack bundle only in `single`, with every pack selected |
+| Local split-screen | `project review split-screen join/leave/status` | `single` with `--test-save`; one extra local player. Leaving or replacing a screen invalidates its bindings. See [workflow](live-review.md#local-split-screen-review) |
+| Network farmhand leave and rejoin | `project review network leave/join/status --role` | A passed `network-2` pair. See [workflow](live-review.md#leave-and-rejoin-the-network-farmhand) |
+| Accept an intentional config save | `project review config-reconcile --mod` | `single`; only `config.json` changed. See [contract](live-review.md#accept-an-intentional-configuration-change) |
+| Refresh selected CP patch files | `project review cp-refresh` | `single`, a root CP 2.9.1 pack. See [CP refresh](cp-refresh.md) |
+
+### Live lab: observation
+
+Every read has a CLI command and a native MCP tool that need no opt-in. `project review call <tool>` runs any MCP tool once from the CLI.
+
+| Capability | CLI | MCP tool | Where it works |
+| --- | --- | --- | --- |
+| World, local player, selected slot | `project review status` | `stardew_runtime_get` | Any role or screen |
+| Selected-mod warnings and exceptions | `project review diagnostics` | `stardew_mod_diagnostics` | Any role or screen |
+| Open menu geometry and controls | `project review menu` | `stardew_menu_get` | World ready; any role or screen. See [menu inspection](menu-inspection.md) |
+| Backpack | `project review inventory` | `stardew_inventory_get` | World ready; any role or screen. See [inventory inspection](inventory-inspection.md) |
+| Open vanilla chest and both sides | `project review container` | `stardew_container_get` | Any role or screen. See [container inspection](container-inspection.md) |
+| Crops, soil and machines in an area | `project review world` | `stardew_world_area_get` | Any role or screen; at most 256 tiles. See [world inspection](world-inspection.md) |
+| Gold-shop offers and purchases | `project review shop` | `stardew_shop_get` | `single`, unbound. See [shop inspection](shop-inspection.md) |
+| NPC friendship, mail and quests | `project review progression` | `stardew_progression_get` | `single` test save, unbound. See [progression](progression-authoring.md) |
+| Structured Data | `project review data` | Data tools | Any role or screen |
+| Maps, textures, audio, observed mod assets | `project review map/texture/audio/mod-assets` | Map, texture, audio and mod-asset tools | `single`, unbound. See [inspection](inspection.md) |
+| Content Patcher diagnosis and patch order | `project review cp-diagnose` | `stardew_cp_diagnose` | `single`, with the pack and CP 2.9.1. See [CP diagnosis](cp-diagnosis.md) |
+| Map and viewport screenshots | `project review call stardew_screenshot_capture` | `stardew_screenshot_capture` | Any role or screen; map screenshots need a loaded world |
+
+### Live lab: actions
+
+MCP tools and `project review call` need the opt-in flag. The dedicated CLI commands `project review interact` and `container-transfer` need none.
+
+| Capability | Tools | Opt-in | Where it works |
+| --- | --- | --- | --- |
+| Buttons, chords, cursor, wheel, mouse gestures, text | `stardew_input_*` | `--allow-input` | Any role or screen; screen-bound servers have no text input. Gestures need an open menu and a fresh `uiRevision`. See [input behavior](live-review.md#input-behavior) |
+| Fixture status and navigation; warp, zoom, window | `stardew_fixture_*`, `stardew_lab_warp/set_zoom/set_window` | `--allow-fixture-actions` | Test save; any role, not with `--screen` |
+| Buildings, animals and objects; time, weather, season; save | `stardew_fixture_*_ensure`, `stardew_fixture_object_clear`, `stardew_lab_set_time/weather/season`, `stardew_fixture_save` | `--allow-fixture-actions` | Test save; `single` or host |
+| Fishing preparation | `stardew_fixture_fishing_prepare` | `--allow-fixture-actions` | Test save; `single` or host. See [fishing](lab-reference.md#fishing-preparation) |
+| Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md) |
+| Move a quantity between backpack and chest | `stardew_container_transfer` (CLI: `project review container-transfer`) | `--allow-container-transfer` | `single` test save, unbound. See [container transfer](container-transfer.md) |
+| Refresh CP patches | `stardew_cp_refresh` | `--allow-cp-refresh` | `single`, a root CP 2.9.1 pack |
+
+`project review command` runs the reviewed mod's and SMAPI's console commands. While the test save is not loaded yet, such as at the title screen, it also accepts `sdvkit input ...` and `sdvkit screenshot viewport ...`. MCP fixes its role or screen when the server starts.
 
 ## Read a result
 
