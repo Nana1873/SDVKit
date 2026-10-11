@@ -133,6 +133,127 @@ public sealed class LabAgentKitTests
     }
 
     [Fact]
+    public void ANewVersionUpdatesUneditedFilesAndKeepsEditedOnes()
+    {
+        using var lab = new TemporaryDirectory();
+        Run(lab.Path);
+        File.AppendAllText(Path.Combine(lab.Path, ".claude", "skills", "sdv-diagnose", "SKILL.md"), "mine\n");
+
+        LabAgentKitReport report = LabAgentKit.Initialize(
+            lab.Path, false, "9.9.9", @"C:\Tools\SDVKit\sdvkit.exe", [@"C:\Saves", @"D:\Game"]);
+
+        Assert.Equal("updated", report.Files.Single(file => file.Path == "SDVKIT.md").Action);
+        Assert.Contains("blob/v9.9.9/docs", Read(lab, "SDVKIT.md"), StringComparison.Ordinal);
+        Assert.Equal("kept", report.Files.Single(file => file.Path == ".claude/skills/sdv-diagnose/SKILL.md").Action);
+        Assert.Contains("blob/v9.8.7/docs", Read(lab, ".claude/skills/sdv-diagnose/SKILL.md"), StringComparison.Ordinal);
+        Assert.Contains("blob/v9.9.9/docs", Read(lab, ".agents/skills/sdv-diagnose/SKILL.md"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaleFilesAreRemovedOnlyInsideTheLabAndOnlyWhenUnchanged()
+    {
+        using var lab = new TemporaryDirectory();
+        using var outside = new TemporaryDirectory();
+        Run(lab.Path);
+        string staleSkill = Path.Combine(lab.Path, ".claude", "skills", "sdv-old", "SKILL.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(staleSkill)!);
+        File.WriteAllText(staleSkill, "old skill");
+        string victim = Path.Combine(outside.Path, "keep.txt");
+        File.WriteAllText(victim, "user data");
+        string manifestPath = Path.Combine(lab.Path, ".sdvkit", "agent-kit.json");
+        string manifest = File.ReadAllText(manifestPath);
+        string extra = $"\"files\": {{\n    \".claude/skills/sdv-old/SKILL.md\": \"{HashOf("old skill")}\",\n    \"{victim.Replace(@"\", @"\\", StringComparison.Ordinal)}\": \"{HashOf("user data")}\",\n    \"../escape.txt\": \"{HashOf("user data")}\",";
+        File.WriteAllText(manifestPath, manifest.Replace("\"files\": {", extra, StringComparison.Ordinal));
+
+        LabAgentKitReport report = Run(lab.Path);
+
+        Assert.Equal("initialized", report.State);
+        Assert.Equal("removed", report.Files.Single(file => file.Path == ".claude/skills/sdv-old/SKILL.md").Action);
+        Assert.False(File.Exists(staleSkill));
+        Assert.True(File.Exists(victim));
+    }
+
+    [Fact]
+    public void ForeignSeedFilesProduceWarnings()
+    {
+        using var lab = new TemporaryDirectory();
+        File.WriteAllText(Path.Combine(lab.Path, "CLAUDE.md"), "# My lab\n");
+        File.WriteAllText(Path.Combine(lab.Path, "AGENTS.md"), "# My agents\n");
+        File.WriteAllText(Path.Combine(lab.Path, ".gitignore"), "bin/\n");
+
+        LabAgentKitReport report = Run(lab.Path);
+
+        Assert.Contains(report.Warnings, warning => warning.StartsWith("CLAUDE.md does not mention SDVKIT.md", StringComparison.Ordinal));
+        Assert.Contains(report.Warnings, warning => warning.StartsWith("AGENTS.md does not mention SDVKIT.md", StringComparison.Ordinal));
+        Assert.Contains(report.Warnings, warning => warning.StartsWith(".gitignore does not exclude .sdvkit/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AGameRootFromAnEarlierRunIsKeptWhenDiscoveryIsNotReady()
+    {
+        using var lab = new TemporaryDirectory();
+        Run(lab.Path);
+
+        LabAgentKitReport report = Run(lab.Path, protectedRoots: [@"C:\Users\x\AppData\Roaming\StardewValley\Saves"]);
+
+        Assert.DoesNotContain(report.Warnings, warning => warning.Contains("No ready game installation", StringComparison.Ordinal));
+        Assert.Contains(@"D:\\Games\\Stardew Valley", Read(lab, ".claude/hooks/sdvkit-guard.json"), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Write", "file_path", @"D:\Games\Stardew Valley\Mods\X\manifest.json", 2)]
+    [InlineData("Write", "file_path", @"C:\Users\Jörg\AppData\Roaming\StardewValley\Saves\Farm_1\Farm_1", 2)]
+    [InlineData("Edit", "file_path", @"E:\lab\workspaces\M\assets\x.xnb", 2)]
+    [InlineData("Write", "file_path", @"E:\lab\workspaces\M\ModEntry.cs", 0)]
+    [InlineData("Bash", "command", "cp -r bin/M /d/Games/Stardew\\ Valley/Mods/", 2)]
+    [InlineData("PowerShell", "command", @"Copy-Item out ""$env:APPDATA\StardewValley\Saves\x""", 2)]
+    [InlineData("PowerShell", "command", @"Get-ChildItem ""D:\Games\Stardew Valley\Mods"" 2>$null", 0)]
+    [InlineData("Bash", "command", @"dotnet build -p:GamePath=""D:\Games\Stardew Valley"" 2>&1 | tee build.log", 0)]
+    [InlineData("Read", "file_path", @"D:\Games\Stardew Valley\Mods\X\manifest.json", 0)]
+    public void GuardHookBlocksOnlyProtectedWrites(string tool, string field, string value, int expectedExit)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var lab = new TemporaryDirectory();
+        Run(lab.Path, protectedRoots: [@"C:\Users\Jörg\AppData\Roaming\StardewValley\Saves", @"D:\Games\Stardew Valley"]);
+        string hook = Path.Combine(lab.Path, ".claude", "hooks", "sdvkit-guard.ps1");
+        string input = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["tool_name"] = tool,
+            ["tool_input"] = new Dictionary<string, string> { [field] = value },
+        });
+        var start = new System.Diagnostics.ProcessStartInfo("powershell.exe")
+        {
+            RedirectStandardInput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (string argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", hook })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = System.Diagnostics.Process.Start(start)!;
+        byte[] bytes = new System.Text.UTF8Encoding(false).GetBytes(input);
+        process.StandardInput.BaseStream.Write(bytes);
+        process.StandardInput.Close();
+        string error = process.StandardError.ReadToEnd();
+        Assert.True(process.WaitForExit(60_000));
+
+        Assert.True(expectedExit == process.ExitCode, $"exit {process.ExitCode}, stderr: {error}");
+        if (expectedExit == 2)
+        {
+            Assert.Contains("SDVKit lab guard", error, StringComparison.Ordinal);
+        }
+    }
+
+    private static string HashOf(string content) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
+    [Fact]
     public void ReadmeSetupPromptMatchesSetupPromptFile()
     {
         string root = FindRepositoryRoot();

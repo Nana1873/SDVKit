@@ -13,13 +13,14 @@ A Content Patcher installation that the user selects explicitly, as a folder out
 
 1. Edit `content.json` and its files in `workspaces/<PackName>/pack/`. Check `KNOWLEDGEBASE.md` for Content Patcher token and condition pitfalls.
 2. Offline: `.\sdvkit.cmd project check .\workspaces\MyPack\pack --json`. It catches broken JSON, schema errors, missing `FromFile` files and malformed `Include` fragments.
-3. Start the pack with its provider (content packs run in `single` only):
+3. Start the pack with its provider in the disposable test world (content packs run in `single` only):
 
    ```powershell
-   .\sdvkit.cmd project review start .\workspaces\MyPack\pack --topology single --companion .\.sdvkit\providers\ContentPatcher --json
+   .\sdvkit.cmd lab test-save --topology single --json
+   .\sdvkit.cmd project review start .\workspaces\MyPack\pack --topology single --test-save --companion .\.sdvkit\providers\ContentPatcher --json
    ```
 
-   Poll `project review status --json` until the pack is loaded.
+   `lab test-save` is needed once per lab. Wait until the review is ready (see `sdv-live-review`), including `testSave.phase` `passed`: Content Patcher evaluates tokens and conditions only in a loaded world, so diagnosis at the title screen is misleading.
 4. See what Content Patcher did:
 
    ```powershell
@@ -35,7 +36,7 @@ A Content Patcher installation that the user selects explicitly, as a folder out
    ```
 
    Changes to the manifest or non-patch fields of `content.json` need stop, reset and start instead.
-7. Finish with `project review stop --json`.
+7. Finish with `project review stop --json` and `project review reset --topology single --json`.
 
 ## Report
 

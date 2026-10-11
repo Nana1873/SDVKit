@@ -7,7 +7,7 @@ description: Run a Stardew Valley mod in SDVKit's isolated live lab and gather e
 
 ## Before starting
 
-- Run from the lab root. Check `.\sdvkit.cmd project review status --json`. If a review is running that another task or person started, wait for it to stop; never stop someone else's game.
+- Run from the lab root. Check `.\sdvkit.cmd project review status --json` and `.\sdvkit.cmd project review status --topology network-2 --json`. If either shows a running review that another task or person started, wait for it to stop; never stop someone else's game.
 - Decide what must be proven, and pick the smallest setup: plain `single` by default; `--test-save` for a disposable world (`sdv-test-world`); `--topology network-2` only for multiplayer (`sdv-multiplayer`).
 
 ## Start and wait

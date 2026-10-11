@@ -19,7 +19,7 @@ description: Run SDVKit's automated end-to-end smoke test for one standalone SMA
    ```
 
    Continue only when `kind` is `smapiMod`, `problems` is empty, and there is exactly one manifest with `EntryDll` and one `.csproj`. Content packs are not supported; use `sdv-live-review` instead.
-3. Check that no review or smoke is running in this lab (`project review status --json`). Then run one topology:
+3. Check that no review or smoke is running in this lab: `project review status --json` and `project review status --topology network-2 --json` must both report `stopped`. Then run one topology:
 
    ```powershell
    .\sdvkit.cmd project smoke .\workspaces\MyMod --topology single --json

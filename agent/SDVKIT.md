@@ -12,10 +12,10 @@ SDVKit has two halves: a **modding toolkit** (create, check, build, package) and
 
 ## Safety rules
 
-1. Never write to the normal Stardew `Saves` folder or to the game's or a mod manager's `Mods` folder. SDVKit stages mods into its own isolated profile; nothing needs to be copied there by hand. A hook in `.claude/` blocks these writes for Claude Code.
+1. Never write to the normal Stardew `Saves` folder or to the game's or a mod manager's `Mods` folder. SDVKit stages mods into its own isolated profile; nothing needs to be copied there by hand. For Claude Code, a hook in `.claude/` blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries. It does not know a mod manager's own folders and is a backstop, not a sandbox.
 2. Never copy game files, `*.xnb` content, personal saves or secrets into a mod repository.
 3. Use only SDVKit's process-local input for the game. Never move the physical mouse, change window focus, or use desktop automation.
-4. One live lab at a time. Before starting, check `.\sdvkit.cmd project review status --json`. `state` `stopped` means the lab is free. Any other state means a review is running: `root` names the reviewed mod and `lab.launchId` the launch. If you did not start it in this task, wait for it to stop; never stop someone else's game. Always finish with stop, and with reset for test-save or network reviews.
+4. One live lab at a time. Before starting, check both `.\sdvkit.cmd project review status --json` and `.\sdvkit.cmd project review status --topology network-2 --json`. The lab is free only when both report `state` `stopped`. Any other state means a review is running: `root` names the reviewed mod and `lab.launchId` the launch. If you did not start it in this task, wait for it to stop; never stop someone else's game. Always finish with stop, and with reset for test-save or network reviews.
 5. Claim only what was proven, and say which level: **build** succeeded, **SMAPI loaded** the mod, **behavior** was observed in the game, or **visuals** were checked on a screenshot.
 6. Never repeat an action whose result says `mayHaveRun` or that timed out. Inspect the current state first.
 
@@ -63,10 +63,15 @@ A plain review without `--test-save` stays at the title screen: `stardew_runtime
 
 - `project review command "<line>"` runs **your mod's or SMAPI's** console command. SDVKit's own `sdvkit ...` lines are rejected there.
 - `project review call <tool> ['<json>']` runs one SDVKit tool and always prints JSON (it takes no `--json` flag): reads such as `stardew_runtime_get`, `stardew_menu_get`, `stardew_inventory_get`, `stardew_screenshot_capture`, and, with the matching opt-in flag, actions:
-  - `--allow-input`: `stardew_input_press`, `chord`, `click`, `drag`, `scroll`, `text`, `cursor_set`, `cursor_clear`.
+  - `--allow-input`: `stardew_input_press`, `chord`, `click`, `drag`, `scroll`, `wheel`, `text`, `cursor_set`, `cursor_clear`.
   - `--allow-fixture-actions` (test save): fixtures, `stardew_fixture_save`, and `stardew_lab_set_time`, `set_weather`, `set_season`, `warp`, `set_zoom`, `set_window`.
   - `--allow-world-actions`: `stardew_world_interact` (water, harvest, machine insert and collect).
-- `.\sdvkit.cmd project review mcp serve --help` lists every tool. JSON arguments need PowerShell 7.3 or later; Windows PowerShell 5.1 strips their quotes.
+- `.\sdvkit.cmd project review mcp serve --help` lists every tool.
+
+JSON arguments need care with quoting:
+- Git Bash and PowerShell 7.3 or later: `'{"button":"E"}'`.
+- Windows PowerShell 5.1, which Claude Code's PowerShell tool may use: escape the inner quotes, `'{\"button\":\"E\"}'`.
+- `sdvkit.cmd` passes arguments through `cmd.exe`, so for JSON containing `&`, `|`, `<`, `>` or `^`, for example typed text, call the installation's `sdvkit.exe` directly instead of `sdvkit.cmd`.
 
 An input result proves only that the input was delivered. Read the state again, or capture a screenshot, to prove the effect.
 

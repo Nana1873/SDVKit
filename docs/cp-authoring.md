@@ -32,7 +32,7 @@ tools can read the final record, and `stardew_mod_diagnostics` can read selected
 warnings and exceptions. The MCP tool does not edit source, package a project,
 or replace the CLI lifecycle, and CP has no `project smoke`. For interactive or
 visual extensions use the existing
-[project-review skill](../agent/skills/sdv-live-review/SKILL.md) and its linked
+`sdv-live-review` skill that [`lab init`](toolkit.md#set-up-the-agent-layer) installs and its linked
 lab contracts; the project-smoke skill covers standalone C# mods.
 
 ## Prerequisites and one lab directory

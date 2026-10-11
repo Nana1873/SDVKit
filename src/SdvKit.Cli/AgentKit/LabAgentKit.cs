@@ -69,6 +69,7 @@ internal static class LabAgentKit
                 }
             }
 
+            protectedRoots = MergePreviousRoots(root, protectedRoots);
             Dictionary<string, string> rendered = Render(version, executablePath, root, protectedRoots);
             Dictionary<string, string> previous = ReadManifest(root);
             var current = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -91,12 +92,18 @@ internal static class LabAgentKit
 
             foreach ((string stalePath, string staleHash) in previous)
             {
-                if (rendered.ContainsKey(stalePath))
+                if (rendered.ContainsKey(stalePath) || !IsKitPath(stalePath))
                 {
                     continue;
                 }
 
                 string target = Resolve(root, stalePath);
+                if (!IsSameOrInside(target, root))
+                {
+                    continue;
+                }
+
+                RejectReparsePoints(root, Path.GetDirectoryName(target)!);
                 if (File.Exists(target) && Hash(File.ReadAllText(target)) == staleHash)
                 {
                     File.Delete(target);
@@ -109,6 +116,10 @@ internal static class LabAgentKit
             }
 
             WriteManifest(root, version, current);
+
+            WarnUnlessContains(root, "CLAUDE.md", "SDVKIT.md", "CLAUDE.md does not mention SDVKIT.md, so Claude Code will not load the SDVKit guide. Add the line '@SDVKIT.md' to it.", warnings);
+            WarnUnlessContains(root, "AGENTS.md", "SDVKIT.md", "AGENTS.md does not mention SDVKIT.md, so Codex will not read the SDVKit guide. Add 'Read SDVKIT.md first.' to it.", warnings);
+            WarnUnlessContains(root, ".gitignore", ".sdvkit", ".gitignore does not exclude .sdvkit/, where the lab keeps generated state. Add the line '.sdvkit/' to it.", warnings);
 
             string settings = Resolve(root, ".claude/settings.json");
             if (File.Exists(settings) && !File.ReadAllText(settings).Contains("sdvkit-guard.ps1", StringComparison.Ordinal))
@@ -209,7 +220,7 @@ internal static class LabAgentKit
             return new(path, "exists");
         }
 
-        Write(target, content);
+        Write(root, target, content);
         return new(path, "created");
     }
 
@@ -223,12 +234,12 @@ internal static class LabAgentKit
         string target = Resolve(root, path);
         if (!File.Exists(target))
         {
-            Write(target, content);
+            Write(root, target, content);
             return new(path, "created");
         }
 
         string existing = File.ReadAllText(target);
-        if (existing == content)
+        if (existing.Replace("\r\n", "\n", StringComparison.Ordinal) == content.Replace("\r\n", "\n", StringComparison.Ordinal))
         {
             return new(path, "unchanged");
         }
@@ -239,32 +250,95 @@ internal static class LabAgentKit
             return new(path, "kept", "Edited locally or not written by SDVKit; rerun with --force to replace it.");
         }
 
-        Write(target, content);
+        Write(root, target, content);
         return new(path, "updated");
     }
 
-    private static void Write(string target, string content)
+    private static void Write(string root, string target, string content)
     {
         string directory = Path.GetDirectoryName(target)!;
-        Directory.CreateDirectory(directory);
-        RejectReparsePoints(directory);
+        RejectReparsePoints(root, directory);
         if (File.Exists(target) && File.GetAttributes(target).HasFlag(FileAttributes.ReparsePoint))
         {
             throw new InvalidOperationException($"Refusing to write through the link '{target}'.");
         }
 
+        Directory.CreateDirectory(directory);
         File.WriteAllText(target, content, new UTF8Encoding(false));
     }
 
-    private static void RejectReparsePoints(string directory)
+    /// <summary>
+    /// Rejects links between the lab root and the target directory. Links above the lab root, such
+    /// as a redirected Documents folder, are the user's choice and stay allowed.
+    /// </summary>
+    private static void RejectReparsePoints(string root, string directory)
     {
-        for (DirectoryInfo? current = new(directory); current is not null; current = current.Parent)
+        string relative = Path.GetRelativePath(root, directory);
+        if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
         {
-            if (current.Exists && current.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidOperationException($"Refusing to write outside the lab root: '{directory}'.");
+        }
+
+        string current = root;
+        foreach (string segment in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".")
             {
-                throw new InvalidOperationException($"Refusing to write below the link '{current.FullName}'.");
+                continue;
+            }
+
+            current = Path.Combine(current, segment);
+            if (Directory.Exists(current) && new DirectoryInfo(current).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException($"Refusing to write below the link '{current}'.");
             }
         }
+    }
+
+    private static bool IsKitPath(string path) =>
+        !path.Contains("..", StringComparison.Ordinal)
+        && !Path.IsPathRooted(path)
+        && (path.StartsWith(".claude/", StringComparison.Ordinal)
+            || path.StartsWith(".agents/skills/", StringComparison.Ordinal)
+            || path.StartsWith(".sdvkit/agent/", StringComparison.Ordinal)
+            || path is "SDVKIT.md" or "KNOWLEDGEBASE.md" or "sdvkit.cmd");
+
+    private static void WarnUnlessContains(string root, string path, string needle, string warning, List<string> warnings)
+    {
+        string target = Resolve(root, path);
+        if (File.Exists(target) && !File.ReadAllText(target).Contains(needle, StringComparison.Ordinal))
+        {
+            warnings.Add(warning);
+        }
+    }
+
+    private static List<string> MergePreviousRoots(string root, IReadOnlyList<string> protectedRoots)
+    {
+        var merged = new List<string>(protectedRoots);
+        string config = Resolve(root, GuardConfigPath);
+        if (protectedRoots.Count >= 2 || !File.Exists(config))
+        {
+            return merged;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(config));
+            foreach (JsonElement value in document.RootElement.GetProperty("protectedRoots").EnumerateArray())
+            {
+                if (value.GetString() is { Length: > 0 } previous
+                    && !merged.Contains(previous, StringComparer.OrdinalIgnoreCase))
+                {
+                    merged.Add(previous);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            // An unreadable previous config simply contributes nothing.
+        }
+
+        return merged;
     }
 
     private static string Resolve(string root, string relative) =>
@@ -293,13 +367,15 @@ internal static class LabAgentKit
 
     private static void WriteManifest(string root, string version, IReadOnlyDictionary<string, string> files) =>
         Write(
+            root,
             Resolve(root, ManifestPath),
             JsonSerializer.Serialize(
                 new { schemaVersion = SchemaVersion, version, files = files.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToDictionary() },
                 Indented) + "\n");
 
     private static string Hash(string content) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content.Replace("\r\n", "\n", StringComparison.Ordinal))))
+            .ToLowerInvariant();
 
     private static bool IsSameOrInside(string path, string folder)
     {

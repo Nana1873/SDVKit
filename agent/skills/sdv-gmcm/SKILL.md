@@ -17,7 +17,7 @@ description: Test a Stardew Valley mod's Generic Mod Config Menu integration in 
 3. Locate controls. GMCM's custom menu exposes only partial data through `stardew_menu_get`, so capture a viewport screenshot and read control positions from the image. Screenshot pixels are UI coordinates at UI scale 1.
 4. Change values with `stardew_input_click` (checkboxes, buttons) or `stardew_input_drag` (sliders) and `--allow-input`, each with a fresh `uiRevision` from `stardew_menu_get`. Screenshot after each change.
 5. Before saving, check that the mod still reports the old value. GMCM only caches edits until Save.
-6. Click Save. The click itself may end with exit 3 and `reviewStagingOwnershipDrifted`: GMCM wrote `config.json` during the click, and SDVKit refuses to report on changed staged files. That is expected. Do not repeat the click.
+6. Click Save. Because GMCM rewrites `config.json`, SDVKit refuses further reads with `reviewStagingOwnershipDrifted` until the change is accepted. The Save click itself, or the next read, reports it with exit 3. That is expected; do not repeat the click.
 7. Accept the change, then confirm the mod sees it:
 
    ```powershell
