@@ -110,6 +110,8 @@ While all lab roles are stopped, create the test save baseline if it does not ex
 & $sdvkit project review status --topology single --json
 ```
 
+If the process exits before `lab test-save` observes completion, an exact-launch `exiting` marker with the expected fixture identity, `testSave.phase=passed`, `identityVerified=true` and at least 120 observed ticks still proves the scenario passed, regardless of the marker's age at read time. An active marker from a running process still fails as `gameSideStale` after five seconds. Missing or mismatching final markers cannot confirm a clean stop (`cleanStopNotConfirmed`); failed or incomplete scenarios still fail.
+
 Before fixture or world commands, require `testSave.state=ready`, `phase=passed`, the expected Save and fixture IDs, and `identityVerified=true`. Reuse an existing verified baseline. Do not recreate it for each read. A plain `single` review without `--test-save` uses its own persistent isolated profile instead.
 
 For a C# host and farmhand review, prepare the same baseline. Start with `--topology network-2`, without `--test-save`. Confirm both roles, the loaded target and build identity, and that each role sees the other joined. Each role has its own isolated profile.

@@ -140,6 +140,7 @@ internal sealed partial class LiveLabService
 
     private TestSaveWaitResult WaitForTestSave(TestSaveLaunchState expected)
     {
+        LiveLabState? state = ReadState();
         DateTimeOffset startedAt = _utcNow().ToUniversalTime();
         DateTimeOffset deadline = startedAt + TestSaveTimeout;
         DateTimeOffset gameSideSettleDeadline = startedAt + GameSideStartupGrace;
@@ -157,6 +158,23 @@ internal sealed partial class LiveLabService
             TestSaveStatusReport? testSave = report.GameSide?.TestSave;
             if (result.ExitCode != Success)
             {
+                if (report.Problems.Count == 1
+                    && report.Problems[0].Code is "ownedProcessExited" or "gameSideStale" or "cleanStopIncomplete"
+                    && state?.TestSave == expected
+                    && string.Equals(state.LaunchId, report.LaunchId, StringComparison.Ordinal)
+                    && _processHost.Inspect(state.OwnedProcessIdentity).Status == LabProcessInspectStatus.Exited)
+                {
+                    // Status can observe shutdown before the final marker or process exit.
+                    // Re-read only after exact exit; terminal markers have no heartbeat age limit.
+                    GameSideStatusReport finalStatus = ReadGameSide(state);
+                    if (finalStatus.State == "exiting"
+                        && finalStatus.TestSave is { State: "ready", IdentityVerified: true } finalTestSave
+                        && string.Equals(finalTestSave.Phase, expectedPhase, StringComparison.Ordinal))
+                    {
+                        return new TestSaveWaitResult(true, finalTestSave, null);
+                    }
+                }
+
                 if (report.Problems.Count == 1
                     && string.Equals(
                         report.Problems[0].Code,
