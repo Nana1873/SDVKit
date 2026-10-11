@@ -1,31 +1,6 @@
 # Inspect the active menu
 
-The active-menu reader has bounded public adapters for vanilla inventory,
-shop, dialogue/question, and crafting menus. A `dialogueBox` node reports the
-current rendered text plus response keys, text, controller IDs, bounds,
-visibility, and focus. A `craftingPage` node reports the current page and
-visible recipe IDs, display names, component IDs, ingredient IDs/quantities,
-outputs, ingredient availability, and craftable count.
-
-Availability and craftable count are `null` with the explicit
-`craftingAvailabilityUnavailable` limitation when the native page exposes
-material containers that SDVKit cannot safely aggregate without changing game
-state. Invalid or overlong stable recipe/choice identities are omitted with a
-limitation rather than truncated into a new identity.
-An unavailable crafting page is `null` with `craftingPageUnavailable`.
-Recipe, ingredient, and output bounds use `craftingCollectionLimit`; the
-limitation makes the report incomplete.
-
-Dialogue and crafting values are observations only; they do not select,
-activate, or infer clickability. Text is bounded and localized display text is
-not a stable identity. Unsupported menu subclasses retain `publicBase` partial
-coverage. Recipe and response lists are capped by the existing menu response
-limits and report incomplete coverage when truncated.
-
-Use `project review menu --json` or native `stardew_menu_get {}` during an exact,
-world-ready [review](live-review.md). Each call captures fresh state on the game
-thread through the existing request/response path. It does not reuse the runtime
-heartbeat or invoke layout, population, hover, snap, selection, scroll or input.
+Use `project review menu --json` or the MCP tool `stardew_menu_get {}` during a [world-ready](glossary.md#worlds-and-fixtures) [review](live-review.md). Each call captures fresh state on the game thread. It does not reuse the runtime heartbeat. It does not trigger layout, population, hover, snap, selection, scroll or input.
 
 ```powershell
 & $sdvkit project review menu --json
@@ -33,20 +8,15 @@ heartbeat or invoke layout, population, hover, snap, selection, scroll or input.
 & $sdvkit project review menu --topology network-2 --role farmhand --json
 ```
 
-Native MCP uses the role fixed at server startup, without an input opt-in. Both
-surfaces check fresh process, launch, target/build and fixture bindings before
-and after capture. Captures older than five seconds are unavailable, including
-when they age during the final binding check. A changed binding is unavailable. Title,
-loading, unjoined network roles and other non-world-ready states are unavailable;
-the CLI viewport screenshot exception does not apply. No menu in a ready world
-is a successful report with `menuOpen=false`, `menus=[]` and no identity scope.
+The MCP tool uses the [role](glossary.md#topology-roles-and-screens) fixed at server start and needs no opt-in.
+
+The reader has adapters for vanilla inventory, shop, dialogue and question, and crafting menus. A ready world without a menu is a success with `menuOpen=false`, `menus=[]` and no identity scope. Title screen, loading, unjoined network roles and other states that are not world ready are unavailable. The CLI viewport-screenshot exception does not apply here.
+
+Exit `0` means a valid observation, possibly partial: check `complete`, `truncated`, `coverage` and `limitations`. `complete=true` means all **declared fields** were captured within the limits. It does not mean full UI coverage. Exit `3` or MCP `isError=true` means unavailable. SDVKit does not retry automatically.
 
 ## Declared fields and coverage
 
-Every node reports full type name and assembly simple name, screen bounds, parent/relationship, adapter,
-coverage and bounded components. Relationships are `root`, `activePage`,
-`inventory` and the public `child` menu. Only exact vanilla types use the specific
-adapters below; subclasses receive the partial public base adapter.
+Every node reports its full type name and assembly simple name, screen bounds, parent and relationship, adapter, coverage and its components. Relationships are `root`, `activePage`, `inventory` and the public `child` menu. Only the vanilla types below get their specific adapter. Subclasses get the partial public base adapter.
 
 | Menu | Additional public fields read |
 | --- | --- |
@@ -57,62 +27,55 @@ adapters below; subclasses receive the partial public base adapter.
 | `NamingMenu` | Public naming, done and random components; exact non-password `TextBox` identity, bounds, `Selected`, keyboard dispatcher and subscriber identities |
 | Unknown or mod-created `IClickableMenu` | Existing public `allClickableComponents`, close component, bounds, snapped-component reference and `GetChildMenu` only; always `partial` |
 
-All adapters also read those public base fields. Missing/null components are
-absent; an unpopulated public component list is never populated by inspection.
-The declared fields do not cover every drawn control or private menu state.
-Other vanilla pages, custom fields, shop stock/items/prices, inventory items,
-hover text and scroll internals are outside this slice. A shop row represents a
-reusable control object, not the identity of the stock currently drawn in it.
-Use the separate [shop inspection](shop-inspection.md) capture for supported
-single-review Gold-shop offers, money, inventory and held-item observations.
+All adapters also read the public base fields. Missing or null components are left out. Inspection does not fill an unpopulated public component list. Unknown and custom menus are always incomplete, even within the size limits.
 
-Components report only an opaque numeric ID, fixed semantic kind, public
-controller ID, bounds, `visibleFlag`, `intersectsViewport` and
-`controllerFocused`. Focus means reference equality with that node's public
-`currentlySnappedComponent`; it is not selection or hover. The visibility flag
-is the public field, and viewport intersection is geometric: neither establishes
-that the component is drawn, enabled, unobscured or clickable. No such inferred
-states are returned. The viewport rectangle starts at screen-local `(0,0)` and
-uses the game's UI viewport dimensions, excluding world-camera offsets. Bounds
-use this UI coordinate system, which
-may differ from screenshot pixel coordinates when UI scaling is active.
+The declared fields do not cover every drawn control or private menu state. Other vanilla pages, custom fields, shop stock, items and prices, inventory items, hover text and scroll internals are out of scope. A shop row is a reusable control, not the identity of the stock drawn in it. For Gold-shop offers, money, inventory and the held item, use [shop inspection](shop-inspection.md).
 
-An exact NamingMenu (also when constructed by a mod) can expose `textField`:
-`id`, `dispatcherId`, nullable `subscriberId`, `selected`, `available` and `bounds`.
-`available` requires the root without a child menu, a selected exact non-password
-TextBox and subscriber equality. Unknown/custom/GMCM fields have no `textField`.
-These identities and selection participate in `uiRevision`; replacements or lost
-selection invalidate text requests. Use `textField.id` with that fresh revision
-for [opt-in text input](mcp.md#opt-in-input).
+### Dialogue and crafting
 
-No component names, labels, text, item/player data, paths or arbitrary custom
-objects are serialized. The bounded menu type identifier is runtime metadata.
-Assembly identity contains no assembly file path. The capture returns copied records and read-only collections, never live game
-objects. Separate screenshots remain necessary to establish visible behavior.
+A `dialogueBox` node reports the current rendered text plus each response's key, text, controller ID, bounds, visibility and focus.
+
+A `craftingPage` node reports the current page and its visible recipes: IDs, display names, component IDs, ingredient IDs and quantities, outputs, ingredient availability and craftable count.
+
+- Availability and craftable count are `null` with `craftingAvailabilityUnavailable` when the page uses material containers that SDVKit cannot add up without changing game state.
+- An unavailable crafting page is `null` with `craftingPageUnavailable`.
+- Too many recipes, ingredients or outputs add `craftingCollectionLimit` and make the report incomplete.
+- An invalid or overlong recipe or choice identity is left out with a limitation. It is not truncated into a new identity.
+
+These values are observations only. They do not select, activate or say that something can be clicked. Text has a length limit, and localized display text is not a stable identity.
+
+### Components
+
+A component reports only an opaque numeric ID, a fixed semantic kind, its public controller ID, bounds, `visibleFlag`, `intersectsViewport` and `controllerFocused`.
+
+- `controllerFocused` means the component is the node's public `currentlySnappedComponent`. It is not selection or hover.
+- `visibleFlag` is the public field. `intersectsViewport` is pure geometry. Neither proves that the component is drawn, enabled, unobscured or clickable, and SDVKit returns no such guess.
+- The viewport starts at screen-local `(0,0)` and uses the game's UI viewport size, without world-camera offsets. Bounds use these UI coordinates, which can differ from screenshot pixels when UI scaling is active.
+
+### Naming menu text field
+
+A vanilla `NamingMenu`, also one created by a mod, can expose `textField` with `id`, `dispatcherId`, nullable `subscriberId`, `selected`, `available` and `bounds`. `available` needs the root menu without a child menu, a selected non-password `TextBox` and a matching subscriber. Unknown, custom and GMCM fields have no `textField`.
+
+These identities and the selection are part of `uiRevision`. A replaced field or lost selection invalidates text requests. Use `textField.id` with that fresh revision for [opt-in text input](mcp.md#opt-in-input).
+
+### What is not returned
+
+No component names, labels, text, item or player data, paths or custom objects are serialized. The menu type identifier is runtime metadata. Assembly identity has no file path. The capture returns copied records and read-only collections, not live game objects. You still need screenshots to prove visible behavior.
 
 ## Identity and bounds
 
-Use `(launchId, identityScope, id)` together. IDs identify observed object
-references, independent of controller IDs, names or list indices. Reordering,
-scrolling and resizing retain IDs for the same objects; replacements get new
-IDs. Repeated references within one node are deduplicated. Duplicate controller
-IDs remain distinct objects. A component shared by two nodes has the same ID.
-Components are ordered by assigned ID; newly observed objects get IDs in the
-adapter's fixed field/list traversal order. Root replacement/closure or a
-`MenuChanged` notification of a different root resets the scope; a notification
-for an already captured root preserves it. IDs are observations, not action handles,
-save identities or a promise across launches.
+Use `(launchId, identityScope, id)` together. An ID identifies an observed object reference, independent of controller IDs, names or list positions.
 
-The report contains at most four menu levels, 16 nodes and 128 component entries
-in total. Each node scans at most 512 public component entries. Type identifiers
-are restricted to 128 letters/digits or `_ . +` and backtick; assembly simple names
-also allow hyphens/spaces and have the same 128-character bound. Other identifiers
-are withheld. The encoded response envelope is capped at 128 KiB. Tree cycles,
-scan/count limits and withheld identifiers produce explicit limitations;
-truncation is never complete. An oversized envelope is unavailable.
+- Reordering, scrolling and resizing keep the IDs of the same objects. Replaced objects get new IDs.
+- Duplicate controller IDs stay distinct objects. A component shared by two nodes has the same ID.
+- Closing or replacing the root menu resets the scope.
+- IDs are observations, not action handles or save identities, and do not carry across launches.
 
-`complete=true` means all **declared fields** were captured within these limits,
-not full UI coverage. Unknown/custom base coverage is always incomplete even
-when no size limit is reached. Exit `0` means a valid observation, including a
-partial report; inspect `complete`, `truncated`, `coverage` and `limitations`.
-Exit `3` / MCP `isError=true` means unavailable. No automatic retry occurs.
+A report has at most four menu levels, 16 nodes and 128 component entries in total. Cycles, scan or count limits and withheld identifiers produce limitations. A truncated report is not complete.
+
+## Reference details
+
+- Both surfaces check the process, launch, target, build and fixture bindings before and after capture. A capture older than five seconds is unavailable, also when it ages during the final check. A changed binding is unavailable.
+- Repeated references within one node are deduplicated. Components are ordered by ID. New objects get IDs in the adapter's fixed field and list order. A `MenuChanged` notification for a different root resets the scope; one for an already captured root keeps it.
+- Each node scans at most 512 public component entries. Type identifiers allow up to 128 letters, digits, `_ . +` and backtick. Assembly simple names also allow hyphens and spaces, with the same 128-character limit. Other identifiers are withheld.
+- The encoded response is capped at 128 KiB. A larger response is unavailable.

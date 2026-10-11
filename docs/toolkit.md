@@ -1,12 +1,12 @@
 # Modding toolkit
 
-Create and package a mod without deploying it into normal Mods. Complete [installation](../README.md#install) first; examples use its `$sdvkit` variable.
+Create and package a mod without deploying it into your normal `Mods`. Complete [installation](../README.md#install) first; the examples use its `$sdvkit` variable.
 
-Success is an empty `problems` array and exit `0`; a package result identifies the archive below the selected project's `.sdvkit/packages`. Building code requires one complete game/SMAPI installation, selected explicitly or discovered uniquely. Creating, inspecting, and checking authoring files do not require a game.
+Success is an empty `problems` array and exit `0`. A package result names the archive below the project's `.sdvkit/packages`. Building code needs one complete game and SMAPI installation, either selected with `--game-path` or the only one found. Creating, inspecting and checking authoring files need no game.
 
 ## Choose a mod workspace
 
-For new mods sharing one lab, we recommend a `workspaces/<ModName>/` source folder alongside the lab's `.sdvkit/`. This is an optional directory convention: `project create` still requires an explicit destination, and existing projects or user-selected paths can stay where they are. The lab root is a user-chosen directory and does not require an SDVKit source checkout.
+For new mods that share one lab, we recommend a `workspaces/<ModName>/` source folder next to the lab's `.sdvkit/`. This layout is optional. `project create` still needs a destination you name, and existing projects can stay where they are. The [lab root](glossary.md#places) is any folder you choose; it needs no SDVKit source checkout.
 
 ```text
 StardewDevLab/
@@ -24,9 +24,9 @@ StardewDevLab/
     `-- lab/                 # shared live state and staged test copies
 ```
 
-Keep durable mod source, including agent-authored source, in its own workspace; each workspace may have its own Git repository and focused agent session. Git setup is separate from `project create`. Reserve ignored `.sdvkit/` directories for generated output and lab state. The disposable examples below and in the [CP authoring recipe](cp-authoring.md) explicitly choose `.sdvkit/` for their sample projects; that is not a default for a user's lasting mod project.
+Keep lasting mod source, including source an agent wrote, in its own workspace. Each workspace may have its own Git repository and its own agent session. `project create` does not set up Git. Use ignored `.sdvkit/` folders only for generated output and lab state. The throwaway examples below and in the [CP authoring recipe](cp-authoring.md) put their sample projects in `.sdvkit/` on purpose; do not do that for a mod you want to keep.
 
-For a content-pack review, select the clean pack subdirectory (such as `workspaces/ExamplePack/pack/`) with workspace Git metadata outside it. Follow the [CP authoring recipe](cp-authoring.md) for provider selection and review/package order.
+For a content-pack review, select the clean pack subfolder (such as `workspaces/ExamplePack/pack/`), with the workspace's Git metadata outside it. The [CP authoring recipe](cp-authoring.md) covers provider selection and the order of review and packaging.
 
 ### Set up the agent layer
 
@@ -37,16 +37,16 @@ For a content-pack review, select the clean pack subdirectory (such as `workspac
 - a Claude Code hook in `.claude/` that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries;
 - a `sdvkit.cmd` launcher and an MCP template in `.sdvkit/agent/`.
 
-It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when they are missing, and never changes them afterwards. Run it again after installing a new SDVKit version: files it wrote and you did not edit are updated, and locally edited files are kept unless you pass `--force`. The hook is a mechanical backstop, not a sandbox.
+It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when they are missing, and leaves them alone afterwards. Run it again after you install a new SDVKit version. It updates files it wrote that you did not edit, and keeps files you edited unless you pass `--force`. The hook is a safety net, not a sandbox.
 
-Run these commands from the chosen lab root, using `$sdvkit` from [installation](../README.md#install):
+Run these commands from the lab root:
 
 ```powershell
 & $sdvkit project create smapi-mod .\workspaces\ExampleMod --name 'Example Mod' --author 'ExampleAuthor' --unique-id 'ExampleAuthor.ExampleMod' --description 'My first mod.' --json
 & $sdvkit project inspect .\workspaces\ExampleMod --json
 ```
 
-For live work, keep the current directory at that same lab root and pass the explicit mod path, for example `& $sdvkit project smoke .\workspaces\ExampleMod --topology single --json`. Run review lifecycle and MCP commands from the same lab root too, even when the agent edits source in a mod workspace. This reuses one lab without creating a complete lab per mod. Ordinary `project build` and `project package` output belongs to the selected source project's `.sdvkit/`; review preparation and runtime state belong to the lab's `.sdvkit/`. Follow the [live review guide](live-review.md) for prerequisites and ownership checks before testing.
+For live work, stay in the same lab root and pass the mod path, for example `& $sdvkit project smoke .\workspaces\ExampleMod --topology single --json`. Run review and MCP commands from the lab root too, even when the agent edits source in a mod workspace. That way all mods share one lab. `project build` and `project package` output goes to the project's own `.sdvkit/`. Review preparation and runtime state go to the lab's `.sdvkit/`. Read the [live review guide](live-review.md) before testing.
 
 ## Inspect an installation or project
 
@@ -55,11 +55,11 @@ For live work, keep the current directory at that same lab root and pass the exp
 & $sdvkit project inspect [path] --json
 ```
 
-`doctor` checks the supported Windows custom-targets, Steam (including additional libraries), GOG, and Xbox locations. An installation is ready only when the Stardew Valley and SMAPI executables and assemblies are present together. Its versioned JSON reports `ready`, `ambiguous`, or `notFound` and lists only complete installations in `installations`. When supported candidate directories are incomplete, additive `incompleteCandidates` entries name their `missingRequirements` (filenames) and concrete `actions`. They never count toward readiness or ambiguity. Omitted-selection status and exit codes keep their existing meaning. Use `doctor --game-path <directory> --json` to validate one explicit installation, including a path outside automatic discovery; missing game files require store repair/installation, while missing SMAPI files require installing/repairing SMAPI in that same directory.
+`doctor` checks the supported Windows locations: custom targets, Steam (including extra libraries), GOG and Xbox. An installation is ready only when the Stardew Valley and SMAPI executables and assemblies are all present. The JSON reports `ready`, `ambiguous` or `notFound`, and `installations` lists only complete installations. Incomplete candidate folders appear in `incompleteCandidates`, with `missingRequirements` (file names) and `actions`. They do not count toward readiness or ambiguity. To check one installation, including one outside automatic discovery, use `doctor --game-path <directory> --json`. Missing game files need a store repair or install. Missing SMAPI files need SMAPI installed or repaired in that same folder.
 
-`project inspect` reads the selected directory, or the current directory when no path is given. It classifies manifests as `smapiMod` through `EntryDll`, or `contentPack` through `ContentPackFor.UniqueID`; a tree containing separate manifests of both kinds is `hybrid`. Required identity fields and the classification fields are checked, but this is not a replacement for SMAPI's complete manifest schema validation. Project and manifest paths within the result are relative and sorted. `bin`, `obj`, `.git`, and `.sdvkit` directories are ignored, and child directory links are not followed.
+`project inspect` reads the given folder, or the current folder without a path. It classifies a manifest as `smapiMod` through `EntryDll`, or as `contentPack` through `ContentPackFor.UniqueID`. A tree with separate manifests of both kinds is `hybrid`. It checks the required identity and classification fields; it does not replace SMAPI's full manifest validation. Paths in the result are relative and sorted. `bin`, `obj`, `.git` and `.sdvkit` folders are skipped, and child folder links are not followed.
 
-Both commands are read-only. They do not create `.sdvkit`, inspect saves or a normal `Mods` directory, deploy files, or launch the game. Exit code `0` means a ready or recognized result, `2` is a CLI usage error, and `3` is a controlled discovery or inspection outcome such as not found, ambiguous, or invalid.
+Both commands are read-only. They do not create `.sdvkit`, read saves or a normal `Mods` folder, deploy files or launch the game. Exit `0` is a ready or recognized result, `2` a usage error, and `3` a controlled outcome such as not found, ambiguous or invalid.
 
 ## Check authoring files offline
 
@@ -68,7 +68,7 @@ Both commands are read-only. They do not create `.sdvkit`, inspect saves or a no
 & $sdvkit project check .\ExamplePack --json
 ```
 
-Select **one mod root containing `manifest.json`**; omit the path to use the current directory. The check is read-only and needs no game, network, build, or active review. It uses the [official SMAPI schemas](https://github.com/Pathoschild/SMAPI/blob/79f9bbbe3edbb7ca3369e7ad0d3dd45131b34fc0/docs/technical/web.md#using-a-schema-file-directly), distributed with SDVKit at that exact commit. The [bundled schema notes](../src/SdvKit.Cli/Projects/Schemas/README.md) document hashes, LGPL source distribution, Draft 7/.NET regex compatibility, and the manual update policy. Content Patcher support is **Format 2.9.x**, matching generated 2.9.0 packs.
+Select **one mod root containing `manifest.json`**, or omit the path to use the current folder. The check is read-only. It needs no game, network, build or active review. It uses the [official SMAPI schemas](https://github.com/Pathoschild/SMAPI/blob/79f9bbbe3edbb7ca3369e7ad0d3dd45131b34fc0/docs/technical/web.md#using-a-schema-file-directly), shipped with SDVKit at that commit. The [bundled schema notes](../src/SdvKit.Cli/Projects/Schemas/README.md) cover hashes, LGPL source distribution, Draft 7/.NET regex compatibility and the manual update policy. Content Patcher support is **Format 2.9.x**, matching generated 2.9.0 packs.
 
 | Selected file | Rule |
 | --- | --- |
@@ -78,15 +78,24 @@ Select **one mod root containing `manifest.json`**; omit the path to use the cur
 | Literal CP `FromFile` | Checks each unconditional comma-delimited source path for an existing file within the mod root, for every action. Paths are trimmed and empty comma segments ignored; an entirely empty list fails. Asset contents and their dependencies are not parsed. |
 | Direct `i18n/*.json` | Checked when `i18n` exists; that directory requires `default.json`. Values must be strings. No translation completeness or locale coverage claim. |
 
-Comments and trailing JSON commas are accepted. Duplicate JSON properties are errors. A `$schema` declaration is optional; if present it must exactly match the corresponding official `https://smapi.io/schemas/manifest.json`, `content-patcher.json`, or `i18n.json` URL. Unknown/mismatched declarations report `unsupportedSchema`, and other CP format strings report `unsupportedFormat`; no schema is fetched from the project or network. The pinned schema snapshot still validates `FromFile` strings before literal-file resolution: for example, it rejects a trailing comma inside the path list even though CP's runtime ignores that empty segment.
+### What the check accepts and skips
 
-CP references with tokens or a patch's `When` field are skipped with `dynamicReferenceSkipped` or `conditionalReferenceSkipped` warnings at the source `FromFile` field. Conditional Includes and their children are not read, unless another unconditional literal Include reaches them. The check does not evaluate conditions or tokens; a passed result with warnings is partial offline coverage. Literal paths which escape the mod root or use a symbolic link/junction fail before the destination is read.
+- Comments and trailing commas are accepted. Duplicate JSON properties are errors.
+- `$schema` is optional. If present, it has to match the official `https://smapi.io/schemas/manifest.json`, `content-patcher.json` or `i18n.json` URL. Other declarations report `unsupportedSchema`. Other CP format strings report `unsupportedFormat`. SDVKit does not fetch a schema from the project or the network.
+- The pinned schema checks `FromFile` strings before it resolves files. For example, it rejects a trailing comma inside the path list, although CP ignores that empty segment at runtime.
+- References with tokens, or in a patch with `When`, are skipped with a `dynamicReferenceSkipped` or `conditionalReferenceSkipped` warning at the `FromFile` field. Conditional Includes and their children are not read, unless an unconditional literal Include also reaches them. The check never evaluates conditions or tokens, so a pass with warnings is partial coverage.
+- Literal paths that leave the mod root or go through a symbolic link or junction fail before the target is read.
+- At most 64 JSON files (including `content.json`) and 1 MiB per Include fragment are validated. `includeLimit` and `includeFileTooLarge` warnings name what was skipped; the pack is not rejected, since it may still work in game.
+- Not followed: nested packs, config files, unreferenced assets or JSON, nested i18n folders and authoring `$ref` values. Root or parent junctions, selected file links and an i18n folder link are rejected.
+- Source files are not repaired or rewritten.
 
-Include validation is bounded to 64 distinct JSON files including `content.json`, and 1 MiB per Include fragment. `includeLimit` and `includeFileTooLarge` warnings identify skipped validation without rejecting packs which may be valid in game. There is no recursive mod discovery: nested packs, configuration files, unreferenced assets/JSON, nested i18n directories, and authoring `$ref` values are not followed. Root/ancestor junctions, selected file links, and an i18n directory link are rejected. Source files are never repaired or rewritten.
+### Read the result
 
-Exit `0` means the evaluated files passed this schema snapshot, `2` means invalid CLI arguments, and `3` means a file, schema, or unsupported-scope problem. JSON reports `status`, `schemaSource` (the upstream commit), `files` (files evaluated against their schema), `problems`, and non-blocking `warnings`, each diagnostic with a relative `file`, `field`, `code`, and English `message`. Fields use JSON Pointer, such as `/Changes/0/FromFile` or `/hello`; an empty pointer means the document root. Missing/unsafe references identify the source file and `FromFile` pointer; included JSON/schema errors identify the fragment itself. Malformed JSON reports its parser path and one-based line/byte position in the message. Required-property messages name the absent field at its containing object.
+Exit `0` means the checked files passed this schema snapshot. Exit `2` means invalid arguments. Exit `3` means a file, schema or unsupported-scope problem.
 
-Schema and literal-file checks do not prove asset contents, dependencies, skipped reference existence, token/condition evaluation, or that a patch applies in game. Use the [live review workflow](live-review.md) for those observations. Packaging does not implicitly run this check. CP's [official Include guide](https://github.com/Pathoschild/StardewMods/blob/develop/ContentPatcher/docs/author-guide/action-include.md) describes root-relative paths and fragment shape.
+The JSON has `status`, `schemaSource` (the upstream commit), `files` (files checked against a schema), `problems` and non-blocking `warnings`. Each diagnostic has a relative `file`, `field`, `code` and English `message`. `field` is a JSON Pointer, such as `/Changes/0/FromFile` or `/hello`; an empty pointer is the document root. A missing or unsafe reference names the source file and its `FromFile` pointer. Errors in included JSON name the fragment itself. Malformed JSON gives the parser path and the one-based line and byte position in the message. A missing required property is reported at its containing object.
+
+The check does not prove asset contents, dependencies, skipped references, token or condition results, or that a patch applies in game. Use the [live review workflow](live-review.md) for that. Packaging does not run this check. CP's [official Include guide](https://github.com/Pathoschild/StardewMods/blob/develop/ContentPatcher/docs/author-guide/action-include.md) describes root-relative paths and the fragment shape.
 
 ### Small runnable CP example
 
@@ -113,7 +122,7 @@ New-Item -ItemType Directory -Path (Join-Path $pack 'i18n') | Out-Null
 & $sdvkit project check $pack --json
 ```
 
-Expected: exit `0`, `status: "passed"`, three evaluated files, and no problems. Changing `greeting` to the number `42` produces exit `3` with `i18n/default.json`, `/greeting`, and `schemaViolation`; restore the string and check again. This example proves offline authoring checks only. Continue with the [complete CP authoring recipe](cp-authoring.md) to diagnose a deliberate condition failure, refresh selected JSON, observe final Data records and package the authored result.
+Expected: exit `0`, `status: "passed"`, three checked files and no problems. Change `greeting` to the number `42` and you get exit `3` with `i18n/default.json`, `/greeting` and `schemaViolation`. Restore the string and check again. This example proves offline checks only. Continue with the full [CP authoring recipe](cp-authoring.md) to diagnose a deliberate condition failure, refresh selected JSON, observe final Data records and package the result.
 
 ## Create, build, and package
 
@@ -124,7 +133,7 @@ Create a buildable SMAPI C# mod or a minimal Content Patcher pack:
 & $sdvkit project create content-pack .\ExamplePack --name "Example Pack" --author Nana --unique-id Nana.ExamplePack --description "A minimal Content Patcher pack." --json
 ```
 
-The SMAPI project contains only `.gitignore`, `<mod>.csproj`, `ModEntry.cs`, and `manifest.json`. It targets .NET 6 and references `Pathoschild.Stardew.ModBuildConfig` 4.4.0. The content pack contains only `.gitignore`, `manifest.json`, and a no-op `content.json` using Content Patcher format 2.9.0. Creation accepts a missing or empty destination and never overwrites existing content.
+The SMAPI project contains only `.gitignore`, `<mod>.csproj`, `ModEntry.cs` and `manifest.json`. It targets .NET 6 and references `Pathoschild.Stardew.ModBuildConfig` 4.4.0. The content pack contains only `.gitignore`, `manifest.json` and a no-op `content.json` in Content Patcher format 2.9.0. The destination must be missing or empty; creation never overwrites existing content.
 
 Build and package an inspected project:
 
@@ -134,40 +143,42 @@ Build and package an inspected project:
 & $sdvkit project package .\ExamplePack --json
 ```
 
-`project build` defaults to exactly one classified SMAPI code manifest, one C# project, and one complete Stardew Valley + SMAPI installation from `doctor`. It runs the normal `dotnet build` and official ModBuildConfig path in `Release`, while forcing `EnableModDeploy=false` and keeping build output and logs below the project's ignored `.sdvkit/` directory.
+By default, `project build` needs exactly one classified SMAPI code manifest, one C# project and one complete Stardew Valley + SMAPI installation from `doctor`. It runs the normal `dotnet build` with the official ModBuildConfig in `Release`. It forces `EnableModDeploy=false` and keeps build output and logs below the project's ignored `.sdvkit/`.
 
-For an existing repository with multiple projects or installations, select one target without restructuring it:
+In an existing repository with several projects or installations, select one target without restructuring it:
 
 ```powershell
 & $sdvkit project build .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --json
 & $sdvkit project package .\ExistingRepository --project 'src\ChosenMod\ChosenMod.csproj' --game-path $gamePath --json
 ```
 
-Set `$gamePath` to the intended installation directory validated by doctor. `--project` is a root-relative `.csproj` path; absolute paths, paths outside the chosen root, ignored build/state directories, and links/linked ancestors are rejected. Its code manifest must be colocated with that project. Unselected sibling manifests do not determine its identity. Output and logs remain under the chosen root's `.sdvkit/`; selection never changes the source layout. Omitted selectors retain the unique defaults and return controlled ambiguity when needed. Build/package use the same selected project and manifest, including existing valid hybrid/bundled-pack layouts supported by ModBuildConfig. SDVKit does not orchestrate solution builds or rewrite project references; the selected project still controls its normal .NET references and declared package content. A reference can require another project to compile; selection does not disable declared dependencies.
+- Set `$gamePath` to an installation folder that `doctor` validated.
+- `--project` is a `.csproj` path relative to the root. Absolute paths, paths outside the root, ignored build or state folders and links (also in parent folders) are rejected.
+- The project's code manifest must be in the same folder. Other manifests nearby do not decide its identity.
+- Output and logs stay under the root's `.sdvkit/`. Selection does not change the source layout.
+- Without selectors, the unique defaults apply, and ambiguity is a controlled result.
+- Build and package use the same project and manifest, including valid hybrid or bundled-pack layouts that ModBuildConfig supports.
+- SDVKit does not run solution builds or rewrite project references. The project keeps its normal .NET references and package content, so a reference can still require another project to compile.
 
-For C# mods, `project package` lets ModBuildConfig select the declared release output. For Content Patcher packs, it archives the selected manifest root while excluding source projects, build and repository state, game binaries, executables, and XNB files; a save marker or `Saves` directory rejects the package instead of producing a partial archive. Release ZIPs are written below `.sdvkit/packages` and validated to contain one relative top-level mod directory without traversal paths. Neither command writes to a normal or mod-manager-owned `Mods` directory, reads save contents, or launches the game.
+For C# mods, `project package` lets ModBuildConfig choose the declared release output. For Content Patcher packs, it archives the manifest root and leaves out source projects, build and repository state, game binaries, executables and XNB files. A save marker or `Saves` folder fails the package instead of producing a partial archive. Release ZIPs go below `.sdvkit/packages`. SDVKit checks that each ZIP has one relative top-level mod folder and no traversal paths. Neither command writes to a normal or mod-manager `Mods` folder, reads save contents or launches the game.
 
-All toolkit JSON uses relative paths for project-owned files and archives. Exit code `0` means success, `2` is a CLI usage error, and `3` is a controlled create, build, or package outcome; build diagnostics are kept in the reported `.sdvkit/logs` file.
+Toolkit JSON uses relative paths for project files and archives. Exit `0` is success, `2` a usage error, and `3` a controlled create, build or package outcome. Build diagnostics are in the `.sdvkit/logs` file the result names.
 
-A packaged Content Patcher target can be edited and [reviewed/refreshed](cp-refresh.md)
-from the same source root. Review excludes that target's root `.sdvkit` output
-from staging and source identity, while preserving link checks and exact runtime
-identities. Other ready sources and nested development directories remain strict.
+You can edit a packaged Content Patcher target and [review or refresh](cp-refresh.md) it from the same source root. Review leaves that target's root `.sdvkit` output out of staging and source identity, but still checks links and runtime identities. Other ready sources and nested development folders stay strict.
 
-For a complete event/config implementation, deliberate runtime exception, corrected
-world effect and ZIP, follow the [SMAPI authoring recipe](smapi-authoring.md).
+For a full event and config implementation, a deliberate runtime exception, the fixed world effect and the ZIP, follow the [SMAPI authoring recipe](smapi-authoring.md).
 
 ## Next: test in game
 
-Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or [interactive review](live-review.md#start-a-review) for functional checks and content packs. Build and packaging success alone do not prove game behavior.
+Use [project smoke](live-review.md#automated-smoke) for a standalone C# mod, or an [interactive review](live-review.md#start-a-review) for functional checks and content packs. Build and package success alone do not prove game behavior.
 
 ## Common problems
 
 | Result | Next step |
 | --- | --- |
-| `doctor` reports `notFound` or `ambiguous` | Read `incompleteCandidates` missing files/actions, or explicitly validate/select one complete directory with `--game-path`. |
-| Project is `hybrid` | Build/package accept a tree with exactly one C# project and one code manifest beside it, plus content-pack manifests. No `--project` is needed for this unique target; ModBuildConfig controls the declared bundled-pack output. Extract that archive to a fresh ready directory, then [review the explicit bundle](live-review.md#select-a-ready-bundle) in single with every direct pack selected through `--content-pack`. Source review and smoke still require a standalone target. |
-| `projectFileAmbiguous` / `modManifestAmbiguous` | Multiple C# projects or code manifests need an explicit target. Use `--project` with the root-relative `.csproj` beside its own code `manifest.json`, as in the [selection example](#create-build-and-package). |
-| `projectSelectionInvalid` / `projectManifestMismatch` | Select an existing root-relative `.csproj` beside its own code `manifest.json`, outside ignored directories and links. |
-| C# build fails | Open the build log named by the result below the project's `.sdvkit/`. |
-| A content pack needs a provider | Select the installed provider explicitly for review; SDVKit does not fetch dependencies. |
+| `doctor` reports `notFound` or `ambiguous` | Read the missing files and actions in `incompleteCandidates`, or validate and select one complete folder with `--game-path`. |
+| Project is `hybrid` | Build and package accept a tree with one C# project, its code manifest beside it, and content-pack manifests. This unique target needs no `--project`; ModBuildConfig controls the bundled-pack output. Extract that archive to a fresh ready folder, then [review the bundle](live-review.md#select-a-ready-bundle) in single, with every direct pack selected through `--content-pack`. Source review and smoke still need a standalone target. |
+| `projectFileAmbiguous` / `modManifestAmbiguous` | Several C# projects or code manifests need a chosen target. Use `--project` with the root-relative `.csproj` beside its own code `manifest.json`, as in the [selection example](#create-build-and-package). |
+| `projectSelectionInvalid` / `projectManifestMismatch` | Select an existing root-relative `.csproj` beside its own code `manifest.json`, outside ignored folders and links. |
+| C# build fails | Open the build log that the result names below the project's `.sdvkit/`. |
+| A content pack needs a provider | Select the installed provider for the review; SDVKit does not fetch dependencies. |
