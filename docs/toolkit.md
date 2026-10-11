@@ -32,6 +32,7 @@ For a content-pack review, select the clean pack subdirectory (such as `workspac
 
 `sdvkit lab init [<lab-root>] --json` prepares a lab root for coding agents. It writes:
 - `SDVKIT.md`, the lab guide;
+- `KNOWLEDGEBASE.md`, sourced SMAPI 4, Stardew 1.6, Content Patcher and GMCM pitfalls;
 - task skills in `.claude/skills/` and `.agents/skills/`;
 - a Claude Code hook in `.claude/` that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries;
 - a `sdvkit.cmd` launcher and an MCP template in `.sdvkit/agent/`.
