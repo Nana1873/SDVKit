@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 - The local player runtime data has an optional `npcs` list: the visible villagers in the player's current location with internal and display name, tile and facing, at most 64 (#292). It is available to every role and screen, and absent in status from an older GameSide.
 - `stardew_fixture_npc_place { name, x, y }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) warps one named villager to a free tile in the player's location, stops its path and turns it toward the player, so dialogue and gift tests do not depend on schedules (#292). It is test setup, not proof of game behaviour.
 - `stardew_fixture_item_add { qualifiedItemId, stack, quality? }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) puts one new stack of an existing item, including modded items, into the main player's first empty backpack slot (#291). It never merges or replaces, refuses with a full backpack, and reports the slot and the new inventory revision. It is test setup, not proof of game behaviour.
