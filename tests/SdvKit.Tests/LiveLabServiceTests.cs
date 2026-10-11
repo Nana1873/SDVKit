@@ -54,6 +54,7 @@ public sealed class LiveLabServiceTests
         Assert.Equal(paths.LocalAppDataPath, specification.Environment["LOCALAPPDATA"]);
         Assert.Equal(paths.StardewDataPath, specification.Environment["SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"]);
         Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal(paths.StandardOutputPath, specification.StandardOutputPath);
         Assert.Equal(paths.StandardErrorPath, specification.StandardErrorPath);
@@ -139,6 +140,7 @@ public sealed class LiveLabServiceTests
             specification.Environment["SDVKIT_PROJECT_MOD_BUILD_IDENTITY"]);
         Assert.Equal("1", specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"]);
         Assert.Equal(projectMod, stateStore.State?.ProjectMod);
         Assert.Null(stateStore.State?.TestSave);
         Assert.Null(stateStore.State?.NetworkTwo);
@@ -219,6 +221,7 @@ public sealed class LiveLabServiceTests
             "SDVKIT_PROJECT_MOD_UNIQUE_ID"]);
         Assert.Equal(string.Empty, specification.Environment["SDVKIT_PROJECT_REVIEW"]);
         Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"]);
     }
 
     [Fact]
