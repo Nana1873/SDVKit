@@ -61,6 +61,7 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 $runtimeFiles = @(
     "sdvkit.exe",
     "sdvkit.dll",
+    "SdvKit.Shared.dll",
     "sdvkit.deps.json",
     "sdvkit.runtimeconfig.json",
     "Humanizer.dll",
@@ -124,42 +125,15 @@ foreach ($file in $gameSideFiles) {
     Copy-Item -LiteralPath $file.FullName -Destination $gameSideDestination
 }
 
-$linkedSource = Join-Path $repositoryRoot "src\SdvKit.Cli\LiveLab"
-$linkedDestination = Join-Path $packageRoot "src\SdvKit.Cli\LiveLab"
-New-Item -ItemType Directory -Path $linkedDestination -Force | Out-Null
-$linkedFiles = @(
-    "LoadedModsModels.cs",
-    "ModBuildIdentity.cs",
-    "NetworkTwoModels.cs",
-    "ProjectModModels.cs",
-    "ReviewAudioModels.cs",
-    "ReviewInputModels.cs",
-    "ReviewInventoryModels.cs",
-    "ReviewContainerModels.cs",
-    "ReviewContainerTransferModels.cs",
-    "ReviewDataModels.cs",
-    "ReviewFixtureModels.cs",
-    "ReviewMapModels.cs",
-    "ReviewMenuModels.cs",
-    "ReviewShopModels.cs",
-    "ReviewProgressionModels.cs",
-    "ReviewWorldModels.cs",
-    "ReviewWorldActionModels.cs",
-    "ReviewModAssetModels.cs",
-    "ReviewScreenshotModels.cs",
-    "ReviewScreenBindingModels.cs",
-    "ReviewTextureModels.cs",
-    "ReviewTexturePngValidator.cs",
-    "ReviewTransportModels.cs",
-    "RuntimeVersionCompatibility.cs",
-    "RuntimeSnapshotModels.cs",
-    "LocalPlayerSnapshotModels.cs",
-    "TestSaveModels.cs"
-)
-foreach ($fileName in $linkedFiles) {
-    Copy-Item `
-        -LiteralPath (Join-Path $linkedSource $fileName) `
-        -Destination (Join-Path $linkedDestination $fileName)
+$sharedSource = Join-Path $repositoryRoot "src\SdvKit.Shared"
+$sharedDestination = Join-Path $packageRoot "src\SdvKit.Shared"
+foreach ($file in Get-ChildItem -LiteralPath $sharedSource -File -Recurse) {
+    $relative = [System.IO.Path]::GetRelativePath($sharedSource, $file.FullName)
+    if ($relative -match '^(bin|obj)[\\/]') { continue }
+    if ($file.Extension -notin @('.cs', '.csproj')) { continue }
+    $destination = Join-Path $sharedDestination $relative
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $destination
 }
 
 $forbiddenExtensions = @(".pdb", ".xnb")

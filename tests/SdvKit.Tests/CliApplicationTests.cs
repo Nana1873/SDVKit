@@ -2276,7 +2276,10 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runLiveLab);
+            runners =>
+            {
+                runners.LiveLab = runLiveLab;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2291,7 +2294,10 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectSmoke: runProjectSmoke);
+            runners =>
+            {
+                runners.ProjectSmoke = runProjectSmoke;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2318,8 +2324,11 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReview: runProjectReview,
-            runProjectReviewConsole: runProjectReviewConsole);
+            runners =>
+            {
+                runners.ProjectReview = runProjectReview;
+                runners.ProjectReviewConsole = runProjectReviewConsole;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2334,7 +2343,10 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReviewData: runProjectReviewData);
+            runners =>
+            {
+                runners.ProjectReviewData = runProjectReviewData;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2349,7 +2361,10 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReviewMap: runProjectReviewMap);
+            runners =>
+            {
+                runners.ProjectReviewMap = runProjectReviewMap;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2364,7 +2379,10 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReviewAudio: runProjectReviewAudio);
+            runners =>
+            {
+                runners.ProjectReviewAudio = runProjectReviewAudio;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 
@@ -2379,11 +2397,14 @@ public sealed class CliApplicationTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReview: (_, _, _, _, _, _, _, _) =>
-                throw new InvalidOperationException("Project review should not run."),
-            runProjectReviewConsole: (_, _, _, _) =>
-                throw new InvalidOperationException("Project-review console should not run."),
-            runProjectReviewMcp: runProjectReviewMcp);
+            runners =>
+            {
+                runners.ProjectReview = (_, _, _, _, _, _, _, _) =>
+                throw new InvalidOperationException("Project review should not run.");
+                runners.ProjectReviewConsole = (_, _, _, _) =>
+                throw new InvalidOperationException("Project-review console should not run.");
+                runners.ProjectReviewMcp = runProjectReviewMcp;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 }

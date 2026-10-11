@@ -1583,7 +1583,8 @@ public sealed class ReviewAudioCommandTests
         ReadRepositoryFile(
             "src",
             "SdvKit.GameSide",
-            "ReviewAudioCommand.cs");
+            "ReviewAudioCommand.cs") +
+        ReadRepositoryFile("src", "SdvKit.Shared", "GameSide", "ReviewAudioCommand.cs");
 
     private static string ReadRepositoryFile(params string[] relativeSegments)
     {

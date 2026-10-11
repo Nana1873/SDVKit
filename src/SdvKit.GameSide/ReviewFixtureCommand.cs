@@ -1,8 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
-
-#if SDVKIT_GAME_AVAILABLE
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
@@ -12,11 +10,9 @@ using StardewValley.GameData.FarmAnimals;
 using StardewValley.Locations;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
-#endif
 
 namespace SdvKit.GameSide;
 
-#if SDVKIT_GAME_AVAILABLE
 internal static class ReviewFixtureCommand
 {
     public static void Handle(
@@ -65,4 +61,3 @@ internal static class ReviewFixtureCommand
         }
     }
 }
-#endif

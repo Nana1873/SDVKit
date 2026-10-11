@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace SdvKit.GameSide;
 
-internal static partial class WindowsStatusFile
+internal static class WindowsStatusFile
 {
     private const uint DeleteAccess = 0x00010000;
     private const int FileRenameInfoEx = 22;
@@ -54,7 +54,7 @@ internal static partial class WindowsStatusFile
             if (!SetFileInformationByHandle(handle, FileRenameInfoEx, buffer, checked((uint)size)))
             {
                 int error = Marshal.GetLastWin32Error();
-                RecordFailure(error, temporaryPath, statusPath);
+                FailureObserver?.Invoke(error, temporaryPath, statusPath);
                 throw PublicationError("rename the completed status snapshot", error);
             }
         }
@@ -64,7 +64,9 @@ internal static partial class WindowsStatusFile
         }
     }
 
-    static partial void RecordFailure(int error, string temporaryPath, string statusPath);
+    // Test-only diagnostics; production leaves this thread-local observer unset.
+    [ThreadStatic]
+    internal static Action<int, string, string>? FailureObserver;
 
     private static string ExtendedPath(string path)
     {

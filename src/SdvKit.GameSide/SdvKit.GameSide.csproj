@@ -13,33 +13,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\SdvKit.Cli\LiveLab\LoadedModsModels.cs" Link="LiveLab\LoadedModsModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ModBuildIdentity.cs" Link="LiveLab\ModBuildIdentity.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\NetworkTwoModels.cs" Link="LiveLab\NetworkTwoModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ProjectModModels.cs" Link="LiveLab\ProjectModModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewAudioModels.cs" Link="LiveLab\ReviewAudioModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewInputModels.cs" Link="LiveLab\ReviewInputModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewInventoryModels.cs" Link="LiveLab\ReviewInventoryModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewContainerModels.cs" Link="LiveLab\ReviewContainerModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewContainerTransferModels.cs" Link="LiveLab\ReviewContainerTransferModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewDataModels.cs" Link="LiveLab\ReviewDataModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewFixtureModels.cs" Link="LiveLab\ReviewFixtureModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMapModels.cs" Link="LiveLab\ReviewMapModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewShopModels.cs" Link="LiveLab\ReviewShopModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewProgressionModels.cs" Link="LiveLab\ReviewProgressionModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewWorldModels.cs" Link="LiveLab\ReviewWorldModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewWorldActionModels.cs" Link="LiveLab\ReviewWorldActionModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewMenuModels.cs" Link="LiveLab\ReviewMenuModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewModAssetModels.cs" Link="LiveLab\ReviewModAssetModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenshotModels.cs" Link="LiveLab\ReviewScreenshotModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewScreenBindingModels.cs" Link="LiveLab\ReviewScreenBindingModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTextureModels.cs" Link="LiveLab\ReviewTextureModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTexturePngValidator.cs" Link="LiveLab\ReviewTexturePngValidator.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\ReviewTransportModels.cs" Link="LiveLab\ReviewTransportModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeVersionCompatibility.cs" Link="LiveLab\RuntimeVersionCompatibility.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\RuntimeSnapshotModels.cs" Link="LiveLab\RuntimeSnapshotModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\LocalPlayerSnapshotModels.cs" Link="LiveLab\LocalPlayerSnapshotModels.cs" />
-    <Compile Include="..\SdvKit.Cli\LiveLab\TestSaveModels.cs" Link="LiveLab\TestSaveModels.cs" />
     <Reference Include="StardewModdingAPI">
       <HintPath>$(SdvGamePath)\StardewModdingAPI.dll</HintPath>
       <Private>false</Private>
@@ -97,4 +70,7 @@
       Condition="'$(SdvGamePath)' != '' and !Exists('$(SdvGamePath)\smapi-internal\SMAPI.Toolkit.CoreInterfaces.dll')"
       Text="SdvKit.GameSide requires SMAPI's internal semantic-version interface assembly." />
   </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\SdvKit.Shared\SdvKit.Shared.csproj" />
+  </ItemGroup>
 </Project>

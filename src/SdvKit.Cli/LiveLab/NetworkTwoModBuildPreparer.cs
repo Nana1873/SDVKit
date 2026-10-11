@@ -9,6 +9,7 @@ internal sealed record NetworkTwoModBuildResult(
 internal sealed class NetworkTwoModBuildPreparer
 {
     private const string AssemblyFileName = "SdvKit.GameSide.dll";
+    private const string SharedAssemblyFileName = "SdvKit.Shared.dll";
     private const string ManifestFileName = "manifest.json";
 
     private readonly IGameSideBuilder _builder;
@@ -71,6 +72,10 @@ internal sealed class NetworkTwoModBuildPreparer
                 hostPaths.GameSideModPath,
                 farmhandPaths.GameSideModPath,
                 ManifestFileName);
+            CopyDeclaredFile(
+                hostPaths.GameSideModPath,
+                farmhandPaths.GameSideModPath,
+                SharedAssemblyFileName);
             LiveLabPaths.RejectReparsePointsBelow(farmhandPaths.SingleRoot);
 
             VerifyDeclaredModContents(farmhandPaths.GameSideModPath);
@@ -138,13 +143,14 @@ internal sealed class NetworkTwoModBuildPreparer
         string[] expected =
         [
             AssemblyFileName,
+            SharedAssemblyFileName,
             ManifestFileName,
         ];
 
         if (!entries.SequenceEqual(expected, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                "The declared GameSide mod must contain only SdvKit.GameSide.dll and manifest.json.");
+                "The declared GameSide mod must contain only SdvKit.GameSide.dll, SdvKit.Shared.dll and manifest.json.");
         }
     }
 

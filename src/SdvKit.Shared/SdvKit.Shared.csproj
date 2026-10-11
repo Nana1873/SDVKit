@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Match both consumers without backporting the existing .NET 6 APIs. -->
+    <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
+    <AssemblyName>SdvKit.Shared</AssemblyName>
+    <RootNamespace>SdvKit.Shared</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="sdvkit" />
+    <InternalsVisibleTo Include="SdvKit.GameSide" />
+    <InternalsVisibleTo Include="SdvKit.Tests" />
+  </ItemGroup>
+</Project>

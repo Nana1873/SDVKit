@@ -250,11 +250,7 @@ public sealed class ReviewInputCommandTests
     [Fact]
     public void SourceDoesNotMoveOrFocusThePhysicalPointer()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "SdvKit.GameSide",
-            "ReviewInputCommand.cs"));
+        string source = ReadInputSource();
 
         Assert.DoesNotContain("SetCursorPos", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ClientToScreen", source, StringComparison.Ordinal);
@@ -276,11 +272,7 @@ public sealed class ReviewInputCommandTests
     [Fact]
     public void SourceLetsSmapiCompleteTheBoundedBackgroundInputLifecycle()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "SdvKit.GameSide",
-            "ReviewInputCommand.cs"));
+        string source = ReadInputSource();
 
         Assert.Contains("chord.Helper.Press((SButton)b)", source, StringComparison.Ordinal);
         Assert.Contains("ReviewVirtualCursor.IsInstalled", source, StringComparison.Ordinal);
@@ -323,6 +315,13 @@ public sealed class ReviewInputCommandTests
         Assert.True(ReviewResponseMailbox.TryTake(path, out byte[] bytes));
         Assert.InRange(bytes.Length, 1, ReviewInputContract.MaximumResponseBytes);
     }
+
+    private static string ReadInputSource() =>
+        File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "SdvKit.GameSide", "ReviewInputCommand.cs")) +
+        Environment.NewLine +
+        File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "SdvKit.Shared", "GameSide", "ReviewInputCommand.cs"));
 
     private static string FindRepositoryRoot()
     {

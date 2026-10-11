@@ -2,17 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 using SdvKit.Cli.LiveLab;
 
-#if SDVKIT_GAME_AVAILABLE
-using Microsoft.Xna.Framework;
-using StardewModdingAPI;
-using StardewValley;
-using StardewValley.Buildings;
-using StardewValley.GameData.Buildings;
-using StardewValley.GameData.FarmAnimals;
-using StardewValley.Locations;
-using StardewValley.Objects;
-using StardewValley.TerrainFeatures;
-#endif
 
 namespace SdvKit.GameSide;
 

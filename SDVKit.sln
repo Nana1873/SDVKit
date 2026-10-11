@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B134FA0E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SdvKit.Tests", "tests\SdvKit.Tests\SdvKit.Tests.csproj", "{6885381E-7673-43B4-9545-F4849C9E7A7E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SdvKit.Shared", "src\SdvKit.Shared\SdvKit.Shared.csproj", "{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -28,9 +30,14 @@ Global
 		{6885381E-7673-43B4-9545-F4849C9E7A7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6885381E-7673-43B4-9545-F4849C9E7A7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6885381E-7673-43B4-9545-F4849C9E7A7E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{14E5A088-53D4-411E-9850-E4B0A04B1D01} = {1F54091B-CA83-458F-8010-BAE0477312EC}
 		{6885381E-7673-43B4-9545-F4849C9E7A7E} = {B134FA0E-14D8-4465-B7A6-C7BD89119650}
+		{5CA43A01-EAC8-46CF-9A2B-4346A50F73CD} = {1F54091B-CA83-458F-8010-BAE0477312EC}
 	EndGlobalSection
 EndGlobal
