@@ -14,6 +14,8 @@ internal sealed partial class LiveLabService
     private static readonly TimeSpan GameSideStartupGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TestSaveTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan TestSavePollInterval = TimeSpan.FromMilliseconds(250);
+    // Loading a save blocks the game's main thread, so its status heartbeat can pause for several seconds.
+    internal static readonly TimeSpan TestSaveStaleLoadGrace = TimeSpan.FromSeconds(30);
 
     private static readonly string[] IsolationWarnings =
     [

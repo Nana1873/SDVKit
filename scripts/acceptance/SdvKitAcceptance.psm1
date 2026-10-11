@@ -207,6 +207,7 @@ function Wait-ReviewReady {
     )
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $staleSince = $null
     while ($true) {
         Start-Sleep -Seconds 3
         # A status read that fails or prints nothing counts as "not ready yet", not as a failure.
@@ -226,6 +227,12 @@ function Wait-ReviewReady {
         }
 
         $problems = @(if ($null -ne $status -and $status.PSObject.Properties['problems']) { $status.problems })
+        # Loading the save blocks the game's main thread and pauses its heartbeat; allow 30 s of staleness (#303).
+        if ($problems.Count -eq 1 -and $problems[0].code -ceq 'gameSideStale') {
+            if ($null -eq $staleSince) { $staleSince = [DateTime]::UtcNow }
+            if ([DateTime]::UtcNow - $staleSince -le [TimeSpan]::FromSeconds(30) -and [DateTime]::UtcNow -le $deadline) { continue }
+        }
+        else { $staleSince = $null }
         if ($problems.Count -gt 0 -or [DateTime]::UtcNow -gt $deadline) {
             $status | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $script:Context.Evidence ('{0:d3}-not-ready.json' -f ++$script:Context.Step)) -Encoding utf8
             throw "Acceptance failed: the review did not become ready (problems: $(@($problems | ForEach-Object code) -join ', '))."
