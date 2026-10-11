@@ -267,19 +267,19 @@ function Complete-Acceptance {
     if ($Failed) {
         # Keep the game's own log of a failed run before cleanup or a later run replaces it. Only logs written
         # during this run are copied, and a copy failure never prevents the cleanup below.
-        foreach ($profile in @{ single = 'single'; host = 'network-2\host'; farmhand = 'network-2\farmhand' }.GetEnumerator()) {
-            $log = Join-Path $script:Context.Lab ".sdvkit\lab\profiles\$($profile.Value)\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt"
+        foreach ($entry in @{ single = 'single'; host = 'network-2\host'; farmhand = 'network-2\farmhand' }.GetEnumerator()) {
+            $log = Join-Path $script:Context.Lab ".sdvkit\lab\profiles\$($entry.Value)\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt"
             try {
                 if ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $script:Context.StartedAtUtc) {
                     $source = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
                     try {
-                        $target = [IO.File]::Create((Join-Path $script:Context.Evidence "smapi-$($profile.Key).txt"))
+                        $target = [IO.File]::Create((Join-Path $script:Context.Evidence "smapi-$($entry.Key).txt"))
                         try { $source.CopyTo($target) } finally { $target.Dispose() }
                     }
                     finally { $source.Dispose() }
                 }
             }
-            catch { Write-Step "Could not keep the $($profile.Key) SMAPI log: $($_.Exception.Message)" }
+            catch { Write-Step "Could not keep the $($entry.Key) SMAPI log: $($_.Exception.Message)" }
         }
     }
 

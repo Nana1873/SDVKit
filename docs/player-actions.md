@@ -4,7 +4,7 @@ This matrix lists the everyday keyboard-and-mouse player actions, how to perform
 
 "Live" names where the action was verified in a game:
 - **script:** [`scripts/acceptance/player-actions.ps1`](../scripts/acceptance/player-actions.ps1) or another [acceptance script](../scripts/acceptance/README.md), in a `single` review on the test save;
-- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), where input on split-screen screen 1 opened the game menu only on that screen.
+- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), where input on split-screen screen 1 opened a menu only on that screen.
 
 All input uses SDVKit's [process-local](glossary.md#commands-and-results) input and needs `--allow-input`. A chord (`stardew_input_chord`) holds 1–8 buttons for 1–120 ticks and needs a `uiRevision` from `stardew_menu_get`; one is issued also when no menu is open.
 
@@ -40,7 +40,7 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Select a hotbar slot | Press `D1`–`D9`, `D0`, `OemMinus`, `OemPlus` | `localPlayer.data.selectedSlot` | script | The mouse wheel needs a menu and is refused with `inputMenuMissing` ([#294](https://github.com/Nana1873/SDVKit/issues/294)) |
-| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script; 2.0 release (screen 1) | — |
+| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script | — |
 | Close a menu | Press `Escape` (the close component is also listed by `menu_get`) | `menuOpen=false` | script (game menu, `Escape`) | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
 | Move items in the inventory | Click the source `inventorySlot` component (picks the item up), then the target one (places it); a drag only picks it up | `stardew_inventory_get` slots | script | The held item is not reported by `inventory_get` |
 | Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine) | The transfer tool has no script yet; single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
