@@ -11,6 +11,9 @@ Open PowerShell in this extracted directory:
 
 Keep $sdvkit as the absolute executable path. Change to your intended project/lab
 directory before live commands; that directory's .sdvkit owns the lab state.
+To prepare a lab directory for Claude Code or Codex, run once there:
+  & $sdvkit lab init --json
+It adds SDVKIT.md, task skills, a safety hook and a sdvkit.cmd launcher.
 Never use your normal Saves or normal/mod-manager-owned Mods directory as a lab.
 
   & $sdvkit project inspect .\ExampleMod --json

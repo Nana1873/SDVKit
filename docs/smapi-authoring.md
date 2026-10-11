@@ -23,7 +23,7 @@ Valley 1.6.15**; the game API can change independently of SMAPI:
 
 Authoring/build/package and review lifecycle use CLI. Observation and diagnosis
 can use existing [native MCP](mcp.md); no input or fixture-action opt-in is needed.
-The [review skill](../.agents/skills/sdv-project-review/SKILL.md) covers ownership
+The [review skill](../agent/skills/sdv-live-review/SKILL.md) covers ownership
 and acceptance without duplicating this authoring recipe.
 
 ## Select the installation and project

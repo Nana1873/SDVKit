@@ -16,4 +16,4 @@
 
 The public product has two equal pillars: a modding toolkit and an isolated live test lab. Keep both understandable from the root README and CLI help.
 
-Use `docs/README.md` to find task guides and command references; skills should link to those contracts rather than duplicate them. Maintain user-visible changes in `CHANGELOG.md`. For releases, use `docs/releasing.md`: choose affected live gates before starting, reuse only fully passing evidence for the same artifact and relevant environment, and keep exact ownership and final cleanup mandatory.
+Use `docs/README.md` to find task guides and command references; skills should link to those contracts rather than duplicate them. The `agent/` folder is the lab kit that `sdvkit lab init` installs into users' lab roots (guide, task skills, hook, templates); edit the kit there, and keep its skills short and linked to the docs. Maintain user-visible changes in `CHANGELOG.md`. For releases, use `docs/releasing.md`: choose affected live gates before starting, reuse only fully passing evidence for the same artifact and relevant environment, and keep exact ownership and final cleanup mandatory.

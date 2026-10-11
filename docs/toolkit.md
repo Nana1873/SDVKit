@@ -28,6 +28,16 @@ Keep durable mod source, including agent-authored source, in its own workspace; 
 
 For a content-pack review, select the clean pack subdirectory (such as `workspaces/ExamplePack/pack/`) with workspace Git metadata outside it. Follow the [CP authoring recipe](cp-authoring.md) for provider selection and review/package order.
 
+### Set up the agent layer
+
+`sdvkit lab init [<lab-root>] --json` prepares a lab root for coding agents. It writes:
+- `SDVKIT.md`, the lab guide;
+- task skills in `.claude/skills/` and `.agents/skills/`;
+- a Claude Code hook in `.claude/` that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries;
+- a `sdvkit.cmd` launcher and an MCP template in `.sdvkit/agent/`.
+
+It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when they are missing, and never changes them afterwards. Run it again after installing a new SDVKit version: files it wrote and you did not edit are updated, and locally edited files are kept unless you pass `--force`. The hook is a mechanical backstop, not a sandbox.
+
 Run these commands from the chosen lab root, using `$sdvkit` from [installation](../README.md#install):
 
 ```powershell

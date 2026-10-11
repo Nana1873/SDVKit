@@ -257,6 +257,11 @@ public static partial class CliApplication
 
         if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
         {
+            if (arguments.Count > 1 && arguments[1] == "init")
+            {
+                return RunLabInit(arguments, output, error, discoverInstallations);
+            }
+
             return RunLab(arguments, output, error, runLiveLab);
         }
 

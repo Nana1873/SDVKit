@@ -110,6 +110,7 @@ public static partial class CliApplication
     {
         output.WriteLine(LabSingleUsage);
         output.WriteLine(LabNetworkTwoUsage);
+        output.WriteLine("       sdvkit lab init [<lab-root>] [--force] --json");
         output.WriteLine("--game-path <directory> selects a complete installation for start, test-save, or smoke only.");
     }
 
