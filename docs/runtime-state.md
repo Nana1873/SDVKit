@@ -67,6 +67,11 @@ All `data` values describe **one observation** at the runtime's `observedAtUtc`.
 | `position.standingX`, `position.standingY` | `Farmer.StandingPixel` divided by 64, numbers | Finite, within ±100000; their floor is the tile. Use them to see where inside a tile the player stands. |
 | `position.grabTileX`, `position.grabTileY` | `Farmer.GetGrabTile()`, integers | The tile the action button checks first. Depending on where inside its tile the player stands, it can be the player's own tile. If nothing is there, the game tries the tiles directly below and above it (unless behind the player), then the player's own tile; it never tries the next tile further in the facing direction. |
 | `position.toolTileX`, `position.toolTileY` | `Farmer.GetToolLocation(ignoreClick: true)` divided by 64, integers | The tile a tool used now would hit. |
+| `npcs` | Array or absent | Villagers (`NPC.IsVillager`; no pets, horses or monsters) in the player's current location, sorted by `name`, at most 64. Absent from older GameSide versions; empty when none is there. A modded NPC with an unusable name is left out. Sampled about once per second, so a walking villager can already be elsewhere. |
+| `npcs[].name` | `NPC.Name`, string | The internal name, as used by `stardew_fixture_npc_place` and `stardew_progression_get`. |
+| `npcs[].displayName` | `NPC.displayName`, string | The localized name shown in game. |
+| `npcs[].tileX`, `npcs[].tileY` | `NPC.TilePoint`, integers | Within ±100000. Target this tile with `stardew_world_act` `check` from a neighbouring tile to talk or give the selected item. |
+| `npcs[].facing` | `NPC.FacingDirection`, string | `up`, `right`, `down` or `left`. |
 
 The mouse cursor redirects the action and tool buttons when it is within one tile of the player; then neither tile above applies. Park SDVKit's virtual cursor away from the player (for example `stardew_input_cursor_set` at `8,8`) before keyboard actions.
 

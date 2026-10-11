@@ -19,7 +19,17 @@ internal sealed record LocalPlayerValues(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? SelectedSlot,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] SelectedItemValues? SelectedItem,
     FishingRodValues? Fishing = null,
-    PlayerPositionValues? Position = null);
+    PlayerPositionValues? Position = null,
+    IReadOnlyList<LocationNpcValues>? Npcs = null);
+
+// A villager in the player's current location (NPC.IsVillager; no pets, horses or monsters). Name is the internal
+// name used by tools; DisplayName is the localized one.
+internal sealed record LocationNpcValues(
+    string Name,
+    string DisplayName,
+    int TileX,
+    int TileY,
+    string Facing);
 
 // Where the player stands and what it faces. StandingX/Y are the standing pixel divided by 64, so their floor
 // is the tile. The grab tile is Farmer.GetGrabTile(), which the action button checks first (then the tiles below
@@ -60,6 +70,8 @@ internal static class LocalPlayerSnapshotContract
 {
     public const int SchemaVersion = 1;
     public const int MaximumItemIdLength = 256;
+    public const int MaximumNpcs = 64;
+    public const int MaximumNpcNameLength = 128;
 
     public static LocalPlayerSnapshot WithoutData(string availability, string? reason = null) =>
         new(SchemaVersion, availability, reason, null);
@@ -74,7 +86,20 @@ internal static class LocalPlayerSnapshotContract
         && (values.SelectedItem is null
             || values.SelectedSlot is not null && ItemValid(values.SelectedItem))
         && (values.Fishing is null || values.SelectedItem is not null && FishingValid(values.Fishing))
-        && (values.Position is null || PositionValid(values.Position));
+        && (values.Position is null || PositionValid(values.Position))
+        && (values.Npcs is null || values.Npcs.Count <= MaximumNpcs && values.Npcs.All(NpcValid));
+
+    public static bool NpcValid(LocationNpcValues npc) =>
+        NameValid(npc.Name)
+        && NameValid(npc.DisplayName)
+        && FacingDirections.Contains(npc.Facing)
+        && Math.Abs(npc.TileX) <= 100000
+        && Math.Abs(npc.TileY) <= 100000;
+
+    private static bool NameValid(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && name.Length <= MaximumNpcNameLength
+        && !name.Any(char.IsControl);
 
     public static readonly string[] FacingDirections = ["up", "right", "down", "left"];
 

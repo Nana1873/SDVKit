@@ -70,6 +70,10 @@ internal interface IReviewFixtureRuntime
     ReviewFixtureResult AddItem(ReviewFixtureAccess access, string qualifiedItemId, int stack, int quality) =>
         new(false, "Item fixtures are unavailable in this runtime.");
 
+    /// <summary>Warps one named villager to a free tile in the main player's current location.</summary>
+    ReviewFixtureResult PlaceNpc(ReviewFixtureAccess access, string name, int x, int y) =>
+        new(false, "NPC fixtures are unavailable in this runtime.");
+
     /// <summary>Applies one lab world, player or window change and reports the resulting state.</summary>
     ReviewFixtureResult ApplyLab(ReviewFixtureAccess access, ReviewFixtureRequest request) =>
         new(false, "Lab world-state actions are unavailable in this runtime.");
@@ -139,6 +143,7 @@ internal static class ReviewFixtureOperation
             ReviewFixtureFarmRequest => runtime.Farm(access),
             ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial, fishing.X, fishing.Y),
             ReviewFixtureItemAddRequest item => runtime.AddItem(access, item.QualifiedItemId, item.Stack, item.Quality),
+            ReviewFixtureNpcPlaceRequest npc => runtime.PlaceNpc(access, npc.Name, npc.X, npc.Y),
             ReviewFixtureSetTimeRequest
                 or ReviewFixtureSetWeatherRequest
                 or ReviewFixtureSetSeasonRequest

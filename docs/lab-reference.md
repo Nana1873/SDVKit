@@ -122,6 +122,7 @@ Each fixture operation is a native MCP tool. Call one from the command line with
 | `stardew_fixture_farm` | Any verified role; allowed natural Farm exit |
 | `stardew_fixture_fishing_prepare` | Single or host; prepare a collision-free bank and a selected rod in the current outdoor location |
 | `stardew_fixture_item_add` | Single or host; put one new item stack into the first empty backpack slot |
+| `stardew_fixture_npc_place` | Single or host; warp one named villager to a free tile in the player's location |
 
 Every call rechecks the review, process, load phase, fixture and Save identities, ownership and role. The operations are unavailable in plain single reviews, in smoke sessions, and in foreign or unverified saves. Require the GameSide result and direct evidence of the effect.
 
@@ -172,6 +173,25 @@ To act on the item, select its slot with its number key (toolbar slots 0 to 11 o
 ```powershell
 & $sdvkit project review call stardew_fixture_item_add '{"qualifiedItemId":"(BC)130","stack":1}' --allow-fixture-actions
 ```
+
+This is test setup, not evidence of game behaviour. The command neither saves nor resets; finish with the normal stop and reset.
+
+### NPC placement
+
+`stardew_fixture_npc_place { "name": "Lewis", "x": 65, "y": 16 }` brings a villager to a tile in the main player's current location, usually next to the player, so dialogue and gift tests do not depend on schedules. It requires:
+
+- the verified main player or host;
+- no open menu, event, festival or fade;
+- the internal name of a villager (`Game1.getCharacterFromName`, exact and case-sensitive), as listed in `npcs` of [runtime state](runtime-state.md#field-contract);
+- a tile that is not the player's own and where the game can spawn a character (`GameLocation.CanSpawnCharacterHere`).
+
+It warps the villager with the game's own `Game1.warpCharacter`, stops its current path and turns it toward the player. The result reports the location and tile in `navigation`. Its schedule can move it again later, so read `npcs` before you act on it.
+
+```powershell
+& $sdvkit project review call stardew_fixture_npc_place '{"name":"Lewis","x":65,"y":16}' --allow-fixture-actions
+```
+
+To talk, select a tool or an empty slot and use `stardew_world_act` `check` on the villager's tile; the `DialogueBox` in `stardew_menu_get` and the friendship points from `stardew_progression_get` are the proof. To give a gift, select the item first (for example one from `stardew_fixture_item_add`). A `DialogueBox` closes by clicking it, not with Escape; each click finishes the text or turns the page.
 
 This is test setup, not evidence of game behaviour. The command neither saves nor resets; finish with the normal stop and reset.
 

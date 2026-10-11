@@ -46,7 +46,8 @@ internal static class LocalPlayerCapture
                     rod.timeUntilFishingBite,
                     rod.fishCaught ? rod.whichFish?.QualifiedItemId : null,
                     rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null,
-                CapturePosition(player));
+                CapturePosition(player),
+                CaptureNpcs(player));
             return LocalPlayerSnapshotContract.ValuesValid(values)
                 ? new LocalPlayerSnapshot(LocalPlayerSnapshotContract.SchemaVersion, "available", null, values)
                 : LocalPlayerSnapshotContract.WithoutData("error", "invalidValues");
@@ -56,6 +57,25 @@ internal static class LocalPlayerCapture
             // Modded item getters can fail. Publish an explicit error, never last-known values.
             return LocalPlayerSnapshotContract.WithoutData("error", "captureFailed");
         }
+    }
+
+    private static LocationNpcValues[]? CaptureNpcs(Farmer player)
+    {
+        if (player.currentLocation is not { } location)
+        {
+            return null;
+        }
+
+        // Sorted by name and bounded, so a crowded festival map stays within the contract.
+        return location.characters
+            .Where(npc => npc is not null && npc.IsVillager && !string.IsNullOrWhiteSpace(npc.Name))
+            .Select(npc => new LocationNpcValues(npc.Name, string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName,
+                npc.TilePoint.X, npc.TilePoint.Y, LocalPlayerSnapshotContract.FacingName(npc.FacingDirection) ?? ""))
+            // A modded NPC with an unusable name is left out rather than failing the whole player snapshot.
+            .Where(LocalPlayerSnapshotContract.NpcValid)
+            .OrderBy(npc => npc.Name, StringComparer.Ordinal)
+            .Take(LocalPlayerSnapshotContract.MaximumNpcs)
+            .ToArray();
     }
 
     private static PlayerPositionValues? CapturePosition(Farmer player)

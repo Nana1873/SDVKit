@@ -25,6 +25,8 @@ public sealed class ReviewFixtureLabTests
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWindowOperation, X: 1600, Y: 900),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 999, Y: 4),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(BC)Mod.Id_Machine", X: 1, Y: 0),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: "Lewis", X: 65, Y: 16),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: "Example.Mod Npc", X: 0, Y: 0),
     ];
 
     public static TheoryData<int> ValidQueryIndexes => new(Enumerable.Range(0, ValidQueries.Length));
@@ -72,6 +74,18 @@ public sealed class ReviewFixtureLabTests
             new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: item, X: stack, Y: quality),
             "single", null)?.Code);
 
+    [Theory]
+    [InlineData(null, 1, 1)]
+    [InlineData("", 1, 1)]
+    [InlineData(" Lewis", 1, 1)]
+    [InlineData("Lew\nis", 1, 1)]
+    [InlineData("Lewis", -1, 1)]
+    [InlineData("Lewis", 1, null)]
+    public void InvalidNpcPlaceIsRejectedBeforeSending(string? name, int? x, int? y) =>
+        Assert.Equal("fixtureNpcRequestInvalid", ProjectReviewFixtureService.Validate(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: name, X: x, Y: y),
+            "single", null)?.Code);
+
     [Fact]
     public void ItemAddRejectsUnrelatedOperands() =>
         Assert.NotNull(ProjectReviewFixtureService.Validate(
@@ -89,6 +103,7 @@ public sealed class ReviewFixtureLabTests
     [InlineData("objectEnsure", false)]
     [InlineData("fishingPrepare", false)]
     [InlineData("itemAdd", false)]
+    [InlineData("npcPlace", false)]
     [InlineData("warp", true)]
     [InlineData("setZoom", true)]
     [InlineData("setWindow", true)]
@@ -101,6 +116,7 @@ public sealed class ReviewFixtureLabTests
             "objectEnsure" => new ReviewFixtureQuery(operation, Building: "coop", Kind: "(O)388"),
             "fishingPrepare" => new ReviewFixtureQuery(operation),
             "itemAdd" => new ReviewFixtureQuery(operation, Kind: "(O)24", X: 1, Y: 0),
+            "npcPlace" => new ReviewFixtureQuery(operation, Value: "Lewis", X: 1, Y: 1),
             "warp" => new ReviewFixtureQuery(operation, Value: "Town"),
             "setZoom" => new ReviewFixtureQuery(operation, Zoom: 1.0),
             _ => new ReviewFixtureQuery(operation, X: 1280, Y: 720),
