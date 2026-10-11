@@ -681,6 +681,23 @@ public sealed class ProjectModStagerTests
         }
     }
 
+    [Fact]
+    public void AdvertisedGameSideVersionMatchesItsManifest()
+    {
+        string root = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(root, "SDVKit.sln")))
+        {
+            root = Path.GetDirectoryName(root) ?? throw new DirectoryNotFoundException("SDVKit.sln not found.");
+        }
+
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "src", "SdvKit.GameSide", "manifest.json")));
+        object? advertised = typeof(ProjectModStager)
+            .GetField("GameSideVersion", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .GetRawConstantValue();
+
+        Assert.Equal(manifest.RootElement.GetProperty("Version").GetString(), advertised);
+    }
+
     [Theory]
     [InlineData("0.0.9", null)]
     [InlineData("0.1.0", null)]
@@ -709,7 +726,8 @@ public sealed class ProjectModStagerTests
     [InlineData("0.10.2", null)]
     [InlineData("0.10.3", null)]
     [InlineData("1.0.0", null)]
-    [InlineData("1.0.1", "runtimeDependencyUnavailable")]
+    [InlineData("2.0.0", null)]
+    [InlineData("2.0.1", "runtimeDependencyUnavailable")]
     [InlineData("999.0.0", "runtimeDependencyUnavailable")]
     public void RequiredGameSideMinimumVersionMustBeProvidedByTheLab(
         string minimumVersion,

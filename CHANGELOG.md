@@ -4,11 +4,16 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-11
+
 ### Added
 
 - `sdvkit lab init [<lab-root>] [--force] --json` prepares a lab root for Claude Code and Codex (#248). It writes `SDVKIT.md` (the lab guide), `KNOWLEDGEBASE.md` (sourced SMAPI 4, Stardew 1.6, Content Patcher and GMCM pitfalls), ten task skills in `.claude/skills/` and `.agents/skills/`, a Claude Code hook that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries, a `sdvkit.cmd` launcher and an MCP template. It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when missing. Run it again after updating SDVKit: unchanged files are updated and locally edited ones are kept unless `--force`. The README's agent setup prompt, also in `SETUP_PROMPT.txt`, runs it when the downloaded release offers it.
 - Live acceptance scripts in `scripts/acceptance/` (#267): `shop.ps1`, `crop-machine.ps1` and `gmcm-number.ps1` run the shop purchase, machine rule and GMCM slider workflows end to end against the real game, stop at the first unmet check, always stop and reset, and keep their evidence below the lab root. Short guides replace the long recipes: [test a purchase in your shop](docs/test-a-shop-purchase.md), [test a machine rule](docs/test-a-machine-rule.md) and [change and verify a GMCM option](docs/test-a-gmcm-option.md). The sample mods now live in `docs/examples/`.
 - `docs/glossary.md` defines the documentation's recurring terms (owned, role, screen, test save, opt-in, evidence levels) once (#249). The capability matrix in `docs/README.md` is split into toolkit, lifecycle, observation and action tables.
+
+### Removed
+
 - **Breaking (2.0):** the repository's `.agents/skills/sdv-project-review` and `sdv-project-smoke` skills are replaced by the task skills in `agent/skills/` that `lab init` installs (`sdv-live-review`, `sdv-project-smoke` and others).
 
 ### Changed
@@ -17,21 +22,29 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - **Breaking (2.0):** SDVKit's game-side SMAPI mod is now called GameSide instead of AlwaysOn. SMAPI shows it as "SDVKit". Its mod ID is `SDVKit.GameSide`, its assembly `SdvKit.GameSide.dll`, and its source lives in `src/SdvKit.GameSide`. "Always on" now names only the background-run behavior it provides.
 - **Breaking (2.0):** JSON output follows the new name. `lab status` and network-2 reports use `gameSide` instead of `alwaysOn`; problem codes such as `alwaysOnPending` are now `gameSidePending`; the mod-asset coverage scope is `observedRequestsSinceGameSideSubscribed`. Build identities change because the assembly file name is part of the hash.
 - `SDVKit.AlwaysOn` stays reserved: user mods with that ID are still rejected.
-
 - **Breaking (2.0):** review commands no longer reach the game by typing into the SMAPI console. Each launch now opens a token-protected loopback command endpoint in the game-side mod, and the CLI and native MCP send command lines there. A command reports `commandWritten=true` only after it ran on the game thread, `false` when it did not run, and no value when delivery is unknown. The console-delivery problem codes (`reviewConsoleInputBusy`, `reviewConsolePartialWrite`, `reviewConsoleWorker*` and similar) are replaced by `reviewCommandEndpointUnavailable`, `reviewCommandRejected`, `reviewCommandNotExecuted`, `reviewCommandScreenUnavailable`, `reviewCommandFailed` and `reviewCommandDeliveryUnknown`. Manual use of the SMAPI console window no longer interferes with SDVKit commands. Any SMAPI console command still works through `project review command`, including the reviewed mod's own commands; an unknown command is reported as rejected and does not run.
 - Lab world-state tools for disposable-world testing (#247), behind `--allow-fixture-actions`: `stardew_lab_set_time`, `stardew_lab_set_weather` and `stardew_lab_set_season` for single-player or the network-2 host; `stardew_lab_warp`, `stardew_lab_set_zoom` and `stardew_lab_set_window` for any role. Each reports the observed time, season, weather, location, tile, zoom and window size. Fixture object placement and clearing and fishing preparation, so far console-only, are now also tools: `stardew_fixture_object_ensure`, `stardew_fixture_object_clear` and `stardew_fixture_fishing_prepare`. Fishing preparation now picks the bank nearest to the player or to an optional search start instead of the first bank from the map's top-left corner, so a warp plus a start tile selects a specific river, lake or ocean spot.
 - `project review split-screen <join|leave|status> [--screen <id>] --json` and `project review network <leave|join|status> --role <host|farmhand> --json` replace the quoted `sdvkit split-screen ...` and `sdvkit network ...` console lines (#246).
-- **Breaking (2.0):** `project review command` rejects SDVKit's own console lines (`sdvkit ...`) with exit `2` and names the replacement. The one exception is `sdvkit input ...` and `sdvkit screenshot viewport ...` while an owned test-save fixture is not loaded, such as at the title screen during a native language change; once the fixture is loaded, those lines are refused with `reviewConsoleUseTool`. Use `project review call <tool>` for input, screenshots, fixtures and lab state, and the lifecycle commands for split-screen and network. `project review command` runs the reviewed mod's and SMAPI's console commands. The GMCM number, shop and crop-machine recipes now call the input and screenshot tools (#246, #262).
+- **Breaking (2.0):** `project review command` rejects SDVKit's own console lines (`sdvkit ...`) with exit `2` and names the replacement. The one exception is `sdvkit input ...` and `sdvkit screenshot viewport ...` while an owned test-save fixture is not loaded, such as at the title screen during a native language change; once the fixture is loaded, those lines are refused with `reviewConsoleUseTool`. Use `project review call <tool>` for input, screenshots, fixtures and lab state, and the lifecycle commands for split-screen and network. `project review command` runs the reviewed mod's and SMAPI's console commands. The guides and acceptance scripts call the input and screenshot tools (#246, #262).
 - `project review call <tool> ['<json>']` runs one native MCP tool once from the command line, with the same selection, binding and opt-ins as `mcp serve`, and prints its structured result. Exit `3` reports a tool error or a tool that the selection and opt-ins do not provide.
 - `project review mcp serve --http [--port <n>]` serves the same tools over Streamable HTTP on `127.0.0.1`, so clients such as Codex and Claude Code connect by URL. A per-server bearer token and the URL are written to a connection file in the selected role's runtime directory. The server rejects other hosts and browser origins, and stops when its review launch ends. The CLI now also needs the ASP.NET Core 8 runtime, which the required .NET 8 SDK already includes.
 - Command results no longer pass through response files in the lab's runtime directory. The game-side mod keeps them in a bounded in-memory mailbox, and the CLI takes each one once through the same token-protected endpoint.
 
-Upgrade to 2.0: stop and reset every lab with the 1.x executable first. The next start, smoke, or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
+### Upgrade from 1.x
+
+1. Stop and reset every lab with the 1.x executable first. The next start, smoke or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
+2. In scripts and clients that read JSON, rename `alwaysOn` to `gameSide`, `alwaysOnPending` and similar problem codes to `gameSide...`, the mod-asset coverage scope `observedRequestsSinceAlwaysOnSubscribed` to `observedRequestsSinceGameSideSubscribed`, and the console-delivery problem codes to the `reviewCommand...` codes listed above. `schemaVersion` stays `1`: tell 1.x and 2.x reports apart by the SDVKit version, not by the schema version.
+3. Replace `sdvkit ...` lines sent through `project review command` with `project review call <tool>` (input, screenshots, fixtures, lab state) or with `project review split-screen` and `project review network`.
+4. Build identities changed. Evidence recorded with 1.x does not count for a 2.0 package.
+5. A mod that declares a dependency on `SDVKit.AlwaysOn` must use `SDVKit.GameSide` instead; the old ID is reported as unavailable.
+6. For Claude Code or Codex, run `sdvkit lab init` in your lab root. It replaces the skills that 1.x kept in the repository's `.agents/skills/`.
 
 ### Fixed
 
 - A world action could use the tool on a neighbouring tile while still reporting `completed`. Stardew aims a mouse tool use at the previous update's cursor position, and that could still be the physical pointer. World actions now first complete one cursor-only game update and revalidate the target before pressing, like menu clicks (#265).
 - A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` while action or tool input is held or queued, a tool is in use or the player cannot move, or when the target or backpack changed or could not be read. Physical input reaching the target in that window could previously run the action behind a `notDispatched` result (#264).
+
+[Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/286) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.0.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v1.0.0...v2.0.0)
 
 ## [1.0.0] - 2026-10-01
 
