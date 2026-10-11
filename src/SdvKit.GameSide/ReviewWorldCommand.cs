@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework;
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewObject = StardewValley.Object;
 
@@ -96,7 +97,10 @@ internal static class ReviewWorldCommand
                 var tile = new Vector2(tileX, tileY);
                 ReviewWorldSoil? soil = location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
                     && feature is HoeDirt dirt ? ReadSoil(dirt) : null;
-                tiles.Add(ReadObject(location, tile, tileX, tileY, soil));
+                tiles.Add(ReadObject(location, tile, tileX, tileY, soil) with
+                {
+                    Feature = ReadFeature(location, tile, feature),
+                });
             }
         }
         var values = new ReviewWorldValues(locationName, Identity(location),
@@ -105,6 +109,65 @@ internal static class ReviewWorldCommand
         return ReviewWorldContract.DataValid(values)
             ? new(1, "ready", null, launch, topology, role, DateTimeOffset.UtcNow, values)
             : Failure("worldValuesInvalid");
+    }
+
+    private static ReviewWorldFeature? ReadFeature(GameLocation location, Vector2 tile, TerrainFeature? terrain)
+    {
+        // A single feature is reported per tile. Earlier families/list entries win overlaps.
+        foreach (ResourceClump clump in location.resourceClumps)
+        {
+            if (Covers(clump.Tile, clump.width.Value, clump.height.Value, tile))
+                return new("resourceClump", clump.parentSheetIndex.Value.ToString(CultureInfo.InvariantCulture),
+                    new(Health: clump.health.Value, OriginX: (int)clump.Tile.X, OriginY: (int)clump.Tile.Y));
+        }
+        foreach (Furniture furniture in location.furniture)
+        {
+            // These are the rotated placement dimensions, not the visual sprite bounds.
+            if (Covers(furniture.TileLocation, furniture.getTilesWide(), furniture.getTilesHigh(), tile))
+                return new("furniture", furniture.QualifiedItemId,
+                    new(OriginX: (int)furniture.TileLocation.X, OriginY: (int)furniture.TileLocation.Y));
+        }
+        foreach (LargeTerrainFeature large in location.largeTerrainFeatures)
+        {
+            if (large is Bush bush && Covers(bush.Tile, bush.getBoundingBox().Width / 64,
+                    bush.getBoundingBox().Height / 64, tile))
+                return ReadBush(bush);
+        }
+        return terrain switch
+        {
+            Tree tree => new("tree", tree.treeType.Value,
+                new(tree.growthStage.Value, tree.stump.Value, tree.health.Value)),
+            FruitTree fruit => new("fruitTree", fruit.treeId.Value,
+                new(fruit.growthStage.Value, fruit.stump.Value, fruit.health.Value)),
+            Grass grass => new("grass", grass.grassType.Value.ToString(CultureInfo.InvariantCulture),
+                new(NumberOfWeeds: grass.numberOfWeeds.Value)),
+            Bush bush => ReadBush(bush),
+            _ => null,
+        };
+    }
+
+    private static ReviewWorldFeature ReadBush(Bush bush) => new("bush",
+        bush.size.Value.ToString(CultureInfo.InvariantCulture),
+        new(Health: bush.health, OriginX: TileCoordinate(bush.Tile.X), OriginY: TileCoordinate(bush.Tile.Y)));
+
+    private static bool Covers(Vector2 origin, int width, int height, Vector2 tile)
+    {
+        int x = TileCoordinate(origin.X);
+        int y = TileCoordinate(origin.Y);
+        if (width is < 1 or > ReviewWorldContract.MaximumTileCoordinate
+            || height is < 1 or > ReviewWorldContract.MaximumTileCoordinate
+            || (long)x + width - 1 > ReviewWorldContract.MaximumTileCoordinate
+            || (long)y + height - 1 > ReviewWorldContract.MaximumTileCoordinate)
+            throw new InvalidOperationException("The world feature footprint is invalid.");
+        return tile.X >= x && tile.X < x + width && tile.Y >= y && tile.Y < y + height;
+    }
+
+    private static int TileCoordinate(float value)
+    {
+        if (!float.IsFinite(value) || value != MathF.Truncate(value)
+            || value is < -ReviewWorldContract.MaximumTileCoordinate or > ReviewWorldContract.MaximumTileCoordinate)
+            throw new InvalidOperationException("The world feature origin is invalid.");
+        return (int)value;
     }
 
     internal static ReviewWorldTile ReadObject(GameLocation location, Vector2 tile, int x, int y,

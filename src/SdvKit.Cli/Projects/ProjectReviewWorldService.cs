@@ -78,8 +78,26 @@ internal static class ProjectReviewWorldService
             ResponseJson.RequireExactObject(data.GetProperty("area"), ["x", "y", "width", "height"]);
             ResponseJson.ValidateRequiredArray(data.GetProperty("tiles"), ReviewWorldContract.MaximumTiles, tile =>
             {
-                ResponseJson.RequireExactObject(tile,
-                    ["x", "y", "soil", "objectState", "objectReason", "objectQualifiedItemId", "machine"]);
+                HashSet<string> tileProperties =
+                    ["x", "y", "soil", "objectState", "objectReason", "objectQualifiedItemId", "machine"];
+                if (tile.TryGetProperty("feature", out JsonElement feature))
+                {
+                    tileProperties.Add("feature");
+                    if (feature.ValueKind != JsonValueKind.Null)
+                    {
+                        ResponseJson.RequireExactObject(feature, ["kind", "id", "state"]);
+                        HashSet<string> stateProperties = feature.GetProperty("kind").GetString() switch
+                        {
+                            "tree" or "fruitTree" => ["growthStage", "stump", "health"],
+                            "grass" => ["numberOfWeeds"],
+                            "bush" or "resourceClump" => ["health", "originX", "originY"],
+                            "furniture" => ["originX", "originY"],
+                            _ => throw new InvalidDataException("The review-world feature kind is invalid."),
+                        };
+                        ResponseJson.RequireExactObject(feature.GetProperty("state"), stateProperties);
+                    }
+                }
+                ResponseJson.RequireExactObject(tile, tileProperties);
                 JsonElement soil = tile.GetProperty("soil");
                 if (soil.ValueKind != JsonValueKind.Null)
                 {

@@ -191,6 +191,37 @@ public sealed class ReviewWorldTests
             ProjectReviewWorldService.DeserializeResponse(Encoding.UTF8.GetBytes(invalid)));
     }
 
+    [Fact]
+    public void OversizedCombinedFeatureAndMachineFactsStillFailTheTransportLimit()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        var feature = new ReviewWorldFeature("tree", new string('\uffff', ReviewWorldContract.MaximumFeatureIdLength),
+            new(ReviewWorldContract.MaximumFeatureGrowthStage, false, ReviewWorldContract.MaximumFeatureHealth));
+        ReviewWorldMachine machine = Machine("ready", 0, Available("(O)334", 1, 0));
+        ReviewWorldReport oversized = Report() with
+        {
+            Data = Data(new(0, 0, 16, 16), Enumerable.Range(0, 256).Select(i => Missing(i % 16, i / 16) with
+            {
+                Feature = feature,
+                ObjectState = "machine",
+                ObjectQualifiedItemId = machine.QualifiedItemId,
+                Machine = machine,
+            }).ToArray()),
+        };
+        Assert.True(ReviewWorldContract.DataValid(oversized.Data));
+        Assert.True(JsonSerializer.SerializeToUtf8Bytes(new ReviewWorldResponseEnvelope(1, Launch, oversized), JsonOptions)
+            .Length > ReviewWorldContract.MaximumResponseBytes);
+        ReviewWorldReport result = ProjectReviewWorldService.Execute(reader, oversized.Data!.Area, command =>
+        {
+            Publish(temporary.Path, command.Split(' ')[2], oversized);
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+        Assert.Equal("unavailable", result.State);
+        Assert.Equal("worldResponseInvalid", result.ErrorCode);
+        Assert.Null(result.Data);
+    }
+
     [Theory]
     [InlineData(0, 0, null)]
     [InlineData(5, 5, null)]
@@ -345,7 +376,13 @@ public sealed class ReviewWorldTests
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
-        ReviewWorldReport report = Report();
+        ReviewWorldReport report = Report() with
+        {
+            Data = Data(new(0, 0, 1, 1), [Missing(0, 0) with
+            {
+                Feature = new("tree", "1", new(5, false, 7.5f)),
+            }]),
+        };
         McpServerTool tool = ProjectReviewMcpWorldTools.Create(reader, (area, _) =>
             area == report.Data!.Area ? report : throw new InvalidOperationException());
         Assert.True(tool.ProtocolTool.Annotations!.ReadOnlyHint);

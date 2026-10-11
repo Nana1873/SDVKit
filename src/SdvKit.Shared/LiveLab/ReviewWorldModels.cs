@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.Json.Serialization;
+
 namespace SdvKit.Cli.LiveLab;
 
 internal static class ReviewWorldContract
@@ -9,6 +12,10 @@ internal static class ReviewWorldContract
     public const int MaximumPhaseCount = 100;
     public const int MaximumMachineMinutes = 1_000_000;
     public const int MaximumTileCoordinate = 100_000;
+    public const int MaximumFeatureIdLength = 64;
+    public const int MaximumFeatureGrowthStage = 1_000_000;
+    public const float MinimumFeatureHealth = -100;
+    public const float MaximumFeatureHealth = 1_000_000;
 
     public static string ResponsePath(string runtimePath, string requestId) =>
         Path.Combine(runtimePath, $"review-world-{requestId}.json");
@@ -56,10 +63,41 @@ internal static class ReviewWorldContract
             int expectedX = data.Area.X + index % data.Area.Width;
             int expectedY = data.Area.Y + index / data.Area.Width;
             if (tile is null || tile.X != expectedX || tile.Y != expectedY || !SoilValid(tile.Soil)
-                || !ObjectValid(tile))
+                || !ObjectValid(tile) || !FeatureValid(tile.Feature))
+                return false;
+            if (tile.Feature is { State: { } state } && (state.OriginX > tile.X || state.OriginY > tile.Y))
                 return false;
         }
         return true;
+    }
+
+    internal static bool FeatureValid(ReviewWorldFeature? feature)
+    {
+        if (feature is null) return true;
+        if (!TextValid(feature.Id, MaximumFeatureIdLength) || feature.State is not { } state)
+            return false;
+        bool health = state.Health is { } value && float.IsFinite(value)
+            && value is >= MinimumFeatureHealth and <= MaximumFeatureHealth;
+        bool origin = state.OriginX is >= -MaximumTileCoordinate and <= MaximumTileCoordinate
+            && state.OriginY is >= -MaximumTileCoordinate and <= MaximumTileCoordinate;
+        bool noOrigin = state.OriginX is null && state.OriginY is null;
+        bool noGrowth = state.GrowthStage is null && state.Stump is null;
+        bool numericId = int.TryParse(feature.Id, NumberStyles.None, CultureInfo.InvariantCulture, out int id)
+            && id >= 0 && feature.Id == id.ToString(CultureInfo.InvariantCulture);
+        return feature.Kind switch
+        {
+            "tree" => state.GrowthStage is >= 0 and <= MaximumFeatureGrowthStage
+                && state.Stump is not null && health && state.NumberOfWeeds is null && noOrigin,
+            "fruitTree" => state.GrowthStage is >= 0 and <= 4
+                && state.Stump is not null && health && state.NumberOfWeeds is null && noOrigin,
+            "grass" => numericId && id <= byte.MaxValue && state.NumberOfWeeds is >= 0 and <= 4
+                && noGrowth && state.Health is null && noOrigin,
+            "bush" => numericId && id <= 4 && noGrowth && health && state.NumberOfWeeds is null && origin,
+            "resourceClump" => numericId && noGrowth && health && state.NumberOfWeeds is null && origin,
+            "furniture" => QualifiedItemIdValid(feature.Id) && feature.Id!.StartsWith("(F)", StringComparison.Ordinal)
+                && noGrowth && state.Health is null && state.NumberOfWeeds is null && origin,
+            _ => false,
+        };
     }
 
     private static bool SoilValid(ReviewWorldSoil? soil)
@@ -138,7 +176,16 @@ internal sealed record ReviewWorldMachine(string InstanceId, string Revision, st
     string State, bool ReadyForHarvest, int MinutesUntilReady, ReviewWorldItemObservation Input,
     ReviewWorldItemObservation Output);
 internal sealed record ReviewWorldTile(int X, int Y, ReviewWorldSoil? Soil, string ObjectState,
-    string? ObjectReason, string? ObjectQualifiedItemId, ReviewWorldMachine? Machine);
+    string? ObjectReason, string? ObjectQualifiedItemId, ReviewWorldMachine? Machine,
+    ReviewWorldFeature? Feature = null);
+internal sealed record ReviewWorldFeature(string Kind, string Id, ReviewWorldFeatureState State);
+internal sealed record ReviewWorldFeatureState(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? GrowthStage = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Stump = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] float? Health = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? NumberOfWeeds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? OriginX = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? OriginY = null);
 internal sealed record ReviewWorldValues(string LocationName, string LocationInstanceId,
     string PlayerId, int CaptureTick, ReviewWorldArea Area, bool Complete,
     IReadOnlyList<ReviewWorldTile> Tiles);

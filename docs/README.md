@@ -26,7 +26,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Inspect active inventory, shop, or public mod-menu controls | [Menu inspection](menu-inspection.md) |
 | Observe supported Gold-shop offers, money and inventory | [Shop inspection](shop-inspection.md) |
 | Inspect every bounded backpack slot without opening a menu | [Inventory inspection](inventory-inspection.md) |
-| Inspect bounded live crops, soil, and machines | [World inspection](world-inspection.md) |
+| Inspect bounded live soil, crops, machines, terrain features and furniture | [World inspection](world-inspection.md) |
 | Observe selected NPC/mail/quest state and prove an original recipe through reload | [Progression authoring and observation](progression-authoring.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
@@ -79,7 +79,7 @@ Every read has a CLI command and a native MCP tool that need no opt-in. `project
 | Open menu geometry and controls | `project review menu` | `stardew_menu_get` | World ready; any role or screen. See [menu inspection](menu-inspection.md) |
 | Backpack | `project review inventory` | `stardew_inventory_get` | World ready; any role or screen. See [inventory inspection](inventory-inspection.md) |
 | Open vanilla chest and both sides | `project review container` | `stardew_container_get` | Any role or screen. See [container inspection](container-inspection.md) |
-| Crops, soil and machines in an area | `project review world` | `stardew_world_area_get` | Any role or screen; at most 256 tiles. See [world inspection](world-inspection.md) |
+| Soil, crops, machines, trees, grass, bushes, clumps and furniture in an area | `project review world` | `stardew_world_area_get` | Any role or screen; at most 256 tiles. See [world inspection](world-inspection.md) |
 | Gold-shop offers and purchases | `project review shop` | `stardew_shop_get` | `single`, unbound. See [shop inspection](shop-inspection.md) |
 | NPC friendship, mail and quests | `project review progression` | `stardew_progression_get` | `single` test save, unbound. See [progression](progression-authoring.md) |
 | Structured Data | `project review data` | Data tools | Any role or screen |

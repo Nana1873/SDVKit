@@ -40,7 +40,7 @@ The cursor sets where the game starts, not everything it may touch. Stardew's ow
 
 Verified live so far: `check` on the Farm sign and `useTool` with the hoe (`scripts/acceptance/player-actions.ps1`). The other uses rely on the game's own action button and tool behaviour; the [player-action matrix](player-actions.md) tracks which are verified.
 
-There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack, no open menu, and an unchanged player (location, tile, facing, stamina, health) and 3x3 tiles around the player. Effects these reads do not cover, such as a toggled gate, a petted animal or grass, can still slip through, so treat `notDispatched` as "SDVKit sent nothing" and read the state you care about. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil or removed objects, `project review inventory` for gifts, food or placed items.
+There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack, no open menu, and an unchanged player (location, tile, facing, stamina, health) and 3x3 tiles around the player. Effects these reads do not cover, such as a toggled gate or a petted animal, can still slip through, so treat `notDispatched` as "SDVKit sent nothing" and read the state you care about. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil, removed objects or [feature changes](world-inspection.md#terrain-features-and-furniture), `project review inventory` for gifts, food or placed items.
 
 ## Results
 
