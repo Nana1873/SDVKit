@@ -92,6 +92,8 @@ Unbound single-review servers expose [map and texture inspection](inspection.md)
 | `stardew_map_tile_get` | `asset`, `layer`, `x`, `y` |
 | `stardew_map_property_get` | `asset`, `property`, `scope`, `source`; `layer`, `x`, `y`, `frameIndex` as needed |
 
+For `stardew_map_actions_list`, `truncated` means more entries follow: it is exactly `page.nextOffset != null`, and is false on the last page, beyond the end or for an empty result. Property names match `Action` and `TouchAction` exactly; see the [map coverage and scan timing limits](inspection.md#inspect-active-map-structure).
+
 Pages default to limit 50 (1-100). `scope` is `map`, `layer` or `tile`. `source` is `direct`, or `tile-index` for tile-index properties; only `tile-index` takes `frameIndex`. An absent property is an error.
 
 Example: `stardew_map_get {"asset":"Maps/Town"}`, then `stardew_texture_preview {"asset":"LooseSprites/Cursors"}`. A preview returns metadata and a verified `image/png` block, within 512x512 and 2 MiB. It is a diagnostic image, not a texture export.

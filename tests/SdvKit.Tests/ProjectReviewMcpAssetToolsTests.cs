@@ -6,12 +6,11 @@ using ModelContextProtocol.Protocol;
 using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 using SdvKit.Cli.Mcp;
-using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
 [Collection(NativeWindowsProcessGroup.Name)]
-public sealed class ProjectReviewMcpAssetToolsTests(ITestOutputHelper output)
+public sealed class ProjectReviewMcpAssetToolsTests
 {
     [Fact]
     public async Task MapToolsExposeClosedSchemasAndExactTypedReads()
@@ -84,14 +83,14 @@ public sealed class ProjectReviewMcpAssetToolsTests(ITestOutputHelper output)
                 {
                     Actions =
                     [
-                        new("Buildings", 68, 14, "direct", null, "Action", "Mailbox", "Mailbox"),
+                        new("Buildings", 68, 14, "direct", null, "Action", "TownMailbox", "TownMailbox"),
                         new("Buildings", 68, 14, "tile-index", 0, "TouchAction", " ", null),
                     ],
                     Page = new(query.Offset, query.Limit, 2, 2, null),
                     Truncated = false,
                 })));
         CallToolResult result = await harness.Client.CallToolAsync(ProjectReviewMcpMapTools.ActionsToolName,
-            new Dictionary<string, object?> { ["asset"] = "Maps/Farm" }, cancellationToken: harness.Token);
+            new Dictionary<string, object?> { ["asset"] = "Maps/Town" }, cancellationToken: harness.Token);
         Assert.NotEqual(true, result.IsError);
         JsonElement structured = Assert.IsType<JsonElement>(result.StructuredContent);
         Tool tool = (await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token))
@@ -101,7 +100,6 @@ public sealed class ProjectReviewMcpAssetToolsTests(ITestOutputHelper output)
         Assert.True(schema.Evaluate(json).IsValid);
         Assert.Equal(50, structured.GetProperty("page").GetProperty("limit").GetInt32());
         Assert.False(structured.GetProperty("truncated").GetBoolean());
-        output.WriteLine("Actions JSON sample: " + structured.GetRawText());
         json["actions"]![0]!["extra"] = true;
         Assert.False(schema.Evaluate(json).IsValid);
         json["actions"]![0]!.AsObject().Remove("extra");
@@ -109,10 +107,10 @@ public sealed class ProjectReviewMcpAssetToolsTests(ITestOutputHelper output)
         Assert.False(schema.Evaluate(json).IsValid);
         foreach (Dictionary<string, object?> invalid in new Dictionary<string, object?>[]
         {
-            new() { ["asset"] = "Maps/Farm", ["limit"] = 0 },
-            new() { ["asset"] = "Maps/Farm", ["limit"] = 101 },
-            new() { ["asset"] = "Maps/Farm", ["offset"] = -1 },
-            new() { ["asset"] = "Maps/Farm", ["source"] = "direct" },
+            new() { ["asset"] = "Maps/Town", ["limit"] = 0 },
+            new() { ["asset"] = "Maps/Town", ["limit"] = 101 },
+            new() { ["asset"] = "Maps/Town", ["offset"] = -1 },
+            new() { ["asset"] = "Maps/Town", ["source"] = "direct" },
         })
         {
             CallToolResult rejected = await harness.Client.CallToolAsync(ProjectReviewMcpMapTools.ActionsToolName,

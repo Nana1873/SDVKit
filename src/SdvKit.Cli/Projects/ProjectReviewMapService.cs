@@ -50,9 +50,12 @@ internal static class ProjectReviewMapService
         "warps",
         "page",
         "coverage",
-        "problems",
+        "problems");
+    private static readonly HashSet<string> ActionsReportProperties = new(ReportProperties, StringComparer.Ordinal)
+    {
         "actions",
-        "truncated");
+        "truncated",
+    };
     private static readonly HashSet<string> ProblemProperties = PropertySet(
         "code",
         "message");
@@ -651,7 +654,7 @@ internal static class ProjectReviewMapService
         && report.Coverage is null
         && report.Actions is { } actions
         && PageMatches(report.Page, query, actions.Count, ReviewMapContract.MaximumActionsPerMap)
-        && report.Truncated == (actions.Count < report.Page!.Total)
+        && report.Truncated == (report.Page!.NextOffset is not null)
         && ReviewMapActionValidation.IsValidList(actions);
 
     private static bool WarpListMatches(
@@ -1122,7 +1125,14 @@ internal static class ProjectReviewMapService
     {
         ResponseJson.RequireExactObject(root, EnvelopeProperties);
         JsonElement report = root.GetProperty("report");
-        ResponseJson.RequireExactObject(report, ReportProperties);
+        bool readyActions = report.ValueKind == JsonValueKind.Object
+            && report.TryGetProperty("operation", out JsonElement operation)
+            && operation.ValueKind == JsonValueKind.String
+            && operation.GetString() == ReviewMapContract.ActionsOperation
+            && report.TryGetProperty("state", out JsonElement state)
+            && state.ValueKind == JsonValueKind.String
+            && state.GetString() == "ready";
+        ResponseJson.RequireExactObject(report, readyActions ? ActionsReportProperties : ReportProperties);
 
         ValidateOptionalObject(report.GetProperty("map"), SummaryProperties);
         ValidateOptionalObject(report.GetProperty("layer"), LayerProperties);
@@ -1148,14 +1158,13 @@ internal static class ProjectReviewMapService
             report.GetProperty("warps"),
             int.MaxValue,
             warp => ResponseJson.RequireExactObject(warp, WarpProperties));
-        ResponseJson.ValidateOptionalArray(
-            report.GetProperty("actions"),
-            ReviewMapContract.MaximumPageLimit,
-            action => ResponseJson.RequireExactObject(action, ActionProperties));
-        if (report.GetProperty("truncated").ValueKind is not
-            (JsonValueKind.Null or JsonValueKind.True or JsonValueKind.False))
+        if (readyActions)
         {
-            throw new InvalidDataException("The review-map truncation flag is not a Boolean.");
+            ResponseJson.ValidateRequiredArray(
+                report.GetProperty("actions"),
+                ReviewMapContract.MaximumPageLimit,
+                action => ResponseJson.RequireExactObject(action, ActionProperties));
+            _ = ResponseJson.RequiredBoolean(report, "truncated");
         }
         ValidateOptionalObject(report.GetProperty("page"), PageProperties);
         ValidateOptionalCoverage(report.GetProperty("coverage"));

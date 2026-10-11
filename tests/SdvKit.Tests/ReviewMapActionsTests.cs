@@ -50,15 +50,37 @@ public sealed class ReviewMapActionsTests
     [InlineData(1, 1, 1, null)]
     [InlineData(2, 50, 0, null)]
     [InlineData(int.MaxValue, 100, 0, null)]
-    public void PagingReportsOmittedEntriesIncludingEarlierPages(int offset, int limit, int returned, int? next)
+    public void PagingTruncationMeansMoreEntriesFollow(int offset, int limit, int returned, int? next)
     {
         var source = new MapSource();
         source.Tiles[("Back", 0, 0)] = Static("Back", 0, 0,
             [Property("Action", "Message sign"), Property("TouchAction", "Warp Farm 1 2")]);
         ReviewMapReport report = ReviewMapOperation.Execute(Query(offset, limit), source);
         Assert.Equal(new ReviewMapPage(offset, limit, returned, 2, next), report.Page);
-        Assert.True(report.Truncated);
+        Assert.Equal(next is not null, report.Truncated);
         Assert.True(Matches(report, Query(offset, limit)));
+    }
+
+    [Theory]
+    [InlineData(35, 5, 40, true)]
+    [InlineData(40, 2, null, false)]
+    [InlineData(42, 0, null, false)]
+    [InlineData(int.MaxValue, 0, null, false)]
+    public void TownSizedPagesUseNextOffsetForTruncation(int offset, int returned, int? next, bool truncated)
+    {
+        var source = new MapSource { AssetName = "Maps/Town" };
+        source.SetDimensions(42, 1);
+        for (int x = 0; x < 42; x++)
+            source.Tiles[("Back", x, 0)] = Static("Back", x, 0, [Property("Action", "TownMailbox")]);
+        ReviewMapQuery query = Query(offset, 5) with { Asset = "Maps/Town" };
+        ReviewMapReport report = ReviewMapOperation.Execute(query, source);
+        Assert.Equal(new ReviewMapPage(offset, 5, returned, 42, next), report.Page);
+        Assert.Equal(truncated, report.Truncated);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewMapResponseEnvelope(1, RequestId, report), JsonOptions);
+        ReviewMapResponseEnvelope decoded = ProjectReviewMapService.DeserializeResponse(bytes)!;
+        Assert.Equal(truncated, decoded.Report.Truncated);
+        Assert.True(ProjectReviewMapService.MatchesResponse(decoded, RequestId, query));
+        Assert.False(Matches(report with { Truncated = !truncated }, query));
     }
 
     [Fact]
@@ -70,6 +92,20 @@ public sealed class ReviewMapActionsTests
         Assert.Empty(report.Actions!);
         Assert.False(report.Truncated);
         Assert.Equal(new ReviewMapPage(0, 50, 0, 0, null), report.Page);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewMapResponseEnvelope(1, RequestId, report), JsonOptions);
+        JsonElement wire = JsonDocument.Parse(bytes).RootElement.GetProperty("report");
+        Assert.Equal(0, wire.GetProperty("actions").GetArrayLength());
+        Assert.False(wire.GetProperty("truncated").GetBoolean());
+        Assert.True(ProjectReviewMapService.MatchesResponse(ProjectReviewMapService.DeserializeResponse(bytes), RequestId, Query()));
+        foreach (string field in new[] { "actions", "truncated" })
+        {
+            JsonObject missing = JsonNode.Parse(bytes)!.AsObject();
+            Assert.True(missing["report"]!.AsObject().Remove(field));
+            Assert.Throws<InvalidDataException>(() => ProjectReviewMapService.DeserializeResponse(Encoding.UTF8.GetBytes(missing.ToJsonString())));
+            JsonObject explicitNull = JsonNode.Parse(bytes)!.AsObject();
+            explicitNull["report"]![field] = null;
+            Assert.Throws<InvalidDataException>(() => ProjectReviewMapService.DeserializeResponse(Encoding.UTF8.GetBytes(explicitNull.ToJsonString())));
+        }
     }
 
     [Theory]
@@ -127,6 +163,7 @@ public sealed class ReviewMapActionsTests
         Assert.Null(report.Page);
         Assert.Null(report.Truncated);
         Assert.True(Matches(report, Query(0, 1)));
+        AssertOmittedActionFieldsAndRejectExplicitNulls(report, Query(0, 1));
     }
 
     [Fact]
@@ -240,6 +277,62 @@ public sealed class ReviewMapActionsTests
         Assert.Throws<InvalidDataException>(() => ProjectReviewMapService.DeserializeResponse(Encoding.UTF8.GetBytes(json.ToJsonString())));
     }
 
+    [Theory]
+    [InlineData(ReviewMapContract.AssetsOperation)]
+    [InlineData(ReviewMapContract.GetOperation)]
+    [InlineData(ReviewMapContract.LayersOperation)]
+    [InlineData(ReviewMapContract.LayerOperation)]
+    [InlineData(ReviewMapContract.TileSheetsOperation)]
+    [InlineData(ReviewMapContract.WarpsOperation)]
+    [InlineData(ReviewMapContract.TileOperation)]
+    [InlineData(ReviewMapContract.PropertyOperation)]
+    public void ExistingMapOperationsKeepTheirExactWireShape(string operation)
+    {
+        var source = new MapSource();
+        source.Map = source.Map with
+        {
+            Properties = [Property("Flag", "yes")],
+            Summary = source.Map.Summary with { PropertyCount = 1 },
+        };
+        ReviewMapQuery query = Query() with { Operation = operation };
+        query = operation switch
+        {
+            ReviewMapContract.AssetsOperation => query with { Asset = null },
+            ReviewMapContract.GetOperation => query with { Limit = 1 },
+            ReviewMapContract.LayerOperation => query with { Layer = "Back", Limit = 1 },
+            ReviewMapContract.TileOperation => query with { Layer = "Back", X = 0, Y = 0, Limit = 1 },
+            ReviewMapContract.PropertyOperation => query with
+            {
+                PropertyScope = "map",
+                PropertySource = "direct",
+                Property = "Flag",
+                Limit = 1,
+            },
+            _ => query,
+        };
+        ReviewMapReport report = ReviewMapOperation.Execute(query, source);
+        Assert.Equal("ready", report.State);
+        AssertOmittedActionFieldsAndRejectExplicitNulls(report, query);
+    }
+
+    private static void AssertOmittedActionFieldsAndRejectExplicitNulls(ReviewMapReport report, ReviewMapQuery query)
+    {
+        // Serialize the actual report and envelope, as CLI and GameSide do respectively.
+        JsonElement direct = JsonSerializer.SerializeToElement(report, JsonOptions);
+        Assert.False(direct.TryGetProperty("actions", out _));
+        Assert.False(direct.TryGetProperty("truncated", out _));
+        Assert.True(direct.TryGetProperty("tileSheets", out _));
+        Assert.True(direct.TryGetProperty("warps", out _));
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new ReviewMapResponseEnvelope(1, RequestId, report), JsonOptions);
+        Assert.True(ProjectReviewMapService.MatchesResponse(ProjectReviewMapService.DeserializeResponse(bytes), RequestId, query));
+        foreach (string field in new[] { "actions", "truncated" })
+        {
+            JsonObject injected = JsonNode.Parse(bytes)!.AsObject();
+            injected["report"]![field] = null;
+            Assert.Throws<InvalidDataException>(() => ProjectReviewMapService.DeserializeResponse(Encoding.UTF8.GetBytes(injected.ToJsonString())));
+        }
+    }
+
     private static bool Matches(ReviewMapReport report, ReviewMapQuery query) =>
         ProjectReviewMapService.MatchesResponse(new(1, RequestId, report), RequestId, query);
 
@@ -275,11 +368,12 @@ public sealed class ReviewMapActionsTests
         public ReviewMapAssetSnapshot Map { get; set; } = new(new(64, 48, 2, 1, 0, 0),
             [new(new(0, "Buildings", 4, 3, 16, 16, true, 0), []), new(new(1, "Back", 4, 3, 16, 16, true, 0), [])],
             [new(0, "sheet", "Maps/sheet", 1, 1, 16, 16, 0, 0, 0, 0, 1, 0)], [], []);
+        public string AssetName { get; init; } = "Maps/Farm";
         public string GameVersion => "1.6.15";
         public string GameFileVersion => "1.6.15.24356";
-        public IReadOnlyList<string> DiscoverCanonicalAssetNames() => ["Maps/Farm"];
+        public IReadOnlyList<string> DiscoverCanonicalAssetNames() => [AssetName];
         public ReviewMapAssetIdentity CanonicalizeAssetName(string assetName) => new(assetName, assetName, null);
-        public bool AssetExistsForMapRequest(string assetName) => assetName == "Maps/Farm";
+        public bool AssetExistsForMapRequest(string assetName) => assetName == AssetName;
         public ReviewMapLoadedAsset LoadAsset(string assetName) => new("xTile.Map", Map);
         public ReviewMapLoadedAsset LoadMapAsset(string assetName) => LoadAsset(assetName);
         public IReadOnlyList<ReviewMapActionReport> ReadActions(string assetName) =>

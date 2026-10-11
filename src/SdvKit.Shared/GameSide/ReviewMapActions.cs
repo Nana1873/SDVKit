@@ -33,10 +33,11 @@ internal static partial class ReviewMapOperation
         }
 
         ReviewMapActionReport[] page = actions.Skip(query.Offset).Take(query.Limit).ToArray();
+        ReviewMapPage pagination = Page(query, page.Length, actions.Count);
         ReviewMapReport report = Report("ready", query.Operation, source,
             resolved!.AssetName, resolved.Loaded.DataType,
-            page: Page(query, page.Length, actions.Count),
-            actions: page, truncated: page.Length < actions.Count);
+            page: pagination,
+            actions: page, truncated: pagination.NextOffset is not null);
         // Escaped JSON can be much larger than the raw UTF-8 property budget.
         var envelope = new ReviewMapResponseEnvelope(ReviewMapContract.SchemaVersion,
             "00000000000000000000000000000000", report);

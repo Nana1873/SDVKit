@@ -134,7 +134,7 @@ internal static class ProjectReviewMcpMapTools
                 "List one bounded page of parsed warps from one exact final-pipeline map.",
                 AssetPageInputSchema, ReviewMapContract.WarpsOperation, TryAssetPage),
             new MapMcpTool(runtimeReader, runQuery, ActionsToolName,
-                "List one bounded page of Action and TouchAction tile properties from one final-pipeline map.",
+                "List one bounded page of exact, case-sensitive Action and TouchAction tile properties from one final-pipeline map. Truncated means more entries follow.",
                 AssetPageInputSchema, ReviewMapContract.ActionsOperation, TryAssetPage),
             new MapMcpTool(runtimeReader, runQuery, TileToolName,
                 "Read one exact bounded tile from one final-pipeline map layer.",
@@ -490,7 +490,7 @@ internal static class ProjectReviewMcpMapTools
             ReviewMapContract.LayerOperation => (["assetName", "dataType", "layer"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"layer\": { \"$ref\": \"#/$defs/layer\" }"),
             ReviewMapContract.TileSheetsOperation => (["assetName", "dataType", "tileSheets", "page"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"tileSheets\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/tileSheet\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }"),
             ReviewMapContract.WarpsOperation => (["assetName", "dataType", "warps", "page"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"warps\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/warp\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }"),
-            ReviewMapContract.ActionsOperation => (["assetName", "dataType", "actions", "page", "truncated"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"actions\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/action\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }, \"truncated\": { \"type\": \"boolean\" }"),
+            ReviewMapContract.ActionsOperation => (["assetName", "dataType", "actions", "page", "truncated"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"actions\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/action\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }, \"truncated\": { \"type\": \"boolean\", \"description\": \"True exactly when page.nextOffset is non-null: more entries follow.\" }"),
             ReviewMapContract.TileOperation => (["assetName", "dataType", "tile"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"tile\": { \"$ref\": \"#/$defs/tile\" }"),
             _ => (["assetName", "dataType", "property"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"property\": { \"$ref\": \"#/$defs/property\" }"),
         };

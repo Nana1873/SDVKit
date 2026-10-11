@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SdvKit.Cli.LiveLab;
 
@@ -358,7 +359,9 @@ internal sealed record ReviewMapReport(
     ReviewMapPage? Page,
     ReviewMapCoverageReport? Coverage,
     IReadOnlyList<ReviewMapProblem> Problems,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<ReviewMapActionReport>? Actions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     bool? Truncated = null);
 
 internal sealed record ReviewMapResponseEnvelope(

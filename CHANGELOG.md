@@ -6,7 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
-- `project review map actions <map>` and `stardew_map_actions_list` list bounded, paged `Action` and `TouchAction` tile properties so tests can discover signs, mailboxes and action doors (#300). Entries preserve direct or tile-index/frame identity, raw strings and their first token; the read-only query is available in unbound single reviews.
+- `project review map actions <map>` and `stardew_map_actions_list` list bounded, paged `Action` and `TouchAction` tile properties so tests can discover property-backed signs, action doors and the town mailbox (`TownMailbox`) (#300). The Farm mailbox is handled by game code and is not discoverable through this map-property query. Entries preserve direct or tile-index/frame identity, raw strings and their first token; the read-only query is available in unbound single reviews.
 - `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
 
 ## [2.0.0] - 2026-10-11

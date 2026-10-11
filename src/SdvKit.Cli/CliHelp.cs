@@ -209,7 +209,7 @@ public static partial class CliApplication
         output.WriteLine(ReviewMapTileSheetsUsage.TrimStart());
         output.WriteLine(ReviewMapWarpsUsage.TrimStart());
         output.WriteLine(ReviewMapActionsUsage.TrimStart());
-        output.WriteLine("Actions list direct and tile-index/frame Action/TouchAction properties; page size defaults to 50. Values are never shortened; truncated marks omitted page entries.");
+        output.WriteLine("Actions list direct and tile-index/frame Action/TouchAction properties; page size defaults to 50. Values are never shortened; truncated is true only when page.nextOffset is non-null (more entries follow).");
         output.WriteLine(ReviewMapTileUsage.TrimStart());
         output.WriteLine(ReviewMapPropertyMapUsage.TrimStart());
         output.WriteLine(ReviewMapPropertyLayerUsage.TrimStart());
