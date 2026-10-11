@@ -16,7 +16,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
-- The lab starts the game window without giving it focus (SDL's `SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN`, set in the game's environment) (#311). Switching between other windows during a review or an acceptance run no longer makes the next input fail with `inputForegroundChanged`; clicking into the game window still does.
+- The lab starts the game window without giving it focus (SDL's `SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN`, set in the game's environment) (#311). Switching between other windows during a review or an acceptance run no longer makes the next input fail with `inputForegroundChanged`; the game window becoming the foreground window (a click into it, Alt+Tab, or Windows activating it after the window in front closes) still does.
 
 - `lab test-save` no longer fails with `gameSideStale` when loading the test save blocks the game for more than five seconds: while the exact test save is still loading or waiting, it keeps polling for up to 30 seconds after the marker becomes stale (#303). The acceptance scripts' readiness wait does the same.
 
