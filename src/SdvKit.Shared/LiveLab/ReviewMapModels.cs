@@ -17,6 +17,8 @@ internal static class ReviewMapContract
     public const int MaximumLayersPerMap = 256;
     public const int MaximumTileSheetsPerMap = 512;
     public const int MaximumWarpsPerMap = 4096;
+    public const int MaximumActionsPerMap = 4096;
+    public const int MaximumActionScanTiles = MaximumLayerTiles;
     public const int MaximumFramesPerTile = 1024;
     public const int MaximumLayerDimension = 4096;
     public const int MaximumLayerTiles = 4 * 1024 * 1024;
@@ -31,6 +33,7 @@ internal static class ReviewMapContract
     public const string LayerOperation = "layer";
     public const string TileSheetsOperation = "tilesheets";
     public const string WarpsOperation = "warps";
+    public const string ActionsOperation = "actions";
     public const string TileOperation = "tile";
     public const string PropertyOperation = "property";
 
@@ -80,7 +83,8 @@ internal static class ReviewMapQueryValidation
         bool listOperation = query.Operation is ReviewMapContract.AssetsOperation
             or ReviewMapContract.LayersOperation
             or ReviewMapContract.TileSheetsOperation
-            or ReviewMapContract.WarpsOperation;
+            or ReviewMapContract.WarpsOperation
+            or ReviewMapContract.ActionsOperation;
         bool exactOperation = query.Operation is ReviewMapContract.GetOperation
             or ReviewMapContract.LayerOperation
             or ReviewMapContract.TileOperation
@@ -239,6 +243,16 @@ internal sealed record ReviewMapWarpReport(
     int TargetX,
     int TargetY);
 
+internal sealed record ReviewMapActionReport(
+    string LayerId,
+    int X,
+    int Y,
+    string Source,
+    int? FrameIndex,
+    string Name,
+    string Value,
+    string? FirstToken);
+
 internal sealed record ReviewMapSummary(
     int DisplayWidth,
     int DisplayHeight,
@@ -343,7 +357,9 @@ internal sealed record ReviewMapReport(
     IReadOnlyList<ReviewMapWarpReport>? Warps,
     ReviewMapPage? Page,
     ReviewMapCoverageReport? Coverage,
-    IReadOnlyList<ReviewMapProblem> Problems);
+    IReadOnlyList<ReviewMapProblem> Problems,
+    IReadOnlyList<ReviewMapActionReport>? Actions = null,
+    bool? Truncated = null);
 
 internal sealed record ReviewMapResponseEnvelope(
     int SchemaVersion,

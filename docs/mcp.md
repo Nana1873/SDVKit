@@ -87,7 +87,7 @@ Unbound single-review servers expose [map and texture inspection](inspection.md)
 | --- | --- |
 | `stardew_map_assets_list`, `stardew_texture_assets_list` | Optional `offset`, `limit` |
 | `stardew_map_get`, `stardew_texture_get`, `stardew_texture_preview` | `asset` |
-| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list` | `asset`; optional `offset`, `limit` |
+| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list`, `stardew_map_actions_list` | `asset`; optional `offset`, `limit` |
 | `stardew_map_layer_get` | `asset`, `layer` |
 | `stardew_map_tile_get` | `asset`, `layer`, `x`, `y` |
 | `stardew_map_property_get` | `asset`, `property`, `scope`, `source`; `layer`, `x`, `y`, `frameIndex` as needed |

@@ -17,6 +17,7 @@ internal static class ProjectReviewMcpMapTools
     internal const string LayerToolName = "stardew_map_layer_get";
     internal const string TileSheetsToolName = "stardew_map_tilesheets_list";
     internal const string WarpsToolName = "stardew_map_warps_list";
+    internal const string ActionsToolName = "stardew_map_actions_list";
     internal const string TileToolName = "stardew_map_tile_get";
     internal const string PropertyToolName = "stardew_map_property_get";
 
@@ -132,6 +133,9 @@ internal static class ProjectReviewMcpMapTools
             new MapMcpTool(runtimeReader, runQuery, WarpsToolName,
                 "List one bounded page of parsed warps from one exact final-pipeline map.",
                 AssetPageInputSchema, ReviewMapContract.WarpsOperation, TryAssetPage),
+            new MapMcpTool(runtimeReader, runQuery, ActionsToolName,
+                "List one bounded page of Action and TouchAction tile properties from one final-pipeline map.",
+                AssetPageInputSchema, ReviewMapContract.ActionsOperation, TryAssetPage),
             new MapMcpTool(runtimeReader, runQuery, TileToolName,
                 "Read one exact bounded tile from one final-pipeline map layer.",
                 TileInputSchema, ReviewMapContract.TileOperation, TryTile),
@@ -275,6 +279,17 @@ internal static class ProjectReviewMcpMapTools
             report.DataType,
             report.Warps,
             report.Page,
+        },
+        ReviewMapContract.ActionsOperation => new
+        {
+            report.SchemaVersion,
+            report.GameVersion,
+            report.GameFileVersion,
+            report.AssetName,
+            report.DataType,
+            report.Actions,
+            report.Page,
+            report.Truncated,
         },
         ReviewMapContract.TileOperation => new
         {
@@ -475,6 +490,7 @@ internal static class ProjectReviewMcpMapTools
             ReviewMapContract.LayerOperation => (["assetName", "dataType", "layer"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"layer\": { \"$ref\": \"#/$defs/layer\" }"),
             ReviewMapContract.TileSheetsOperation => (["assetName", "dataType", "tileSheets", "page"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"tileSheets\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/tileSheet\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }"),
             ReviewMapContract.WarpsOperation => (["assetName", "dataType", "warps", "page"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"warps\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/warp\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }"),
+            ReviewMapContract.ActionsOperation => (["assetName", "dataType", "actions", "page", "truncated"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"actions\": { \"type\": \"array\", \"maxItems\": 100, \"items\": { \"$ref\": \"#/$defs/action\" } }, \"page\": { \"$ref\": \"#/$defs/page\" }, \"truncated\": { \"type\": \"boolean\" }"),
             ReviewMapContract.TileOperation => (["assetName", "dataType", "tile"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"tile\": { \"$ref\": \"#/$defs/tile\" }"),
             _ => (["assetName", "dataType", "property"], "\"assetName\": { \"type\": \"string\", \"maxLength\": 256 }, \"dataType\": { \"type\": \"string\", \"maxLength\": 512 }, \"property\": { \"$ref\": \"#/$defs/property\" }"),
         };
@@ -592,6 +608,20 @@ internal static class ProjectReviewMcpMapTools
           "fromX": { "type": "integer" }, "fromY": { "type": "integer" },
           "targetName": { "type": "string", "maxLength": 256 },
           "targetX": { "type": "integer" }, "targetY": { "type": "integer" }
+        }
+      },
+      "action": {
+        "type": "object", "additionalProperties": false,
+        "required": ["layerId", "x", "y", "source", "frameIndex", "name", "value", "firstToken"],
+        "properties": {
+          "layerId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "x": { "type": "integer", "minimum": 0, "maximum": 4095 },
+          "y": { "type": "integer", "minimum": 0, "maximum": 4095 },
+          "source": { "type": "string", "enum": ["direct", "tile-index"] },
+          "frameIndex": { "type": ["integer", "null"], "minimum": 0, "maximum": 1023 },
+          "name": { "type": "string", "enum": ["Action", "TouchAction"] },
+          "value": { "type": "string", "maxLength": 65536 },
+          "firstToken": { "type": ["string", "null"], "minLength": 1, "maxLength": 65536 }
         }
       },
       "frame": {

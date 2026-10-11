@@ -16,7 +16,7 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script | No running state is reported |
 | Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script | — |
 | Face a direction | Press the direction key once | Not reported | indirect only | [#289](https://github.com/Nana1873/SDVKit/issues/289) |
-| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list` | `runtime.locationId` | script (Farm to BusStop) | Doors that need the action button are not listed ([#300](https://github.com/Nana1873/SDVKit/issues/300)) |
+| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list`; discover action doors with `stardew_map_actions_list`, then face the door and press `X` | `runtime.locationId` | script (Farm to BusStop) | Action-door discovery is not yet verified live; faced-tile input: [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 | Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 
 ## Interaction and tools
@@ -33,7 +33,7 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Place an item or object | Select it, face the tile, press `X` | `objectQualifiedItemId` on the tile; stack drops | — | No way to give items ([#291](https://github.com/Nana1873/SDVKit/issues/291)); [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 | Eat or drink | Select it, press `X`, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | [#291](https://github.com/Nana1873/SDVKit/issues/291) |
 | Talk to an NPC, give a gift | Face the NPC, press `X` | `menu_get` dialogue; `stardew_progression_get` friendship | — | No NPC positions ([#292](https://github.com/Nana1873/SDVKit/issues/292)); [#290](https://github.com/Nana1873/SDVKit/issues/290), [#291](https://github.com/Nana1873/SDVKit/issues/291) |
-| Read a sign or the mailbox | Face it, press `X` | `menu_get` dialogue or letter; progression mail | — | Sign tiles are not listed ([#300](https://github.com/Nana1873/SDVKit/issues/300)); [#290](https://github.com/Nana1873/SDVKit/issues/290) |
+| Read a sign or the mailbox | Find its tile with `stardew_map_actions_list`, face it, press `X` | `menu_get` dialogue or letter; progression mail | — | Tile discovery is not yet verified live; [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 
 ## Items, menus and containers
 

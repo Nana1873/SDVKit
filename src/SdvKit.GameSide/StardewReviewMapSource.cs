@@ -191,6 +191,23 @@ internal sealed class StardewReviewMapSource : IReviewMapSource
             throw new InvalidDataException("The selected tile is outside the exact layer.");
         }
 
+        var propertyPayloadBytes = 0L;
+        return CaptureTile(map, layer, x, y, ref propertyPayloadBytes);
+    }
+
+    public IReadOnlyList<ReviewMapActionReport> ReadActions(string assetName)
+    {
+        Map map = LoadTypedMap(assetName);
+        ReviewMapAssetSnapshot snapshot = CaptureMap(map, map.GetType().FullName!).Map!;
+        var layers = map.Layers.ToDictionary(layer => layer.Id, StringComparer.Ordinal);
+        var propertyPayloadBytes = 0L;
+        return ReviewMapOperation.CaptureActions(snapshot,
+            (layerId, x, y) => CaptureTile(map, layers[layerId], x, y, ref propertyPayloadBytes));
+    }
+
+    private static ReviewMapTileSnapshot CaptureTile(
+        Map map, Layer layer, int x, int y, ref long propertyPayloadBytes)
+    {
         Tile? tile = layer.Tiles[x, y];
         if (tile is null)
         {
@@ -217,7 +234,6 @@ internal sealed class StardewReviewMapSource : IReviewMapSource
             throw new InvalidDataException("The selected tile belongs to another layer.");
         }
 
-        var propertyPayloadBytes = 0L;
         IReadOnlyList<ReviewMapPropertyValue> directProperties = CaptureProperties(
             tile.Properties,
             ref propertyPayloadBytes);
@@ -259,21 +275,16 @@ internal sealed class StardewReviewMapSource : IReviewMapSource
                 }
                 EnsureOwnedTileSheet(map, frame.TileSheet);
             }
-            ReviewMapTileFrameSnapshot[] frames = animatedTile.TileFrames
-                .Select((frame, ordinal) =>
-                {
-                    IReadOnlyList<ReviewMapPropertyValue> indexProperties =
-                        CaptureProperties(frame.TileIndexProperties, ref propertyPayloadBytes);
-                    return new ReviewMapTileFrameSnapshot(
-                        new ReviewMapTileFrameReport(
-                            ordinal,
-                            frame.TileSheet.Id,
-                            frame.TileIndex,
-                            frame.BlendMode.ToString(),
-                            indexProperties.Count),
-                        indexProperties);
-                })
-                .ToArray();
+            var frames = new ReviewMapTileFrameSnapshot[animatedTile.TileFrames.Length];
+            for (int ordinal = 0; ordinal < frames.Length; ordinal++)
+            {
+                StaticTile frame = animatedTile.TileFrames[ordinal];
+                IReadOnlyList<ReviewMapPropertyValue> indexProperties =
+                    CaptureProperties(frame.TileIndexProperties, ref propertyPayloadBytes);
+                frames[ordinal] = new ReviewMapTileFrameSnapshot(
+                    new ReviewMapTileFrameReport(ordinal, frame.TileSheet.Id, frame.TileIndex,
+                        frame.BlendMode.ToString(), indexProperties.Count), indexProperties);
+            }
             return new ReviewMapTileSnapshot(
                 new ReviewMapTileReport(
                     layer.Id,

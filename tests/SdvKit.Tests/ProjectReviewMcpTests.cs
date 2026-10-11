@@ -748,6 +748,7 @@ public sealed class ProjectReviewMcpTests
                     ProjectReviewMcpMapTools.LayerToolName,
                     ProjectReviewMcpMapTools.TileSheetsToolName,
                     ProjectReviewMcpMapTools.WarpsToolName,
+                    ProjectReviewMcpMapTools.ActionsToolName,
                     ProjectReviewMcpMapTools.TileToolName,
                     ProjectReviewMcpMapTools.PropertyToolName,
                     ProjectReviewMcpTextureTools.AssetsToolName,
