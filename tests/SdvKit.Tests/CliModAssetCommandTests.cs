@@ -208,7 +208,10 @@ public sealed class CliModAssetCommandTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReviewModAsset: runner);
+            runners =>
+            {
+                runners.ProjectReviewModAsset = runner;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 }

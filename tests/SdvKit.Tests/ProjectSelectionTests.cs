@@ -209,12 +209,15 @@ public sealed class ProjectSelectionTests
         using StringWriter error = new();
         string? selector = null;
         int result = CliApplication.Run(["project", "review", "start", "root", "--project", "Selected/Selected.csproj", "--json"], output, error, Ready,
-            runProjectReview: (_, root, companions, _, _, _, _, project) =>
+            runners =>
+            {
+                runners.ProjectReview = (_, root, companions, _, _, _, _, project) =>
             {
                 Assert.Equal("root", root);
                 Assert.Empty(companions);
                 selector = project;
                 return new(0, new { state = "test" });
+            };
             });
         Assert.Equal(0, result);
         Assert.Equal("Selected/Selected.csproj", selector);

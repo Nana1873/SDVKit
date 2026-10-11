@@ -5,70 +5,6 @@ using SdvKit.Cli.Mcp;
 
 namespace SdvKit.Cli;
 
-internal sealed record LiveLabCommandResult(int ExitCode, object Report);
-
-internal delegate LiveLabCommandResult LiveLabCommandRunner(
-    string action,
-    string topology,
-    string projectRoot);
-
-internal delegate LiveLabCommandResult ProjectSmokeCommandRunner(
-    string sourcePath,
-    string topology,
-    string labRoot);
-
-internal delegate LiveLabCommandResult ProjectReviewCommandRunner(
-    string action,
-    string sourcePath,
-    IReadOnlyList<string> companionPaths,
-    IReadOnlyList<string> contentPackPaths,
-    bool useTestSave,
-    string topology,
-    string labRoot,
-    string? projectFile);
-
-internal delegate LiveLabCommandResult ProjectReviewConsoleCommandRunner(
-    string command,
-    string topology,
-    string? role,
-    string labRoot);
-
-internal delegate LiveLabCommandResult ProjectReviewDataCommandRunner(
-    ReviewDataQuery query,
-    string labRoot,
-    string topology,
-    string? role,
-    int? screenId);
-
-internal delegate LiveLabCommandResult ProjectReviewMapCommandRunner(
-    ReviewMapQuery query,
-    string labRoot);
-
-internal delegate LiveLabCommandResult ProjectReviewTextureCommandRunner(
-    ReviewTextureQuery query,
-    string labRoot);
-
-internal delegate LiveLabCommandResult ProjectReviewAudioCommandRunner(
-    ReviewAudioQuery query,
-    string labRoot);
-
-internal delegate LiveLabCommandResult ProjectReviewModAssetCommandRunner(
-    ReviewModAssetQuery query,
-    string labRoot);
-
-internal delegate int ProjectReviewMcpCommandRunner(
-    string topology,
-    string? role,
-    int? screenId,
-    string labRoot,
-    bool allowInput,
-    bool allowFixtureActions,
-    bool allowWorldActions,
-    bool allowContainerTransfer,
-    bool allowCpRefresh,
-    TextWriter error,
-    int? httpPort = null);
-
 public static partial class CliApplication
 {
     private const int Success = 0;
@@ -93,16 +29,7 @@ public static partial class CliApplication
         TextWriter output,
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
-        LiveLabCommandRunner? runLiveLab = null,
-        ProjectSmokeCommandRunner? runProjectSmoke = null,
-        ProjectReviewCommandRunner? runProjectReview = null,
-        ProjectReviewConsoleCommandRunner? runProjectReviewConsole = null,
-        ProjectReviewDataCommandRunner? runProjectReviewData = null,
-        ProjectReviewTextureCommandRunner? runProjectReviewTexture = null,
-        ProjectReviewAudioCommandRunner? runProjectReviewAudio = null,
-        ProjectReviewMcpCommandRunner? runProjectReviewMcp = null,
-        ProjectReviewMapCommandRunner? runProjectReviewMap = null,
-        ProjectReviewModAssetCommandRunner? runProjectReviewModAsset = null)
+        Action<CliCommandRunners>? configureRunners = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -129,92 +56,8 @@ public static partial class CliApplication
             discoverInstallations = () => frozen.Value;
         }
 
-        if (runLiveLab is null)
-        {
-            runLiveLab = (action, topology, projectRoot) =>
-                string.Equals(action, "smoke", StringComparison.Ordinal)
-                && string.Equals(topology, "network-2", StringComparison.Ordinal)
-                    ? NetworkTwoSmokeService.Execute(projectRoot, discoverInstallations)
-                    : LiveLabService.Execute(action, projectRoot, discoverInstallations);
-        }
-
-        if (runProjectSmoke is null)
-        {
-            runProjectSmoke = (sourcePath, topology, labRoot) =>
-                ProjectSmokeService.Execute(
-                    sourcePath,
-                    topology,
-                    labRoot,
-                    discoverInstallations);
-        }
-
-        if (runProjectReview is null)
-        {
-            runProjectReview = (
-                action,
-                sourcePath,
-                companionPaths,
-                contentPackPaths,
-                useTestSave,
-                topology,
-                labRoot,
-                projectFile) => ProjectReviewService.Execute(
-                    action,
-                    sourcePath,
-                    companionPaths,
-                    contentPackPaths,
-                    topology,
-                    labRoot,
-                    discoverInstallations,
-                    useTestSave,
-                    projectFile,
-                    selectedGamePath);
-        }
-
-        runProjectReviewConsole ??= (command, topology, role, labRoot) =>
-            ProjectReviewService.ExecuteCommand(
-                command,
-                topology,
-                role,
-                labRoot,
-                requireFixtureNotReady: ProjectReviewConsoleLine.IsTitleInputOrViewport(command));
-        runProjectReviewData ??= (query, labRoot, topology, role, screenId) =>
-            ProjectReviewDataService.Execute(
-                query,
-                new ProjectReviewMcpRuntimeReader(labRoot, topology, role, screenId: screenId));
-        runProjectReviewMap ??= (query, labRoot) =>
-            ProjectReviewMapService.Execute(query, labRoot);
-        runProjectReviewTexture ??= (query, labRoot) =>
-            ProjectReviewTextureService.Execute(query, labRoot);
-        runProjectReviewAudio ??= (query, labRoot) =>
-            ProjectReviewAudioService.Execute(query, labRoot);
-        runProjectReviewModAsset ??= (query, labRoot) =>
-            ProjectReviewModAssetService.Execute(query, labRoot);
-        runProjectReviewMcp ??= (
-            topology,
-            role,
-            screenId,
-            labRoot,
-            allowInput,
-            allowFixtureActions,
-            allowWorldActions,
-            allowContainerTransfer,
-            allowCpRefresh,
-            mcpError,
-            httpPort) =>
-            ProjectReviewMcpServer.RunAsync(
-                labRoot,
-                topology,
-                role,
-                screenId,
-                allowInput,
-                allowFixtureActions,
-                allowWorldActions,
-                allowContainerTransfer,
-                allowCpRefresh,
-                mcpError,
-                httpPort)
-                .GetAwaiter().GetResult();
+        var runners = new CliCommandRunners(discoverInstallations, selectedGamePath);
+        configureRunners?.Invoke(runners);
 
         if (arguments.Count == 0 || IsHelp(arguments[0]))
         {
@@ -222,50 +65,22 @@ public static partial class CliApplication
             return Success;
         }
 
-        if (IsVersion(arguments[0]))
+        return arguments[0] switch
         {
-            return RunVersion(arguments, output, error);
-        }
+            "version" or "--version" => RunVersion(arguments, output, error),
+            "doctor" => RunDoctor(arguments, output, error, discoverInstallations),
+            "save" => RunSave(arguments, output, error),
+            "project" => RunProject(arguments, output, error, discoverInstallations, runners),
+            "lab" when arguments.Count > 1 && arguments[1] == "init" =>
+                RunLabInit(arguments, output, error, discoverInstallations),
+            "lab" => RunLab(arguments, output, error, runners.LiveLab),
+            _ => UnknownCommand(arguments[0], error),
+        };
+    }
 
-        if (string.Equals(arguments[0], "doctor", StringComparison.Ordinal))
-        {
-            return RunDoctor(arguments, output, error, discoverInstallations);
-        }
-
-        if (string.Equals(arguments[0], "save", StringComparison.Ordinal))
-        {
-            return RunSave(arguments, output, error);
-        }
-
-        if (string.Equals(arguments[0], "project", StringComparison.Ordinal))
-        {
-            return RunProject(
-                arguments,
-                output,
-                error,
-                discoverInstallations,
-                runProjectSmoke,
-                runProjectReview,
-                runProjectReviewConsole,
-                runProjectReviewData,
-                runProjectReviewTexture,
-                runProjectReviewAudio,
-                runProjectReviewMcp,
-                runProjectReviewMap,
-                runProjectReviewModAsset);
-        }
-
-        if (string.Equals(arguments[0], "lab", StringComparison.Ordinal))
-        {
-            if (arguments.Count > 1 && arguments[1] == "init")
-            {
-                return RunLabInit(arguments, output, error, discoverInstallations);
-            }
-
-            return RunLab(arguments, output, error, runLiveLab);
-        }
-
-        error.WriteLine($"Unknown command '{arguments[0]}'. Run 'sdvkit help'.");
+    private static int UnknownCommand(string command, TextWriter error)
+    {
+        error.WriteLine($"Unknown command '{command}'. Run 'sdvkit help'.");
         return UsageError;
     }
 
@@ -390,10 +205,6 @@ public static partial class CliApplication
         string.Equals(value, "help", StringComparison.Ordinal)
         || string.Equals(value, "--help", StringComparison.Ordinal)
         || string.Equals(value, "-h", StringComparison.Ordinal);
-
-    private static bool IsVersion(string value) =>
-        string.Equals(value, "version", StringComparison.Ordinal)
-        || string.Equals(value, "--version", StringComparison.Ordinal);
 
     private static void WriteJson<T>(TextWriter output, T value)
     {

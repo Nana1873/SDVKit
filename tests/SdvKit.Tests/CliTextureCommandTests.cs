@@ -240,7 +240,10 @@ public sealed class CliTextureCommandTests
             output,
             error,
             GameInstallationDiscovery.Discover,
-            runProjectReviewTexture: runner);
+            runners =>
+            {
+                runners.ProjectReviewTexture = runner;
+            });
         return (exitCode, output.ToString(), error.ToString());
     }
 }

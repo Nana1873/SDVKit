@@ -11,135 +11,39 @@ public static partial class CliApplication
         IReadOnlyList<string> arguments,
         TextWriter output,
         TextWriter error,
-        ProjectReviewCommandRunner runProjectReview,
-        ProjectReviewConsoleCommandRunner runProjectReviewConsole,
-        ProjectReviewDataCommandRunner runProjectReviewData,
-        ProjectReviewTextureCommandRunner runProjectReviewTexture,
-        ProjectReviewAudioCommandRunner runProjectReviewAudio,
-        ProjectReviewMcpCommandRunner runProjectReviewMcp,
-        ProjectReviewMapCommandRunner runProjectReviewMap,
-        ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
+        CliCommandRunners runners)
     {
-        if (arguments.Count > 2 && arguments[2] is "split-screen" or "network")
+        return (arguments.Count > 2 ? arguments[2] : null) switch
         {
-            return RunProjectReviewLifecycle(arguments, output, error, runProjectReviewConsole);
-        }
+            "split-screen" or "network" => RunProjectReviewLifecycle(arguments, output, error, runners.ProjectReviewConsole),
+            "call" => RunProjectReviewCall(arguments, output, error),
+            "cp-refresh" => RunProjectReviewCpRefresh(arguments, output, error),
+            "config-reconcile" => RunProjectReviewConfigReconcile(arguments, output, error),
+            "cp-diagnose" => RunProjectReviewCpDiagnosis(arguments, output, error),
+            "progression" => RunProjectReviewProgression(arguments, output, error),
+            "shop" => RunProjectReviewShop(arguments, output, error),
+            "inventory" => RunProjectReviewInventory(arguments, output, error),
+            "world" => RunProjectReviewWorld(arguments, output, error),
+            "container-transfer" => RunProjectReviewContainerTransfer(arguments, output, error),
+            "container" => RunProjectReviewContainer(arguments, output, error),
+            "interact" => RunProjectReviewWorldAction(arguments, output, error),
+            "menu" => RunProjectReviewMenu(arguments, output, error),
+            "diagnostics" => RunProjectReviewDiagnostics(arguments, output, error),
+            "data" => RunProjectReviewData(arguments, output, error, runners.ProjectReviewData),
+            "map" => RunProjectReviewMap(arguments, output, error, runners.ProjectReviewMap),
+            "texture" => RunProjectReviewTexture(arguments, output, error, runners.ProjectReviewTexture),
+            "audio" => RunProjectReviewAudio(arguments, output, error, runners.ProjectReviewAudio),
+            "mod-assets" => RunProjectReviewModAssets(arguments, output, error, runners.ProjectReviewModAsset),
+            _ => RunProjectReviewSession(arguments, output, error, runners),
+        };
+    }
 
-        if (arguments.Count > 2 && arguments[2] == "call")
-        {
-            return RunProjectReviewCall(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "cp-refresh")
-        {
-            return RunProjectReviewCpRefresh(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "config-reconcile")
-        {
-            return RunProjectReviewConfigReconcile(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "cp-diagnose")
-        {
-            return RunProjectReviewCpDiagnosis(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "progression")
-        {
-            return RunProjectReviewProgression(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "shop")
-        {
-            return RunProjectReviewShop(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "inventory")
-        {
-            return RunProjectReviewInventory(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "world")
-        {
-            return RunProjectReviewWorld(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "container-transfer")
-        {
-            return RunProjectReviewContainerTransfer(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "container")
-        {
-            return RunProjectReviewContainer(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "interact")
-        {
-            return RunProjectReviewWorldAction(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "menu")
-        {
-            return RunProjectReviewMenu(arguments, output, error);
-        }
-
-        if (arguments.Count > 2 && arguments[2] == "diagnostics")
-        {
-            return RunProjectReviewDiagnostics(arguments, output, error);
-        }
-
-        if (arguments.Count > 2
-            && string.Equals(arguments[2], "data", StringComparison.Ordinal))
-        {
-            return RunProjectReviewData(
-                arguments,
-                output,
-                error,
-                runProjectReviewData);
-        }
-
-        if (arguments.Count > 2
-            && string.Equals(arguments[2], "map", StringComparison.Ordinal))
-        {
-            return RunProjectReviewMap(
-                arguments,
-                output,
-                error,
-                runProjectReviewMap);
-        }
-
-        if (arguments.Count > 2
-            && string.Equals(arguments[2], "texture", StringComparison.Ordinal))
-        {
-            return RunProjectReviewTexture(
-                arguments,
-                output,
-                error,
-                runProjectReviewTexture);
-        }
-
-        if (arguments.Count > 2
-            && string.Equals(arguments[2], "audio", StringComparison.Ordinal))
-        {
-            return RunProjectReviewAudio(
-                arguments,
-                output,
-                error,
-                runProjectReviewAudio);
-        }
-
-        if (arguments.Count > 2
-            && string.Equals(arguments[2], "mod-assets", StringComparison.Ordinal))
-        {
-            return RunProjectReviewModAssets(
-                arguments,
-                output,
-                error,
-                runProjectReviewModAsset);
-        }
-
+    private static int RunProjectReviewSession(
+        IReadOnlyList<string> arguments,
+        TextWriter output,
+        TextWriter error,
+        CliCommandRunners runners)
+    {
         if (arguments.Count >= 4
             && string.Equals(arguments[2], "mcp", StringComparison.Ordinal)
             && ((arguments.Count == 4 && IsHelp(arguments[3]))
@@ -163,7 +67,7 @@ public static partial class CliApplication
                 out bool allowCpRefresh,
                 out int? httpPort))
         {
-            return runProjectReviewMcp(
+            return runners.ProjectReviewMcp(
                 mcpTopology!,
                 mcpRole,
                 mcpScreenId,
@@ -229,12 +133,12 @@ public static partial class CliApplication
             action,
             "command",
             StringComparison.Ordinal)
-                ? runProjectReviewConsole(
+                ? runners.ProjectReviewConsole(
                     command!,
                     topology!,
                     role,
                     Environment.CurrentDirectory)
-                : runProjectReview(
+                : runners.ProjectReview(
                     action!,
                     path!,
                     companionPaths!,
