@@ -6,7 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
-- `sdvkit lab init [<lab-root>] [--force] --json` prepares a lab root for Claude Code and Codex (#248). It writes `SDVKIT.md` (the lab guide), ten task skills in `.claude/skills/` and `.agents/skills/`, a Claude Code hook that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries, a `sdvkit.cmd` launcher and an MCP template. It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when missing. Run it again after updating SDVKit: unchanged files are updated and locally edited ones are kept unless `--force`. The README's agent setup prompt, also in `SETUP_PROMPT.txt`, now ends with it.
+- `sdvkit lab init [<lab-root>] [--force] --json` prepares a lab root for Claude Code and Codex (#248). It writes `SDVKIT.md` (the lab guide), ten task skills in `.claude/skills/` and `.agents/skills/`, a Claude Code hook that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries, a `sdvkit.cmd` launcher and an MCP template. It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when missing. Run it again after updating SDVKit: unchanged files are updated and locally edited ones are kept unless `--force`. The README's agent setup prompt, also in `SETUP_PROMPT.txt`, runs it when the downloaded release offers it.
 - **Breaking (2.0):** the repository's `.agents/skills/sdv-project-review` and `sdv-project-smoke` skills are replaced by the task skills in `agent/skills/` that `lab init` installs (`sdv-live-review`, `sdv-project-smoke` and others).
 
 ### Changed

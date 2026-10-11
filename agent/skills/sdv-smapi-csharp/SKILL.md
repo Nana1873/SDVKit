@@ -7,7 +7,7 @@ description: Develop and test a SMAPI C# mod for Stardew Valley in SDVKit's isol
 
 ## Loop
 
-1. Edit the source in `workspaces/<ModName>/`. Check `KNOWLEDGEBASE.md` for SMAPI 4 and Stardew 1.6 pitfalls before touching events, Harmony, multiplayer sync or assets.
+1. Edit the source in `workspaces/<ModName>/`. When this lab has `KNOWLEDGEBASE.md`, check it for SMAPI 4 and Stardew 1.6 pitfalls before touching events, Harmony, multiplayer sync or assets.
 2. `.\sdvkit.cmd project check <path> --json`, then `project build <path> --json`. Fix compile errors first.
 3. Quick load test: `sdv-project-smoke` proves that SMAPI loads the mod and the game ticks with it.
 4. Behavior test: start a review (see `sdv-live-review`):

@@ -27,7 +27,7 @@ If that release's `sdvkit.exe lab --help` lists `lab init`, run it with
 a safety hook, a sdvkit.cmd launcher), then read SDVKIT.md and follow it.
 Otherwise follow that release's README for the workspace layout.
 Keep existing mod projects at their selected paths and normal saves and Mods untouched.
-Finish setup by running doctor --json from the workspace; report the installed
+Finish setup by running the installed sdvkit.exe doctor --json; report the installed
 version, the lab root, the lab init result if any, and missing prerequisites.
 Leave game launches and MCP connections for a requested mod review.
 ```

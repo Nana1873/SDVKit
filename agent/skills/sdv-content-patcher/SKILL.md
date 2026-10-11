@@ -11,7 +11,7 @@ A Content Patcher installation that the user selects explicitly, as a folder out
 
 ## Loop
 
-1. Edit `content.json` and its files in `workspaces/<PackName>/pack/`. Check `KNOWLEDGEBASE.md` for Content Patcher token and condition pitfalls.
+1. Edit `content.json` and its files in `workspaces/<PackName>/pack/`. When this lab has `KNOWLEDGEBASE.md`, check it for Content Patcher token and condition pitfalls.
 2. Offline: `.\sdvkit.cmd project check .\workspaces\MyPack\pack --json`. It catches broken JSON, schema errors, missing `FromFile` files and malformed `Include` fragments.
 3. Start the pack with its provider in the disposable test world (content packs run in `single` only):
 

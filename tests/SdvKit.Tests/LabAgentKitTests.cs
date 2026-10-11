@@ -196,7 +196,8 @@ public sealed class LabAgentKitTests
 
         LabAgentKitReport report = Run(lab.Path, protectedRoots: [@"C:\Users\x\AppData\Roaming\StardewValley\Saves"]);
 
-        Assert.DoesNotContain(report.Warnings, warning => warning.Contains("No ready game installation", StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Warnings, warning => warning.StartsWith("No ready game installation was found, so", StringComparison.Ordinal));
+        Assert.Contains(report.Warnings, warning => warning.Contains("keeps the protected folders from the previous run", StringComparison.Ordinal));
         Assert.Contains(@"D:\\Games\\Stardew Valley", Read(lab, ".claude/hooks/sdvkit-guard.json"), StringComparison.Ordinal);
     }
 
@@ -210,6 +211,11 @@ public sealed class LabAgentKitTests
     [InlineData("PowerShell", "command", @"Get-ChildItem ""D:\Games\Stardew Valley\Mods"" 2>$null", 0)]
     [InlineData("Bash", "command", @"dotnet build -p:GamePath=""D:\Games\Stardew Valley"" 2>&1 | tee build.log", 0)]
     [InlineData("Read", "file_path", @"D:\Games\Stardew Valley\Mods\X\manifest.json", 0)]
+    [InlineData("Write", "file_path", "/d/Games/Stardew Valley/Mods/X/manifest.json", 2)]
+    [InlineData("Bash", "command", @"echo x | tee -a ""D:\Games\Stardew Valley\Mods\X\config.json""", 2)]
+    [InlineData("PowerShell", "command", @"Set-Content -Value '{}' -Path ""D:\Games\Stardew Valley\Mods\a.json""", 2)]
+    [InlineData("Bash", "command", @"cp a ""$APPDATA/StardewValley/Saves/Farm_1/Farm_1""; ls ./.sdvkit/", 2)]
+    [InlineData("PowerShell", "command", @"'x' > .sdvkit\profiles\single\StardewValley\Saves\x", 0)]
     public void GuardHookBlocksOnlyProtectedWrites(string tool, string field, string value, int expectedExit)
     {
         if (!OperatingSystem.IsWindows())

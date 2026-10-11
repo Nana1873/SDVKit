@@ -69,7 +69,13 @@ internal static class LabAgentKit
                 }
             }
 
+            int discoveredRoots = protectedRoots.Count;
             protectedRoots = MergePreviousRoots(root, protectedRoots);
+            if (protectedRoots.Count > discoveredRoots)
+            {
+                warnings.Add("No ready game installation was found now, so the lab guard keeps the protected folders from the previous run: " + string.Join(", ", protectedRoots.Skip(discoveredRoots)) + ". Run 'sdvkit lab init' again once 'sdvkit doctor' reports ready.");
+            }
+
             Dictionary<string, string> rendered = Render(version, executablePath, root, protectedRoots);
             Dictionary<string, string> previous = ReadManifest(root);
             var current = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -103,7 +109,16 @@ internal static class LabAgentKit
                     continue;
                 }
 
-                RejectReparsePoints(root, Path.GetDirectoryName(target)!);
+                try
+                {
+                    RejectReparsePoints(root, Path.GetDirectoryName(target)!);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    files.Add(new(stalePath, "kept", exception.Message));
+                    continue;
+                }
+
                 if (File.Exists(target) && Hash(File.ReadAllText(target)) == staleHash)
                 {
                     File.Delete(target);
@@ -122,12 +137,17 @@ internal static class LabAgentKit
             WarnUnlessContains(root, ".gitignore", ".sdvkit", ".gitignore does not exclude .sdvkit/, where the lab keeps generated state. Add the line '.sdvkit/' to it.", warnings);
 
             string settings = Resolve(root, ".claude/settings.json");
-            if (File.Exists(settings) && !File.ReadAllText(settings).Contains("sdvkit-guard.ps1", StringComparison.Ordinal))
+            string settingsText = File.Exists(settings) ? File.ReadAllText(settings) : "";
+            if (File.Exists(settings) && !settingsText.Contains("sdvkit-guard.ps1", StringComparison.Ordinal))
             {
                 warnings.Add("The existing .claude/settings.json does not register the SDVKit lab guard. Add the PreToolUse hook from SDVKit's agent/claude-settings.json to enable it.");
             }
+            else if (File.Exists(settings) && !settingsText.Contains("\"args\"", StringComparison.Ordinal))
+            {
+                warnings.Add("The existing .claude/settings.json registers the SDVKit lab guard in an older form that can fail without Git Bash. Replace its hook entry with the one from SDVKit's agent/claude-settings.json.");
+            }
 
-            if (protectedRoots.Count < 2)
+            if (protectedRoots.Count < 2 && discoveredRoots < 2)
             {
                 warnings.Add("No ready game installation was found, so the lab guard protects only the normal Saves folder, *.xnb files and game binaries. Run 'sdvkit lab init' again once 'sdvkit doctor' reports ready.");
             }

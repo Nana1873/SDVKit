@@ -70,8 +70,8 @@ A plain review without `--test-save` stays at the title screen: `stardew_runtime
 
 JSON arguments need care with quoting:
 - Git Bash and PowerShell 7.3 or later: `'{"button":"E"}'`.
-- Windows PowerShell 5.1, which Claude Code's PowerShell tool may use: escape the inner quotes, `'{\"button\":\"E\"}'`.
-- `sdvkit.cmd` passes arguments through `cmd.exe`, so for JSON containing `&`, `|`, `<`, `>` or `^`, for example typed text, call the installation's `sdvkit.exe` directly instead of `sdvkit.cmd`.
+- Windows PowerShell 5.1, which Claude Code's PowerShell tool may use: put `--%` right after `.\sdvkit.cmd` so PowerShell passes the rest unchanged, and write the JSON in double quotes with escaped inner quotes: `.\sdvkit.cmd --% project review call stardew_input_text "{\"text\":\"hello world\",\"fieldId\":2,\"uiRevision\":\"...\"}" --allow-input`. `--%` passes everything after it literally, up to the end of the line, so keep that command alone on its line.
+- `sdvkit.cmd` passes arguments through `cmd.exe`, which may treat `&`, `|`, `<`, `>` or `^` specially. For JSON containing them, call the installation's `sdvkit.exe` directly instead of `sdvkit.cmd`.
 
 An input result proves only that the input was delivered. Read the state again, or capture a screenshot, to prove the effect.
 
