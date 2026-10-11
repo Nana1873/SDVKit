@@ -56,13 +56,14 @@ internal static class GameSideStatusReader
             if (type.Type == typeof(LocalPlayerSnapshot)
                 || type.Type == typeof(LocalPlayerValues)
                 || type.Type == typeof(SelectedItemValues)
-                || type.Type == typeof(FishingRodValues))
+                || type.Type == typeof(FishingRodValues)
+                || type.Type == typeof(PlayerPositionValues))
             {
                 foreach (JsonPropertyInfo property in type.Properties)
                 {
-                    // The additive fishing observation is absent in older support mods.
+                    // The additive fishing and position observations are absent in older support mods.
                     property.IsRequired = !(type.Type == typeof(LocalPlayerValues)
-                        && property.Name == "fishing");
+                        && property.Name is "fishing" or "position");
                 }
             }
         });
