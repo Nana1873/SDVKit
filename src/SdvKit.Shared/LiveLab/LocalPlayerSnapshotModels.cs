@@ -22,9 +22,9 @@ internal sealed record LocalPlayerValues(
     PlayerPositionValues? Position = null);
 
 // Where the player stands and what it faces. StandingX/Y are the standing pixel divided by 64, so their floor
-// is the tile. The grab tile is Farmer.GetGrabTile(), which the action button checks first; depending on where
-// inside the tile the player stands it can be the player's own tile. The tool tile is where a tool used now
-// lands (Farmer.GetToolLocation without the mouse). The mouse cursor can redirect both when it is near the player.
+// is the tile. The grab tile is Farmer.GetGrabTile(), which the action button checks first (then the tiles below
+// and above it, then the player's own tile); it can be the player's own tile. The tool tile is where a tool used
+// now lands (Farmer.GetToolLocation without the mouse). The mouse cursor can redirect both near the player.
 internal sealed record PlayerPositionValues(
     string Facing,
     float StandingX,

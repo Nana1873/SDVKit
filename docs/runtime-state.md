@@ -65,7 +65,7 @@ All `data` values describe **one observation** at the runtime's `observedAtUtc`.
 | `position` | Object or absent | Absent from older GameSide versions. Null when the game reports no valid facing direction. |
 | `position.facing` | `Farmer.FacingDirection`, string | `up`, `right`, `down` or `left`. |
 | `position.standingX`, `position.standingY` | `Farmer.StandingPixel` divided by 64, numbers | Finite, within ±100000; their floor is the tile. Use them to see where inside a tile the player stands. |
-| `position.grabTileX`, `position.grabTileY` | `Farmer.GetGrabTile()`, integers | The tile the action button checks first. Depending on where inside its tile the player stands, it can be the player's own tile; the game then also tries the next tile in the facing direction. |
+| `position.grabTileX`, `position.grabTileY` | `Farmer.GetGrabTile()`, integers | The tile the action button checks first. Depending on where inside its tile the player stands, it can be the player's own tile. If nothing is there, the game tries the tiles directly below and above it (unless behind the player), then the player's own tile; it never tries the next tile further in the facing direction. |
 | `position.toolTileX`, `position.toolTileY` | `Farmer.GetToolLocation(ignoreClick: true)` divided by 64, integers | The tile a tool used now would hit. |
 
 The mouse cursor redirects the action and tool buttons when it is within one tile of the player; then neither tile above applies. Park SDVKit's virtual cursor away from the player (for example `stardew_input_cursor_set` at `8,8`) before keyboard actions.

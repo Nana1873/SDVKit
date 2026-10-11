@@ -68,7 +68,8 @@ internal static class LocalPlayerCapture
 
         Microsoft.Xna.Framework.Point standing = player.StandingPixel;
         Microsoft.Xna.Framework.Vector2 grab = player.GetGrabTile();
-        Microsoft.Xna.Framework.Vector2 tool = player.GetToolLocation(ignoreClick: true);
+        // A stale lastClick on the player's own tile would shift the overload without a position; use a neutral one.
+        Microsoft.Xna.Framework.Vector2 tool = player.GetToolLocation(Microsoft.Xna.Framework.Vector2.Zero, ignoreClick: true);
         return new PlayerPositionValues(facing, standing.X / 64f, standing.Y / 64f, (int)grab.X, (int)grab.Y,
             (int)Math.Floor(tool.X / 64f), (int)Math.Floor(tool.Y / 64f));
     }

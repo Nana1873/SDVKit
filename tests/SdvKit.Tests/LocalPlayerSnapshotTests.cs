@@ -61,6 +61,19 @@ public sealed class LocalPlayerSnapshotTests
         Assert.True(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Position = Position }));
     }
 
+    [Fact]
+    public void PartialPositionObjectIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Position = Position } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
+        payload["runtime"]!["localPlayer"]!["data"]!["position"]!.AsObject().Remove("toolTileX");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("invalid", GameSideStatusReader.Read(path, "launch", Process, Now).State);
+    }
+
     [Theory]
     [InlineData(0, "up")]
     [InlineData(1, "right")]
