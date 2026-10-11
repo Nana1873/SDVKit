@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $changelogPath = Join-Path $PSScriptRoot '..\CHANGELOG.md'
-$lines = @(Get-Content -LiteralPath $changelogPath)
+$lines = @(Get-Content -LiteralPath $changelogPath -Encoding utf8)
 $heading = '^## \[' + [regex]::Escape($Version) + '\] - \d{4}-\d{2}-\d{2}$'
 $sectionMatches = @($lines | Select-String -Pattern $heading)
 if ($sectionMatches.Count -ne 1) {
