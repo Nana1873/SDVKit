@@ -23,6 +23,8 @@ public sealed class ReviewFixtureLabTests
         new ReviewFixtureQuery(ReviewFixtureTransportContract.WarpOperation, Value: "Town", X: 10, Y: 20),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetZoomOperation, Zoom: 1.25),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWindowOperation, X: 1600, Y: 900),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 999, Y: 4),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(BC)Mod.Id_Machine", X: 1, Y: 0),
     ];
 
     public static TheoryData<int> ValidQueryIndexes => new(Enumerable.Range(0, ValidQueries.Length));
@@ -54,6 +56,28 @@ public sealed class ReviewFixtureLabTests
         Assert.NotNull(ProjectReviewFixtureService.Validate(
             new ReviewFixtureQuery(operation, X: x, Value: value, Zoom: zoom), "single", null));
 
+    [Theory]
+    [InlineData("24", 1, 0)]
+    [InlineData("(O)", 1, 0)]
+    [InlineData("()24", 1, 0)]
+    [InlineData("(O)2 4", 1, 0)]
+    [InlineData("(O)24", 0, 0)]
+    [InlineData("(O)24", 1000, 0)]
+    [InlineData("(O)24", 1, 3)]
+    [InlineData(null, 1, 0)]
+    [InlineData("(O)24", null, 0)]
+    [InlineData("(O)24", 1, null)]
+    public void InvalidItemAddIsRejectedBeforeSending(string? item, int? stack, int? quality) =>
+        Assert.Equal("fixtureItemRequestInvalid", ProjectReviewFixtureService.Validate(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: item, X: stack, Y: quality),
+            "single", null)?.Code);
+
+    [Fact]
+    public void ItemAddRejectsUnrelatedOperands() =>
+        Assert.NotNull(ProjectReviewFixtureService.Validate(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Building: "coop", Kind: "(O)24", X: 1, Y: 0),
+            "single", null));
+
     [Fact]
     public void WarpNeedsBothCoordinatesOrNeither() =>
         Assert.NotNull(ProjectReviewFixtureService.Validate(
@@ -64,6 +88,7 @@ public sealed class ReviewFixtureLabTests
     [InlineData("setWeather", false)]
     [InlineData("objectEnsure", false)]
     [InlineData("fishingPrepare", false)]
+    [InlineData("itemAdd", false)]
     [InlineData("warp", true)]
     [InlineData("setZoom", true)]
     [InlineData("setWindow", true)]
@@ -75,6 +100,7 @@ public sealed class ReviewFixtureLabTests
             "setWeather" => new ReviewFixtureQuery(operation, Value: "Sun"),
             "objectEnsure" => new ReviewFixtureQuery(operation, Building: "coop", Kind: "(O)388"),
             "fishingPrepare" => new ReviewFixtureQuery(operation),
+            "itemAdd" => new ReviewFixtureQuery(operation, Kind: "(O)24", X: 1, Y: 0),
             "warp" => new ReviewFixtureQuery(operation, Value: "Town"),
             "setZoom" => new ReviewFixtureQuery(operation, Zoom: 1.0),
             _ => new ReviewFixtureQuery(operation, X: 1280, Y: 720),

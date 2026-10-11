@@ -13,6 +13,8 @@ Proves each action through a state read, not through the input acknowledgement:
 - hoe, pickaxe and scythe on the faced tile, after checking the reported facing and tool tile (soil appears, the stone or weeds disappear, stamina drops);
 - stardew_world_act: the hoe by useTool on a tile next to the player, check on the Farm sign opens its message, and a
   tile that is not next to the player is refused;
+- stardew_fixture_item_add puts a chest into the backpack (slot and inventory revision match a fresh read), and check
+  with the chest selected places it on the target tile;
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -262,6 +264,33 @@ try {
     Assert-That ($dialogue.menuOpen -eq $true -and @($dialogue.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.LetterViewerMenu' }).Count -eq 1) "check on the sign opened $(@($dialogue.menus | ForEach-Object type) -join ', ')."
     Invoke-Press 'act-sign-close' 'Escape'
     Wait-Settled
+
+    Write-Step 'Item fixture: add a chest to the backpack, then place it with check on a free tile next to the player.'
+    $spot = $null
+    foreach ($candidate in @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) } | Select-Object -Skip 2 -First 6)) {
+        # The scan is older than the tool steps: re-read the target and the tile west of it.
+        $fresh = @(Get-Area "place-candidate-$($candidate.x)-$($candidate.y)" ($candidate.x - 1) $candidate.y 2 1)
+        if (@($fresh | Where-Object { Test-Free $_ }).Count -eq 2) { $spot = $candidate; break }
+    }
+    Assert-That ($null -ne $spot) 'no free tile with a free tile west of it for the placement.'
+    $unknown = (Invoke-Tool 'item-add-unknown' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)SDVKit_NoSuchItem'; stack = 1 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
+    Assert-That ($unknown.state -ceq 'blocked' -and $null -eq $unknown.item) "an unknown item was not refused: $($unknown.message)"
+    $add = (Invoke-Tool 'item-add' 'stardew_fixture_item_add' @{ qualifiedItemId = '(BC)130'; stack = 1 } -OptIn '--allow-fixture-actions').Json
+    Assert-That ($add.state -ceq 'ready' -and $add.item.qualifiedItemId -ceq '(BC)130' -and $add.item.stack -eq 1) "item add failed: $($add.message)"
+    $added = (Invoke-SdvKit 'item-add-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $addedSlot = @($added.slots | Where-Object slot -eq $add.item.slot)[0]
+    Assert-That ($addedSlot.item.qualifiedItemId -ceq '(BC)130' -and $added.inventoryRevision -ceq $add.item.inventoryRevision) "the backpack read does not show the chest in slot $($add.item.slot) with the reported revision."
+    Invoke-Warp 'place' 'Farm' ($spot.x - 1) $spot.y
+    Invoke-Press 'place-select' (Get-SlotKey $add.item.slot)
+    Wait-Settled
+    $inventory = (Invoke-SdvKit 'place-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That ($inventory.selectedSlot -eq $add.item.slot) "the chest in slot $($add.item.slot) is not selected."
+    $place = Invoke-Tool 'place' 'stardew_world_act' @{ action = 'check'; x = $spot.x; y = $spot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($place.Json.state -ceq 'completed') "check with the chest did not complete: $($place.Json.errorCode)"
+    Wait-Settled
+    Assert-That ((Get-Area 'place-result' $spot.x $spot.y 1 1)[0].objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($spot.x),$($spot.y)."
+    $placed = (Invoke-SdvKit 'place-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That (@($placed.slots | Where-Object slot -eq $add.item.slot)[0].state -ceq 'empty') "slot $($add.item.slot) still holds the chest."
 
     Write-Step 'Fishing: prepare and cast.'
     # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.

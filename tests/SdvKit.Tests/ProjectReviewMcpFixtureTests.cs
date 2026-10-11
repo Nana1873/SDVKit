@@ -11,7 +11,7 @@ namespace SdvKit.Tests;
 public sealed class ProjectReviewMcpFixtureTests
 {
     private static readonly string[] FixturePayloadNames =
-        ["status", "navigation", "building", "animal", "save"];
+        ["status", "navigation", "building", "animal", "save", "item"];
 
     [Fact]
     public async Task DefaultCatalogOmitsFixtureToolsAndOptInCatalogUsesClosedSchemas()
@@ -53,6 +53,7 @@ public sealed class ProjectReviewMcpFixtureTests
                 ProjectReviewMcpFixtureTools.EnterToolName,
                 ProjectReviewMcpFixtureTools.FarmToolName,
                 ProjectReviewMcpFixtureTools.FishingToolName,
+                ProjectReviewMcpFixtureTools.ItemAddToolName,
                 ProjectReviewMcpFixtureTools.ObjectClearToolName,
                 ProjectReviewMcpFixtureTools.ObjectEnsureToolName,
                 ProjectReviewMcpFixtureTools.SaveToolName,
@@ -99,6 +100,8 @@ public sealed class ProjectReviewMcpFixtureTests
         AssertOutput(ProjectReviewMcpFixtureTools.SaveToolName, "save", "save");
         AssertOutput(ProjectReviewMcpFixtureTools.SetTimeToolName, "setTime", "lab");
         AssertOutput(ProjectReviewMcpFixtureTools.WarpToolName, "warp", "lab");
+        AssertOutput(ProjectReviewMcpFixtureTools.ItemAddToolName, "itemAdd", "item");
+        Assert.False(Find(ProjectReviewMcpFixtureTools.ItemAddToolName).Annotations?.IdempotentHint);
 
         Tool building = Assert.Single(
             fixtureTools,
@@ -629,8 +632,72 @@ public sealed class ProjectReviewMcpFixtureTests
                     expected.TestSave.SaveId,
                     completedAt ?? expected.ObservedAtUtc)
                 : null,
-            CommandWritten: true);
+            CommandWritten: true,
+            Item: query.Operation == ReviewFixtureTransportContract.ItemAddOperation
+                ? new ReviewFixtureItemReport(query.Kind!, query.X!.Value, query.Y!.Value, 3,
+                    "sha256:" + new string('a', 64))
+                : null);
         return new LiveLabCommandResult(0, report);
+    }
+
+    [Fact]
+    public async Task ItemAddSendsTheExactItemAndReturnsTheSlotAndRevision()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+        var sent = new List<ReviewFixtureQuery>();
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            reader,
+            runFixture: (query, _, _) =>
+            {
+                sent.Add(query);
+                return Ready(query, expected);
+            }));
+
+        JsonElement added = await Call(harness, ProjectReviewMcpFixtureTools.ItemAddToolName,
+            ("qualifiedItemId", "(O)24"), ("stack", 5), ("quality", 2));
+        JsonElement item = added.GetProperty("item");
+        Assert.Equal("(O)24", item.GetProperty("qualifiedItemId").GetString());
+        Assert.Equal(3, item.GetProperty("slot").GetInt32());
+        Assert.StartsWith("sha256:", item.GetProperty("inventoryRevision").GetString(), StringComparison.Ordinal);
+        await Call(harness, ProjectReviewMcpFixtureTools.ItemAddToolName, ("qualifiedItemId", "(BC)Mod.Id_Machine"), ("stack", 1));
+        Assert.Equal(
+            [
+                new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 5, Y: 2),
+                new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(BC)Mod.Id_Machine", X: 1, Y: 0),
+            ],
+            sent);
+
+        foreach (Dictionary<string, object?> invalid in new[]
+        {
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "24", ["stack"] = 1 },
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)24", ["stack"] = 0 },
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)24", ["stack"] = 1000 },
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)24", ["stack"] = 1, ["quality"] = 3 },
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)24", ["stack"] = 1, ["slot"] = 0 },
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)24" },
+        })
+        {
+            CallToolResult rejected = await harness.Client.CallToolAsync(
+                ProjectReviewMcpFixtureTools.ItemAddToolName, invalid, cancellationToken: harness.Token);
+            Assert.True(rejected.IsError);
+        }
+        Assert.Equal(2, sent.Count);
+    }
+
+    [Fact]
+    public void ItemAddReportMustMatchTheRequest()
+    {
+        var query = new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 5, Y: 2);
+        var report = new ReviewFixtureItemReport("(O)24", 5, 2, 0, "sha256:" + new string('b', 64));
+        Assert.True(ProjectReviewFixtureService.ItemMatches(report, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(null, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(report with { QualifiedItemId = "(O)388" }, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(report with { Stack = 4 }, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(report with { Quality = 0 }, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(report with { Slot = -1 }, query));
+        Assert.False(ProjectReviewFixtureService.ItemMatches(report with { InventoryRevision = "stale" }, query));
     }
 
     private static async Task<JsonElement> Call(

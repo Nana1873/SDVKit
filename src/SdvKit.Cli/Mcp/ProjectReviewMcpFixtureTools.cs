@@ -23,6 +23,7 @@ internal static class ProjectReviewMcpFixtureTools
     internal const string ObjectEnsureToolName = "stardew_fixture_object_ensure";
     internal const string ObjectClearToolName = "stardew_fixture_object_clear";
     internal const string FishingToolName = "stardew_fixture_fishing_prepare";
+    internal const string ItemAddToolName = "stardew_fixture_item_add";
     internal const string SetTimeToolName = "stardew_lab_set_time";
     internal const string SetWeatherToolName = "stardew_lab_set_weather";
     internal const string SetSeasonToolName = "stardew_lab_set_season";
@@ -97,6 +98,19 @@ internal static class ProjectReviewMcpFixtureTools
             "y": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
           },
           "dependentRequired": { "x": ["y"], "y": ["x"] }
+        }
+        """);
+    private static readonly JsonElement ItemAddInputSchema = ParseSchema(
+        """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["qualifiedItemId", "stack"],
+          "properties": {
+            "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^\\([^\\s)]+\\)\\S+$" },
+            "stack": { "type": "integer", "minimum": 1, "maximum": 999 },
+            "quality": { "type": "integer", "enum": [0, 1, 2, 4] }
+          }
         }
         """);
     private static readonly JsonElement TimeInputSchema = ParseSchema(
@@ -238,6 +252,18 @@ internal static class ProjectReviewMcpFixtureTools
               "properties": {
                 "saveId": { "type": "string", "minLength": 1 },
                 "persistedAtUtc": { "type": "string", "format": "date-time" }
+              }
+            },
+            "item": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["qualifiedItemId", "stack", "quality", "slot", "inventoryRevision"],
+              "properties": {
+                "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 128 },
+                "stack": { "type": "integer", "minimum": 1, "maximum": 999 },
+                "quality": { "type": "integer", "enum": [0, 1, 2, 4] },
+                "slot": { "type": "integer", "minimum": 0 },
+                "inventoryRevision": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
               }
             },
             "lab": {
@@ -452,6 +478,12 @@ internal static class ProjectReviewMcpFixtureTools
                 FishingInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.FishingPrepareOperation),
                 readOnly: false, destructive: false, idempotent: false,
                 TryFishing));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, ItemAddToolName,
+                ReviewFixtureTransportContract.ItemAddOperation,
+                "Test setup: put one new stack of an existing item (qualified ID such as (O)24, optional quality 0, 1, 2 or 4) into the main player's first empty backpack slot. Never merges or replaces; fails closed when the backpack is full. Reports the slot and the new inventoryRevision. Not proof of game behaviour.",
+                ItemAddInputSchema, CreateOutputSchema(ReviewFixtureTransportContract.ItemAddOperation, "item"),
+                readOnly: false, destructive: false, idempotent: false,
+                TryItemAdd));
             tools.Add(Lab(runtimeReader, runQuery, topology, role, SetTimeToolName, ReviewFixtureTransportContract.SetTimeOperation,
                 "Set the world time (600 to 2550 in ten-minute steps) through the game's own time command. Time keeps running; at 2600 the player passes out and the day is saved.",
                 TimeInputSchema, idempotent: true,
@@ -514,6 +546,24 @@ internal static class ProjectReviewMcpFixtureTools
         return TryInt(arguments, "x", out int x) && TryInt(arguments, "y", out int y)
             ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, X: x, Y: y, SkipTutorial: skip)
             : null;
+    }
+
+    private static ReviewFixtureQuery? TryItemAdd(IDictionary<string, JsonElement>? arguments)
+    {
+        if (!HasOnly(arguments, ["qualifiedItemId", "stack", "quality"])
+            || !TryString(arguments, "qualifiedItemId", out string? item)
+            || !TryInt(arguments, "stack", out int stack))
+        {
+            return null;
+        }
+
+        int quality = 0;
+        if (arguments!.ContainsKey("quality") && !TryInt(arguments, "quality", out quality))
+        {
+            return null;
+        }
+
+        return new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: item, X: stack, Y: quality);
     }
 
     private static ReviewFixtureQuery? TryWarp(IDictionary<string, JsonElement>? arguments)
@@ -747,7 +797,9 @@ internal static class ProjectReviewMcpFixtureTools
             ReviewFixtureTransportContract.SaveOperation => report.Save is not null,
             ReviewFixtureTransportContract.ObjectEnsureOperation
                 or ReviewFixtureTransportContract.ObjectClearOperation
-                or ReviewFixtureTransportContract.FishingPrepareOperation => report.Lab is null,
+                or ReviewFixtureTransportContract.FishingPrepareOperation => report.Lab is null && report.Item is null,
+            ReviewFixtureTransportContract.ItemAddOperation => report.Lab is null
+                && ProjectReviewFixtureService.ItemMatches(report.Item, query),
             _ when ReviewFixtureTransportContract.IsLabOperation(query.Operation) => report.Lab is not null,
             _ => false,
         };
@@ -796,6 +848,7 @@ internal static class ProjectReviewMcpFixtureTools
             "animal",
             "save",
             "lab",
+            "item",
         })
         {
             if (!string.Equals(candidate, payloadName, StringComparison.Ordinal))

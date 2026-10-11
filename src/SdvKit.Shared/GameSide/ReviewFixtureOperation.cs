@@ -27,7 +27,8 @@ internal sealed record ReviewFixtureResult(
     ReviewFixtureNavigationReport? Navigation = null,
     ReviewFixtureBuildingReport? Building = null,
     ReviewFixtureAnimalReport? Animal = null,
-    ReviewFixtureLabReport? Lab = null);
+    ReviewFixtureLabReport? Lab = null,
+    ReviewFixtureItemReport? Item = null);
 
 internal interface IReviewFixtureRuntime
 {
@@ -64,6 +65,10 @@ internal interface IReviewFixtureRuntime
 
     /// <summary>Prepares the nearest fishing bank to the origin, or to the player when no origin is given.</summary>
     ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial, int? originX, int? originY);
+
+    /// <summary>Puts one new item stack into the first empty backpack slot of the main player.</summary>
+    ReviewFixtureResult AddItem(ReviewFixtureAccess access, string qualifiedItemId, int stack, int quality) =>
+        new(false, "Item fixtures are unavailable in this runtime.");
 
     /// <summary>Applies one lab world, player or window change and reports the resulting state.</summary>
     ReviewFixtureResult ApplyLab(ReviewFixtureAccess access, ReviewFixtureRequest request) =>
@@ -133,6 +138,7 @@ internal static class ReviewFixtureOperation
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
             ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial, fishing.X, fishing.Y),
+            ReviewFixtureItemAddRequest item => runtime.AddItem(access, item.QualifiedItemId, item.Stack, item.Quality),
             ReviewFixtureSetTimeRequest
                 or ReviewFixtureSetWeatherRequest
                 or ReviewFixtureSetSeasonRequest

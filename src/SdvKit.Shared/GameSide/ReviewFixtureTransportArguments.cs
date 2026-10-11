@@ -186,6 +186,15 @@ internal static class ReviewFixtureTransportArguments
                 }
 
                 return false;
+            case ReviewFixtureTransportContract.ItemAddOperation
+                when arguments.Count == 11
+                    && TryDecode(arguments[8], out string itemId)
+                    && int.TryParse(arguments[9], NumberStyles.None, CultureInfo.InvariantCulture, out int stack)
+                    && int.TryParse(arguments[10], NumberStyles.None, CultureInfo.InvariantCulture, out int quality)
+                    && ReviewFixtureTransportContract.IsValidItemAdd(itemId, stack, quality):
+                query = new ReviewFixtureQuery(operation, Kind: itemId, X: stack, Y: quality);
+                request = new ReviewFixtureItemAddRequest(itemId, stack, quality);
+                return true;
             case ReviewFixtureTransportContract.SetTimeOperation
                 when arguments.Count == 9
                     && int.TryParse(arguments[8], NumberStyles.None, CultureInfo.InvariantCulture, out int time)

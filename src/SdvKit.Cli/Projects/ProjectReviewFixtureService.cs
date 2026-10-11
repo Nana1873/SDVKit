@@ -292,6 +292,11 @@ internal static class ProjectReviewFixtureService
                 }
 
                 break;
+            case ReviewFixtureTransportContract.ItemAddOperation:
+                tokens.Add(ReviewTransportToken.Encode(query.Kind!));
+                tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
+                tokens.Add(query.Y!.Value.ToString(CultureInfo.InvariantCulture));
+                break;
             case ReviewFixtureTransportContract.SetTimeOperation:
                 tokens.Add(query.X!.Value.ToString(CultureInfo.InvariantCulture));
                 break;
@@ -459,6 +464,11 @@ internal static class ProjectReviewFixtureService
                     && none(query, x: true, y: true),
                 "fixtureRequestInvalid",
                 "Fishing preparation accepts the tutorial choice and an optional search start with both x and y."), true),
+            ReviewFixtureTransportContract.ItemAddOperation => (Check(
+                ReviewFixtureTransportContract.IsValidItemAdd(query.Kind, query.X, query.Y) && !query.SkipTutorial
+                    && none(query, kind: true, x: true, y: true),
+                "fixtureItemRequestInvalid",
+                "Item add requires a qualified item ID, a stack of 1 to 999 and a quality of 0, 1, 2 or 4."), true),
             ReviewFixtureTransportContract.SetTimeOperation => (Check(
                 query.X is int time && ReviewFixtureTransportContract.IsValidTime(time) && !query.SkipTutorial
                     && none(query, x: true),
@@ -563,7 +573,26 @@ internal static class ProjectReviewFixtureService
                 && report.Building is null
                 && report.Animal is null
                 && report.Save is null
-                && report.Lab is null;
+                && report.Lab is null
+                && report.Item is null;
+        }
+
+        if (query.Operation == ReviewFixtureTransportContract.ItemAddOperation)
+        {
+            return string.Equals(report.State, "ready", StringComparison.Ordinal)
+                && report.Problems.Count == 0
+                && report.Status is null
+                && report.Navigation is null
+                && report.Building is null
+                && report.Animal is null
+                && report.Save is null
+                && report.Lab is null
+                && ItemMatches(report.Item, query);
+        }
+
+        if (report.Item is not null)
+        {
+            return false;
         }
 
         bool noPayload = report.Status is null
@@ -709,6 +738,14 @@ internal static class ProjectReviewFixtureService
                 CommandWritten: commandWritten,
                 MayHaveRun: mayHaveRun,
                 CancellationRequested: cancellationRequested));
+
+    internal static bool ItemMatches(ReviewFixtureItemReport? item, ReviewFixtureQuery query) =>
+        item is not null
+        && string.Equals(item.QualifiedItemId, query.Kind, StringComparison.Ordinal)
+        && item.Stack == query.X
+        && item.Quality == query.Y
+        && item.Slot is >= 0 and < ReviewInventoryContract.MaximumSlots
+        && ReviewInventoryContract.IsRevision(item.InventoryRevision);
 
     private static ReviewFixtureProblem Problem(string code, string message) =>
         new(code, message);
