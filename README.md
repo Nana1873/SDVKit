@@ -11,27 +11,28 @@ This documentation follows `main` for **v1.0.0**. Install the [latest published 
 
 ## Set up with your agent
 
-Ask your coding agent to install SDVKit and prepare your workspace. Replace the two folder placeholders below: the install folder holds the portable tools; the workspace folder holds your mod projects and isolated live lab. Choose folders outside your game installation, normal `Mods`, and `Saves` directories.
+Ask your coding agent to install SDVKit and prepare your workspace. Replace the folder placeholder below: the workspace folder holds your mod projects, the portable tools and the isolated live lab. Choose a folder outside your game installation, normal `Mods`, and `Saves` directories. The same prompt is in [SETUP_PROMPT.txt](SETUP_PROMPT.txt).
 
 ```text
 Set up SDVKit from https://github.com/Nana1873/SDVKit for my Stardew Valley mod work.
 
-Install folder: <choose a tools folder>
 Workspace / lab folder: <choose a mod-development folder>
 
 Download the latest published Windows-x64 release and its SHA-256 sidecar,
-verify the checksum, and extract it into a fresh versioned install directory.
-Follow that release's README and documentation to check the required .NET SDK
-and existing Stardew Valley / SMAPI installation.
-Use the workspace as the lab root, with new mod sources under workspaces/<ModName>/
-and generated build/test data under the owning project's or lab's ignored .sdvkit/.
+verify the checksum, and extract it into a fresh versioned directory below the
+workspace's .sdvkit/tools/ folder. Follow that release's README and documentation
+to check the required .NET SDK and existing Stardew Valley / SMAPI installation.
+If that release's `sdvkit.exe lab --help` lists `lab init`, run it with
+`lab init <workspace> --json` to add SDVKit's agent layer (SDVKIT.md, task skills,
+a safety hook, a sdvkit.cmd launcher), then read SDVKIT.md and follow it.
+Otherwise follow that release's README for the workspace layout.
 Keep existing mod projects at their selected paths and normal saves and Mods untouched.
-Finish setup by running --help and doctor --json; report the installed version,
-absolute executable path, lab root, and any missing prerequisites. Leave game
-launches and MCP connections for a requested mod review.
+Finish setup by running the installed sdvkit.exe doctor --json; report the installed
+version, the lab root, the lab init result if any, and missing prerequisites.
+Leave game launches and MCP connections for a requested mod review.
 ```
 
-The agent can use the CLI for mod development and [connect MCP to an active review](docs/mcp.md) when needed. See the [workspace layout](docs/toolkit.md#choose-a-mod-workspace) for several mods sharing one lab, or follow the manual installation steps below.
+`lab init` gives Claude Code and Codex a guide, task skills and a hook that blocks writes to the game folder and your normal `Saves`; run it again after installing a new version. The agent can use the CLI for mod development and [connect MCP to an active review](docs/mcp.md) when needed. See the [workspace layout](docs/toolkit.md#choose-a-mod-workspace) for several mods sharing one lab, or follow the manual installation steps below.
 
 ## Requirements
 
@@ -123,7 +124,7 @@ This is process/data isolation, not a Windows sandbox for arbitrary mod code. Bu
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for source builds and checks, and the [release procedure](docs/releasing.md) for artifact verification and focused live acceptance.
 
-Repository agent workflows: [project smoke](.agents/skills/sdv-project-smoke/SKILL.md) and [project review](.agents/skills/sdv-project-review/SKILL.md).
+The agent layer that `sdvkit lab init` installs lives in [agent/](agent/), including its [task skills](agent/skills/).
 
 ## Credits and license
 

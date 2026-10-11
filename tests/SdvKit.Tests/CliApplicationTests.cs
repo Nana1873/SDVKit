@@ -2151,6 +2151,8 @@ public sealed class CliApplicationTests
                 + Environment.NewLine
                 + "       sdvkit lab smoke [--game-path <directory>] --topology network-2 --json"
                 + Environment.NewLine
+                + "       sdvkit lab init [<lab-root>] [--force] --json"
+                + Environment.NewLine
                 + "--game-path <directory> selects a complete installation for start, test-save, or smoke only."
                 + Environment.NewLine,
             output);
@@ -2215,6 +2217,8 @@ public sealed class CliApplicationTests
             "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json"
                 + Environment.NewLine
                 + "       sdvkit lab smoke [--game-path <directory>] --topology network-2 --json"
+                + Environment.NewLine
+                + "       sdvkit lab init [<lab-root>] [--force] --json"
                 + Environment.NewLine
                 + "--game-path <directory> selects a complete installation for start, test-save, or smoke only."
                 + Environment.NewLine,

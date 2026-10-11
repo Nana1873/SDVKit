@@ -1,0 +1,16 @@
+Set up SDVKit from https://github.com/Nana1873/SDVKit for my Stardew Valley mod work.
+
+Workspace / lab folder: <choose a mod-development folder>
+
+Download the latest published Windows-x64 release and its SHA-256 sidecar,
+verify the checksum, and extract it into a fresh versioned directory below the
+workspace's .sdvkit/tools/ folder. Follow that release's README and documentation
+to check the required .NET SDK and existing Stardew Valley / SMAPI installation.
+If that release's `sdvkit.exe lab --help` lists `lab init`, run it with
+`lab init <workspace> --json` to add SDVKit's agent layer (SDVKIT.md, task skills,
+a safety hook, a sdvkit.cmd launcher), then read SDVKIT.md and follow it.
+Otherwise follow that release's README for the workspace layout.
+Keep existing mod projects at their selected paths and normal saves and Mods untouched.
+Finish setup by running the installed sdvkit.exe doctor --json; report the installed
+version, the lab root, the lab init result if any, and missing prerequisites.
+Leave game launches and MCP connections for a requested mod review.

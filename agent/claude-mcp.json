@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sdvkit-review": {
+      "command": "{{exe}}",
+      "args": ["project", "review", "mcp", "serve", "--topology", "single"]
+    }
+  }
+}

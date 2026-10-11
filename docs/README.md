@@ -32,6 +32,7 @@ Start with [installation and the two quickstarts](../README.md). These pages des
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
 | Diagnose lifecycle, staging, and cleanup | [Lab reference](lab-reference.md) |
+| Prepare a lab root for Claude Code or Codex | [Set up the agent layer](toolkit.md#set-up-the-agent-layer) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
 | Find changes since an earlier version | [Changelog](../CHANGELOG.md) |

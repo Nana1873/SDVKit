@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The agent layer that 'sdvkit lab init' writes into a lab root travels inside the CLI. -->
+    <EmbeddedResource Include="..\..\agent\**\*" LogicalName="agent/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Projects\Schemas\*" Link="schemas\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
