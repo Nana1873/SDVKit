@@ -4,7 +4,7 @@ This matrix lists the everyday keyboard-and-mouse player actions, how to perform
 
 "Live" names where the action was verified in a game:
 - **script:** [`scripts/acceptance/player-actions.ps1`](../scripts/acceptance/player-actions.ps1) or another [acceptance script](../scripts/acceptance/README.md), in a `single` review on the test save;
-- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), which pressed `E` and `Escape` on the network-2 host and farmhand and on split-screen screen 1.
+- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), where input on split-screen screen 1 opened the game menu only on that screen.
 
 All input uses SDVKit's [process-local](glossary.md#commands-and-results) input and needs `--allow-input`. A chord (`stardew_input_chord`) holds 1–8 buttons for 1–120 ticks and needs a `uiRevision` from `stardew_menu_get`; one is issued also when no menu is open.
 
@@ -13,18 +13,18 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Walk in a direction | Chord `W`, `A`, `S` or `D` | `runtime.tileX`/`tileY` change | script | Equal tick counts can move 2 or 3 tiles; no exact stop ([#293](https://github.com/Nana1873/SDVKit/issues/293)) |
-| Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (1 instead of 2 for 30 ticks) | script | No running state is reported |
-| Stop | Release (end of the chord) | The tile is unchanged in the next sample | script | — |
+| Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script | No running state is reported |
+| Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script | — |
 | Face a direction | Press the direction key once | Not reported | indirect only | [#289](https://github.com/Nana1873/SDVKit/issues/289) |
-| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list` | `runtime.locationId` | script (Farm to BusStop) | Door warps that need the action button are not listed |
-| Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens |
+| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list` | `runtime.locationId` | script (Farm to BusStop) | Doors that need the action button are not listed ([#300](https://github.com/Nana1873/SDVKit/issues/300)) |
+| Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 
 ## Interaction and tools
 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Action button on the faced tile | Park the cursor away from the player (`stardew_input_cursor_set` at `8,8`), then press `X` | The effect, for example a menu | script (chest) | Stardew aims `X` at the tile under the cursor when it is within one tile; a supported faced-tile action is missing ([#290](https://github.com/Nana1873/SDVKit/issues/290)) |
-| Open and close a chest | As above; `Escape` closes | `stardew_menu_get` shows `ItemGrabMenu`; `menuOpen` | script (crop-machine) | SDVKit cannot place a chest outside fixture buildings |
+| Open a chest | As above | `stardew_menu_get` shows `ItemGrabMenu` | script (crop-machine) | SDVKit cannot place a chest outside fixture buildings ([#291](https://github.com/Nana1873/SDVKit/issues/291)) |
 | Hoe | Select the hoe with its number key, face the tile, park the cursor, press `C` | `stardew_world_area_get`: the tile gets `soil`; stamina drops | script | [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 | Pickaxe on a stone | Same, with the pickaxe | The stone object becomes `missing`; stamina drops | script | Boulders are not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
 | Scythe on weeds | Same, with the scythe | The weeds object becomes `missing` (the scythe costs no stamina) | script | Grass is not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
@@ -33,16 +33,16 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Place an item or object | Select it, face the tile, press `X` | `objectQualifiedItemId` on the tile; stack drops | — | No way to give items ([#291](https://github.com/Nana1873/SDVKit/issues/291)); [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 | Eat or drink | Select it, press `X`, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | [#291](https://github.com/Nana1873/SDVKit/issues/291) |
 | Talk to an NPC, give a gift | Face the NPC, press `X` | `menu_get` dialogue; `stardew_progression_get` friendship | — | No NPC positions ([#292](https://github.com/Nana1873/SDVKit/issues/292)); [#290](https://github.com/Nana1873/SDVKit/issues/290), [#291](https://github.com/Nana1873/SDVKit/issues/291) |
-| Read a sign or the mailbox | Face it, press `X` | `menu_get` dialogue or letter; progression mail | — | Sign tiles are not listed |
+| Read a sign or the mailbox | Face it, press `X` | `menu_get` dialogue or letter; progression mail | — | Sign tiles are not listed ([#300](https://github.com/Nana1873/SDVKit/issues/300)); [#290](https://github.com/Nana1873/SDVKit/issues/290) |
 
 ## Items, menus and containers
 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Select a hotbar slot | Press `D1`–`D9`, `D0`, `OemMinus`, `OemPlus` | `localPlayer.data.selectedSlot` | script | The mouse wheel needs a menu and is refused with `inputMenuMissing` ([#294](https://github.com/Nana1873/SDVKit/issues/294)) |
-| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script; 2.0 release (`E` on host, farmhand, screen 1) | — |
-| Close a menu | Press `Escape`, or click the close component | `menuOpen=false` | script; 2.0 release (`Escape` on host, farmhand, screen 1) | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
-| Move items in the inventory | `stardew_input_drag` on inventory slot components | `stardew_inventory_get` slots | — (drag verified on a GMCM slider) | — |
+| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script; 2.0 release (screen 1) | — |
+| Close a menu | Press `Escape` (the close component is also listed by `menu_get`) | `menuOpen=false` | script (game menu, `Escape`) | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
+| Move items in the inventory | Click the source `inventorySlot` component (picks the item up), then the target one (places it); a drag only picks it up | `stardew_inventory_get` slots | script | The held item is not reported by `inventory_get` |
 | Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine) | The transfer tool has no script yet; single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Buy in a shop | Click a sale row from `menu_get` | `stardew_shop_get` money, stock, held item | script (shop) | `SeedShop` Gold offers only |
 | Craft | Click a recipe component of the crafting page | Inventory and crafting page | — | Needs ingredients ([#291](https://github.com/Nana1873/SDVKit/issues/291)) |
@@ -57,4 +57,4 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 
 ## Roles and screens
 
-Input, menu, inventory, container and world reads work for the `network-2` host and farmhand and for split-screen screens. Supported world actions, container transfer and most fixture tools are single-only ([#297](https://github.com/Nana1873/SDVKit/issues/297)). The rows above were verified in `single` unless noted.
+Input, menu, inventory, container and world reads are supported for the `network-2` host and farmhand and for split-screen screens ([MCP startup profiles](mcp.md)). Supported world actions, container transfer and most fixture tools are single-only ([#297](https://github.com/Nana1873/SDVKit/issues/297)). The rows above were verified live in `single` unless noted; live checks of the input-only actions on the farmhand and on a second screen are tracked in [#299](https://github.com/Nana1873/SDVKit/issues/299).

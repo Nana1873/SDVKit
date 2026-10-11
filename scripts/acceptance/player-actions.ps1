@@ -64,6 +64,12 @@ function Get-Area([string] $Label, [int] $X, [int] $Y, [int] $Width, [int] $Heig
     (Invoke-SdvKit "world-$Label" @('project', 'review', 'world', $X, $Y, $Width, $Height, '--json')).Json.data.tiles
 }
 
+function Get-SlotKey([int] $Slot) {
+    # Toolbar keys: slots 0-8 are D1-D9, slot 9 is D0, 10 is OemMinus, 11 is OemPlus.
+    Assert-That ($Slot -ge 0 -and $Slot -lt 12) "slot $Slot is not on the toolbar."
+    switch ($Slot) { { $_ -lt 9 } { "D$($Slot + 1)" } 9 { 'D0' } 10 { 'OemMinus' } 11 { 'OemPlus' } }
+}
+
 function Find-ToolSlot([string] $Label, [string] $ItemId) {
     $slot = @((Invoke-SdvKit "inventory-$Label" @('project', 'review', 'inventory', '--json')).Json.data.slots |
         Where-Object { $_.item.qualifiedItemId -ceq $ItemId })[0].slot
@@ -76,7 +82,7 @@ function Invoke-ToolDown([string] $Label, [string] $ItemId, $Tile, [switch] $NoS
     $slot = Find-ToolSlot $Label $ItemId
     Invoke-Warp $Label 'Farm' $Tile.x ($Tile.y - 1)
     Invoke-Press "$Label-face" 'S'
-    Invoke-Press "$Label-select" "D$($slot + 1)"
+    Invoke-Press "$Label-select" (Get-SlotKey $slot)
     Invoke-Tool "park-$Label" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
     Wait-Settled
     $before = Get-Runtime "$Label-before"
@@ -115,7 +121,12 @@ try {
     }
 
     # Equal tick counts need not give equal distances (sub-tile position, acceleration), so no exact return is expected.
-    $still = Get-Runtime 'walk-stopped'
+    $released = (Invoke-Tool 'runtime-walk-released' 'stardew_runtime_get').Json
+    Wait-Settled
+    $later = (Invoke-Tool 'runtime-walk-stopped' 'stardew_runtime_get').Json
+    $still = $later.runtime
+    Assert-That ([DateTimeOffset]$later.observedAtUtc -gt [DateTimeOffset]$released.observedAtUtc) 'no newer runtime sample arrived to check that the player stopped.'
+    $position = $released.runtime
     Assert-That ($still.tileX -eq $position.tileX -and $still.tileY -eq $position.tileY) 'the player kept moving after the input was released.'
 
     Invoke-Warp 'run-start' 'Farm' 64 16
@@ -131,7 +142,7 @@ try {
 
     Write-Step 'Location change by walking through the Farm-to-BusStop map warp.'
     $warps = (Invoke-Tool 'warps' 'stardew_map_warps_list' @{ asset = 'Maps/Farm' }).Json.warps
-    $exit = @($warps | Where-Object { $_.targetName -ceq 'BusStop' } | Sort-Object fromY)[0]
+    $exit = @($warps | Where-Object { $_.targetName -ceq 'BusStop' -and $_.kind -ceq 'playerAndNpc' } | Sort-Object fromY)[0]
     Assert-That ($null -ne $exit) 'the Farm map has no warp to BusStop.'
     Invoke-Warp 'edge' 'Farm' ($exit.fromX - 3) $exit.fromY
     Invoke-Hold 'edge-walk' @('D') 90
@@ -142,9 +153,9 @@ try {
     Write-Step 'Hotbar: number keys select slots; the mouse wheel needs a menu.'
     Invoke-Warp 'hotbar' 'Farm' 64 16
     foreach ($slot in 2, 5) {
-        Invoke-Press "hotbar-$slot" "D$($slot + 1)"
+        Invoke-Press "hotbar-$slot" (Get-SlotKey $slot)
         Wait-Settled
-        Assert-That ((Get-Runtime "hotbar-$slot").localPlayer.data.selectedSlot -eq $slot) "D$($slot + 1) did not select slot $slot."
+        Assert-That ((Get-Runtime "hotbar-$slot").localPlayer.data.selectedSlot -eq $slot) "$(Get-SlotKey $slot) did not select slot $slot."
     }
 
     Invoke-Tool 'park-wheel' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
@@ -159,6 +170,27 @@ try {
     Assert-That ($null -ne $gameMenu -and $gameMenu.currentTab -eq 0) 'E did not open the game menu on its first tab.'
     $tabs = @($gameMenu.components | Where-Object kind -ceq 'tab' | Sort-Object { $_.bounds.x })
     Assert-That ($tabs.Count -ge 4) "the game menu shows $($tabs.Count) tabs."
+    Write-Step 'Inventory: move the first item to an empty slot (click to pick up, click to place).'
+    $inventory = (Invoke-SdvKit 'move-inventory-before' @('project', 'review', 'inventory', '--json')).Json.data
+    $from = @($inventory.slots | Where-Object { $null -ne $_.item })[0]
+    $to = @($inventory.slots | Where-Object { $_.state -ceq 'empty' })[0]
+    Assert-That ($null -ne $from -and $null -ne $to) 'the backpack needs one item and one empty slot.'
+    foreach ($step in @(@{ label = 'pick-up'; slot = $from.slot }, @{ label = 'place'; slot = $to.slot })) {
+        # The slots belong to the inventory page's InventoryMenu, a child node of the game menu.
+        $current = (Invoke-SdvKit "menu-$($step.label)" @('project', 'review', 'menu', '--json')).Json
+        $component = @($current.menus.components | Where-Object { $_.kind -ceq 'inventorySlot' -and $_.controllerId -eq $step.slot -and $_.visibleFlag -and $_.intersectsViewport })
+        Assert-That ($component.Count -eq 1) "inventory slot $($step.slot) has no single visible component."
+        Invoke-ComponentClick "inventory-$($step.label)" -Menu $current -Component $component[0] | Out-Null
+    }
+
+    Wait-Settled
+    $moved = (Invoke-SdvKit 'move-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
+    $fromAfter = @($moved.slots | Where-Object slot -eq $from.slot)[0]
+    $toAfter = @($moved.slots | Where-Object slot -eq $to.slot)[0]
+    Assert-That ($fromAfter.state -ceq 'empty' -and $toAfter.item.qualifiedItemId -ceq $from.item.qualifiedItemId) "clicking $($from.item.qualifiedItemId) from slot $($from.slot) to $($to.slot) did not move it."
+
+    $menu = (Invoke-SdvKit 'menu-after-move' @('project', 'review', 'menu', '--json')).Json
+    $tabs = @(@($menu.menus | Where-Object adapter -ceq 'gameMenu')[0].components | Where-Object kind -ceq 'tab' | Sort-Object { $_.bounds.x })
     Invoke-ComponentClick 'menu-tab' -Menu $menu -Component $tabs[3] | Out-Null
     Wait-Settled
     $switched = @((Invoke-SdvKit 'menu-switched' @('project', 'review', 'menu', '--json')).Json.menus | Where-Object adapter -ceq 'gameMenu')[0]
@@ -182,18 +214,14 @@ try {
     Assert-That ($null -ne $hoed.soil) "the hoe did not till $($plain.x),$($plain.y)."
 
     $stone = Find-Target { param($t) $t.objectQualifiedItemId -cin $stones }
-    if ($null -ne $stone) {
-        $mined = Invoke-ToolDown 'pickaxe' '(T)Pickaxe' $stone
-        Assert-That ($mined.objectState -ceq 'missing') "the pickaxe left $($stone.objectQualifiedItemId) at $($stone.x),$($stone.y)."
-    }
-    else { Write-Step 'No reachable stone in the scanned area; pickaxe not checked.' }
+    Assert-That ($null -ne $stone) 'no reachable stone in the scanned area of the test save.'
+    $mined = Invoke-ToolDown 'pickaxe' '(T)Pickaxe' $stone
+    Assert-That ($mined.objectState -ceq 'missing') "the pickaxe left $($stone.objectQualifiedItemId) at $($stone.x),$($stone.y)."
 
     $weed = Find-Target { param($t) $t.objectQualifiedItemId -cin $weeds }
-    if ($null -ne $weed) {
-        $cut = Invoke-ToolDown 'scythe' '(W)47' $weed -NoStamina
-        Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
-    }
-    else { Write-Step 'No reachable weeds in the scanned area; scythe not checked.' }
+    Assert-That ($null -ne $weed) 'no reachable weeds in the scanned area of the test save.'
+    $cut = Invoke-ToolDown 'scythe' '(W)47' $weed -NoStamina
+    Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
 
     Write-Step 'Fishing: prepare and cast.'
     $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
