@@ -115,6 +115,9 @@ internal sealed partial class LiveLabService
             ["SDVKIT_LAB_STATUS_PATH"] = _paths.StatusPath,
             ["SDVKIT_LAB_STOP_PATH"] = _paths.StopRequestPath,
             ["SDVKIT_LAB_WINDOWED"] = "1",
+            // SDL hint read from the environment: the game window appears without taking focus, so switching to
+            // another window during a run is not a foreground transition of the owned process (#311).
+            ["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"] = "1",
             [SdvKit.GameSide.ReviewHttpContract.TokenVariable] = httpToken,
             ["SDVKIT_REVIEW_CONSOLE_BACKGROUND"] = interactiveConsole ? "1" : string.Empty,
         };

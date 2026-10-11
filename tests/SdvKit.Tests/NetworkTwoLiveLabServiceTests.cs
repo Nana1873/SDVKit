@@ -73,6 +73,7 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.Equal(paths.StardewDataPath, specification.Environment[
             "SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"]);
         Assert.Equal(string.Empty, specification.Environment[
             "SDVKIT_NETWORK_TWO_EXPECTED_FARMHAND_ID"]);
         Assert.Equal(TestSaveContract.ScenarioMode, specification.Environment[
@@ -136,6 +137,7 @@ public sealed class NetworkTwoLiveLabServiceTests
         Assert.Equal(paths.StardewDataPath, specification.Environment[
             "SDVKIT_LAB_DATA_PATH"]);
         Assert.Equal("1", specification.Environment["SDVKIT_LAB_WINDOWED"]);
+        Assert.Equal("1", specification.Environment["SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN"]);
         Assert.All(
             specification.Environment.Where(pair => pair.Key.StartsWith(
                 "SDVKIT_TEST_SAVE_",

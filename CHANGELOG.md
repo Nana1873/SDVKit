@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 - The local player runtime data has an optional `npcs` list: the visible villagers in the player's current location with internal and display name, tile and facing, at most 64 (#292). It is available to every role and screen, and absent in status from an older GameSide.
 - `stardew_fixture_npc_place { name, x, y }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) warps one named villager to a free tile in the player's location, stops its path and turns it toward the player, so dialogue and gift tests do not depend on schedules (#292). It is test setup, not proof of game behaviour.
 - `stardew_fixture_item_add { qualifiedItemId, stack, quality? }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) puts one new stack of an existing item, including modded items, into the main player's first empty backpack slot (#291). It never merges or replaces, refuses with a full backpack, and reports the slot and the new inventory revision. It is test setup, not proof of game behaviour.
@@ -15,6 +16,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
 
 ### Fixed
+
+- The lab starts the game window without giving it focus (SDL's `SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN`, set in the game's environment) (#311). Switching between other windows during a review or an acceptance run no longer makes the next input fail with `inputForegroundChanged`; the game window becoming the foreground window (a click into it, Alt+Tab, or Windows activating it after the window in front closes) still does.
 
 - `lab test-save` no longer fails with `gameSideStale` when loading the test save blocks the game for more than five seconds: while the exact test save is still loading or waiting, it keeps polling for up to 30 seconds after the marker becomes stale (#303). The acceptance scripts' readiness wait does the same.
 - Fishing preparation now requires natural fishable water both two and three tiles out from the nearest collision-free bank facing left or right. It skips vertical banks because down-facing short casts sometimes spent stamina without starting fishing; the cause remains undetermined. If no qualifying side-facing bank exists, the fixture stays unchanged (#305).
