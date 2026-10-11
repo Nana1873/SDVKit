@@ -7,15 +7,15 @@ SDVKit has two halves: a **modding toolkit** (create, check, build, package) and
 ## Layout
 
 - `workspaces/<ModName>/`: one folder, and usually one git repository, per mod. Respect each mod's own instructions.
-- `.sdvkit/`: everything SDVKit generates for this lab: isolated game profiles, staged mods, logs, screenshots, test saves. It is ignored by git. Each mod's build and package output goes to that mod's own `.sdvkit/`.
-- `sdvkit.cmd`: runs the SDVKit installation that set up this lab. Always run it from this folder, and pass an explicit mod path.
+- `.sdvkit/`: the installed SDVKit (`.sdvkit/tools/`) and everything SDVKit generates for this lab: isolated game profiles, staged mods, logs, screenshots, test saves. It is ignored by git. Each mod's build and package output goes to that mod's own `.sdvkit/`.
+- `sdvkit.cmd`: runs the SDVKit installation that set up this lab. Always run it from this folder, and pass an explicit mod path. From PowerShell call it as `.\sdvkit.cmd`, from Git Bash as `./sdvkit.cmd`.
 
 ## Safety rules
 
 1. Never write to the normal Stardew `Saves` folder or to the game's or a mod manager's `Mods` folder. SDVKit stages mods into its own isolated profile; nothing needs to be copied there by hand. A hook in `.claude/` blocks these writes for Claude Code.
 2. Never copy game files, `*.xnb` content, personal saves or secrets into a mod repository.
 3. Use only SDVKit's process-local input for the game. Never move the physical mouse, change window focus, or use desktop automation.
-4. One live lab at a time. Before starting, check `.\sdvkit.cmd project review status --json`; if a review that another task started is running, wait for it to stop. Always finish with stop, and with reset for test-save or network reviews.
+4. One live lab at a time. Before starting, check `.\sdvkit.cmd project review status --json`. `state` `stopped` means the lab is free. Any other state means a review is running: `root` names the reviewed mod and `lab.launchId` the launch. If you did not start it in this task, wait for it to stop; never stop someone else's game. Always finish with stop, and with reset for test-save or network reviews.
 5. Claim only what was proven, and say which level: **build** succeeded, **SMAPI loaded** the mod, **behavior** was observed in the game, or **visuals** were checked on a screenshot.
 6. Never repeat an action whose result says `mayHaveRun` or that timed out. Inspect the current state first.
 
@@ -33,12 +33,22 @@ SDVKit has two halves: a **modding toolkit** (create, check, build, package) and
 .\sdvkit.cmd project review stop --json
 ```
 
-`project review start` returns before the game is ready. Poll `status` until the game-side mod is `active` and your mod is `loaded`; with `--test-save`, also wait for `testSave.phase` `passed`.
+`project review start` returns within seconds, before the game is ready. Poll `status` every 5 seconds until all of these hold:
+
+- `lab.gameSide.state` is `active`;
+- `lab.gameSide.projectMod.phase` is `loaded` and `lab.gameSide.projectMod.loadConfirmed` is `true`;
+- with `--test-save` only: `lab.gameSide.testSave.phase` is `passed`.
+
+Loading usually takes 10 to 60 seconds. If `problems` is not empty, or nothing is ready after 3 minutes, stop and report the status instead of retrying.
+
+A plain review without `--test-save` stays at the title screen: `stardew_runtime_get` reports `worldReady` `false` with a menu open. That is expected. For anything that needs a loaded farm, use `--test-save` (skill `sdv-test-world`); never load other saves.
+
+`stop` is complete when its top-level `state` is `stopped` and `stagingRemoved` is `true`. The embedded `lab.gameSide.state` may still read `exiting`; that is normal. A fresh `status` then reports `stopped`.
 
 ## Acting in the game
 
 - `project review command "<line>"` runs **your mod's or SMAPI's** console command. SDVKit's own `sdvkit ...` lines are rejected there.
-- `project review call <tool> ['<json>']` runs one SDVKit tool: reads such as `stardew_runtime_get`, `stardew_menu_get`, `stardew_inventory_get`, `stardew_screenshot_capture`, and, with the matching opt-in flag, actions:
+- `project review call <tool> ['<json>']` runs one SDVKit tool and always prints JSON (it takes no `--json` flag): reads such as `stardew_runtime_get`, `stardew_menu_get`, `stardew_inventory_get`, `stardew_screenshot_capture`, and, with the matching opt-in flag, actions:
   - `--allow-input`: `stardew_input_press`, `chord`, `click`, `drag`, `scroll`, `text`, `cursor_set`, `cursor_clear`.
   - `--allow-fixture-actions` (test save): fixtures, `stardew_fixture_save`, and `stardew_lab_set_time`, `set_weather`, `set_season`, `warp`, `set_zoom`, `set_window`.
   - `--allow-world-actions`: `stardew_world_interact` (water, harvest, machine insert and collect).

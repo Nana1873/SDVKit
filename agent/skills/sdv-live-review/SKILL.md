@@ -17,7 +17,9 @@ description: Run a Stardew Valley mod in SDVKit's isolated live lab and gather e
 .\sdvkit.cmd project review status --json
 ```
 
-Poll `status` every few seconds. It is ready when `lab.gameSide.state` is `active`, your mod's `projectMod.phase` is `loaded`, and, with `--test-save`, `lab.gameSide.testSave.phase` is `passed`. If a problem code appears instead, report it; do not retry blindly.
+Poll `status` every 5 seconds. It is ready when `lab.gameSide.state` is `active`, `lab.gameSide.projectMod.phase` is `loaded` with `loadConfirmed` `true`, and, with `--test-save`, `lab.gameSide.testSave.phase` is `passed`. Loading usually takes 10 to 60 seconds. If a problem code appears, or nothing is ready after 3 minutes, report the status; do not retry blindly.
+
+Without `--test-save` the game stays at the title screen (`worldReady` `false`). That is enough to prove that SMAPI loads the mod; anything in the world needs `--test-save`.
 
 ## Observe
 
@@ -53,6 +55,6 @@ An input result proves delivery only. Read the state again, or take a new screen
 .\sdvkit.cmd project review reset --topology single --json
 ```
 
-Reset is needed after `--test-save` and for `network-2`; it restores the disposable world. Report build, SMAPI load, behavior and visuals separately, with the evidence for each.
+Stop is complete when its top-level `state` is `stopped` and `stagingRemoved` is `true`; an embedded `lab.gameSide.state` of `exiting` is normal. Reset is needed after `--test-save` and for `network-2`; it restores the disposable world. Report build, SMAPI load, behavior and visuals separately, with the evidence for each.
 
 References: {{docs}}/live-review.md, {{docs}}/mcp.md, {{docs}}/runtime-state.md, {{docs}}/menu-inspection.md

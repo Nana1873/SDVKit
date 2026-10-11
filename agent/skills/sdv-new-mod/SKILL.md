@@ -19,7 +19,7 @@ description: Create a new Stardew Valley mod with SDVKit, either a SMAPI C# mod 
 
    For a Content Patcher pack, use `content-pack` and create it in a `pack` subfolder, for example `.\workspaces\MyPack\pack`. The review and the package then select that clean pack root, while the repository's own files stay one level up.
 4. Offer to make the folder its own git repository. The lab's `.gitignore` already excludes `.sdvkit/`; a mod repository should ignore its own `.sdvkit/`, `bin/` and `obj/`.
-5. Report what was created and that `project check` passed. Nothing has run in the game yet.
+5. Report what was created and that `project check` passed. `check` validates the mod's files only: it neither compiles code nor runs the game. Use `project build` (`sdv-build-package`) to prove that it compiles.
 
 Next: `sdv-smapi-csharp` or `sdv-content-patcher` to develop it, `sdv-build-package` to release it.
 
