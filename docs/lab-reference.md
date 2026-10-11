@@ -182,10 +182,11 @@ This is test setup, not evidence of game behaviour. The command neither saves no
 
 - the verified main player or host;
 - no open menu, event, festival or fade;
-- the internal name of a villager (`Game1.getCharacterFromName`, exact and case-sensitive), as listed in `npcs` of [runtime state](runtime-state.md#field-contract);
+- the internal name of a villager that is in the world now and visible (`Game1.getCharacterFromName`, exact and case-sensitive), as listed in `npcs` of [runtime state](runtime-state.md#field-contract);
+- a permanent location (not a mine or volcano level or another temporary location, which can unload with the villager in it);
 - a tile that is not the player's own and where the game can spawn a character (`GameLocation.CanSpawnCharacterHere`).
 
-It warps the villager with the game's own `Game1.warpCharacter`, stops its current path and turns it toward the player. The result reports the location and tile in `navigation`. Its schedule can move it again later, so read `npcs` before you act on it.
+It warps the villager with the game's own `Game1.warpCharacter`, stops its current path and square walk, and turns it toward the player. The result reports the location and tile in `navigation`. The villager can move again at any time, for example when its schedule continues, so read `npcs` before you act on it.
 
 ```powershell
 & $sdvkit project review call stardew_fixture_npc_place '{"name":"Lewis","x":65,"y":16}' --allow-fixture-actions

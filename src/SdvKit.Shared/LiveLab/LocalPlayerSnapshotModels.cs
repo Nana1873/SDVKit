@@ -99,7 +99,9 @@ internal static class LocalPlayerSnapshotContract
     private static bool NameValid(string? name) =>
         !string.IsNullOrWhiteSpace(name)
         && name.Length <= MaximumNpcNameLength
-        && !name.Any(char.IsControl);
+        && name.Trim() == name
+        && !name.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(name);
 
     public static readonly string[] FacingDirections = ["up", "right", "down", "left"];
 

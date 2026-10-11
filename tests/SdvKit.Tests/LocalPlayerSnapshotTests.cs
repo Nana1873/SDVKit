@@ -85,7 +85,7 @@ public sealed class LocalPlayerSnapshotTests
     {
         LocationNpcValues good = Npcs[0];
         foreach (var npc in new[] { good with { Name = "" }, good with { Name = " " }, good with { DisplayName = "a\nb" },
-            good with { Name = new string('a', 129) }, good with { Facing = "north" }, good with { TileX = 100001 },
+            good with { Name = new string('a', 129) }, good with { Name = "Lewis " }, good with { Facing = "north" }, good with { TileX = 100001 },
             good with { TileY = -100001 } })
         {
             Assert.False(LocalPlayerSnapshotContract.NpcValid(npc));

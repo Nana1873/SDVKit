@@ -63,17 +63,36 @@ internal static class LocalPlayerCapture
     {
         if (player.currentLocation is not { } location)
         {
-            return null;
+            return [];
         }
 
-        // Sorted by name and bounded, so a crowded festival map stays within the contract.
-        return location.characters
-            .Where(npc => npc is not null && npc.IsVillager && !string.IsNullOrWhiteSpace(npc.Name))
-            .Select(npc => new LocationNpcValues(npc.Name, string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName,
-                npc.TilePoint.X, npc.TilePoint.Y, LocalPlayerSnapshotContract.FacingName(npc.FacingDirection) ?? ""))
-            // A modded NPC with an unusable name is left out rather than failing the whole player snapshot.
-            .Where(LocalPlayerSnapshotContract.NpcValid)
-            .OrderBy(npc => npc.Name, StringComparer.Ordinal)
+        // Event and festival actors live in the event, not in location.characters, so they are not listed.
+        var npcs = new List<LocationNpcValues>();
+        foreach (NPC npc in location.characters)
+        {
+            // A modded NPC whose getters throw or whose values are unusable is left out rather than failing the
+            // whole player snapshot. Invisible villagers (for example on hospital days) cannot be talked to.
+            try
+            {
+                if (npc is null || !npc.IsVillager || npc.IsInvisible || string.IsNullOrWhiteSpace(npc.Name))
+                {
+                    continue;
+                }
+
+                var values = new LocationNpcValues(npc.Name,
+                    string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName,
+                    npc.TilePoint.X, npc.TilePoint.Y, LocalPlayerSnapshotContract.FacingName(npc.FacingDirection) ?? "");
+                if (LocalPlayerSnapshotContract.NpcValid(values))
+                {
+                    npcs.Add(values);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return npcs.OrderBy(npc => npc.Name, StringComparer.Ordinal)
             .Take(LocalPlayerSnapshotContract.MaximumNpcs)
             .ToArray();
     }

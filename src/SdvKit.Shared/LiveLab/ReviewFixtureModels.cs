@@ -48,7 +48,8 @@ internal static class ReviewFixtureTransportContract
     public static bool IsValidNpcName(string? value) =>
         value is { Length: >= 1 and <= MaximumTokenLength }
         && value.Trim() == value
-        && !value.Any(char.IsControl);
+        && !value.Any(char.IsControl)
+        && ReviewTransportText.IsWellFormedUtf16(value);
 
     public static bool IsValidItemAdd(string? qualifiedItemId, int? stack, int? quality) =>
         IsQualifiedItemId(qualifiedItemId)

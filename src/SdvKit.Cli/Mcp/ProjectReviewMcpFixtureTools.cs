@@ -500,7 +500,7 @@ internal static class ProjectReviewMcpFixtureTools
                 TryItemAdd));
             tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, NpcPlaceToolName,
                 ReviewFixtureTransportContract.NpcPlaceOperation,
-                "Test setup: warp one named villager to a free tile in the main player's current location, stop its current path and turn it toward the player. Its schedule can move it again; read stardew_runtime_get npcs before acting. Not proof of game behaviour.",
+                "Test setup: warp one named villager to a free tile in the main player's current location, stop its current path and turn it toward the player. Refuses invisible villagers and temporary locations such as mine levels. The villager can move again at any time; read stardew_runtime_get npcs before acting. Not proof of game behaviour.",
                 NpcPlaceInputSchema, CreateOutputSchema(ReviewFixtureTransportContract.NpcPlaceOperation, "navigation"),
                 readOnly: false, destructive: false, idempotent: false,
                 arguments => HasOnly(arguments, ["name", "x", "y"])

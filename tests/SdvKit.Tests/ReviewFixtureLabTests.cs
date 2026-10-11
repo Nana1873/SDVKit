@@ -81,10 +81,18 @@ public sealed class ReviewFixtureLabTests
     [InlineData("Lew\nis", 1, 1)]
     [InlineData("Lewis", -1, 1)]
     [InlineData("Lewis", 1, null)]
+    [InlineData("Lewis ", 1, 1)]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1, 1)]
     public void InvalidNpcPlaceIsRejectedBeforeSending(string? name, int? x, int? y) =>
         Assert.Equal("fixtureNpcRequestInvalid", ProjectReviewFixtureService.Validate(
             new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Value: name, X: x, Y: y),
             "single", null)?.Code);
+
+    [Fact]
+    public void NpcPlaceRejectsUnrelatedOperands() =>
+        Assert.NotNull(ProjectReviewFixtureService.Validate(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.NpcPlaceOperation, Kind: "(O)24", Value: "Lewis", X: 1, Y: 1),
+            "single", null));
 
     [Fact]
     public void ItemAddRejectsUnrelatedOperands() =>

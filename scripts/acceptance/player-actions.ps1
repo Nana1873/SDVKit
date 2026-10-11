@@ -89,13 +89,13 @@ function Close-Dialogue([string] $Label) {
     # from a fresh read.
     foreach ($attempt in 1..8) {
         $menu = (Invoke-SdvKit "menu-$Label-$attempt" @('project', 'review', 'menu', '--json')).Json
-        if ($menu.menuOpen -ne $true) { return }
+        if ($menu.menuOpen -eq $false) { return }
         $box = @($menu.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.DialogueBox' })
         Assert-That ($box.Count -eq 1) "expected a dialogue, found $(@($menu.menus | ForEach-Object type) -join ', ')."
         Invoke-ComponentClick "$Label-$attempt" -Menu $menu -Component $box[0] | Out-Null
         Wait-Settled
     }
-    Assert-That ((Invoke-SdvKit "menu-$Label-closed" @('project', 'review', 'menu', '--json')).Json.menuOpen -ne $true) 'the dialogue did not close.'
+    Assert-That ((Invoke-SdvKit "menu-$Label-closed" @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'the dialogue did not close.'
 }
 
 function Find-ToolSlot([string] $Label, [string] $ItemId) {
