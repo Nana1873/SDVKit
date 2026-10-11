@@ -64,6 +64,7 @@ internal static class WindowsStatusFile
         }
     }
 
+    // Test-only diagnostics; production leaves this thread-local observer unset.
     [ThreadStatic]
     internal static Action<int, string, string>? FailureObserver;
 

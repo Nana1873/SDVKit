@@ -27,8 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\..\src\SdvKit.Shared\SdvKit.Shared.csproj" />
   </ItemGroup>
 </Project>

@@ -150,7 +150,7 @@ internal sealed class NetworkTwoModBuildPreparer
         if (!entries.SequenceEqual(expected, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                "The declared GameSide mod must contain only SdvKit.GameSide.dll and manifest.json.");
+                "The declared GameSide mod must contain only SdvKit.GameSide.dll, SdvKit.Shared.dll and manifest.json.");
         }
     }
 
