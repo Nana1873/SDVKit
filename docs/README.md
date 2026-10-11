@@ -10,11 +10,11 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
 | Build and review one explicit C# and associated content-pack bundle | [Bundle Arrival recipe](bundle-authoring.md) |
 | Author a multilingual SMAPI dialogue through fallback, controller, and reload proof | [Multilingual UI authoring recipe](multilingual-ui-authoring.md) |
-| Author a bounded vanilla Gold-shop offer and prove one purchase | [Shop purchase authoring recipe](shop-authoring.md) |
+| Test a purchase in your shop | [Shop purchase guide](test-a-shop-purchase.md) |
 | Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
-| Author one bounded GMCM integer slider and prove its saved restart effect | [GMCM number-slider recipe](gmcm-number-authoring.md) |
+| Change and verify a GMCM option | [GMCM option guide](test-a-gmcm-option.md) |
 | Author a one-time inventory reward and prove native chest persistence | [Inventory and chest authoring recipe](inventory-container-authoring.md) |
-| Author a crop-to-machine CP rule and prove native effects through persistence | [Crop and machine authoring recipe](crop-machine-authoring.md) |
+| Test a machine rule with native harvest, machine and chest actions | [Machine rule guide](test-a-machine-rule.md) |
 | Author a per-player multiplayer mod and prove distinct role and screen state | [Multiplayer authoring recipe](multiplayer-authoring.md) |
 | Upgrade original mod-owned save data from v1 to v2 | [Data migration recipe](data-migration-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |
@@ -35,6 +35,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Look up a term such as owned, role, screen or test save | [Glossary](glossary.md) |
 | Prepare a lab root for Claude Code or Codex | [Set up the agent layer](toolkit.md#set-up-the-agent-layer) |
 | Build or contribute to SDVKit | [Contributing](../CONTRIBUTING.md) |
+| Run SDVKit's live acceptance scripts | [Acceptance scripts](../scripts/acceptance/README.md) |
 | Verify and publish a version | [Release procedure](releasing.md) |
 | Find changes since an earlier version | [Changelog](../CHANGELOG.md) |
 

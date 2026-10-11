@@ -1,0 +1,10 @@
+{
+  "Name": "Shop Purchase Proof",
+  "Author": "ExampleAuthor",
+  "Version": "1.0.0",
+  "Description": "Add one bounded Stone offer to Pierre's shop for purchase verification.",
+  "UniqueID": "ExampleAuthor.ShopPurchaseProof",
+  "EntryDll": "ShopPurchaseProof.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

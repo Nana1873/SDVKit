@@ -1,0 +1,17 @@
+{
+  "Name": "GMCM Arrival Row",
+  "Author": "ExampleAuthor",
+  "Version": "1.0.0",
+  "Description": "Choose the start-of-day Farm arrival row through GMCM.",
+  "UniqueID": "ExampleAuthor.GmcmArrivalRow",
+  "EntryDll": "GmcmArrivalRow.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": [],
+  "Dependencies": [
+    {
+      "UniqueID": "spacechase0.GenericModConfigMenu",
+      "MinimumVersion": "1.16.0",
+      "IsRequired": false
+    }
+  ]
+}
