@@ -235,10 +235,14 @@ try {
     $hoeSlot = Find-ToolSlot 'act-hoe' '(T)Hoe'
     Invoke-Press 'act-hoe-select' (Get-SlotKey $hoeSlot)
     Wait-Settled
+    # The scan above is older than the hoe, pickaxe and scythe steps: confirm the target is still untilled.
+    Assert-That ($null -eq (Get-Area 'act-hoe-target' $east.x $east.y 1 1)[0].soil) "$($east.x),$($east.y) is already tilled."
+    $before = Get-Runtime 'act-hoe-before'
     $inventory = (Invoke-SdvKit 'act-hoe-inventory' @('project', 'review', 'inventory', '--json')).Json.data
     $act = Invoke-Tool 'act-hoe' 'stardew_world_act' @{ action = 'useTool'; x = $east.x; y = $east.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
     Assert-That ($act.Json.state -ceq 'completed' -and $act.Json.button -ceq 'MouseLeft') "useTool did not complete: $($act.Json.errorCode)"
     Start-Sleep -Seconds 2
+    Assert-That ((Get-Runtime 'act-hoe-after').localPlayer.data.stamina -lt $before.localPlayer.data.stamina) 'useTool with the hoe did not cost stamina.'
     Assert-That ($null -ne (Get-Area 'act-hoe-result' $east.x $east.y 1 1)[0].soil) "useTool with the hoe did not till $($east.x),$($east.y)."
 
     $sign = (Invoke-Tool 'sign-property' 'stardew_map_property_get' @{ asset = 'Maps/Farm'; property = 'Action'; scope = 'tile'; source = 'direct'; layer = 'Buildings'; x = 8; y = 7 }).Json
@@ -258,12 +262,14 @@ try {
 
     Write-Step 'Fishing: prepare and cast.'
     # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.
-    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 64; y = 16 } -OptIn '--allow-fixture-actions'
+    # The bank at 69,30 casts to the right. Short casts facing down sometimes cost stamina without landing (#305).
+    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 69; y = 30 } -OptIn '--allow-fixture-actions'
     Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
     Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
     Wait-Settled
-    # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle:
-    # not charging, not casting, bobber not in the air and not fishing.
+    # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle
+    # (not charging, not casting, bobber not in the air, not fishing) and no stamina spent, so the first cast never ran.
+    $staminaBeforeCast = (Get-Runtime 'cast-before').localPlayer.data.stamina
     foreach ($attempt in 1, 2) {
         Invoke-Hold "cast-$attempt" @('C') 40
         $deadline = [DateTime]::UtcNow.AddSeconds(8)
@@ -272,7 +278,9 @@ try {
             $fishing = (Get-Runtime "cast-$attempt").localPlayer.data.fishing
         } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
         if ($fishing.fishing -eq $true) { break }
-        Assert-That ($attempt -eq 1 -and -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)) 'the cast did not put the bobber in the water.'
+        $idle = -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)
+        $unspent = (Get-Runtime "cast-$attempt-stamina").localPlayer.data.stamina -eq $staminaBeforeCast
+        Assert-That ($attempt -eq 1 -and $idle -and $unspent) 'the cast did not put the bobber in the water.'
         Write-Step 'The rod is idle after the first cast; casting once more.'
     }
     Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'

@@ -9,8 +9,10 @@ namespace SdvKit.GameSide;
 
 /// <summary>
 /// The action button (check) or the selected tool (useTool) on a tile next to the player. The virtual cursor is
-/// placed on the target first, because the game aims both buttons at the tile under the cursor when it is within
-/// one tile of the player; without it, the target would depend on where inside its tile the player stands.
+/// placed on the target first, because the game starts both buttons at the tile under the cursor when the mouse
+/// cursor is visible and within one tile of the player; without it, the target would depend on where inside its
+/// tile the player stands. When the game would ignore the cursor (gamepad mode, faded or hidden mouse, a held
+/// gamepad button), the request is refused instead of acting on the faced tile.
 /// </summary>
 internal static class ReviewWorldActCommand
 {
@@ -61,7 +63,9 @@ internal static class ReviewWorldActCommand
         bool cursorOwned = false;
         // Once the cursor sits on the target, "not sent by SDVKit" no longer proves "did not run".
         bool cursorWasPlaced = false;
-        string Unsent() => cursorWasPlaced ? ObservedUnsentDispatchState(query, launch) : "notDispatched";
+        string? surroundingsBefore = null;
+        string Unsent() => cursorWasPlaced
+            ? ObservedUnsentDispatchState(query, launch, surroundingsBefore) : "notDispatched";
         try
         {
             if (args[2] != launch)
@@ -92,6 +96,7 @@ internal static class ReviewWorldActCommand
             }
             int cursorX = cursor.cursorX;
             int cursorY = cursor.cursorY;
+            surroundingsBefore = Surroundings(launch);
             if (!input.TrySetCursor(cursorX, cursorY, out _))
             {
                 Write(Report("unavailable", "worldActionTargetNotVisible", "notDispatched"));
@@ -142,20 +147,49 @@ internal static class ReviewWorldActCommand
         }
     }
 
-    private static string ObservedUnsentDispatchState(ReviewWorldActQuery query, string launch)
+    private static string ObservedUnsentDispatchState(ReviewWorldActQuery query, string launch, string? before)
     {
         try
         {
             bool inputSettled = !ReviewWorldActionCommand.ActionInputOrToolInProgress();
             ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"), launch);
+            string? after = Surroundings(launch);
             return ReviewWorldActContract.UnsentDispatchState(query, inputSettled,
                 inventory.State == "ready" ? inventory.Data?.InventoryRevision : null,
-                Game1.activeClickableMenu is not null);
+                Game1.activeClickableMenu is not null, before is not null && before == after);
         }
         catch (Exception)
         {
             return "mayHaveRun";
         }
+    }
+
+    /// <summary>
+    /// What an action without a target identity could change unnoticed by the backpack: the player's place,
+    /// facing, stamina and health, and the 3x3 tiles around the player. Null when it cannot be read.
+    /// </summary>
+    private static string? Surroundings(string launch)
+    {
+        Farmer player = Game1.player;
+        GameLocation location = Game1.currentLocation;
+        if (player is null || location?.Map?.GetLayer("Back") is not { } back) return null;
+        Point tile = player.TilePoint;
+        int left = Math.Max(0, tile.X - 1), top = Math.Max(0, tile.Y - 1);
+        int right = Math.Min(back.LayerWidth - 1, tile.X + 1), bottom = Math.Min(back.LayerHeight - 1, tile.Y + 1);
+        if (right < left || bottom < top) return null;
+        ReviewWorldReport world = ReviewWorldCommand.Capture(launch,
+            new ReviewWorldArea(left, top, right - left + 1, bottom - top + 1));
+        if (world.State != "ready" || world.Data is null) return null;
+        return JsonSerializer.Serialize(new
+        {
+            Location = location.NameOrUniqueName,
+            tile.X,
+            tile.Y,
+            player.FacingDirection,
+            player.Stamina,
+            player.health,
+            world.Data.Tiles
+        }, JsonOptions);
     }
 
     private static string? Validate(ReviewWorldActQuery query, string launch, Func<TestSaveAutomation?> testSave)
@@ -173,7 +207,10 @@ internal static class ReviewWorldActCommand
             && Game1.currentMinigame is null && !Game1.uiMode && !Game1.eventUp && !Game1.fadeToBlack
             && !Game1.freezeControls && !Game1.globalFade
             && !player.UsingTool && player.CanMove && player.CursorSlotItem is null;
-        bool adjacent = playerReady
+        // Stardew falls back to the faced tile when the mouse cursor is hidden or a gamepad drives input.
+        bool cursorAimed = playerReady && !Game1.options.gamepadControls && Game1.wasMouseVisibleThisFrame
+            && Game1.mouseCursorTransparency > 0f && !Game1.isAnyGamePadButtonBeingHeld();
+        bool adjacent = cursorAimed
             && ReviewWorldActContract.IsAdjacent(player!.TilePoint.X, player.TilePoint.Y, query.X, query.Y);
         bool inventoryMatches = false;
         if (adjacent)
@@ -182,7 +219,7 @@ internal static class ReviewWorldActCommand
             inventoryMatches = inventory.State == "ready"
                 && inventory.Data?.InventoryRevision == query.InventoryRevision;
         }
-        var facts = new ReviewWorldActFacts(bindingReady, fixtureReady, worldReady, playerReady, adjacent,
+        var facts = new ReviewWorldActFacts(bindingReady, fixtureReady, worldReady, playerReady, cursorAimed, adjacent,
             inventoryMatches, player?.CurrentTool is not null);
         return ReviewWorldActContract.Rejection(query, facts);
     }

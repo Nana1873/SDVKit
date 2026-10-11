@@ -65,7 +65,7 @@ A plain review without `--test-save` stays at the title screen: `stardew_runtime
 - `project review call <tool> ['<json>']` runs one SDVKit tool and always prints JSON (it takes no `--json` flag): reads such as `stardew_runtime_get`, `stardew_menu_get`, `stardew_inventory_get`, `stardew_screenshot_capture`, and, with the matching opt-in flag, actions:
   - `--allow-input`: `stardew_input_press`, `chord`, `click`, `drag`, `scroll`, `wheel`, `text`, `cursor_set`, `cursor_clear`.
   - `--allow-fixture-actions` (test save): fixtures, `stardew_fixture_save`, and `stardew_lab_set_time`, `set_weather`, `set_season`, `warp`, `set_zoom`, `set_window`.
-  - `--allow-world-actions`: `stardew_world_interact` (water, harvest, machine insert and collect).
+  - `--allow-world-actions`: `stardew_world_interact` (water, harvest, machine insert and collect) and `stardew_world_act` (action button or selected tool on a tile next to the player).
 - `.\sdvkit.cmd project review mcp serve --help` lists every tool.
 
 JSON arguments need care with quoting:

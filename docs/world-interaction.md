@@ -27,13 +27,20 @@ For everything else on a neighbouring tile, use `project review act` or the MCP 
 ```
 
 - `check` presses the action button (right mouse) on the tile: open a chest, read a sign, talk to an NPC, give the selected item, eat or place it.
-- `useTool` uses the selected tool (left mouse) on the tile: hoe, axe, pickaxe, scythe, watering can. It is refused with `worldActionWrongToolOrState` when no tool is selected.
+- `useTool` uses the selected tool (left mouse) on the tile: hoe, axe, pickaxe, watering can. The tool's effect lands when its animation ends. It is refused with `worldActionWrongToolOrState` when no tool is selected.
 
-The target must be one of the four tiles next to the player's tile; otherwise the result is `worldActionTargetNotAdjacent` with `notDispatched`. The player does not need to face it: SDVKit puts the virtual cursor on the tile, and the game aims both buttons at the tile under the cursor when it is that close. Without the cursor, the game would pick the tile from where inside its own tile the player stands (see `position` in [runtime state](runtime-state.md#field-contract)).
+The target must be one of the four tiles next to the player's tile; otherwise the result is `worldActionTargetNotAdjacent` with `notDispatched`. The player does not need to face it: SDVKit puts the virtual cursor on the tile, and the game starts both buttons at the tile under the cursor when the mouse cursor is visible and that close. Without the cursor, the game would pick the tile from where inside its own tile the player stands (see `position` in [runtime state](runtime-state.md#field-contract)). When the game would ignore the cursor (gamepad controls, a faded or hidden mouse cursor, a held gamepad button), the request is refused with `worldActionCursorAimUnavailable` before any input.
+
+The cursor sets where the game starts, not everything it may touch. Stardew's own fallbacks still apply:
+
+- `check`: when nothing on the tile reacts, the game also tries the tiles just above and below it (which can be diagonal to the player) and the player's own tile, then uses, places or eats the held item, or does a selected weapon's special move.
+- `useTool`: when something on the tile can be grabbed (a ready crop, machine output), or a villager stands there, the game presses the action button instead. Weapons, including the scythe, swing in the faced direction; the fishing rod casts in the faced direction.
+
+`completed` therefore means the button reached the target tile, not where the effect landed.
 
 Verified live so far: `check` on the Farm sign and `useTool` with the hoe (`scripts/acceptance/player-actions.ps1`). The other uses rely on the game's own action button and tool behaviour; the [player-action matrix](player-actions.md) tracks which are verified.
 
-There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack and no open menu. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil or removed objects, `project review inventory` for gifts, food or placed items.
+There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack, no open menu, and an unchanged player (location, tile, facing, stamina, health) and 3x3 tiles around the player. Effects these reads do not cover, such as a toggled gate, a petted animal or grass, can still slip through, so treat `notDispatched` as "SDVKit sent nothing" and read the state you care about. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil or removed objects, `project review inventory` for gifts, food or placed items.
 
 ## Results
 

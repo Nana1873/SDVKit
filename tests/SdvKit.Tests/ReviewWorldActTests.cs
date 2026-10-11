@@ -41,7 +41,7 @@ public sealed class ReviewWorldActTests
     [Fact]
     public void RejectionOrderMatchesTheWorldActionGates()
     {
-        var ready = new ReviewWorldActFacts(true, true, true, true, true, true, true);
+        var ready = new ReviewWorldActFacts(true, true, true, true, true, true, true, true);
         Assert.Null(ReviewWorldActContract.Rejection(Query("check"), ready));
         Assert.Null(ReviewWorldActContract.Rejection(Query("check"), ready with { ToolSelected = false }));
         Assert.Equal("worldActionWrongToolOrState", ReviewWorldActContract.Rejection(Query("useTool"), ready with { ToolSelected = false }));
@@ -49,19 +49,25 @@ public sealed class ReviewWorldActTests
         Assert.Equal("worldActionTestSaveRequired", ReviewWorldActContract.Rejection(Query("check"), ready with { FixtureReady = false }));
         Assert.Equal("worldActionWorldNotReady", ReviewWorldActContract.Rejection(Query("check"), ready with { WorldReady = false }));
         Assert.Equal("worldActionPlayerBusy", ReviewWorldActContract.Rejection(Query("check"), ready with { PlayerReady = false }));
+        Assert.Equal("worldActionCursorAimUnavailable", ReviewWorldActContract.Rejection(Query("check"), ready with { CursorAimed = false }));
+        Assert.Equal("worldActionPlayerBusy", ReviewWorldActContract.Rejection(Query("check"), ready with { PlayerReady = false, CursorAimed = false }));
         Assert.Equal("worldActionTargetNotAdjacent", ReviewWorldActContract.Rejection(Query("check"), ready with { Adjacent = false }));
         Assert.Equal("worldActionInventoryChanged", ReviewWorldActContract.Rejection(Query("check"), ready with { InventoryMatches = false }));
         Assert.True(ReviewWorldActionContract.IsGameError("worldActionTargetNotAdjacent"));
+        Assert.True(ReviewWorldActionContract.IsGameError("worldActionCursorAimUnavailable"));
     }
 
     [Theory]
-    [InlineData(true, Inventory, false, "notDispatched")]
-    [InlineData(false, Inventory, false, "mayHaveRun")]
-    [InlineData(true, "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", false, "mayHaveRun")]
-    [InlineData(true, null, false, "mayHaveRun")]
-    [InlineData(true, Inventory, true, "mayHaveRun")]
-    public void UnsentActNeedsSettledInputSameBackpackAndNoMenu(bool settled, string? inventory, bool menuOpen, string expected) =>
-        Assert.Equal(expected, ReviewWorldActContract.UnsentDispatchState(Query("check"), settled, inventory, menuOpen));
+    [InlineData(true, Inventory, false, true, "notDispatched")]
+    [InlineData(false, Inventory, false, true, "mayHaveRun")]
+    [InlineData(true, "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", false, true, "mayHaveRun")]
+    [InlineData(true, null, false, true, "mayHaveRun")]
+    [InlineData(true, Inventory, true, true, "mayHaveRun")]
+    [InlineData(true, Inventory, false, false, "mayHaveRun")]
+    public void UnsentActNeedsSettledInputSameBackpackNoMenuAndSameSurroundings(bool settled, string? inventory,
+        bool menuOpen, bool surroundings, string expected) =>
+        Assert.Equal(expected, ReviewWorldActContract.UnsentDispatchState(Query("check"), settled, inventory,
+            menuOpen, surroundings));
 
     [Fact]
     public void ServiceBindsTheCommandAndChecksTheButton()
@@ -159,6 +165,34 @@ public sealed class ReviewWorldActTests
             new Dictionary<string, object?> { ["action"] = "water", ["x"] = 7, ["y"] = 9, ["inventoryRevision"] = Inventory },
             cancellationToken: harness.Token);
         Assert.True(rejected.IsError);
+    }
+
+    [Fact]
+    public void ServerRegistersTheToolOnlyForAnOptedInUnboundSingleReview()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpWorldActRunner run = (_, _) => throw new InvalidOperationException("Listing must not act.");
+        string[] Names(ProjectReviewMcpRuntimeReader reader, ProjectReviewMcpWorldActRunner? runner) =>
+            ProjectReviewMcpServer.CreateOptions(reader, _ => throw new InvalidOperationException(), runWorldAct: runner)
+                .ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
+        ProjectReviewMcpRuntimeReader single = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        Assert.Contains(ProjectReviewMcpWorldActTools.ToolName, Names(single, run));
+        Assert.DoesNotContain(ProjectReviewMcpWorldActTools.ToolName, Names(single, null));
+        Assert.DoesNotContain(ProjectReviewMcpWorldActTools.ToolName,
+            Names(ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host"), run));
+    }
+
+    [Theory]
+    [InlineData("""{"action":"check","x":7,"y":9,"inventoryRevision":"INV","extra":1}""")]
+    [InlineData("""{"action":"check","x":7.5,"y":9,"inventoryRevision":"INV"}""")]
+    [InlineData("""{"action":"check","x":"7","y":9,"inventoryRevision":"INV"}""")]
+    [InlineData("""{"action":"check","x":7,"inventoryRevision":"INV"}""")]
+    [InlineData("""{"action":"check","x":7,"y":100001,"inventoryRevision":"INV"}""")]
+    public void McpArgumentsMustMatchTheClosedSchema(string json)
+    {
+        Dictionary<string, JsonElement> values = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+            json.Replace("INV", Inventory, StringComparison.Ordinal))!;
+        Assert.False(ProjectReviewMcpWorldActTools.TryQuery(values, out _));
     }
 
     [Theory]

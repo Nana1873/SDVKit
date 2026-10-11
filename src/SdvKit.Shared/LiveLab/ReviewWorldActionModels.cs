@@ -21,7 +21,8 @@ internal static class ReviewWorldActionContract
         or "worldActionItemNotAccepted" or "worldActionViewportUnavailable"
         or "worldActionTargetNotVisible" or "worldActionViewportOrCursorChanged"
         or "worldActionInputRejected" or "worldActionCursorCleanupFailed"
-        or "worldActionCompletionUncertain" or "worldActionValidationFailed";
+        or "worldActionCompletionUncertain" or "worldActionValidationFailed"
+        or "worldActionCursorAimUnavailable";
 
     public static string ResponsePath(string runtimePath, string requestId) =>
         Path.Combine(runtimePath, $"review-world-action-{requestId}.json");
@@ -168,7 +169,8 @@ internal sealed record ReviewWorldActionResponseEnvelope(int SchemaVersion, stri
 /// <summary>
 /// A faced-tile player action without a target identity: the action button (<c>check</c>, right click) or the
 /// selected tool (<c>useTool</c>, left click) on a tile next to the player. SDVKit puts the virtual cursor on the
-/// tile, so the game acts there instead of on a tile picked from the player's sub-tile position.
+/// tile, so the game starts there instead of on a tile picked from the player's sub-tile position. The game's own
+/// fallbacks (neighbouring tiles, the player's tile, the held item, facing-based weapons) still apply.
 /// </summary>
 internal static class ReviewWorldActContract
 {
@@ -202,6 +204,7 @@ internal static class ReviewWorldActContract
         if (!facts.FixtureReady) return "worldActionTestSaveRequired";
         if (!facts.WorldReady) return "worldActionWorldNotReady";
         if (!facts.PlayerReady) return "worldActionPlayerBusy";
+        if (!facts.CursorAimed) return "worldActionCursorAimUnavailable";
         if (!facts.Adjacent) return "worldActionTargetNotAdjacent";
         if (!facts.InventoryMatches) return "worldActionInventoryChanged";
         if (query.Action == UseTool && !facts.ToolSelected) return "worldActionWrongToolOrState";
@@ -210,12 +213,14 @@ internal static class ReviewWorldActContract
 
     /// <summary>
     /// Dispatch state for an action SDVKit did not send after its cursor was on the target. Without a target
-    /// identity, "nothing happened" needs settled input, the same backpack and no menu that the action could
-    /// have opened.
+    /// identity, "nothing happened" needs settled input, the same backpack, no menu that the action could have
+    /// opened, and an unchanged player and neighbourhood (location, tile, facing, stamina, health and the 3x3
+    /// tiles around the player) since before the cursor was placed.
     /// </summary>
     public static string UnsentDispatchState(ReviewWorldActQuery query, bool inputSettled,
-        string? inventoryRevision, bool menuOpen) =>
-        inputSettled && !menuOpen && inventoryRevision == query.InventoryRevision ? "notDispatched" : "mayHaveRun";
+        string? inventoryRevision, bool menuOpen, bool surroundingsUnchanged) =>
+        inputSettled && !menuOpen && surroundingsUnchanged && inventoryRevision == query.InventoryRevision
+            ? "notDispatched" : "mayHaveRun";
 }
 
 internal sealed record ReviewWorldActFacts(
@@ -223,6 +228,7 @@ internal sealed record ReviewWorldActFacts(
     bool FixtureReady,
     bool WorldReady,
     bool PlayerReady,
+    bool CursorAimed,
     bool Adjacent,
     bool InventoryMatches,
     bool ToolSelected);
