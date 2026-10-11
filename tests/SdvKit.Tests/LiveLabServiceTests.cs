@@ -1309,9 +1309,11 @@ public sealed class LiveLabServiceTests
                 PublishMarker(stopCase, stopCase == "active" ? "active" : "exiting");
             }
         };
+        // A stale marker that is still on its way is polled for a bounded time; the clock advances with each poll.
+        DateTimeOffset clock = StartedAt.AddSeconds(10);
         LiveLabService service = Service(
             paths, stateStore, new FakeBuilder(), process, Ready(gamePath),
-            testSaveStore: fixtureStore);
+            testSaveStore: fixtureStore, delay: interval => clock += interval, utcNow: () => clock);
 
         LiveLabCommandResult result = service.Execute("test-save");
 
@@ -1338,6 +1340,80 @@ public sealed class LiveLabServiceTests
             {
                 Assert.NotNull(stateStore.State);
             }
+        }
+    }
+
+    [Theory]
+    [InlineData("loading", 20, true)]
+    [InlineData("waiting", 20, true)]
+    [InlineData("loading", 40, false)]
+    [InlineData("waiting", 40, false)]
+    public void TestSaveWaitsBoundedlyForAHeartbeatPausedByTheSaveLoad(string phase, int pausedSeconds, bool resumes)
+    {
+        using TemporaryDirectory temporary = new();
+        string gamePath = Path.GetDirectoryName(temporary.WriteFile("game/.keep"))!;
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        var stateStore = new FakeStateStore();
+        var fixtureStore = new FakeTestSaveStore(paths) { BaselineExists = true, ScenarioLogArchived = true };
+        var process = new FakeProcessHost
+        {
+            StartResult = new LabProcessStartResult(LabProcessStartStatus.Started, Identity(gamePath)),
+            InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Running),
+            WaitResult = new LabProcessWaitResult(LabProcessWaitStatus.Exited),
+        };
+        DateTimeOffset clock = StartedAt.AddSeconds(10);
+        DateTimeOffset pausedUntil = StartedAt.AddSeconds(1 + pausedSeconds);
+
+        void Publish(string lifecycle, string testSavePhase, DateTimeOffset observedAt)
+        {
+            LiveLabState state = Assert.IsType<LiveLabState>(stateStore.State);
+            TestSaveLaunchState launch = Assert.IsType<TestSaveLaunchState>(state.TestSave);
+            bool verified = testSavePhase is "waiting" or "passed";
+            WriteStatusMarker(paths, state, lifecycle, pauseWhenOutOfFocus: lifecycle != "active",
+                new TestSaveStatusMarker(TestSaveContract.SchemaVersion, launch.Mode, testSavePhase,
+                    launch.Identity.FixtureId, launch.Identity.SaveId, IdentityVerified: verified,
+                    WaitedTicks: testSavePhase == "passed" ? 120 : 0, Message: "simulated", launch.ScenarioLogPath),
+                observedAtUtc: observedAt);
+        }
+
+        var published = false;
+        process.BeforeInspectReturn = () =>
+        {
+            if (!published)
+            {
+                // The last heartbeat before the load blocked the game.
+                published = true;
+                Publish("active", phase, StartedAt.AddSeconds(1));
+            }
+            else if (resumes && clock >= pausedUntil)
+            {
+                Publish("active", "passed", clock);
+            }
+        };
+        process.BeforeWaitReturn = () =>
+        {
+            process.InspectResult = new LabProcessInspectResult(LabProcessInspectStatus.Exited);
+            Publish("exiting", "passed", clock);
+        };
+        LiveLabService service = Service(
+            paths, stateStore, new FakeBuilder(), process, Ready(gamePath),
+            testSaveStore: fixtureStore, delay: interval => clock += interval, utcNow: () => clock);
+
+        LiveLabCommandResult result = service.Execute("test-save");
+
+        TestSaveWorkflowReport report = Assert.IsType<TestSaveWorkflowReport>(result.Report);
+        if (resumes)
+        {
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("passed", report.State);
+            Assert.Empty(report.Problems);
+        }
+        else
+        {
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Equal("gameSideStale", report.Problems[0].Code);
+            // The bound is 30 s of continuous staleness, not the two-minute workflow timeout.
+            Assert.True(clock < StartedAt.AddSeconds(10 + 35));
         }
     }
 
@@ -1574,7 +1650,8 @@ public sealed class LiveLabServiceTests
         DoctorReport doctor,
         DateTimeOffset? nowUtc = null,
         ITestSaveFixtureStore? testSaveStore = null,
-        Action<TimeSpan>? delay = null)
+        Action<TimeSpan>? delay = null,
+        Func<DateTimeOffset>? utcNow = null)
     {
         return new LiveLabService(
             paths,
@@ -1582,7 +1659,7 @@ public sealed class LiveLabServiceTests
             builder,
             process,
             () => doctor,
-            () => nowUtc ?? StartedAt.AddSeconds(10),
+            utcNow ?? (() => nowUtc ?? StartedAt.AddSeconds(10)),
             () => LaunchId,
             testSaveStore,
             delay);

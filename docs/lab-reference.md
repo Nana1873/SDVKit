@@ -27,7 +27,7 @@ Each status read opens the marker again:
 - A missing marker reports `pending`.
 - An unreadable or malformed marker reports `invalid`.
 - A marker for another launch or process reports `mismatch`.
-- An active marker older than five seconds is stale.
+- An active marker older than five seconds is stale. Loading a save blocks the game's main thread and can pause the heartbeat for several seconds; `project review status` then reports `gameSideStale` until the next update, so poll again before treating it as a failure.
 
 A later readable snapshot can recover on the next call after the same identity and freshness checks. SDVKit does not substitute a cached snapshot for a failed read. A partial or mismatched marker does not count as ready.
 

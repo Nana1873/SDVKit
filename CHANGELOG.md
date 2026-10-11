@@ -16,6 +16,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
+- `lab test-save` no longer fails with `gameSideStale` when loading the test save blocks the game for more than five seconds: while the exact test save is still loading or waiting, it keeps polling for up to 30 seconds of continuous staleness (#303). The acceptance scripts' readiness wait does the same.
+
 - `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
 
 ## [2.0.0] - 2026-10-11
