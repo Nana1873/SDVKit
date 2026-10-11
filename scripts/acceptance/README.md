@@ -17,12 +17,12 @@ pwsh scripts/acceptance/shop.ps1 -SdvKit .\src\SdvKit.Cli\bin\Release\net8.0\sdv
 ```
 
 - `-LabRoot` is the lab every live command runs from. Use a dedicated folder with a short path; Windows limits path length below it. The scripts can share one lab root; run one at a time.
-- Before starting, a script requires both topologies to be stopped. It never stops a review it did not start.
-- It records a listing of the game's `Mods` folder and the normal Stardew data folder before and after, and fails when they differ. Your own changes during the run count too. `-SkipProtectedCheck` turns this off.
+- It refuses a lab root that is, or is inside, the game folder or the normal Stardew data folder. Before starting, it requires both topologies to be stopped with nothing retained. It stops and resets only a review whose target lies in its own evidence folder, also when it fails between a stop and a planned restart.
+- It records a listing of the game folder's top level, the game's `Mods` folder and the normal Stardew data folder (saves, settings, logs) before and after, and fails when they differ. A listing compares names, sizes and write times; it does not hash files, and it does not cover a mod manager's own folders. Your own changes during the run count too. `-SkipProtectedCheck` turns this off.
 - Exit code `0` means every check passed; `1` means a check failed or cleanup did not complete. The console names the failed check.
-- Evidence goes to `<lab-root>/.sdvkit/acceptance/<script>/<timestamp>/`: every SDVKit result as numbered JSON, screenshots, and the protected-folder listings.
+- Evidence goes to `<lab-root>/.sdvkit/acceptance/<script>/<timestamp>/`: `identity.json` (sdvkit version and SHA-256, game and SMAPI versions) and provider hashes, every SDVKit result as numbered JSON, screenshots, and the protected-folder listings.
 
-The GMCM script clicks fixed screen positions, because GMCM's page exposes no menu components. They were measured for GMCM 1.16.0 in the default 1280x720 lab window, and the script refuses to click in another viewport. For other sizes, measure the slider and Save button on the screenshots and pass `-SliderMinX`, `-SliderMidX`, `-SliderMaxX`, `-SliderY`, `-SliderMaxDragX`, `-SaveX` and `-SaveY`.
+The GMCM script clicks fixed screen positions, because GMCM's page exposes no menu components. They were measured for GMCM 1.16.0 in the default 1280x720 lab window, and the script refuses to click in another viewport. For other sizes, measure the slider and Save button on the screenshots and pass `-SliderMinX`, `-SliderMidX`, `-SliderMaxX`, `-SliderY`, `-SliderMaxDragX`, `-SaveX` and `-SaveY`. The checks prove that no move changes the value before Save and that the final drag reaches the maximum; the intermediate Row 17 is visible only on the screenshots.
 
 ## Shared helpers
 

@@ -4,7 +4,7 @@ Use this pattern to prove that an option in your mod's Generic Mod Config Menu p
 
 ## Prepare GMCM and your config
 
-- Copy GMCM into your lab and pass the copy with `--companion`. SDVKit never takes it from your normal `Mods` folder.
+- Copy GMCM into your lab and pass the copy with `--companion`. SDVKit does not search your normal `Mods` folder for it.
 - GMCM writes its own `config.json` on first launch. Write its default file into your copy before the review, or SDVKit reports the staged files as changed.
 - Ship your mod's default `config.json` in exactly the bytes SMAPI writes back: UTF-8 without BOM, CRLF line endings, no final newline. Otherwise SMAPI rewrites it at startup and SDVKit reports `reviewStagingOwnershipDrifted`.
 - Register with `titleScreenOnly: false` if the option should be changed in a loaded save. A test console command that opens your page (`api.OpenModMenu(ModManifest)`) and one that logs the current value make the test much easier.

@@ -17,7 +17,9 @@ copy of Generic Mod Config Menu 1.16.0. The script:
 
 GMCM's page exposes no menu components to SDVKit, so the slider and Save positions are screen coordinates. The
 defaults were measured for GMCM 1.16.0 in SDVKit's default 1280x720 lab window; the script refuses to click when
-the viewport differs. Screenshots of every step are kept as evidence for the visible slider value.
+the viewport differs. The checks prove that no slider move changes the value before Save and that the final drag
+reaches the maximum; whether the middle click and off-step drag landed on Row 17 is visible only on the screenshots
+kept in the evidence folder.
 
 Guide: docs/test-a-gmcm-option.md.
 
@@ -109,6 +111,7 @@ try {
     $script:provider = Join-Path $work 'GenericModConfigMenu'
     Copy-Item -Recurse -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\examples\gmcm-number-recipe\GmcmArrivalRow') -Destination $mod
     Copy-Item -Recurse -LiteralPath $Gmcm -Destination $script:provider
+    Add-ProviderIdentity 'GenericModConfigMenu' $script:provider
 
     $manifest = Get-Content -Raw -LiteralPath (Join-Path $script:provider 'manifest.json') | ConvertFrom-Json
     Assert-That ($manifest.UniqueID -ceq 'spacechase0.GenericModConfigMenu' -and $manifest.Version -ceq '1.16.0') "the selected GMCM is $($manifest.UniqueID) $($manifest.Version), expected 1.16.0."

@@ -210,6 +210,8 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 The target must be the faced adjacent tile, visible on screen. SDVKit rechecks everything just before its one mouse sample. It never walks, teleports, grows crops, finishes machines, replays or rolls back.
 
+The permission belongs to the review the server started with. After that review stops or is replaced, an old server's action returns `worldActionStartupBindingChanged` with `notDispatched`; start a new server. The tool is annotated destructive and not idempotent.
+
 `state=completed` proves only that the input ran; read world and inventory again. `dispatchState=notDispatched` means SDVKit sent nothing: no input was held or queued, no tool was in use, and the target and backpack were unchanged. For `mayHaveRun`, check state before retrying by hand. A cancel after dispatch never retries.
 
 ## Opt-in container transfer

@@ -67,6 +67,24 @@ function Get-ProbeState {
     }
 }
 
+function Open-Chest([string] $Label) {
+    # Presses X at the faced chest and waits for its menu. Right after a load or warp the game can drop the press;
+    # only when a fresh read confirms that no menu opened is X pressed once more.
+    foreach ($attempt in 1, 2) {
+        Invoke-Tool "$Label-press-$attempt" 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' | Out-Null
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            Start-Sleep -Milliseconds 500
+            $menu = (Invoke-SdvKit "$Label-menu-$attempt" @('project', 'review', 'menu', '--json')).Json
+        } until ($menu.menuOpen -or [DateTime]::UtcNow -gt $deadline)
+        if ($menu.menuOpen) { return $menu }
+        Write-Step "The chest did not open on attempt $attempt."
+        Start-Sleep -Seconds 2
+    }
+
+    throw "Acceptance failed: the chest menu did not open ($Label)."
+}
+
 function Invoke-ProbeCommand([string] $Command) {
     $result = Invoke-SdvKit $Command @('project', 'review', 'command', $Command, '--json')
     Assert-That ($result.Json.commandWritten -eq $true) "the helper command $Command did not run."
@@ -113,8 +131,9 @@ function Start-CropReview([string] $Label, [string] $Pack) {
     Invoke-SdvKit "start-$Label" @('project', 'review', 'start', $Pack, '--game-path', $context.GamePath, '--topology', 'single',
         '--test-save', '--companion', $script:provider, '--companion', $script:probe, '--json') | Out-Null
     Wait-ReviewReady -TestSave | Out-Null
-    # The test save loads in the FarmHouse; the helper works on the Farm.
+    # The test save loads in the FarmHouse; the helper works on the Farm. Let the warp's fade finish.
     Invoke-Tool "farm-$Label" 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
+    Start-Sleep -Seconds 2
 }
 
 function Invoke-HarvestToKeg {
@@ -145,7 +164,8 @@ function Invoke-HarvestToKeg {
     Assert-That ($harvest.state -ceq 'completed') "harvest did not complete: $($harvest.errorCode)"
     $inventory = Read-Inventory "$Label-after-harvest"
     Assert-That ((Get-ItemCount $inventory $strawberry) -eq $before + 1) 'the harvest did not add exactly one Strawberry.'
-    Assert-That ((Read-Tile "$Label-harvested" $crop).soil.crop.data.readyForHarvest -ne $true) 'the crop is still ready after harvest.'
+    $harvested = (Read-Tile "$Label-harvested" $crop).soil.crop.data
+    Assert-That ($null -ne $harvested -and $harvested.readyForHarvest -eq $false) 'the regrowing crop is missing or still ready after harvest.'
 
     Invoke-ProbeCommand 'recipe_probe_prepare_machine'
     $keg = (Get-ProbeState "$Label-machine").Machine
@@ -168,6 +188,7 @@ try {
     $wrongPack = Join-Path $work 'wrong\ObservedHarvestRecipe'
     $fixedPack = Join-Path $work 'fixed\ObservedHarvestRecipe'
     Copy-Item -Recurse -LiteralPath $ContentPatcher -Destination $script:provider
+    Add-ProviderIdentity 'ContentPatcher' $script:provider
     Copy-Item -Recurse -LiteralPath (Join-Path $examples 'RecipeProbe') -Destination $script:probe
     Remove-Item -LiteralPath (Join-Path $script:probe 'README.md')
     foreach ($pack in $wrongPack, $fixedPack) {
@@ -217,22 +238,23 @@ try {
 
     Write-Step 'Refusals: an action without facing the Keg, and one with a stale revision, must not dispatch.'
     $player = (Get-ProbeState 'fixed-before-refusal').Player
+    Assert-That ($null -ne $player) 'RecipeProbe did not report the player tile.'
     $faceKeg = if ($keg.X -gt $player.X) { 'D' } elseif ($keg.X -lt $player.X) { 'A' } elseif ($keg.Y -gt $player.Y) { 'S' } else { 'W' }
     $faceAway = @{ D = 'A'; A = 'D'; S = 'W'; W = 'S' }[$faceKeg]
     Invoke-Tool 'face-away' 'stardew_input_press' @{ button = $faceAway } -OptIn '--allow-input' | Out-Null
     Start-Sleep -Seconds 1
     $refused = Invoke-WorldAction 'refuse-not-faced' 'machineCollect' $keg -AllowExit @(0, 3)
-    Assert-That ($refused.dispatchState -ceq 'notDispatched') "an action while not facing the Keg was $($refused.dispatchState)."
+    Assert-That ($refused.dispatchState -ceq 'notDispatched' -and $refused.errorCode -ceq 'worldActionTargetNotAdjacentAndFaced') "an action while not facing the Keg returned $($refused.dispatchState) / $($refused.errorCode)."
     Invoke-Tool 'face-keg' 'stardew_input_press' @{ button = $faceKeg } -OptIn '--allow-input' | Out-Null
     Start-Sleep -Seconds 1
     $state = (Get-ProbeState 'fixed-faced').Player
-    Assert-That ($state.X -eq $player.X -and $state.Y -eq $player.Y) 'turning moved the player off its tile.'
+    Assert-That ($null -ne $state -and $state.X -eq $player.X -and $state.Y -eq $player.Y) 'turning moved the player off its tile.'
 
     # The revision read while the Keg was processing is stale now that the output is ready.
     $inventory = Read-Inventory 'stale'
     $refused = (Invoke-SdvKit 'interact-stale' @('project', 'review', 'interact', 'machineCollect', $keg.X, $keg.Y,
             $processing.machine.instanceId, $processing.machine.revision, $inventory.inventoryRevision, '--json') -AllowExit @(0, 3)).Json
-    Assert-That ($refused.dispatchState -ceq 'notDispatched') "an action with a stale revision was $($refused.dispatchState)."
+    Assert-That ($refused.dispatchState -ceq 'notDispatched' -and $refused.errorCode -ceq 'worldActionTargetChanged') "an action with a stale revision returned $($refused.dispatchState) / $($refused.errorCode)."
 
     Write-Step 'Collect the two Cola natively.'
     $colaBefore = Get-ItemCount (Read-Inventory 'collect-before') $cola
@@ -244,13 +266,7 @@ try {
     Write-Step 'Move the Cola into a chest with a native click, save, restart and read the chest again.'
     Invoke-ProbeCommand 'recipe_probe_prepare_chest'
     Get-ProbeState 'chest' | Out-Null
-    Invoke-Tool 'open-chest' 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' | Out-Null
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    do {
-        Start-Sleep -Milliseconds 500
-        $menu = (Invoke-SdvKit 'chest-menu' @('project', 'review', 'menu', '--json')).Json
-    } until ($menu.menuOpen -or [DateTime]::UtcNow -gt $deadline)
-    Assert-That ($menu.menuOpen -eq $true) 'the chest menu did not open.'
+    $menu = Open-Chest 'open-chest'
     $container = (Invoke-SdvKit 'chest-before' @('project', 'review', 'container', '--json')).Json.data
     $source = @($container.player.slots | Where-Object { $_.item.qualifiedItemId -ceq $cola -and $_.item.stack -eq 2 })
     Assert-That ($source.Count -eq 1) 'expected exactly one stack of two Cola in the backpack.'
@@ -270,13 +286,7 @@ try {
     Start-CropReview 'restart' $fixedPack
     Invoke-ProbeCommand 'recipe_probe_bind_chest'
     Get-ProbeState 'rebound' | Out-Null
-    Invoke-Tool 'reopen-chest' 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' | Out-Null
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    do {
-        Start-Sleep -Milliseconds 500
-        $menu = (Invoke-SdvKit 'reopen-menu' @('project', 'review', 'menu', '--json')).Json
-    } until ($menu.menuOpen -or [DateTime]::UtcNow -gt $deadline)
-    Assert-That ($menu.menuOpen -eq $true) 'the chest menu did not open after the restart.'
+    Open-Chest 'reopen-chest' | Out-Null
     $container = (Invoke-SdvKit 'chest-restart' @('project', 'review', 'container', '--json')).Json.data
     $inChest = [int](@($container.container.slots | Where-Object { $_.item.qualifiedItemId -ceq $cola } | ForEach-Object { $_.item.stack }) | Measure-Object -Sum).Sum
     Assert-That ($inChest -eq 2) "after the restart the chest holds $inChest Cola, expected 2."

@@ -1,8 +1,8 @@
 # Test a purchase in your shop
 
-Use this pattern when your mod adds or changes an offer in a vanilla Gold shop and you want to prove a purchase in game. The complete worked example is [`scripts/acceptance/shop.ps1`](../scripts/acceptance/shop.ps1) with its sample mod in [`docs/examples/shop-recipe`](examples/shop-recipe/ShopPurchaseProof/).
+Use this pattern when your mod adds or changes an offer in Pierre's shop (`SeedShop`) and you want to prove a purchase in game. The complete worked example is [`scripts/acceptance/shop.ps1`](../scripts/acceptance/shop.ps1) with its sample mod in [`docs/examples/shop-recipe`](examples/shop-recipe/ShopPurchaseProof/).
 
-Supported: the vanilla `ShopMenu`, Gold currency and ordinary item offers. See [shop inspection](shop-inspection.md) for the exact boundary. Barter, other currencies and custom shop menus are not read.
+`project review shop` reads only the vanilla `ShopMenu` for `SeedShop`, with Gold and ordinary item offers. See [shop inspection](shop-inspection.md) for the exact boundary. Other shops, barter, other currencies and custom shop menus are not read.
 
 ## 1. Start a review on the test save
 
