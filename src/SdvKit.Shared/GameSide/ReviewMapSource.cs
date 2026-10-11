@@ -24,6 +24,8 @@ internal interface IReviewMapSource
     ReviewMapLoadedAsset LoadMapAsset(string assetName);
 
     ReviewMapTileSnapshot ReadTile(string assetName, string layerId, int x, int y);
+
+    IReadOnlyList<ReviewMapActionReport> ReadActions(string assetName);
 }
 
 internal sealed record ReviewMapAssetIdentity(

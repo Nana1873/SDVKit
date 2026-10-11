@@ -54,6 +54,7 @@ public static partial class CliApplication
                 or ReviewMapContract.LayerOperation
                 or ReviewMapContract.TileSheetsOperation
                 or ReviewMapContract.WarpsOperation
+                or ReviewMapContract.ActionsOperation
                 or ReviewMapContract.TileOperation
                 or ReviewMapContract.PropertyOperation))
         {
@@ -63,7 +64,8 @@ public static partial class CliApplication
         bool listOperation = operation is ReviewMapContract.AssetsOperation
             or ReviewMapContract.LayersOperation
             or ReviewMapContract.TileSheetsOperation
-            or ReviewMapContract.WarpsOperation;
+            or ReviewMapContract.WarpsOperation
+            or ReviewMapContract.ActionsOperation;
         if (!TryParseReviewQueryOptions(
                 arguments,
                 listOperation,
@@ -95,6 +97,7 @@ public static partial class CliApplication
             case ReviewMapContract.LayersOperation:
             case ReviewMapContract.TileSheetsOperation:
             case ReviewMapContract.WarpsOperation:
+            case ReviewMapContract.ActionsOperation:
                 if (operands.Count != 1)
                 {
                     return false;

@@ -51,6 +51,11 @@ internal static class ProjectReviewMapService
         "page",
         "coverage",
         "problems");
+    private static readonly HashSet<string> ActionsReportProperties = new(ReportProperties, StringComparer.Ordinal)
+    {
+        "actions",
+        "truncated",
+    };
     private static readonly HashSet<string> ProblemProperties = PropertySet(
         "code",
         "message");
@@ -94,6 +99,8 @@ internal static class ProjectReviewMapService
         "targetName",
         "targetX",
         "targetY");
+    private static readonly HashSet<string> ActionProperties = PropertySet(
+        "layerId", "x", "y", "source", "frameIndex", "name", "value", "firstToken");
     private static readonly HashSet<string> SummaryProperties = PropertySet(
         "displayWidth",
         "displayHeight",
@@ -307,6 +314,12 @@ internal static class ProjectReviewMapService
             return false;
         }
 
+        if ((query.Operation != ReviewMapContract.ActionsOperation || blocked)
+            && (report.Actions is not null || report.Truncated is not null))
+        {
+            return false;
+        }
+
         if (blocked)
         {
             return query.Operation == ReviewMapContract.AssetsOperation
@@ -325,6 +338,7 @@ internal static class ProjectReviewMapService
             ReviewMapContract.TileSheetsOperation =>
                 TileSheetListMatches(report, query),
             ReviewMapContract.WarpsOperation => WarpListMatches(report, query),
+            ReviewMapContract.ActionsOperation => ActionListMatches(report, query),
             ReviewMapContract.TileOperation => ExactTileMatches(report, query),
             ReviewMapContract.PropertyOperation => ExactMapIdentityMatches(report, query)
                 && PropertyMatches(report, query),
@@ -626,6 +640,22 @@ internal static class ProjectReviewMapService
 
         return true;
     }
+
+    private static bool ActionListMatches(ReviewMapReport report, ReviewMapQuery query) =>
+        ExactMapIdentityMatches(report, query)
+        && report.Map is null
+        && report.Layer is null
+        && report.Tile is null
+        && report.Property is null
+        && report.Assets is null
+        && report.Layers is null
+        && report.TileSheets is null
+        && report.Warps is null
+        && report.Coverage is null
+        && report.Actions is { } actions
+        && PageMatches(report.Page, query, actions.Count, ReviewMapContract.MaximumActionsPerMap)
+        && report.Truncated == (report.Page!.NextOffset is not null)
+        && ReviewMapActionValidation.IsValidList(actions);
 
     private static bool WarpListMatches(
         ReviewMapReport report,
@@ -1095,7 +1125,14 @@ internal static class ProjectReviewMapService
     {
         ResponseJson.RequireExactObject(root, EnvelopeProperties);
         JsonElement report = root.GetProperty("report");
-        ResponseJson.RequireExactObject(report, ReportProperties);
+        bool readyActions = report.ValueKind == JsonValueKind.Object
+            && report.TryGetProperty("operation", out JsonElement operation)
+            && operation.ValueKind == JsonValueKind.String
+            && operation.GetString() == ReviewMapContract.ActionsOperation
+            && report.TryGetProperty("state", out JsonElement state)
+            && state.ValueKind == JsonValueKind.String
+            && state.GetString() == "ready";
+        ResponseJson.RequireExactObject(report, readyActions ? ActionsReportProperties : ReportProperties);
 
         ValidateOptionalObject(report.GetProperty("map"), SummaryProperties);
         ValidateOptionalObject(report.GetProperty("layer"), LayerProperties);
@@ -1121,6 +1158,14 @@ internal static class ProjectReviewMapService
             report.GetProperty("warps"),
             int.MaxValue,
             warp => ResponseJson.RequireExactObject(warp, WarpProperties));
+        if (readyActions)
+        {
+            ResponseJson.ValidateRequiredArray(
+                report.GetProperty("actions"),
+                ReviewMapContract.MaximumPageLimit,
+                action => ResponseJson.RequireExactObject(action, ActionProperties));
+            _ = ResponseJson.RequiredBoolean(report, "truncated");
+        }
         ValidateOptionalObject(report.GetProperty("page"), PageProperties);
         ValidateOptionalCoverage(report.GetProperty("coverage"));
         ResponseJson.ValidateRequiredArray(

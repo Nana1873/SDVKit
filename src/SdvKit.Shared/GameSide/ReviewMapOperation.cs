@@ -56,6 +56,7 @@ internal static partial class ReviewMapOperation
             ReviewMapContract.LayerOperation => GetLayer(query, source, discovered),
             ReviewMapContract.TileSheetsOperation => ListTileSheets(query, source, discovered),
             ReviewMapContract.WarpsOperation => ListWarps(query, source, discovered),
+            ReviewMapContract.ActionsOperation => ListActions(query, source, discovered),
             ReviewMapContract.TileOperation => GetTile(query, source, discovered),
             ReviewMapContract.PropertyOperation => GetProperty(query, source, discovered),
             _ => Failure(
@@ -425,7 +426,9 @@ internal static partial class ReviewMapOperation
         IReadOnlyList<ReviewMapWarpReport>? warps = null,
         ReviewMapPage? page = null,
         ReviewMapCoverageReport? coverage = null,
-        IReadOnlyList<ReviewMapProblem>? problems = null) =>
+        IReadOnlyList<ReviewMapProblem>? problems = null,
+        IReadOnlyList<ReviewMapActionReport>? actions = null,
+        bool? truncated = null) =>
         new(
             ReviewMapContract.SchemaVersion,
             state,
@@ -444,7 +447,9 @@ internal static partial class ReviewMapOperation
             warps,
             page,
             coverage,
-            problems ?? []);
+            problems ?? [],
+            actions,
+            truncated);
 
     private static ReviewMapProblem Problem(string code, string message) => new(code, message);
 
