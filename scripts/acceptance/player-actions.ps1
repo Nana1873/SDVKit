@@ -11,6 +11,10 @@ Proves each action through a state read, not through the input acknowledgement:
 - hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
 - the game menu: open with E, switch tab by clicking its component, close with Escape;
 - hoe, pickaxe and scythe on the faced tile, after checking the reported facing and tool tile (soil appears, the stone or weeds disappear, stamina drops);
+- stardew_world_act: the hoe by useTool on a tile next to the player, check on the Farm sign opens its message, and a
+  tile that is not next to the player is refused;
+- stardew_fixture_item_add puts a chest into the backpack (slot and inventory revision match a fresh read), and check
+  with the chest selected places it on the target tile;
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -226,17 +230,95 @@ try {
     $cut = Invoke-ToolDown 'scythe' '(W)47' $weed -NoStamina
     Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
 
+    Write-Step 'Faced-tile actions with stardew_world_act: hoe by useTool, read the Farm sign by check, refuse a far tile.'
+    $east = @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) -and $null -eq $byTile["$($_.x),$($_.y)"].soil })[1]
+    Assert-That ($null -ne $east) 'no free tile with a free tile west of it in the scanned area.'
+    Invoke-Warp 'act-hoe' 'Farm' ($east.x - 1) $east.y
+    $hoeSlot = Find-ToolSlot 'act-hoe' '(T)Hoe'
+    Invoke-Press 'act-hoe-select' (Get-SlotKey $hoeSlot)
+    Wait-Settled
+    # The scan above is older than the hoe, pickaxe and scythe steps: confirm the target is still untilled.
+    Assert-That ($null -eq (Get-Area 'act-hoe-target' $east.x $east.y 1 1)[0].soil) "$($east.x),$($east.y) is already tilled."
+    $before = Get-Runtime 'act-hoe-before'
+    # Prove cursor aim: the player must not already face the target to the east.
+    Assert-That ($before.localPlayer.data.position.facing -cne 'right') 'the player already faces the hoe target; the act would not prove cursor aim.'
+    $inventory = (Invoke-SdvKit 'act-hoe-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $act = Invoke-Tool 'act-hoe' 'stardew_world_act' @{ action = 'useTool'; x = $east.x; y = $east.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($act.Json.state -ceq 'completed' -and $act.Json.button -ceq 'MouseLeft') "useTool did not complete: $($act.Json.errorCode)"
+    Start-Sleep -Seconds 2
+    Assert-That ((Get-Runtime 'act-hoe-after').localPlayer.data.stamina -lt $before.localPlayer.data.stamina) 'useTool with the hoe did not cost stamina.'
+    Assert-That ($null -ne (Get-Area 'act-hoe-result' $east.x $east.y 1 1)[0].soil) "useTool with the hoe did not till $($east.x),$($east.y)."
+
+    $sign = (Invoke-Tool 'sign-property' 'stardew_map_property_get' @{ asset = 'Maps/Farm'; property = 'Action'; scope = 'tile'; source = 'direct'; layer = 'Buildings'; x = 8; y = 7 }).Json
+    Assert-That ("$($sign.property.value)" -clike 'Message *') "Maps/Farm has no sign at 8,7 (Action is '$($sign.property.value)')."
+    Invoke-Warp 'act-sign' 'Farm' 8 8
+    Assert-That ((Get-Runtime 'act-sign-before').localPlayer.data.position.facing -cne 'up') 'the player already faces the sign; the check would not prove cursor aim.'
+    $inventory = (Invoke-SdvKit 'act-sign-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $far = Invoke-Tool 'act-far' 'stardew_world_act' @{ action = 'check'; x = 8; y = 5; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
+    Assert-That ($far.Json.errorCode -ceq 'worldActionTargetNotAdjacent' -and $far.Json.dispatchState -ceq 'notDispatched') "a far target returned $($far.Json.errorCode)/$($far.Json.dispatchState)."
+    $check = Invoke-Tool 'act-sign' 'stardew_world_act' @{ action = 'check'; x = 8; y = 7; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($check.Json.state -ceq 'completed' -and $check.Json.button -ceq 'MouseRight') "check did not complete: $($check.Json.errorCode)"
+    Wait-Settled
+    $dialogue = (Invoke-SdvKit 'act-sign-menu' @('project', 'review', 'menu', '--json')).Json
+    # The Farm sign shows its text in a LetterViewerMenu in Stardew 1.6.
+    Assert-That ($dialogue.menuOpen -eq $true -and @($dialogue.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.LetterViewerMenu' }).Count -eq 1) "check on the sign opened $(@($dialogue.menus | ForEach-Object type) -join ', ')."
+    Invoke-Press 'act-sign-close' 'Escape'
+    Wait-Settled
+
+    Write-Step 'Item fixture: add a chest to the backpack, then place it with check on a free tile next to the player.'
+    $spot = $null
+    foreach ($candidate in @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) } | Select-Object -Skip 2 -First 6)) {
+        # The scan is older than the tool steps: re-read the target and the tile west of it.
+        $fresh = @(Get-Area "place-candidate-$($candidate.x)-$($candidate.y)" ($candidate.x - 1) $candidate.y 2 1)
+        if (@($fresh | Where-Object { Test-Free $_ }).Count -eq 2) { $spot = $candidate; break }
+    }
+    Assert-That ($null -ne $spot) 'no free tile with a free tile west of it for the placement.'
+    $beforeUnknown = (Invoke-SdvKit 'item-add-unknown-before' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision
+    $unknown = (Invoke-Tool 'item-add-unknown' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)SDVKit_NoSuchItem'; stack = 1 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
+    Assert-That ($unknown.state -ceq 'blocked' -and $null -eq $unknown.item) "an unknown item was not refused: $($unknown.message)"
+    Assert-That ((Invoke-SdvKit 'item-add-unknown-after' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision -ceq $beforeUnknown) 'refusing an unknown item changed the backpack.'
+    $toolQuality = (Invoke-Tool 'item-add-tool-quality' 'stardew_fixture_item_add' @{ qualifiedItemId = '(T)Hoe'; stack = 1; quality = 2 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
+    Assert-That ($toolQuality.state -ceq 'blocked') 'a tool with gold quality was not refused.'
+    $add = (Invoke-Tool 'item-add' 'stardew_fixture_item_add' @{ qualifiedItemId = '(BC)130'; stack = 1 } -OptIn '--allow-fixture-actions').Json
+    Assert-That ($add.state -ceq 'ready' -and $add.item.qualifiedItemId -ceq '(BC)130' -and $add.item.stack -eq 1) "item add failed: $($add.message)"
+    $added = (Invoke-SdvKit 'item-add-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $addedSlot = @($added.slots | Where-Object slot -eq $add.item.slot)[0]
+    Assert-That ($addedSlot.item.qualifiedItemId -ceq '(BC)130' -and $added.inventoryRevision -ceq $add.item.inventoryRevision) "the backpack read does not show the chest in slot $($add.item.slot) with the reported revision."
+    Invoke-Warp 'place' 'Farm' ($spot.x - 1) $spot.y
+    Invoke-Press 'place-select' (Get-SlotKey $add.item.slot)
+    Wait-Settled
+    $inventory = (Invoke-SdvKit 'place-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That ($inventory.selectedSlot -eq $add.item.slot) "the chest in slot $($add.item.slot) is not selected."
+    $place = Invoke-Tool 'place' 'stardew_world_act' @{ action = 'check'; x = $spot.x; y = $spot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($place.Json.state -ceq 'completed') "check with the chest did not complete: $($place.Json.errorCode)"
+    Wait-Settled
+    Assert-That ((Get-Area 'place-result' $spot.x $spot.y 1 1)[0].objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($spot.x),$($spot.y)."
+    $placed = (Invoke-SdvKit 'place-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That (@($placed.slots | Where-Object slot -eq $add.item.slot)[0].state -ceq 'empty') "slot $($add.item.slot) still holds the chest."
+
     Write-Step 'Fishing: prepare and cast.'
-    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
+    # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.
+    # The bank at 69,30 casts to the right. Short casts facing down sometimes cost stamina without landing (#305).
+    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 69; y = 30 } -OptIn '--allow-fixture-actions'
     Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
     Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
     Wait-Settled
-    Invoke-Hold 'cast' @('C') 40
-    $deadline = [DateTime]::UtcNow.AddSeconds(8)
-    do {
-        Start-Sleep -Seconds 1
-        $fishing = (Get-Runtime 'cast').localPlayer.data.fishing
-    } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+    # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle
+    # (not charging, not casting, bobber not in the air, not fishing) and no stamina spent, so the first cast never ran.
+    $staminaBeforeCast = (Get-Runtime 'cast-before').localPlayer.data.stamina
+    foreach ($attempt in 1, 2) {
+        Invoke-Hold "cast-$attempt" @('C') 40
+        $deadline = [DateTime]::UtcNow.AddSeconds(8)
+        do {
+            Start-Sleep -Seconds 1
+            $fishing = (Get-Runtime "cast-$attempt").localPlayer.data.fishing
+        } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+        if ($fishing.fishing -eq $true) { break }
+        $idle = -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)
+        $unspent = (Get-Runtime "cast-$attempt-stamina").localPlayer.data.stamina -eq $staminaBeforeCast
+        Assert-That ($attempt -eq 1 -and $idle -and $unspent) 'the cast did not put the bobber in the water.'
+        Write-Step 'The rod is idle after the first cast; casting once more.'
+    }
     Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
     Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY). Hooking and the minigame are not covered."
 

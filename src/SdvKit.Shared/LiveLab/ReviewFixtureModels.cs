@@ -16,6 +16,7 @@ internal static class ReviewFixtureTransportContract
     public const string ObjectEnsureOperation = "objectEnsure";
     public const string ObjectClearOperation = "objectClear";
     public const string FishingPrepareOperation = "fishingPrepare";
+    public const string ItemAddOperation = "itemAdd";
     public const string SetTimeOperation = "setTime";
     public const string SetWeatherOperation = "setWeather";
     public const string SetSeasonOperation = "setSeason";
@@ -27,9 +28,25 @@ internal static class ReviewFixtureTransportContract
     public const double MaximumZoom = 2.0;
     public const int MinimumWindowSize = 320;
     public const int MaximumWindowSize = 7680;
+    public const int MaximumItemStack = 999;
+    public const int MaximumItemIdLength = 128;
 
     public static readonly IReadOnlyList<string> Weathers = ["Sun", "Rain", "Storm", "Snow", "Wind", "GreenRain"];
     public static readonly IReadOnlyList<string> Seasons = ["spring", "summer", "fall", "winter"];
+
+    /// <summary>Stardew's item qualities: normal, silver, gold and iridium.</summary>
+    public static readonly IReadOnlyList<int> ItemQualities = [0, 1, 2, 4];
+
+    /// <summary>A qualified item ID such as <c>(O)24</c>: a type prefix in parentheses, then a printable ID.</summary>
+    public static bool IsQualifiedItemId(string? value) =>
+        value is { Length: >= 4 and <= MaximumItemIdLength }
+        && value[0] == '(' && value.IndexOf(')') is > 1 and var close && close < value.Length - 1
+        && !value.Any(c => char.IsControl(c) || char.IsWhiteSpace(c));
+
+    public static bool IsValidItemAdd(string? qualifiedItemId, int? stack, int? quality) =>
+        IsQualifiedItemId(qualifiedItemId)
+        && stack is >= 1 and <= MaximumItemStack
+        && quality is int value && ItemQualities.Contains(value);
 
     /// <summary>Game time 6:00 to 25:50 in ten-minute steps; 26:00 is excluded because passing out saves the day.</summary>
     public static bool IsValidTime(int time) =>
@@ -51,6 +68,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectEnsureOperation
         or ObjectClearOperation
         or FishingPrepareOperation
+        or ItemAddOperation
         or SetTimeOperation
         or SetWeatherOperation
         or SetSeasonOperation;
@@ -83,6 +101,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectEnsureOperation
         or ObjectClearOperation
         or FishingPrepareOperation
+        or ItemAddOperation
         || IsLabOperation(value);
 }
 
@@ -108,6 +127,14 @@ internal sealed record ReviewFixtureLabReport(
     double Zoom,
     int WindowWidth,
     int WindowHeight);
+
+/// <summary>The backpack slot an item fixture filled, and the inventory revision right after it.</summary>
+internal sealed record ReviewFixtureItemReport(
+    string QualifiedItemId,
+    int Stack,
+    int Quality,
+    int Slot,
+    string InventoryRevision);
 
 internal sealed record ReviewFixtureRequestBinding(
     string LaunchId,
@@ -182,7 +209,9 @@ internal sealed record ReviewFixtureReport(
     bool MayHaveRun = false,
     bool CancellationRequested = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    ReviewFixtureLabReport? Lab = null);
+    ReviewFixtureLabReport? Lab = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ReviewFixtureItemReport? Item = null);
 
 internal sealed record ReviewFixtureResponseEnvelope(
     int SchemaVersion,

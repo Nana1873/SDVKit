@@ -27,12 +27,13 @@ The test world is an SDVKit-owned save copy. Each review changes a work copy; `r
 
 - `stardew_fixture_farm` and `stardew_fixture_enter` move through natural doors; `stardew_lab_warp` jumps to a permanent location.
 - `stardew_fixture_building_ensure`, `animal_ensure`, `object_ensure` and `object_clear` place SDVKit-owned buildings, animals and objects.
-- `stardew_lab_set_season`, `set_zoom` and `set_window` adjust the rest; `stardew_fixture_fishing_prepare` stands the player at water with a rod.
+- `stardew_lab_set_season`, `set_zoom` and `set_window` adjust the rest; `stardew_fixture_fishing_prepare` stands the player at water with a rod; `stardew_fixture_item_add` puts an item (food, a gift, ingredients, a modded item) into an empty backpack slot.
 - Time, weather, season, objects and fishing need the host or single player.
 
 ## Act on the world
 
 - `stardew_world_interact` with `--allow-world-actions` waters, harvests, or fills and empties a machine on the faced adjacent tile. Read `stardew_world_area_get` and `stardew_inventory_get` first; the action needs their fresh revisions.
+- `stardew_world_act` with `--allow-world-actions` presses the action button (`check`) or uses the selected tool (`useTool`) on one of the four tiles next to the player: open a chest, read a sign, talk, hoe or mine. It needs only a fresh `inventoryRevision`.
 - `stardew_container_transfer` with `--allow-container-transfer` moves items between an open chest and the backpack.
 - Select a hotbar slot with `stardew_input_press '{"button":"D3"}' --allow-input`.
 

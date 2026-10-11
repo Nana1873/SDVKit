@@ -523,6 +523,10 @@ internal static class ProjectReviewMcpServer
             ? (query, token) => ProjectReviewWorldActionService.Execute(reader, query,
                 cancellationToken: token, expectedContext: preflight.Context)
             : null;
+        ProjectReviewMcpWorldActRunner? runWorldAct = allowWorldActions
+            ? (query, token) => ProjectReviewWorldActService.Execute(reader, query,
+                cancellationToken: token, expectedContext: preflight.Context)
+            : null;
         Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer =
             allowContainerTransfer && topology == LiveLabState.SingleTopology && role is null && screenId is null
                 ? (query, token) => ProjectReviewContainerTransferService.Execute(query, reader,
@@ -540,6 +544,7 @@ internal static class ProjectReviewMcpServer
             runAudio: runAudio,
             runModAsset: runModAsset,
             runWorldAction: runWorldAction,
+            runWorldAct: runWorldAct,
             runContainerTransfer: runContainerTransfer,
             cpRefreshPermission: allowCpRefresh ? preflight.Context : null);
         return new PreparedServer(options, inputSession, preflight.Context!.State.LaunchId);
@@ -674,7 +679,8 @@ internal static class ProjectReviewMcpServer
         ProjectReviewMcpCpRefreshRunner? runCpRefresh = null,
         ProjectReviewMcpVerifiedContext? cpRefreshPermission = null,
         ProjectReviewMcpWorldActionRunner? runWorldAction = null,
-        Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer = null)
+        Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer = null,
+        ProjectReviewMcpWorldActRunner? runWorldAct = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
@@ -759,6 +765,11 @@ internal static class ProjectReviewMcpServer
             && reader.Role is null
             && reader.ScreenId is null)
             tools.Add(ProjectReviewMcpWorldActionTools.Create(runWorldAction));
+        if (runWorldAct is not null
+            && reader.Topology == LiveLabState.SingleTopology
+            && reader.Role is null
+            && reader.ScreenId is null)
+            tools.Add(ProjectReviewMcpWorldActTools.Create(runWorldAct));
 
         return new McpServerOptions
         {
@@ -778,7 +789,7 @@ internal static class ProjectReviewMcpServer
                     : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
                 + (runWorldAction is null
                     ? "World interactions are disabled. "
-                    : "World interactions were separately enabled for this exact owned disposable single-player review; they require fresh world and inventory revisions and are never retried. ")
+                    : "World interactions were separately enabled for this exact owned disposable single-player review; stardew_world_interact requires fresh world and inventory revisions, stardew_world_act a fresh inventory revision and a tile next to the player; neither is ever retried. ")
                 + (!containerTransferEnabled
                     ? "Container transfers are disabled. "
                     : "Container transfers were separately enabled for this exact owned unbound disposable single-player review; they require fresh container and item revisions and are never retried. ")

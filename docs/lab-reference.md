@@ -121,6 +121,7 @@ Each fixture operation is a native MCP tool. Call one from the command line with
 | `stardew_fixture_enter` with `greenhouse` | Any verified role; natural entry to the loaded Greenhouse |
 | `stardew_fixture_farm` | Any verified role; allowed natural Farm exit |
 | `stardew_fixture_fishing_prepare` | Single or host; prepare a collision-free bank and a selected rod in the current outdoor location |
+| `stardew_fixture_item_add` | Single or host; put one new item stack into the first empty backpack slot |
 
 Every call rechecks the review, process, load phase, fixture and Save identities, ownership and role. The operations are unavailable in plain single reviews, in smoke sessions, and in foreign or unverified saves. Require the GameSide result and direct evidence of the effect.
 
@@ -151,6 +152,28 @@ Require the tool's `Fishing prepared` result. Check the reported player location
 Read the additive [fishing snapshot](runtime-state.md#fishing-observations) during play. Its normal one-second sample can miss a short nibble; it does not respond to bites. Bite timing, fish selection, the minigame, landing and inventory pickup need their own evidence.
 
 This command neither saves nor resets; finish with the normal stop and reset. Farmhands cannot prepare but can read their own fishing state.
+
+### Item preparation
+
+`stardew_fixture_item_add { "qualifiedItemId": "(O)24", "stack": 5, "quality": 2 }` gives the main player items to test with: food to eat, a gift, crafting ingredients, an object to place, a modded item for a machine. It requires:
+
+- the verified main player or host;
+- no open menu or event, no tool in use and no item held by the cursor;
+- an item that exists in the loaded item data, including items added by mods;
+- a stack of 1 to the item's own maximum (at most 999);
+- a quality of 0 (normal, the default), 1 (silver), 2 (gold) or 4 (iridium); a quality above 0 only for objects, which are the items that keep one;
+- a qualified ID without spaces;
+- an empty backpack slot.
+
+It creates a new stack and puts it into the first empty backpack slot. It never merges with or replaces an existing stack; every refusal, including a full backpack, leaves the backpack unchanged. The result reports `item.slot` and the `item.inventoryRevision` right after the change.
+
+To act on the item, select its slot with its number key (toolbar slots 0 to 11 only; move an item from a lower row first). Selecting changes the revision, so read `stardew_inventory_get` again and pass that `inventoryRevision` to `stardew_world_act` or `stardew_world_interact`. The fixture is not idempotent: after a timeout that may have run, read the inventory before calling it again.
+
+```powershell
+& $sdvkit project review call stardew_fixture_item_add '{"qualifiedItemId":"(BC)130","stack":1}' --allow-fixture-actions
+```
+
+This is test setup, not evidence of game behaviour. The command neither saves nor resets; finish with the normal stop and reset.
 
 ### Building and animal preparation
 

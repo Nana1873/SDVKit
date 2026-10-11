@@ -185,6 +185,7 @@ Input success proves delivery only. For text, first check the field on a screens
 | `stardew_fixture_object_ensure { "building": "coop-a", "qualifiedItemId": "(O)388" }` | Places an object in a fixture building. |
 | `stardew_fixture_object_clear { "building": "coop-a" }` | Removes SDVKit's objects from a fixture building. |
 | `stardew_fixture_fishing_prepare { "skipTutorial": true, "x": 40, "y": 12 }` | [Fishing preparation](lab-reference.md#fishing-preparation) at the bank nearest the start point or player. |
+| `stardew_fixture_item_add { "qualifiedItemId": "(O)24", "stack": 5, "quality": 2 }` | [Item preparation](lab-reference.md#item-preparation): a new stack in the first empty backpack slot; returns the slot and inventory revision. |
 | `stardew_fixture_save {}` | Saves and returns `saveId` and `persistedAtUtc`. |
 | `stardew_lab_set_time { "time": 1930 }` | 600 to 2550, in ten-minute steps. Game time keeps running; from 2400 the player tires, so set an earlier time for longer checks. |
 | `stardew_lab_set_season { "season": "winter" }` | Sets the season. |
@@ -203,7 +204,7 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 ## Opt-in world interactions
 
-`--allow-world-actions` adds `stardew_world_interact` on a ready single-player test save. Each call names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`.
+`--allow-world-actions` adds `stardew_world_interact` and `stardew_world_act` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player).
 
 - `water`: dry crop soil, watering can selected.
 - `harvest`: a ready hand-harvest crop, empty hand. Scythe crops are rejected.
