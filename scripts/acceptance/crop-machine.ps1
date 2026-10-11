@@ -64,19 +64,34 @@ function Get-ProbeState {
         Machine = & $tile 'machine'
         Chest = & $tile 'chest'
         Player = if ($line -match ' tile=(\d+),(\d+) facing=(\d)') { [pscustomobject]@{ X = [int]$Matches[1]; Y = [int]$Matches[2]; Facing = [int]$Matches[3] } }
+        Grab = if ($line -match ' grab=(\d+),(\d+) ') { [pscustomobject]@{ X = [int]$Matches[1]; Y = [int]$Matches[2] } }
     }
 }
 
-function Open-Chest([string] $Label) {
+function Open-Chest([string] $Label, $ChestTile) {
     # Opens the faced chest with the action button X. Stardew aims X at the tile under the mouse whenever the cursor is
-    # within one tile of the player, so a cursor left over from an earlier action can make X miss the chest. Parking
-    # the virtual cursor in the screen corner makes X act on the faced tile. Right after a load or warp the game can
-    # drop a press, and a window focus change makes SDVKit report the input as uncertain (exit 3). Either way the menu
-    # read below decides: only when it confirms that no menu opened are the cursor and X sent once more. Setting the
-    # cursor is absolute and has no game effect.
+    # within one tile of the player, so a cursor left over from an earlier action can make X miss the chest; parking
+    # the virtual cursor in the screen corner makes X act on the faced tile.
+    # Right after a load or warp the game can drop a press, and a window focus change makes SDVKit report the press as
+    # uncertain (inputForegroundChanged). X is sent a second time only when a fresh read shows no menu, the player
+    # still faces the chest, and the backpack is unchanged; any other input error fails the run.
+    $state = Get-ProbeState "$Label-before"
+    Assert-That ($null -ne $state.Grab -and $state.Grab.X -eq $ChestTile.X -and $state.Grab.Y -eq $ChestTile.Y) "the player does not face the chest at $($ChestTile.X),$($ChestTile.Y)."
+    $inventory = Read-Inventory "$Label-before"
+
     foreach ($attempt in 1, 2) {
-        Invoke-Tool "$Label-park-cursor-$attempt" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' -AllowExit @(0, 3) | Out-Null
-        Invoke-Tool "$Label-press-$attempt" 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' -AllowExit @(0, 3) | Out-Null
+        # Setting the cursor is absolute and has no game effect, so it may be sent again after an uncertain result.
+        $park = Invoke-Tool "$Label-park-cursor-$attempt" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' -AllowExit @(0, 3)
+        if ($park.Exit -ne 0) {
+            Assert-That ((Get-ToolErrorCode $park) -ceq 'inputForegroundChanged') "parking the cursor failed: $(Get-ToolErrorCode $park)."
+            $park = Invoke-Tool "$Label-park-cursor-$attempt-again" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input'
+        }
+
+        $press = Invoke-Tool "$Label-press-$attempt" 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' -AllowExit @(0, 3)
+        if ($press.Exit -ne 0) {
+            Assert-That ((Get-ToolErrorCode $press) -ceq 'inputForegroundChanged') "the X press failed: $(Get-ToolErrorCode $press)."
+        }
+
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         do {
             Start-Sleep -Milliseconds 500
@@ -89,7 +104,12 @@ function Open-Chest([string] $Label) {
         }
 
         Write-Step "The chest did not open on attempt $attempt."
-        Start-Sleep -Seconds 2
+        if ($attempt -eq 1) {
+            $after = Get-ProbeState "$Label-after-$attempt"
+            Assert-That ($null -ne $after.Grab -and $after.Grab.X -eq $ChestTile.X -and $after.Grab.Y -eq $ChestTile.Y) 'the player no longer faces the chest; not pressing again.'
+            Assert-That ((Read-Inventory "$Label-after-$attempt").inventoryRevision -ceq $inventory.inventoryRevision) 'the backpack changed after the first press; not pressing again.'
+            Start-Sleep -Seconds 2
+        }
     }
 
     Save-ViewportScreenshot "$Label-not-open"
@@ -277,8 +297,9 @@ try {
 
     Write-Step 'Move the Cola into a chest with a native click, save, restart and read the chest again.'
     Invoke-ProbeCommand 'recipe_probe_prepare_chest'
-    Get-ProbeState 'chest' | Out-Null
-    $menu = Open-Chest 'open-chest'
+    $chest = (Get-ProbeState 'chest').Chest
+    Assert-That ($null -ne $chest) 'RecipeProbe did not report a chest tile.'
+    $menu = Open-Chest 'open-chest' $chest
     $container = (Invoke-SdvKit 'chest-before' @('project', 'review', 'container', '--json')).Json.data
     $source = @($container.player.slots | Where-Object { $_.item.qualifiedItemId -ceq $cola -and $_.item.stack -eq 2 })
     Assert-That ($source.Count -eq 1) 'expected exactly one stack of two Cola in the backpack.'
@@ -297,8 +318,9 @@ try {
 
     Start-CropReview 'restart' $fixedPack
     Invoke-ProbeCommand 'recipe_probe_bind_chest'
-    Get-ProbeState 'rebound' | Out-Null
-    Open-Chest 'reopen-chest' | Out-Null
+    $chest = (Get-ProbeState 'rebound').Chest
+    Assert-That ($null -ne $chest) 'RecipeProbe did not report the chest tile after the restart.'
+    Open-Chest 'reopen-chest' $chest | Out-Null
     $container = (Invoke-SdvKit 'chest-restart' @('project', 'review', 'container', '--json')).Json.data
     $inChest = [int](@($container.container.slots | Where-Object { $_.item.qualifiedItemId -ceq $cola } | ForEach-Object { $_.item.stack }) | Measure-Object -Sum).Sum
     Assert-That ($inChest -eq 2) "after the restart the chest holds $inChest Cola, expected 2."

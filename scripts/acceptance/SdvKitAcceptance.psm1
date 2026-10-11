@@ -22,7 +22,7 @@ function Initialize-Acceptance {
     $game = (Resolve-Path -LiteralPath $GamePath).Path.TrimEnd('\')
     $stardewData = [IO.Path]::GetFullPath((Join-Path $env:APPDATA 'StardewValley')).TrimEnd('\')
     # Validate before creating anything: the lab must not be, or be inside, the game folder or the normal Stardew data.
-    $lab = [IO.Path]::GetFullPath($LabRoot).TrimEnd('\')
+    $lab = [IO.Path]::GetFullPath($LabRoot, $PWD.ProviderPath).TrimEnd('\')
     foreach ($protected in $game, $stardewData) {
         if ($lab.Equals($protected, [StringComparison]::OrdinalIgnoreCase) -or
             $lab.StartsWith($protected + '\', [StringComparison]::OrdinalIgnoreCase)) {
@@ -91,6 +91,26 @@ function Add-ProviderIdentity([string] $Name, [string] $Folder) {
     @($hashes) | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:Context.Evidence "identity-$Name.json") -Encoding utf8
 }
 
+function Get-ReviewRoot([string] $Topology) {
+    # The review root that status reports, or $null when there is none. Throws when status cannot be read.
+    $text = (& $script:Context.SdvKit project review status --topology $Topology --json) -join [Environment]::NewLine
+    try { $status = $text | ConvertFrom-Json -Depth 100 }
+    catch { throw "Acceptance failed: the $Topology status could not be read." }
+    if ($null -eq $status -or -not $status.PSObject.Properties['root']) {
+        throw "Acceptance failed: the $Topology status could not be read."
+    }
+
+    return [string]$status.root
+}
+
+function Get-ToolErrorCode($Result) {
+    # The bracketed SDVKit error code in a failed `project review call` result, such as inputForegroundChanged.
+    if ($null -eq $Result.Json -or -not $Result.Json.PSObject.Properties['content']) { return $null }
+    $text = @($Result.Json.content | ForEach-Object { $_.text }) -join ' '
+    if ($text -match '\[(\w+)\]') { return $Matches[1] }
+    return $null
+}
+
 function Test-OwnRoot($Root) {
     # A review belongs to this run when its root lies below this run's evidence folder.
     if ([string]::IsNullOrEmpty([string]$Root)) { return $false }
@@ -136,16 +156,18 @@ function Invoke-SdvKit {
         $json = $stdout | ConvertFrom-Json -Depth 100
     }
 
-    # A review counts as this run's only when its start succeeded and status names this run's target.
-    if ($exit -eq 0 -and $Arguments.Count -ge 3 -and $Arguments[0] -eq 'project' -and $Arguments[1] -eq 'review' -and $Arguments[2] -eq 'start') {
+    # After any start, also a failed one that may have left a process or staging behind, status decides: a review
+    # whose root lies in this run's evidence folder is this run's to stop and reset; any other review is left alone.
+    if ($Arguments.Count -ge 3 -and $Arguments[0] -eq 'project' -and $Arguments[1] -eq 'review' -and $Arguments[2] -eq 'start') {
         $topology = if ($Arguments -contains 'network-2') { 'network-2' } else { 'single' }
-        $status = & $script:Context.SdvKit project review status --topology $topology --json | ConvertFrom-Json -Depth 100
-        if (-not (Test-OwnRoot $status.root)) {
-            throw "Acceptance failed: after start, the $topology review belongs to '$($status.root)', not to this run."
+        $root = Get-ReviewRoot $topology
+        if (Test-OwnRoot $root) {
+            [void]$script:Context.Running.Add($topology)
+            [void]$script:Context.ResetPending.Add($topology)
         }
-
-        [void]$script:Context.Running.Add($topology)
-        [void]$script:Context.ResetPending.Add($topology)
+        elseif (-not [string]::IsNullOrEmpty($root)) {
+            throw "Acceptance failed: after start, the $topology review belongs to '$root', not to this run."
+        }
     }
 
     if ($exit -notin $AllowExit) {
@@ -217,14 +239,14 @@ function Stop-Review {
     #>
     param([string] $Topology = 'single', [switch] $Reset, [string] $Label = 'stop')
 
-    # Never act on a review this run did not start.
-    $status = (Invoke-SdvKit "$Label-status-$Topology" @('project', 'review', 'status', '--topology', $Topology, '--json') -AllowExit @(0, 3)).Json
-    if ($null -ne $status -and -not [string]::IsNullOrEmpty([string]$status.root) -and -not (Test-OwnRoot $status.root)) {
-        throw "Acceptance failed: the $Topology review now belongs to '$($status.root)'; not stopping or resetting it."
+    # Never act on a review this run did not start; an unreadable status counts as not ours.
+    $root = Get-ReviewRoot $Topology
+    if (-not [string]::IsNullOrEmpty($root) -and -not (Test-OwnRoot $root)) {
+        throw "Acceptance failed: the $Topology review now belongs to '$root'; not stopping or resetting it."
     }
 
     $stop = Invoke-SdvKit "$Label-$Topology" @('project', 'review', 'stop', '--topology', $Topology, '--json') -AllowExit @(0, 3)
-    Assert-That ($stop.Json.state -ceq 'stopped') "stop of the $Topology review did not complete; see the evidence folder."
+    Assert-That ($null -ne $stop.Json -and $stop.Json.state -ceq 'stopped') "stop of the $Topology review did not complete; see the evidence folder."
     [void]$script:Context.Running.Remove($Topology)
     if ($Reset) {
         $resetResult = Invoke-SdvKit "$Label-reset-$Topology" @('project', 'review', 'reset', '--topology', $Topology, '--json') -AllowExit @(0, 3)
@@ -353,4 +375,4 @@ function Invoke-ComponentClick {
 }
 
 Export-ModuleMember -Function Initialize-Acceptance, Get-AcceptanceContext, Write-Step, Assert-That, Invoke-SdvKit, Invoke-Tool,
-    Wait-ReviewReady, Stop-Review, Complete-Acceptance, Add-ProviderIdentity, Get-ProtectedFingerprint, Save-ViewportScreenshot, Get-ComponentCenter, Invoke-ComponentClick
+    Wait-ReviewReady, Stop-Review, Complete-Acceptance, Add-ProviderIdentity, Get-ToolErrorCode, Get-ProtectedFingerprint, Save-ViewportScreenshot, Get-ComponentCenter, Invoke-ComponentClick
