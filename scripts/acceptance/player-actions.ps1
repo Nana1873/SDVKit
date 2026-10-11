@@ -15,6 +15,9 @@ Proves each action through a state read, not through the input acknowledgement:
   tile that is not next to the player is refused;
 - stardew_fixture_item_add puts a chest into the backpack (slot and inventory revision match a fresh read), and check
   with the chest selected places it on the target tile;
+- stardew_fixture_npc_place brings Lewis next to the player, the runtime NPC list shows him there, check with a tool
+  selected talks to him (dialogue opens, friendship rises), and check with an added parsnip selected gives it as a gift
+  (friendship rises again);
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -72,6 +75,27 @@ function Get-SlotKey([int] $Slot) {
     # Toolbar keys: slots 0-8 are D1-D9, slot 9 is D0, 10 is OemMinus, 11 is OemPlus.
     Assert-That ($Slot -ge 0 -and $Slot -lt 12) "slot $Slot is not on the toolbar."
     switch ($Slot) { { $_ -lt 9 } { "D$($Slot + 1)" } 9 { 'D0' } 10 { 'OemMinus' } 11 { 'OemPlus' } }
+}
+
+function Get-Friendship([string] $Label, [string] $Npc) {
+    $read = (Invoke-SdvKit "progression-$Label" @('project', 'review', 'progression', '--npc', $Npc, '--mail', 'SDVKit.None', '--quest', 'SDVKit.None', '--json')).Json.data.npc
+    if ($read.state -ceq 'available') { return [int] $read.friendshipPoints }
+    Assert-That ($read.state -ceq 'noFriendship') "the friendship read for $Npc returned $($read.state)."
+    return 0
+}
+
+function Close-Dialogue([string] $Label) {
+    # Escape does not close a DialogueBox. Each click on it finishes the text or turns the page; decide every click
+    # from a fresh read.
+    foreach ($attempt in 1..8) {
+        $menu = (Invoke-SdvKit "menu-$Label-$attempt" @('project', 'review', 'menu', '--json')).Json
+        if ($menu.menuOpen -eq $false) { return }
+        $box = @($menu.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.DialogueBox' })
+        Assert-That ($box.Count -eq 1) "expected a dialogue, found $(@($menu.menus | ForEach-Object type) -join ', ')."
+        Invoke-ComponentClick "$Label-$attempt" -Menu $menu -Component $box[0] | Out-Null
+        Wait-Settled
+    }
+    Assert-That ((Invoke-SdvKit "menu-$Label-closed" @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'the dialogue did not close.'
 }
 
 function Find-ToolSlot([string] $Label, [string] $ItemId) {
@@ -295,6 +319,48 @@ try {
     Assert-That ((Get-Area 'place-result' $spot.x $spot.y 1 1)[0].objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($spot.x),$($spot.y)."
     $placed = (Invoke-SdvKit 'place-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
     Assert-That (@($placed.slots | Where-Object slot -eq $add.item.slot)[0].state -ceq 'empty') "slot $($add.item.slot) still holds the chest."
+
+    Write-Step 'NPCs: place Lewis next to the player, find him in the runtime NPC list, talk with check, then give a gift.'
+    $npcSpot = $null
+    foreach ($candidate in @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) -and -not ($_.x -eq $spot.x -and $_.y -eq $spot.y) -and -not ($_.x - 1 -eq $spot.x -and $_.y -eq $spot.y) } | Select-Object -Skip 3 -First 6)) {
+        $fresh = @(Get-Area "npc-candidate-$($candidate.x)-$($candidate.y)" ($candidate.x - 1) $candidate.y 2 1)
+        if (@($fresh | Where-Object { Test-Free $_ }).Count -eq 2) { $npcSpot = $candidate; break }
+    }
+    Assert-That ($null -ne $npcSpot) 'no free tile with a free tile west of it for the NPC.'
+    Invoke-Warp 'npc' 'Farm' ($npcSpot.x - 1) $npcSpot.y
+    $placed = (Invoke-Tool 'npc-place' 'stardew_fixture_npc_place' @{ name = 'Lewis'; x = $npcSpot.x; y = $npcSpot.y } -OptIn '--allow-fixture-actions').Json
+    Assert-That ($placed.state -ceq 'ready' -and $placed.navigation.locationId -ceq 'Farm' -and $placed.navigation.tileX -eq $npcSpot.x -and $placed.navigation.tileY -eq $npcSpot.y) "placing Lewis failed: $($placed.message)"
+    Wait-Settled
+    $lewis = @((Get-Runtime 'npc-list').localPlayer.data.npcs | Where-Object name -ceq 'Lewis')
+    Assert-That ($lewis.Count -eq 1 -and $lewis[0].tileX -eq $npcSpot.x -and $lewis[0].tileY -eq $npcSpot.y) "the runtime NPC list does not show Lewis at $($npcSpot.x),$($npcSpot.y)."
+
+    $friendship = Get-Friendship 'npc-before' 'Lewis'
+    Invoke-Press 'npc-talk-select' (Get-SlotKey (Find-ToolSlot 'npc-talk' '(T)Hoe'))
+    Wait-Settled
+    $inventory = (Invoke-SdvKit 'npc-talk-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $talk = Invoke-Tool 'npc-talk' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($talk.Json.state -ceq 'completed') "check on Lewis did not complete: $($talk.Json.errorCode)"
+    Wait-Settled
+    $talkMenu = (Invoke-SdvKit 'npc-talk-menu' @('project', 'review', 'menu', '--json')).Json
+    Assert-That (@($talkMenu.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.DialogueBox' }).Count -eq 1) "talking to Lewis opened $(@($talkMenu.menus | ForEach-Object type) -join ', ')."
+    Close-Dialogue 'npc-talk-close'
+    $talked = Get-Friendship 'npc-talked' 'Lewis'
+    Assert-That ($talked -gt $friendship) "talking to Lewis left friendship at $talked (before $friendship)."
+
+    $gift = (Invoke-Tool 'npc-gift-add' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)24'; stack = 1 } -OptIn '--allow-fixture-actions').Json
+    Assert-That ($gift.state -ceq 'ready') "adding the parsnip failed: $($gift.message)"
+    Invoke-Press 'npc-gift-select' (Get-SlotKey $gift.item.slot)
+    Wait-Settled
+    $inventory = (Invoke-SdvKit 'npc-gift-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That ($inventory.selectedSlot -eq $gift.item.slot) 'the parsnip is not selected.'
+    $give = Invoke-Tool 'npc-gift' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($give.Json.state -ceq 'completed') "check with the parsnip did not complete: $($give.Json.errorCode)"
+    Wait-Settled
+    Close-Dialogue 'npc-gift-close'
+    $gifted = Get-Friendship 'npc-gifted' 'Lewis'
+    $giftSlot = @((Invoke-SdvKit 'npc-gift-after' @('project', 'review', 'inventory', '--json')).Json.data.slots | Where-Object slot -eq $gift.item.slot)[0]
+    Assert-That ($gifted -gt $talked -and $giftSlot.state -ceq 'empty') "the gift did not register: friendship $gifted (after talking $talked), slot $($giftSlot.state)."
+    Write-Step "Lewis: friendship $friendship before, $talked after talking, $gifted after the gift."
 
     Write-Step 'Fishing: prepare and cast.'
     # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.

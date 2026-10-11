@@ -61,6 +61,55 @@ public sealed class LocalPlayerSnapshotTests
         Assert.True(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Position = Position }));
     }
 
+    private static readonly LocationNpcValues[] Npcs =
+    [
+        new("Lewis", "Lewis", 64, 16, "left"),
+        new("Example.Mod_Npc", "Émile", 3, 4, "down"),
+    ];
+
+    [Fact]
+    public void NpcObservationSurvivesStatusReadAndStaysOptional()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Npcs = Npcs } };
+        Assert.Equal(Npcs, Read(temporary, Runtime(player)).Runtime?.LocalPlayer?.Data?.Npcs);
+        var empty = Player() with { Data = Player().Data! with { Npcs = [] } };
+        Assert.Empty(Read(temporary, Runtime(empty)).Runtime?.LocalPlayer?.Data?.Npcs!);
+        // An older GameSide does not publish NPCs; the snapshot stays valid without them.
+        Assert.Null(Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Data?.Npcs);
+        Assert.Equal("available", Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Availability);
+    }
+
+    [Fact]
+    public void InvalidNpcValuesFailClosed()
+    {
+        LocationNpcValues good = Npcs[0];
+        foreach (var npc in new[] { good with { Name = "" }, good with { Name = " " }, good with { DisplayName = "a\nb" },
+            good with { Name = new string('a', 129) }, good with { Name = "Lewis " }, good with { Facing = "north" }, good with { TileX = 100001 },
+            good with { TileY = -100001 } })
+        {
+            Assert.False(LocalPlayerSnapshotContract.NpcValid(npc));
+            Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Npcs = [npc] }));
+        }
+
+        Assert.True(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Npcs = Npcs }));
+        Assert.True(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Npcs = Enumerable.Repeat(good, 64).ToArray() }));
+        Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Npcs = Enumerable.Repeat(good, 65).ToArray() }));
+    }
+
+    [Fact]
+    public void PartialNpcObjectIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Npcs = Npcs } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
+        payload["runtime"]!["localPlayer"]!["data"]!["npcs"]![0]!.AsObject().Remove("facing");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("invalid", GameSideStatusReader.Read(path, "launch", Process, Now).State);
+    }
+
     [Fact]
     public void PartialPositionObjectIsRejected()
     {

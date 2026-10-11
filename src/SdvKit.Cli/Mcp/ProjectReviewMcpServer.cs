@@ -139,6 +139,23 @@ internal static class ProjectReviewMcpServer
                     "toolTileY": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Where a tool used now lands, without the mouse." }
                   }
                 },
+                "npcs": {
+                  "type": ["array", "null"],
+                  "maxItems": 64,
+                  "description": "Villagers in the player's current location, sorted by internal name; at most 64.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "displayName", "tileX", "tileY", "facing"],
+                    "properties": {
+                      "name": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Internal name, used by stardew_fixture_npc_place." },
+                      "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+                      "tileX": { "type": "integer", "minimum": -100000, "maximum": 100000 },
+                      "tileY": { "type": "integer", "minimum": -100000, "maximum": 100000 },
+                      "facing": { "enum": ["up", "right", "down", "left"] }
+                    }
+                  }
+                },
                 "fishing": {
                   "type": ["object", "null"],
                   "additionalProperties": false,
