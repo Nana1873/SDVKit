@@ -111,6 +111,35 @@ if (-not [System.IO.Path]::IsPathRooted($relativeToWorkspace) `
 
 Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ExtractRoot
 $packageRoot = Join-Path $ExtractRoot $archive.BaseName
+# Compare source inventories independently of the packaging script's copy filters.
+function Get-PortableSourcePaths([string] $Root, [string] $Project) {
+    $sourceRoot = Join-Path $Root "src\$Project"
+    if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+        throw "The source directory is missing: src/$Project"
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -File -Recurse -Force) {
+        $relative = [System.IO.Path]::GetRelativePath($sourceRoot, $file.FullName).Replace('\', '/')
+        if ($relative -match '(^|/)(bin|obj)/' -or $file.Extension -notin @('.cs', '.csproj')) {
+            continue
+        }
+        "src/$Project/$relative"
+    }
+}
+
+foreach ($project in @('SdvKit.Shared', 'SdvKit.GameSide')) {
+    $expectedSources = @(Get-PortableSourcePaths $repositoryRoot $project)
+    $packagedSources = @(Get-PortableSourcePaths $packageRoot $project)
+    $differences = @(Compare-Object -ReferenceObject $expectedSources -DifferenceObject $packagedSources -CaseSensitive)
+    if ($differences.Count -gt 0) {
+        $details = $differences | Sort-Object InputObject | ForEach-Object {
+            $kind = if ($_.SideIndicator -eq '<=') { 'Missing' } else { 'Unexpected' }
+            "${kind}: $($_.InputObject)"
+        }
+        throw "The portable source inventory does not match the checkout:`n$($details -join "`n")"
+    }
+}
+
 $gameSideProjectPath = Join-Path $packageRoot 'src\SdvKit.GameSide\SdvKit.GameSide.csproj'
 [xml]$gameSideProject = Get-Content -LiteralPath $gameSideProjectPath -Raw
 foreach ($reference in $gameSideProject.SelectNodes('/Project/ItemGroup/ProjectReference[@Include]')) {
