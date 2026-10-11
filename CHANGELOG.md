@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
+
 ## [2.0.0] - 2026-10-11
 
 ### Added

@@ -6,6 +6,7 @@ Each script runs one SDVKit workflow end to end against the real game: build, pa
 | --- | --- | --- | --- |
 | [`shop.ps1`](shop.ps1) | A broken shop config is diagnosed; one click buys an offer (money, stock, held item), a second click moves it into the backpack. | none | [Test a purchase in your shop](../../docs/test-a-shop-purchase.md) |
 | [`crop-machine.ps1`](crop-machine.ps1) | A wrong Content Patcher Keg rule yields Wine; the correct rule turns a natively watered and harvested Strawberry into two Joja Cola, refuses stale or unfaced actions, and the Cola survive a chest transfer, a save and a restart. | `-ContentPatcher` (2.9.1 folder) | [Test a machine rule](../../docs/test-a-machine-rule.md) |
+| [`player-actions.ps1`](player-actions.ps1) | Walking in four directions and walking versus running; `lab_warp` and a location change through a map warp; hotbar number keys and the wheel refusal; game menu open, inventory move by two clicks, tab click and Escape; hoe, pickaxe and scythe on the faced tile; fishing preparation and cast. | none | [Player actions](../../docs/player-actions.md) |
 | [`gmcm-number.ps1`](gmcm-number.ps1) | GMCM slider moves stay unsaved; Save writes the new value, `config-reconcile` accepts it, and a restart with the saved config shows its effect. | `-Gmcm` (1.16.0 folder) | [Change and verify a GMCM option](../../docs/test-a-gmcm-option.md) |
 
 ## Run a script

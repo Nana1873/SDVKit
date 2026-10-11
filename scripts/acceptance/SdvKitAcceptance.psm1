@@ -46,6 +46,7 @@ function Initialize-Acceptance {
         ProtectedBefore = $null
         SkipProtectedCheck = [bool]$SkipProtectedCheck
         # Topologies this run started and may still need to stop, and those whose test save still needs a reset.
+        StartedAtUtc = [DateTime]::UtcNow
         Running = [Collections.Generic.HashSet[string]]::new()
         ResetPending = [Collections.Generic.HashSet[string]]::new()
     }
@@ -263,6 +264,25 @@ function Complete-Acceptance {
     param([switch] $Failed)
 
     $problems = [Collections.Generic.List[string]]::new()
+    if ($Failed) {
+        # Keep the game's own log of a failed run before cleanup or a later run replaces it. Only logs written
+        # during this run are copied, and a copy failure never prevents the cleanup below.
+        foreach ($entry in @{ single = 'single'; host = 'network-2\host'; farmhand = 'network-2\farmhand' }.GetEnumerator()) {
+            $log = Join-Path $script:Context.Lab ".sdvkit\lab\profiles\$($entry.Value)\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt"
+            try {
+                if ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $script:Context.StartedAtUtc) {
+                    $source = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
+                    try {
+                        $target = [IO.File]::Create((Join-Path $script:Context.Evidence "smapi-$($entry.Key).txt"))
+                        try { $source.CopyTo($target) } finally { $target.Dispose() }
+                    }
+                    finally { $source.Dispose() }
+                }
+            }
+            catch { Write-Step "Could not keep the $($entry.Key) SMAPI log: $($_.Exception.Message)" }
+        }
+    }
+
     # Stop and reset what this run started, including a test save left between a stop and a planned restart.
     foreach ($topology in @(@($script:Context.Running) + @($script:Context.ResetPending) | Select-Object -Unique)) {
         try { Stop-Review -Topology $topology -Reset -Label 'cleanup' }

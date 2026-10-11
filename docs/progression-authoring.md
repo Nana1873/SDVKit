@@ -6,10 +6,9 @@ mail and quest effects, and prove persistence after two actual process restarts.
 This recipe uses the installed Leah NPC and original rain-barrel mail/quest text;
 it introduces no NPC enumeration or general progression editor.
 
-**Acceptance status:** offline builds and contract tests do not establish live
-behavior. Retain exact-package live evidence for [#235](https://github.com/Nana1873/SDVKit/issues/235)
-before claiming this recipe passed. Record the actual game/SMAPI versions, package
-and DLL hashes, owner, fixture/save IDs and each process identity in that evidence.
+**Acceptance status:** the recipe passed locally for its candidate package; the
+evidence is in [#235](https://github.com/Nana1873/SDVKit/issues/235). That run seeded
+friendship and opened the mailbox through the sample helper, not through player input.
 
 ## Read-only contract
 
