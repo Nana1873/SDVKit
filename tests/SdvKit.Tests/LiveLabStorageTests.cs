@@ -181,7 +181,7 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
         int writeTick = 1;
         int scanIndex = 0;
 
-        Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(paths.StatusPath, () =>
+        Task writes = Task.Run(() => WindowsStatusFileFailureEvidence.CaptureTestFailures(paths.StatusPath, () =>
         {
             start.SignalAndWait();
             for (; writeTick <= 750; writeTick++)

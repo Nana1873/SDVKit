@@ -1217,11 +1217,11 @@ public sealed class ReviewFixtureCommandTests
 
     private static string ReadSource()
         => string.Join("\n",
-            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureArguments.cs"),
-            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureTransportArguments.cs"),
-            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureKindResolver.cs"),
-            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureOperation.cs"),
-            ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixturePolicy.cs"),
+            ReadRepositorySource("src", "SdvKit.Shared", "GameSide", "ReviewFixtureArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.Shared", "GameSide", "ReviewFixtureTransportArguments.cs"),
+            ReadRepositorySource("src", "SdvKit.Shared", "GameSide", "ReviewFixtureKindResolver.cs"),
+            ReadRepositorySource("src", "SdvKit.Shared", "GameSide", "ReviewFixtureOperation.cs"),
+            ReadRepositorySource("src", "SdvKit.Shared", "GameSide", "ReviewFixturePolicy.cs"),
             ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureCommand.cs"),
             ReadRepositorySource("src", "SdvKit.GameSide", "ReviewFixtureTransportCommand.cs"),
             ReadRepositorySource("src", "SdvKit.GameSide", "StardewReviewFixtureRuntime.cs"),

@@ -5,7 +5,7 @@ Compiles the game-bound half of SdvKit.GameSide against a local Stardew Valley +
 
 .DESCRIPTION
 Hosted CI cannot reference the proprietary game assemblies, so it never compiles the
-SDVKIT_GAME_AVAILABLE code, including the src/SdvKit.Cli files that SdvKit.GameSide.csproj links.
+game-bound code, including the SdvKit.Shared project that SdvKit.GameSide references.
 Run this script for every change to those files and before every release. All build output goes
 below .sdvkit/gameside-build; nothing is copied into the game folder, a Mods directory, or the
 shared src/*/bin outputs that a running lab may use.

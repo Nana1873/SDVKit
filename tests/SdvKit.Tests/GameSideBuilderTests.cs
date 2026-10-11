@@ -5,7 +5,7 @@ namespace SdvKit.Tests;
 public sealed class GameSideBuilderTests
 {
     [Fact]
-    public void BuilderKeepsBuildDataLocalAndInstallsOnlyDllAndManifest()
+    public void BuilderKeepsBuildDataLocalAndInstallsOnlyAssembliesAndManifest()
     {
         using TemporaryDirectory repository = new();
         using TemporaryDirectory project = new();
@@ -24,7 +24,7 @@ public sealed class GameSideBuilderTests
         Assert.Equal(Path.Combine(paths.BuildPath, "game-side-build.log"), result.LogPath);
         Assert.True(File.Exists(result.LogPath));
         Assert.Equal(
-            ["SdvKit.GameSide.dll", "manifest.json"],
+            ["SdvKit.GameSide.dll", "SdvKit.Shared.dll", "manifest.json"],
             Directory.GetFiles(paths.GameSideModPath)
                 .Select(path => Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
@@ -36,18 +36,32 @@ public sealed class GameSideBuilderTests
         Assert.Contains(
             $"--property:SdvGamePath={game.Path}",
             command.Arguments);
-        Assert.Contains(
-            command.Arguments,
-            argument => argument.StartsWith(
-                $"--property:BaseIntermediateOutputPath={paths.BuildPath}",
-                StringComparison.Ordinal));
-        Assert.Contains(
-            command.Arguments,
-            argument => argument.StartsWith(
-                $"--property:MSBuildProjectExtensionsPath={paths.BuildPath}",
-                StringComparison.Ordinal));
+        string artifactsPath = command.Arguments[command.Arguments.IndexOf("--artifacts-path") + 1];
+        Assert.True(IsBelow(artifactsPath, paths.BuildPath));
+        Assert.DoesNotContain(command.Arguments, argument => argument.StartsWith(
+            "--property:BaseIntermediateOutputPath=", StringComparison.Ordinal));
         string outputPath = command.Arguments[command.Arguments.IndexOf("--output") + 1];
         Assert.True(IsBelow(outputPath, paths.BuildPath));
+    }
+
+    [Fact]
+    public void MissingSharedDependencyDoesNotReplaceAnInstalledBuild()
+    {
+        using TemporaryDirectory repository = new();
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory game = new();
+        repository.WriteFile("src/SdvKit.GameSide/SdvKit.GameSide.csproj");
+        repository.WriteFile("src/SdvKit.GameSide/manifest.json", "{}");
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        Directory.CreateDirectory(paths.GameSideModPath);
+        File.WriteAllText(Path.Combine(paths.GameSideModPath, "sentinel"), "existing build");
+        var builder = new GameSideBuilder(new SuccessfulBuildRunner { IncludeShared = false }, () => repository.Path);
+
+        GameSideBuildResult result = builder.BuildAndInstall(game.Path, paths);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("GameSide build did not produce SdvKit.Shared.dll.", result.Error);
+        Assert.Equal("existing build", File.ReadAllText(Path.Combine(paths.GameSideModPath, "sentinel")));
     }
 
     [Fact]
@@ -120,6 +134,8 @@ public sealed class GameSideBuilderTests
     {
         public List<DotNetBuildCommand> Commands { get; } = [];
 
+        public bool IncludeShared { get; init; } = true;
+
         public DotNetBuildOutput Run(DotNetBuildCommand command)
         {
             Commands.Add(command);
@@ -127,6 +143,11 @@ public sealed class GameSideBuilderTests
             string outputPath = command.Arguments[outputOption + 1];
             Directory.CreateDirectory(outputPath);
             File.WriteAllText(Path.Combine(outputPath, "SdvKit.GameSide.dll"), "built");
+            if (IncludeShared)
+            {
+                File.WriteAllText(Path.Combine(outputPath, "SdvKit.Shared.dll"), "shared");
+            }
+            File.WriteAllText(Path.Combine(outputPath, "unrelated.dll"), "must not install");
             File.WriteAllText(Path.Combine(outputPath, "extra.pdb"), "build-only");
             return new DotNetBuildOutput(0, "build succeeded", string.Empty);
         }

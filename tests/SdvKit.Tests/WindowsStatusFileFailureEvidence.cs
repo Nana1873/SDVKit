@@ -3,13 +3,15 @@ using SdvKit.Tests;
 
 namespace SdvKit.GameSide;
 
-internal static partial class WindowsStatusFile
+internal static class WindowsStatusFileFailureEvidence
 {
     [ThreadStatic]
     private static string? capturedStatusPath;
 
     public static void CaptureTestFailures(string statusPath, Action writes)
     {
+        Action<int, string, string>? previousObserver = WindowsStatusFile.FailureObserver;
+        WindowsStatusFile.FailureObserver = RecordFailure;
         string? previousPath = capturedStatusPath;
         capturedStatusPath = statusPath;
         try
@@ -19,10 +21,11 @@ internal static partial class WindowsStatusFile
         finally
         {
             capturedStatusPath = previousPath;
+            WindowsStatusFile.FailureObserver = previousObserver;
         }
     }
 
-    static partial void RecordFailure(int error, string temporaryPath, string statusPath)
+    private static void RecordFailure(int error, string temporaryPath, string statusPath)
     {
         try
         {

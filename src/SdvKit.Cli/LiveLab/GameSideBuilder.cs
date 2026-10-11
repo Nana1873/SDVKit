@@ -18,6 +18,7 @@ internal sealed class GameSideBuilder : IGameSideBuilder
 {
     internal const string ProjectRelativePath = "src/SdvKit.GameSide/SdvKit.GameSide.csproj";
     private const string AssemblyFileName = "SdvKit.GameSide.dll";
+    private const string SharedAssemblyFileName = "SdvKit.Shared.dll";
     private const string ManifestFileName = "manifest.json";
 
     private readonly IDotNetBuildRunner _runner;
@@ -52,7 +53,7 @@ internal sealed class GameSideBuilder : IGameSideBuilder
             Path.GetDirectoryName(projectPath)!,
             ManifestFileName);
         string outputPath = Path.Combine(paths.BuildPath, "output");
-        string intermediatePath = Path.Combine(paths.BuildPath, "obj") + Path.DirectorySeparatorChar;
+        string intermediatePath = Path.Combine(paths.BuildPath, "artifacts");
         string logPath = Path.Combine(paths.BuildPath, "game-side-build.log");
 
         if (!File.Exists(projectPath))
@@ -79,8 +80,8 @@ internal sealed class GameSideBuilder : IGameSideBuilder
                 "--output",
                 outputPath,
                 $"--property:SdvGamePath={absoluteGamePath}",
-                $"--property:BaseIntermediateOutputPath={intermediatePath}",
-                $"--property:MSBuildProjectExtensionsPath={intermediatePath}",
+                "--artifacts-path",
+                intermediatePath,
             ]);
         DotNetBuildOutput output;
         try
@@ -107,12 +108,19 @@ internal sealed class GameSideBuilder : IGameSideBuilder
             return Failure(logPath, $"GameSide build did not produce {AssemblyFileName}.");
         }
 
+        string sourceSharedAssemblyPath = Path.Combine(outputPath, SharedAssemblyFileName);
+        if (!File.Exists(sourceSharedAssemblyPath))
+        {
+            return Failure(logPath, $"GameSide build did not produce {SharedAssemblyFileName}.");
+        }
+
         LiveLabPaths.RejectReparsePointsBelow(paths.SingleRoot);
         RecreateDirectory(paths.GameSideModPath);
         string installedAssemblyPath = Path.Combine(paths.GameSideModPath, AssemblyFileName);
         string installedManifestPath = Path.Combine(paths.GameSideModPath, ManifestFileName);
         File.Copy(sourceAssemblyPath, installedAssemblyPath, overwrite: false);
         File.Copy(sourceManifestPath, installedManifestPath, overwrite: false);
+        File.Copy(sourceSharedAssemblyPath, Path.Combine(paths.GameSideModPath, SharedAssemblyFileName), overwrite: false);
 
         return new GameSideBuildResult(true, logPath, null);
     }
