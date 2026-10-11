@@ -12,12 +12,12 @@ jobs:
   build-test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The pull-request merge commit and its base parent, for the GameSide change check.
           fetch-depth: 2
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -63,7 +63,7 @@ jobs:
 
       - name: Retain status concurrency failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: status-concurrency-failures
           path: .sdvkit/test-failures/
@@ -100,7 +100,7 @@ jobs:
           .\scripts\verify-windows-x64.ps1 -ArchivePath $archives[0].FullName -ExpectedDoctorStatus notFound -ExtractRoot (Join-Path $env:RUNNER_TEMP "sdvkit-portable-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT")
 
       - name: Upload portable Windows-x64 archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SDVKit-windows-x64
           path: |
