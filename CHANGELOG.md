@@ -14,7 +14,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Fixed
 
-- `lab test-save` accepts a verified passed final `exiting` marker for the exact launch after confirming the process exited, even when shutdown outlasted the active-status freshness window. Running stale processes and missing, mismatching or incomplete final evidence still fail (#303).
+- `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
 
 ## [2.0.0] - 2026-10-11
 
