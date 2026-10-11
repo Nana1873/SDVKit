@@ -25,8 +25,9 @@ parked in the screen corner before keyboard tool use, because Stardew aims at th
 within one tile of the player. Matrix and gaps: docs/player-actions.md.
 
 While developing SDVKit, -Only runs the shared setup (lab, test save, review start, Farm) and then only the named
-sections: walk, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Such a partial run writes its evidence under
-player-actions-partial and never counts as acceptance; PRs and releases need a full run.
+sections: walk, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Sections always run in this order, and each one
+starts from the Farm. Such a partial run writes its evidence under player-actions-partial and never counts as
+acceptance; PRs and releases need a full run.
 
 .EXAMPLE
 pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance
@@ -46,7 +47,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
 # Accept both -Only npc,item from PowerShell and a single comma-separated string from pwsh -File.
 $sections = @('walk', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'item', 'npc', 'fishing')
-$Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+if ($PSBoundParameters.ContainsKey('Only') -and $Only.Count -eq 0) { throw "-Only needs at least one section. Use: $($sections -join ', ')." }
 $unknown = @($Only | Where-Object { $_ -cnotin $sections })
 if ($unknown.Count -gt 0) { throw "Unknown -Only section(s): $($unknown -join ', '). Use: $($sections -join ', ')." }
 $partial = $Only.Count -gt 0
@@ -204,6 +206,8 @@ try {
         Start-Sleep -Seconds 2
         $arrived = Get-Runtime 'edge-arrived'
         Assert-That ($arrived.locationId -ceq 'BusStop') "walking east ended in $($arrived.locationId) $($arrived.tileX),$($arrived.tileY), not BusStop."
+        # Later sections read the player's location; go back to the Farm, where the next section starts anyway.
+        Invoke-Warp 'mapwarp-return' 'Farm' 64 16
     }
 
     if (Test-Section 'hotbar') {
@@ -293,6 +297,8 @@ try {
         $east = @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) -and $null -eq $byTile["$($_.x),$($_.y)"].soil })[1]
         Assert-That ($null -ne $east) 'no free tile with a free tile west of it in the scanned area.'
         Invoke-Warp 'act-hoe' 'Farm' ($east.x - 1) $east.y
+        # Face away from the target, so the act proves cursor aim whatever the earlier sections left.
+        Invoke-Press 'act-hoe-face' 'S'
         $hoeSlot = Find-ToolSlot 'act-hoe' '(T)Hoe'
         Invoke-Press 'act-hoe-select' (Get-SlotKey $hoeSlot)
         Wait-Settled

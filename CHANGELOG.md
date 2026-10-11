@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 - The local player runtime data has an optional `npcs` list: the visible villagers in the player's current location with internal and display name, tile and facing, at most 64 (#292). It is available to every role and screen, and absent in status from an older GameSide.
 - `stardew_fixture_npc_place { name, x, y }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) warps one named villager to a free tile in the player's location, stops its path and turns it toward the player, so dialogue and gift tests do not depend on schedules (#292). It is test setup, not proof of game behaviour.
 - `stardew_fixture_item_add { qualifiedItemId, stack, quality? }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) puts one new stack of an existing item, including modded items, into the main player's first empty backpack slot (#291). It never merges or replaces, refuses with a full backpack, and reports the slot and the new inventory revision. It is test setup, not proof of game behaviour.
@@ -13,10 +14,6 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - `project review map actions <map>` and `stardew_map_actions_list` list bounded, paged `Action` and `TouchAction` tile properties so tests can discover property-backed signs, action doors and the town mailbox (`TownMailbox`) (#300). The Farm mailbox is handled by game code and is not discoverable through this map-property query. Entries preserve direct or tile-index/frame identity, raw strings and their first token; the read-only query is available in unbound single reviews.
 - The local player runtime data has a `position` object with `facing` (`up`, `right`, `down`, `left`), the sub-tile `standingX`/`standingY`, Stardew's grab tile for the action button and the tile a tool would hit (`toolTileX`/`toolTileY`) (#289). It is optional, so status from an older GameSide stays readable.
 - `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
-
-### Changed
-
-- `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 
 ### Fixed
 
