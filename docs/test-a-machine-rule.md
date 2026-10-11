@@ -44,4 +44,6 @@ A wrong rule shows up here as a different output item. The script proves this wi
 
 ## 5. Persistence and cleanup
 
+To open a chest or another object, face it and press `X` with `stardew_input_press`. Stardew aims `X` at the tile under the mouse whenever the cursor is within one tile of the player, so first park the virtual cursor away from the player, for example `stardew_input_cursor_set` at `8,8`, and check with `project review menu` that the chest menu (`ItemGrabMenu`) opened.
+
 To prove that the output survives a save, put it in a chest through the chest menu (click the `inventorySlot` component, as in [testing a shop purchase](test-a-shop-purchase.md)), save with `stardew_fixture_save`, stop without reset, start the same selection again and read `project review container`. Finish with stop and reset.

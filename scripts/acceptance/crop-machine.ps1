@@ -68,20 +68,32 @@ function Get-ProbeState {
 }
 
 function Open-Chest([string] $Label) {
-    # Presses X at the faced chest and waits for its menu. Right after a load or warp the game can drop the press;
-    # only when a fresh read confirms that no menu opened is X pressed once more.
+    # Opens the faced chest with the action button X. Stardew aims X at the tile under the mouse whenever the cursor is
+    # within one tile of the player, so a cursor left over from an earlier action can make X miss the chest. Parking
+    # the virtual cursor in the screen corner makes X act on the faced tile. Right after a load or warp the game can
+    # drop a press, and a window focus change makes SDVKit report the input as uncertain (exit 3). Either way the menu
+    # read below decides: only when it confirms that no menu opened are the cursor and X sent once more. Setting the
+    # cursor is absolute and has no game effect.
     foreach ($attempt in 1, 2) {
-        Invoke-Tool "$Label-press-$attempt" 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' | Out-Null
+        Invoke-Tool "$Label-park-cursor-$attempt" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' -AllowExit @(0, 3) | Out-Null
+        Invoke-Tool "$Label-press-$attempt" 'stardew_input_press' @{ button = 'X' } -OptIn '--allow-input' -AllowExit @(0, 3) | Out-Null
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         do {
             Start-Sleep -Milliseconds 500
             $menu = (Invoke-SdvKit "$Label-menu-$attempt" @('project', 'review', 'menu', '--json')).Json
         } until ($menu.menuOpen -or [DateTime]::UtcNow -gt $deadline)
-        if ($menu.menuOpen) { return $menu }
+        if ($menu.menuOpen) {
+            $types = @($menu.menus | ForEach-Object type)
+            Assert-That ($types -contains 'StardewValley.Menus.ItemGrabMenu') "a menu other than the chest opened: $($types -join ', ')."
+            return $menu
+        }
+
         Write-Step "The chest did not open on attempt $attempt."
         Start-Sleep -Seconds 2
     }
 
+    Save-ViewportScreenshot "$Label-not-open"
+    Copy-Item -LiteralPath $script:smapiLog -Destination (Join-Path $context.Evidence "$Label-smapi.txt")
     throw "Acceptance failed: the chest menu did not open ($Label)."
 }
 
