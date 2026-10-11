@@ -87,10 +87,12 @@ Unbound single-review servers expose [map and texture inspection](inspection.md)
 | --- | --- |
 | `stardew_map_assets_list`, `stardew_texture_assets_list` | Optional `offset`, `limit` |
 | `stardew_map_get`, `stardew_texture_get`, `stardew_texture_preview` | `asset` |
-| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list` | `asset`; optional `offset`, `limit` |
+| `stardew_map_layers_list`, `stardew_map_tilesheets_list`, `stardew_map_warps_list`, `stardew_map_actions_list` | `asset`; optional `offset`, `limit` |
 | `stardew_map_layer_get` | `asset`, `layer` |
 | `stardew_map_tile_get` | `asset`, `layer`, `x`, `y` |
 | `stardew_map_property_get` | `asset`, `property`, `scope`, `source`; `layer`, `x`, `y`, `frameIndex` as needed |
+
+For `stardew_map_actions_list`, `truncated` means more entries follow: it is exactly `page.nextOffset != null`, and is false on the last page, beyond the end or for an empty result. Property names match `Action` and `TouchAction` exactly; see the [map coverage and scan timing limits](inspection.md#inspect-active-map-structure).
 
 Pages default to limit 50 (1-100). `scope` is `map`, `layer` or `tile`. `source` is `direct`, or `tile-index` for tile-index properties; only `tile-index` takes `frameIndex`. An absent property is an error.
 

@@ -1052,6 +1052,14 @@ public sealed class ReviewMapCommandTests
             return asset;
         }
 
+        public IReadOnlyList<ReviewMapActionReport> ReadActions(string assetName) =>
+            ReviewMapOperation.CaptureActions(LoadMapAsset(assetName).Map!, (layerId, x, y) =>
+                tiles.TryGetValue((layerId, x, y), out ReviewMapTileSnapshot? tile)
+                    ? tile
+                    : new ReviewMapTileSnapshot(
+                        new ReviewMapTileReport(layerId, x, y, false, null, null, null, null, null, null, 0, 0),
+                        [], [], []));
+
         public ReviewMapTileSnapshot ReadTile(string assetName, string layerId, int x, int y) =>
             tiles.TryGetValue((layerId, x, y), out ReviewMapTileSnapshot? tile)
                 ? tile

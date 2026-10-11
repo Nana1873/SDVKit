@@ -37,6 +37,7 @@ public sealed class ProjectReviewMcpAssetToolsTests
         Assert.Contains(ProjectReviewMcpMapTools.LayerToolName, names);
         Assert.Contains(ProjectReviewMcpMapTools.TileSheetsToolName, names);
         Assert.Contains(ProjectReviewMcpMapTools.WarpsToolName, names);
+        Assert.Contains(ProjectReviewMcpMapTools.ActionsToolName, names);
         Assert.Contains(ProjectReviewMcpMapTools.TileToolName, names);
         Assert.Contains(ProjectReviewMcpMapTools.PropertyToolName, names);
         foreach (Tool tool in listed.Tools.Where(tool => tool.Name.StartsWith(
@@ -69,6 +70,53 @@ public sealed class ProjectReviewMcpAssetToolsTests
                 .RootElement));
         Assert.Equal(new ReviewMapQuery(ReviewMapContract.GetOperation, "Maps/Farm",
             null, null, null, null, null, null, null, 0, 1), Assert.Single(dispatched));
+    }
+
+    [Fact]
+    public async Task MapActionsSchemaMatchesExactSourcesAndNullableTokens()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary);
+        await using McpTestClient harness = await McpTestClient.StartAsync(
+            ProjectReviewMcpServer.CreateOptions(reader, runMap: query => new LiveLabCommandResult(0,
+                BaseMap(query) with
+                {
+                    Actions =
+                    [
+                        new("Buildings", 68, 14, "direct", null, "Action", "TownMailbox", "TownMailbox"),
+                        new("Buildings", 68, 14, "tile-index", 0, "TouchAction", " ", null),
+                    ],
+                    Page = new(query.Offset, query.Limit, 2, 2, null),
+                    Truncated = false,
+                })));
+        CallToolResult result = await harness.Client.CallToolAsync(ProjectReviewMcpMapTools.ActionsToolName,
+            new Dictionary<string, object?> { ["asset"] = "Maps/Town" }, cancellationToken: harness.Token);
+        Assert.NotEqual(true, result.IsError);
+        JsonElement structured = Assert.IsType<JsonElement>(result.StructuredContent);
+        Tool tool = (await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token))
+            .Tools.Single(candidate => candidate.Name == ProjectReviewMcpMapTools.ActionsToolName);
+        JsonSchema schema = JsonSchema.FromText(Assert.IsType<JsonElement>(tool.OutputSchema).GetRawText());
+        var json = System.Text.Json.Nodes.JsonNode.Parse(structured.GetRawText())!;
+        Assert.True(schema.Evaluate(json).IsValid);
+        Assert.Equal(50, structured.GetProperty("page").GetProperty("limit").GetInt32());
+        Assert.False(structured.GetProperty("truncated").GetBoolean());
+        json["actions"]![0]!["extra"] = true;
+        Assert.False(schema.Evaluate(json).IsValid);
+        json["actions"]![0]!.AsObject().Remove("extra");
+        json.AsObject().Remove("truncated");
+        Assert.False(schema.Evaluate(json).IsValid);
+        foreach (Dictionary<string, object?> invalid in new Dictionary<string, object?>[]
+        {
+            new() { ["asset"] = "Maps/Town", ["limit"] = 0 },
+            new() { ["asset"] = "Maps/Town", ["limit"] = 101 },
+            new() { ["asset"] = "Maps/Town", ["offset"] = -1 },
+            new() { ["asset"] = "Maps/Town", ["source"] = "direct" },
+        })
+        {
+            CallToolResult rejected = await harness.Client.CallToolAsync(ProjectReviewMcpMapTools.ActionsToolName,
+                invalid, cancellationToken: harness.Token);
+            Assert.True(rejected.IsError);
+        }
     }
 
     [Fact]
@@ -188,6 +236,7 @@ public sealed class ProjectReviewMcpAssetToolsTests
             (ProjectReviewMcpMapTools.WarpsToolName, new() { ["asset"] = "Maps/Farm", ["offset"] = 1 }),
             (ProjectReviewMcpMapTools.TileToolName, new() { ["asset"] = "Maps/Farm", ["layer"] = "Back", ["x"] = 3, ["y"] = 4 }),
             (ProjectReviewMcpMapTools.PropertyToolName, new() { ["asset"] = "Maps/Farm", ["scope"] = "map", ["source"] = "direct", ["property"] = "Outdoors" }),
+            (ProjectReviewMcpMapTools.ActionsToolName, new() { ["asset"] = "Maps/Farm" }),
             (ProjectReviewMcpTextureTools.AssetsToolName, new() { ["limit"] = 2 }),
             (ProjectReviewMcpTextureTools.GetToolName, new() { ["asset"] = "LooseSprites/Cursors" }),
             (ProjectReviewMcpTextureTools.PreviewToolName, new() { ["asset"] = "LooseSprites/Cursors" }),
@@ -199,7 +248,9 @@ public sealed class ProjectReviewMcpAssetToolsTests
             Assert.NotEqual(true, result.IsError);
         }
 
-        Assert.Equal(8, maps.Count);
+        Assert.Equal(9, maps.Count);
+        Assert.Equal(new ReviewMapQuery(ReviewMapContract.ActionsOperation, "Maps/Farm",
+            null, null, null, null, null, null, null, 0, 50), maps[8]);
         Assert.Equal(new ReviewMapQuery(ReviewMapContract.AssetsOperation, null,
             null, null, null, null, null, null, null, 2, 3), maps[0]);
         Assert.Equal(new ReviewMapQuery(ReviewMapContract.LayersOperation, "Maps/Farm",
@@ -377,6 +428,12 @@ public sealed class ProjectReviewMcpAssetToolsTests
             {
                 Warps = [],
                 Page = page,
+            },
+            ReviewMapContract.ActionsOperation => BaseMap(query) with
+            {
+                Actions = [],
+                Page = page,
+                Truncated = false,
             },
             ReviewMapContract.TileOperation => BaseMap(query) with { Tile = tile },
             _ => BaseMap(query) with

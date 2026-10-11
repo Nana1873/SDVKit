@@ -40,6 +40,8 @@ public static partial class CliApplication
         "       sdvkit project review map layer <map> <layer> [--topology single] --json";
     private const string ReviewMapTileSheetsUsage =
         "       sdvkit project review map tilesheets <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
+    private const string ReviewMapActionsUsage =
+        "       sdvkit project review map actions <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewMapWarpsUsage =
         "       sdvkit project review map warps <map> [--offset <n>] [--limit <1-100>] [--topology single] --json";
     private const string ReviewMapTileUsage =
@@ -75,7 +77,7 @@ public static partial class CliApplication
     private const string ReviewMcpNetworkUsage =
         "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions] [--http [--port <n>]]";
     private const string ReviewMcpToolsDescription =
-        "       all MCP topologies/selections: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture, stardew_inventory_get, stardew_container_get, stardew_world_area_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; unbound single additionally: stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_progression_get (owned disposable single only), stardew_cp_diagnose";
+        "       all MCP topologies/selections: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture, stardew_inventory_get, stardew_container_get, stardew_world_area_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; unbound single additionally: stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_actions_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_progression_get (owned disposable single only), stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
         "       --allow-input additionally exposes only: stardew_input_press, stardew_input_chord, stardew_input_text, stardew_input_click, stardew_input_scroll, stardew_input_drag, stardew_input_cursor_set, stardew_input_cursor_clear, stardew_input_wheel; screen-bound servers omit shared-window text";
     private const string ReviewMcpFixtureDescription =
@@ -153,7 +155,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review container-transfer --help  Exact bounded native chest transfer (unbound single only).");
         output.WriteLine("  sdvkit project review interact --help    One revision-bound native world action (owned test save only).");
         output.WriteLine("  sdvkit project review act --help         Action button or tool on a tile next to the player (owned test save only).");
-        output.WriteLine("  sdvkit project review map --help         Map structure and properties.");
+        output.WriteLine("  sdvkit project review map --help         Map structure, properties and interactive action tiles.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");
         output.WriteLine("  sdvkit project review mod-assets --help  Observed mod asset namespaces.");
@@ -207,6 +209,8 @@ public static partial class CliApplication
         output.WriteLine(ReviewMapLayerUsage.TrimStart());
         output.WriteLine(ReviewMapTileSheetsUsage.TrimStart());
         output.WriteLine(ReviewMapWarpsUsage.TrimStart());
+        output.WriteLine(ReviewMapActionsUsage.TrimStart());
+        output.WriteLine("Actions list direct and tile-index/frame Action/TouchAction properties; page size defaults to 50. Values are never shortened; truncated is true only when page.nextOffset is non-null (more entries follow).");
         output.WriteLine(ReviewMapTileUsage.TrimStart());
         output.WriteLine(ReviewMapPropertyMapUsage.TrimStart());
         output.WriteLine(ReviewMapPropertyLayerUsage.TrimStart());

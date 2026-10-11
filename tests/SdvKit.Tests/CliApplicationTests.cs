@@ -1051,8 +1051,37 @@ public sealed class CliApplicationTests
     }
 
     [Theory]
+    [InlineData(0, 50, false)]
+    [InlineData(2, 1, true)]
+    [InlineData(0, 100, true)]
+    public void MapActionsDispatchesTheExistingReadOnlyQuery(int offset, int limit, bool explicitPage)
+    {
+        ReviewMapQuery? received = null;
+        var arguments = new List<string> { "project", "review", "map", "actions", "Maps/Farm", "--json" };
+        if (explicitPage)
+            arguments.AddRange(["--offset", offset.ToString(CultureInfo.InvariantCulture),
+                "--limit", limit.ToString(CultureInfo.InvariantCulture), "--topology", "single"]);
+        var result = RunWithProjectReviewMap((query, _) =>
+        {
+            received = query;
+            return new LiveLabCommandResult(0, new { state = "ready" });
+        }, [.. arguments]);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(new ReviewMapQuery("actions", "Maps/Farm", null, null, null,
+            null, null, null, null, offset, limit), received);
+        Assert.Empty(result.Error);
+    }
+
+    [Theory]
     [InlineData("project", "review", "map")]
     [InlineData("project", "review", "map", "unknown", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--limit", "0", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--limit", "101", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--offset", "-1", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--frame", "0", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--topology", "network-2", "--json")]
+    [InlineData("project", "review", "map", "actions", "Maps/Farm", "--screen", "0", "--json")]
     [InlineData("project", "review", "map", "assets")]
     [InlineData("project", "review", "map", "assets", "extra", "--json")]
     [InlineData("project", "review", "map", "assets", "--limit", "101", "--json")]
@@ -1079,6 +1108,7 @@ public sealed class CliApplicationTests
     [Theory]
     [InlineData("map", "--help")]
     [InlineData("map", "assets", "--help")]
+    [InlineData("map", "actions", "--help")]
     public void ProjectReviewMapHelpListsOnlyTheBoundedSingleSurface(params string[] suffix)
     {
         ProjectReviewMapCommandRunner runner = (_, _) =>
