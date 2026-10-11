@@ -12,7 +12,7 @@ internal static partial class ProjectModStager
     private const int OwnershipSchemaVersion = 1;
     private const string OwnershipFileName = "project-smoke-staging.json";
     private const string GameSideUniqueId = "SDVKit.GameSide";
-    private const string GameSideVersion = "1.0.0";
+    private const string GameSideVersion = "2.0.0";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

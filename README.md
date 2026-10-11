@@ -7,7 +7,7 @@ An agent-first Windows toolkit for developing Stardew Valley mods, with an isola
 
 [Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Glossary](docs/glossary.md) · [Roadmap](https://github.com/Nana1873/SDVKit/issues/84)
 
-This documentation follows `main` for **v1.0.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) with the README from its tag. For this version, see its [release status](https://github.com/Nana1873/SDVKit/issues/243) and [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v1.0.0).
+This documentation follows `main` for **v2.0.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) with the README from its tag. For this version, see its [release status](https://github.com/Nana1873/SDVKit/issues/286) and [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v2.0.0).
 
 ## Set up with your agent
 
@@ -41,20 +41,20 @@ Leave game launches and MCP connections for a requested mod review.
 - A local Stardew Valley installation with SMAPI, for building and live testing. `doctor` must find exactly one ready installation.
 - Test-save automation accepts Stardew `>=1.6.15, <1.7` (file version `>=1.6.15.24356, <1.7`) and SMAPI `>=4.5.0, <5.0`. Runtime API checks also apply. These ranges do not claim that every version was tested.
 
-See [1.x support, compatibility and upgrades](docs/support.md) for companion versions, capability limits and known risks. Project creation, inspection and offline authoring checks work without an installed game. Content-pack reviews need a local provider you select, such as Content Patcher.
+See [2.x support, compatibility and upgrades](docs/support.md) for companion versions, capability limits and known risks. Project creation, inspection and offline authoring checks work without an installed game. Content-pack reviews need a local provider you select, such as Content Patcher.
 
 ## Install
 
-Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v1.0.0; for another version, follow its tagged README. In the download folder, compare the hash with the sidecar, then extract to a fresh folder:
+Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v2.0.0; for another version, follow its tagged README. In the download folder, compare the hash with the sidecar, then extract to a fresh folder:
 
 ```powershell
-$archive = '.\SDVKit-1.0.0-win-x64.zip'
+$archive = '.\SDVKit-2.0.0-win-x64.zip'
 $expectedHash = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'The download checksum does not match.'
 }
 Expand-Archive -LiteralPath $archive -DestinationPath .\SDVKit-install
-$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-1.0.0-win-x64\sdvkit.exe).Path
+$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-2.0.0-win-x64\sdvkit.exe).Path
 & $sdvkit --help
 & $sdvkit doctor --json
 ```
