@@ -16,25 +16,25 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script | No running state is reported |
 | Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script | — |
 | Face a direction | Press the direction key once | `localPlayer.data.position.facing`; `toolTileX`/`toolTileY` is where a tool lands | script | — |
-| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list`; discover action doors with `stardew_map_actions_list`, then face the door and press `X` | `runtime.locationId` | script (Farm to BusStop) | Action-door properties were observed in coordinator-supplied prior-head acceptance; faced-tile input: [#290](https://github.com/Nana1873/SDVKit/issues/290) |
+| Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list`; for action doors listed by `stardew_map_actions_list`, `stardew_world_act` with `check` on the door from a neighbouring tile | `runtime.locationId` | script (Farm to BusStop) | Doors through `check` are not in the script yet |
 | Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 
 ## Interaction and tools
 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
-| Action button on the faced tile | Park the cursor away from the player (`stardew_input_cursor_set` at `8,8`), then press `X` | The effect, for example a menu | script (chest) | Stardew aims `X` at the tile under the cursor when it is within one tile; a supported faced-tile action is missing ([#290](https://github.com/Nana1873/SDVKit/issues/290)) |
+| Action button on a tile next to the player | `stardew_world_act` with `check` (`--allow-world-actions`, test save); or park the cursor away and press `X` | The effect, for example a menu | script (`check` on the Farm sign opens its `LetterViewerMenu`; `X` on a chest) | Single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Open a chest | As above | `stardew_menu_get` shows `ItemGrabMenu` | script (crop-machine) | SDVKit cannot place a chest outside fixture buildings ([#291](https://github.com/Nana1873/SDVKit/issues/291)) |
-| Hoe | Select the hoe with its number key, face the tile, park the cursor, press `C` | `stardew_world_area_get`: the tile gets `soil`; stamina drops | script | [#290](https://github.com/Nana1873/SDVKit/issues/290) |
+| Hoe | Select the hoe, then `stardew_world_act` with `useTool`; or face the tile, park the cursor and press `C` | `stardew_world_area_get`: the tile gets `soil`; stamina drops | script (both ways) | — |
 | Pickaxe on a stone | Same, with the pickaxe | The stone object becomes `missing`; stamina drops | script | Boulders are not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
 | Scythe on weeds | Same, with the scythe | The weeds object becomes `missing` (the scythe costs no stamina) | script | Grass is not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
 | Axe on a tree | Same, with the axe | Not observable | — | [#295](https://github.com/Nana1873/SDVKit/issues/295) |
 | Water, harvest, machine insert and collect | `stardew_world_interact` (`--allow-world-actions`) | `world_area_get` soil, crop and machine fields; inventory | script (crop-machine) | Single and screen 0 only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
-| Place an item or object | Select it, face the tile, press `X` | `objectQualifiedItemId` on the tile; stack drops | — | No way to give items ([#291](https://github.com/Nana1873/SDVKit/issues/291)); [#290](https://github.com/Nana1873/SDVKit/issues/290) |
-| Eat or drink | Select it, press `X`, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | [#291](https://github.com/Nana1873/SDVKit/issues/291) |
-| Talk to an NPC, give a gift | Face the NPC, press `X` | `menu_get` dialogue; `stardew_progression_get` friendship | — | No NPC positions ([#292](https://github.com/Nana1873/SDVKit/issues/292)); [#290](https://github.com/Nana1873/SDVKit/issues/290), [#291](https://github.com/Nana1873/SDVKit/issues/291) |
-| Read a property-backed sign or the town mailbox | Find `Message` or `TownMailbox` with `stardew_map_actions_list`, face it, press `X` | `menu_get` dialogue or letter; progression mail | — | Property discovery was observed in coordinator-supplied prior-head acceptance; interaction still needs [#290](https://github.com/Nana1873/SDVKit/issues/290) |
-| Read the Farm mailbox | Face its known position, press `X` | `menu_get` letter; progression mail | — | Game-code interaction, not a map tile property: no position discovery through `stardew_map_actions_list` ([#300](https://github.com/Nana1873/SDVKit/issues/300)); faced-tile input: [#290](https://github.com/Nana1873/SDVKit/issues/290) |
+| Place an item or object | Select it, then `stardew_world_act` with `check` on the tile | `objectQualifiedItemId` on the tile; stack drops | — | No way to give items ([#291](https://github.com/Nana1873/SDVKit/issues/291)) |
+| Eat or drink | Select it, `stardew_world_act` with `check` on a free neighbouring tile, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | [#291](https://github.com/Nana1873/SDVKit/issues/291) |
+| Talk to an NPC, give a gift | `stardew_world_act` with `check` on the NPC's tile (with the gift selected) | `menu_get` dialogue; `stardew_progression_get` friendship | — | No NPC positions ([#292](https://github.com/Nana1873/SDVKit/issues/292)); [#291](https://github.com/Nana1873/SDVKit/issues/291) |
+| Read a property-backed sign or the town mailbox | Find `Message` or `TownMailbox` with `stardew_map_actions_list`, then `stardew_world_act` with `check` on that tile from a neighbouring tile | `menu_get` dialogue or letter; progression mail | script (`check` on the Farm sign) | Single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
+| Read the Farm mailbox | `stardew_world_act` with `check` on its known position from a neighbouring tile | `menu_get` letter; progression mail | — | Handled by game code, not a map tile property, so `stardew_map_actions_list` does not list it |
 
 ## Items, menus and containers
 

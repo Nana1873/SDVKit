@@ -83,7 +83,7 @@ public static partial class CliApplication
     private const string ReviewMcpFixtureDescription =
         "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_object_ensure, stardew_fixture_object_clear, stardew_fixture_fishing_prepare, stardew_fixture_save, stardew_lab_set_time, stardew_lab_set_weather, stardew_lab_set_season, stardew_lab_warp, stardew_lab_set_zoom, stardew_lab_set_window as allowed for the selected role; unsupported with --screen";
     private const string ReviewMcpWorldActionDescription =
-        "       --allow-world-actions additionally exposes only: stardew_world_interact for the exact owned disposable single-player review";
+        "       --allow-world-actions additionally exposes only: stardew_world_interact and stardew_world_act for the exact owned disposable single-player review";
     private const string ReviewMcpContainerTransferDescription =
         "       --allow-container-transfer additionally exposes only: stardew_container_transfer for the exact owned unbound disposable single-player review";
     private const string LabSingleUsage =
@@ -154,6 +154,7 @@ public static partial class CliApplication
         output.WriteLine("  sdvkit project review container --help   Read-only selected-role regular vanilla chest.");
         output.WriteLine("  sdvkit project review container-transfer --help  Exact bounded native chest transfer (unbound single only).");
         output.WriteLine("  sdvkit project review interact --help    One revision-bound native world action (owned test save only).");
+        output.WriteLine("  sdvkit project review act --help         Action button or tool on a tile next to the player (owned test save only).");
         output.WriteLine("  sdvkit project review map --help         Map structure, properties and interactive action tiles.");
         output.WriteLine("  sdvkit project review texture --help     Texture metadata and diagnostic previews.");
         output.WriteLine("  sdvkit project review audio --help       Audio metadata without playback.");

@@ -203,7 +203,7 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 ## Opt-in world interactions
 
-`--allow-world-actions` adds `stardew_world_interact` on a ready single-player test save. Each call names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`.
+`--allow-world-actions` adds `stardew_world_interact` and `stardew_world_act` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player).
 
 - `water`: dry crop soil, watering can selected.
 - `harvest`: a ready hand-harvest crop, empty hand. Scythe crops are rejected.

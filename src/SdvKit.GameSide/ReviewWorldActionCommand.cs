@@ -184,7 +184,7 @@ internal static class ReviewWorldActionCommand
     /// press on the next tick, and tool effects at the end of the animation, so a reread in this
     /// state cannot show that nothing will happen.
     /// </summary>
-    private static bool ActionInputOrToolInProgress()
+    internal static bool ActionInputOrToolInProgress()
     {
         Farmer? player = Game1.player;
         if (player is null || player.UsingTool || !player.CanMove)

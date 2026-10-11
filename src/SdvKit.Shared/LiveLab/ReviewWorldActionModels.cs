@@ -13,7 +13,7 @@ internal static class ReviewWorldActionContract
 
     public static bool IsGameError(string? value) => value is
         "worldActionBindingInvalid" or "worldActionTestSaveRequired" or "worldActionWorldNotReady"
-        or "worldActionPlayerBusy" or "worldActionTargetNotAdjacentAndFaced"
+        or "worldActionPlayerBusy" or "worldActionTargetNotAdjacentAndFaced" or "worldActionTargetNotAdjacent"
         or "worldActionInventoryChanged" or "worldActionTargetChanged" or "worldActionTargetUnsupported"
         or "worldActionWrongToolOrState" or "worldActionWrongItemOrState"
         or "worldActionInsufficientResource"
@@ -21,7 +21,8 @@ internal static class ReviewWorldActionContract
         or "worldActionItemNotAccepted" or "worldActionViewportUnavailable"
         or "worldActionTargetNotVisible" or "worldActionViewportOrCursorChanged"
         or "worldActionInputRejected" or "worldActionCursorCleanupFailed"
-        or "worldActionCompletionUncertain" or "worldActionValidationFailed";
+        or "worldActionCompletionUncertain" or "worldActionValidationFailed"
+        or "worldActionCursorAimUnavailable";
 
     public static string ResponsePath(string runtimePath, string requestId) =>
         Path.Combine(runtimePath, $"review-world-action-{requestId}.json");
@@ -164,3 +165,72 @@ internal sealed record ReviewWorldActionReport(int SchemaVersion, string State, 
 
 internal sealed record ReviewWorldActionResponseEnvelope(int SchemaVersion, string RequestId,
     ReviewWorldActionReport Report);
+
+/// <summary>
+/// A faced-tile player action without a target identity: the action button (<c>check</c>, right click) or the
+/// selected tool (<c>useTool</c>, left click) on a tile next to the player. SDVKit puts the virtual cursor on the
+/// tile, so the game starts there instead of on a tile picked from the player's sub-tile position. The game's own
+/// fallbacks (neighbouring tiles, the player's tile, the held item, facing-based weapons) still apply.
+/// </summary>
+internal static class ReviewWorldActContract
+{
+    public const string Check = "check";
+    public const string UseTool = "useTool";
+
+    public static bool IsAction(string? value) => value is Check or UseTool;
+
+    public static string ButtonFor(string action) => action == UseTool ? "MouseLeft" : "MouseRight";
+
+    public static string ResponsePath(string runtimePath, string requestId) =>
+        Path.Combine(runtimePath, $"review-world-act-{requestId}.json");
+
+    public static string? Validate(ReviewWorldActQuery? query)
+    {
+        if (query is null || !IsAction(query.Action)
+            || Math.Abs((long)query.X) > ReviewWorldContract.MaximumTileCoordinate
+            || Math.Abs((long)query.Y) > ReviewWorldContract.MaximumTileCoordinate
+            || !ReviewInventoryContract.IsRevision(query.InventoryRevision))
+            return "worldActionArgumentsInvalid";
+        return null;
+    }
+
+    /// <summary>The target must be one of the four tiles next to the player's tile.</summary>
+    public static bool IsAdjacent(int playerX, int playerY, int targetX, int targetY) =>
+        Math.Abs((long)playerX - targetX) + Math.Abs((long)playerY - targetY) == 1;
+
+    public static string? Rejection(ReviewWorldActQuery query, ReviewWorldActFacts facts)
+    {
+        if (!facts.BindingReady) return "worldActionBindingInvalid";
+        if (!facts.FixtureReady) return "worldActionTestSaveRequired";
+        if (!facts.WorldReady) return "worldActionWorldNotReady";
+        if (!facts.PlayerReady) return "worldActionPlayerBusy";
+        if (!facts.CursorAimed) return "worldActionCursorAimUnavailable";
+        if (!facts.Adjacent) return "worldActionTargetNotAdjacent";
+        if (!facts.InventoryMatches) return "worldActionInventoryChanged";
+        if (query.Action == UseTool && !facts.ToolSelected) return "worldActionWrongToolOrState";
+        return null;
+    }
+
+    /// <summary>
+    /// Dispatch state for an action SDVKit did not send after its cursor was on the target. Without a target
+    /// identity, "nothing happened" needs settled input, the same backpack, no menu that the action could have
+    /// opened, and an unchanged player and neighbourhood (location, tile, facing, stamina, health and the 3x3
+    /// tiles around the player) since before the cursor was placed.
+    /// </summary>
+    public static string UnsentDispatchState(ReviewWorldActQuery query, bool inputSettled,
+        string? inventoryRevision, bool menuOpen, bool surroundingsUnchanged) =>
+        inputSettled && !menuOpen && surroundingsUnchanged && inventoryRevision == query.InventoryRevision
+            ? "notDispatched" : "mayHaveRun";
+}
+
+internal sealed record ReviewWorldActFacts(
+    bool BindingReady,
+    bool FixtureReady,
+    bool WorldReady,
+    bool PlayerReady,
+    bool CursorAimed,
+    bool Adjacent,
+    bool InventoryMatches,
+    bool ToolSelected);
+
+internal sealed record ReviewWorldActQuery(string Action, int X, int Y, string InventoryRevision);
