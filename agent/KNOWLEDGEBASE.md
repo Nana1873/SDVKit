@@ -9,16 +9,16 @@ Source: [Migrate to Stardew Valley 1.6](https://stardewvalleywiki.com/Modding:Mi
 - Item IDs are strings. Compare `QualifiedItemId` (`"(O)128"`, `"(BC)128"`), not `ParentSheetIndex`: the same unqualified ID can name an object and a big craftable. Create items with `ItemRegistry.Create("(O)128")` and check types with `item.HasTypeId(ItemRegistry.type_object)`.
 - New IDs should start with your mod's unique ID and use only letters, digits, underscores and dots; in Content Patcher, `"{{ModId}}_MyItem"`.
 - Some fields still take unqualified IDs, for example recipe outputs (with a separate big-craftable flag) and fruit tree saplings. Check the asset's own format before qualifying.
-- Old slash-delimited assets were replaced by data models: `Data/ObjectInformation` became `Data/Objects`, `Data/BigCraftablesInformation` became `Data/BigCraftables`, `Data/ClothingInformation` became `Data/Shirts` and `Data/Pants`, `Data/NPCDispositions` became `Data/Characters`, `Data/Blueprints` became `Data/Buildings`. `Data/ObjectContextTags` is gone; tags live in each entry's `ContextTags`. Patches to old names silently target nothing.
+- Old slash-delimited assets were replaced by data models: `Data/ObjectInformation` became `Data/Objects`, `Data/BigCraftablesInformation` became `Data/BigCraftables`, `Data/ClothingInformation` became `Data/Shirts` and `Data/Pants`, `Data/NPCDispositions` became `Data/Characters`, `Data/Blueprints` became `Data/Buildings`. `Data/ObjectContextTags` is gone; tags live in each entry's `ContextTags`. In C#, and in Content Patcher packs with a current `Format`, patches to old names silently target nothing; Content Patcher migrates most of them only for packs that declare an old `Format`.
 - In C#, `Game1.objectInformation` and friends became `Game1.objectData`, `Game1.bigCraftableData`, `Game1.shirtData` and `Game1.pantsData`. Prefer `DataLoader.<Asset>(Game1.content)` over `Game1.content.Load<...>("Data\\...")` with a hand-written type.
-- Use exact asset names such as `Data/Objects`: names are case-sensitive on Linux and macOS, even when Windows forgives them.
+- Use the canonical asset name, such as `Data/Objects`. SMAPI matches asset names case-insensitively, but the IDs and keys inside data assets are case-sensitive.
 
 ## Changed game APIs (Stardew 1.6)
 
 Source: the same migration page, "Breaking changes for C# mods".
 
 - `Farmer.mailReceived`, `Farmer.eventsSeen` and similar fields are hash sets now; index access no longer compiles. Use `Contains` and `Add`.
-- `Farmer.items` and chest items use the `Inventory` class. `getItemCount`, `hasItemInInventory` and `removeItemsFromInventory` were replaced by `CountId`, `ContainsId` and `ReduceId`.
+- `Farmer.items` and chest items use the `Inventory` class. `getItemCount`, `hasItemInInventory` and `removeItemsFromInventory` were replaced by `CountId`, `ContainsId` and `ReduceId` (`getItemCount` remains for category checks).
 - `Game1.weather` and `weatherForTomorrow` are strings; compare against `Game1.weather_*` constants, not old numbers.
 - `getTileX()` and `getStandingX()` became `Tile` and `StandingPixel`; `isMarried()` became `isMarriedOrRoommates()`; stat fields such as `stats.dirtHoed` became properties, and `getStat`/`incrementStat` became `Get`/`Increment`.
 - Most `Crop` fields moved to `crop.GetData()`. `HoeDirt.fertilizer` is `null` when empty.
@@ -52,8 +52,8 @@ Source: [Harmony](https://stardewvalleywiki.com/Modding:Modder_Guide/APIs/Harmon
 - Enable it with `<EnableHarmony>true</EnableHarmony>` and create one instance with `new Harmony(this.ModManifest.UniqueID)`. Find targets with `AccessTools.Method(typeof(T), nameof(T.Method))` so renames break the build, not the game.
 - Prefer postfixes. A prefix that returns `false` skips the original and can break other mods' patches. Avoid transpilers unless nothing else works.
 - Wrap patch bodies in `try`/`catch`, log the exception with `LogLevel.Error`, and let the original run (`return true` from a prefix).
-- The JIT can inline small methods; a patch on an inlined method never fires. When a patch "does nothing", suspect that before your logic.
-- SMAPI warns that Harmony mods "may affect game stability". Expect that warning in the log; it is not an error from your code.
+- The JIT can inline small, simple methods; a patch on an inlined method never fires. When a patch on a small method never fires, inlining is one possible cause; confirm the patch is applied with SMAPI's `harmony_summary` console command and check your logic too.
+- SMAPI lists Harmony mods under "Patched game code" in the startup log. That notice is expected and is not an error from your code.
 
 ## Multiplayer and split-screen
 
@@ -82,11 +82,11 @@ Source: [Content Patcher author guide](https://github.com/Pathoschild/StardewMod
 - `Format` is the Content Patcher version you wrote the pack for. Use the latest; an old `Format` makes Content Patcher apply legacy behavior and migrations. SDVKit's bundled schema checks `2.9.x`, and `project check` rejects other versions.
 - Prefer `EditData` with `Fields` (change a few fields of an entry) over `Entries` (replace an entry), and both over `Load`. A `Load` replaces the whole asset and runs before every edit.
 - Delete an entry with `"key": null`. Drill into a nested field, such as one item's `ContextTags`, with `TargetField`.
-- A patch whose tokens are unavailable is disabled without an error. Many tokens, such as `{{Season}}`, are unavailable until a save is loaded, so a review at the title screen shows misleading patch states. Diagnose with `--test-save` (skill `sdv-content-patcher`).
+- A patch whose tokens are unavailable is disabled without an error. Many tokens, such as `{{Season}}`, are unavailable until a save is loaded, so a review at the title screen shows misleading patch states. Start the review with `--test-save`, after `lab test-save` has run once in the lab (skill `sdv-content-patcher`).
 - Patches refresh at day start by default. Conditions that change during the day need `"Update": "OnLocationChange"` or `"OnTimeChange"`.
-- Token names and condition values are case-insensitive; asset names and file paths are not, on Linux and macOS.
+- Token names, condition values and asset names are case-insensitive. SMAPI resolves mod file paths case-insensitively by default even on Linux, but players can turn that off and direct `System.IO` access stays case-sensitive, so match file names exactly.
 - Tokens provided by another mod work only when that mod is a required dependency, or when the patch also has an immutable `HasMod` condition for it.
-- Use `Priority` (`Early`, `Default`, `Late`) only when another mod's patch genuinely has to run first; it makes conflicts harder to trace.
+- For edit patches, use `Priority` (`Early`, `Default`, `Late`) only when another mod's patch genuinely has to run first; it makes conflicts harder to trace. Load patches have their own priorities (`Low`, `Medium`, `High`, `Exclusive`).
 - Do not run `patch export` in the lab: it writes into the game folder. SDVKit's `project review cp-diagnose` runs `patch summary` and `patch parse` for you, and `project review data get` reads the final asset.
 
 ## Generic Mod Config Menu
