@@ -37,10 +37,18 @@ public sealed class LabAgentKitTests
             Assert.Equal(Read(lab, $".claude/skills/{skill}/SKILL.md"), Read(lab, $".agents/skills/{skill}/SKILL.md"));
         }
 
+        // Content Patcher tokens such as {{ModId}} are content; only the kit's own placeholders must be gone.
         foreach (string path in Directory.EnumerateFiles(lab.Path, "*", SearchOption.AllDirectories))
         {
-            Assert.DoesNotContain("{{", File.ReadAllText(path), StringComparison.Ordinal);
+            string text = File.ReadAllText(path);
+            foreach (string placeholder in new[] { "{{version}}", "{{docs}}", "{{exe}}" })
+            {
+                Assert.DoesNotContain(placeholder, text, StringComparison.Ordinal);
+            }
         }
+
+        Assert.Contains($"blob/v{Version}/docs/gmcm-authoring.md", Read(lab, "KNOWLEDGEBASE.md"), StringComparison.Ordinal);
+        Assert.Contains("{{ModId}}", Read(lab, "KNOWLEDGEBASE.md"), StringComparison.Ordinal);
 
         Assert.Contains($"https://github.com/Nana1873/SDVKit/blob/v{Version}/docs", Read(lab, "SDVKIT.md"), StringComparison.Ordinal);
         Assert.StartsWith("@SDVKIT.md", Read(lab, "CLAUDE.md"), StringComparison.Ordinal);
