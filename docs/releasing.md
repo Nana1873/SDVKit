@@ -32,15 +32,15 @@ If a defect needs a separate fix PR, update the candidate to the new green main 
 
 ## Verify the extracted package
 
-From the checkout, substitute the selected artifact path and version:
+From a checkout at the archive's source commit (the commit that produced the ZIP), substitute the selected artifact path and version:
 
 ```powershell
 .\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-2.0.0-win-x64.zip -ExpectedVersion 2.0.0 -ExpectedDoctorStatus ready
 ```
 
-Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
+Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also compares the package's Shared and GameSide source files with the checkout's `src/` tree, and it exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
 
-The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves independence from repository files; this temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
+The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves that the extracted package is independent of repository files; the verifier reads the checkout only for the source list it compares. This temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
 
 Set `$packageRoot` to that reported extracted package, then build its game-side source without starting Stardew:
 
@@ -110,6 +110,6 @@ To preview or edit the user-facing body that the draft uses, generate it locally
 
 The draft workflow uses the same helper for the release body; run it locally to preview or edit the text. The version section should link to the release acceptance and compare view. Keep detailed hashes, logs, and CI provenance in that linked acceptance; do not maintain a second editorial summary in README or a separate notes file. The helper only extracts text; it does not publish anything.
 
-Download the published assets freshly without relying on an authenticated cached copy. Compare both files byte-for-byte with the accepted CI products, then run the same short portable verifier on the downloaded ZIP. With identical bytes and unchanged relevant environment, the accepted live proof remains valid; do not run the entire live suite again merely because the download URL changed.
+Download the published assets freshly without relying on an authenticated cached copy. Compare both files byte-for-byte with the accepted CI products, then run the same short portable verifier on the downloaded ZIP from a checkout at the archive's source commit. With identical bytes and unchanged relevant environment, the accepted live proof remains valid; do not run the entire live suite again merely because the download URL changed.
 
 If bytes differ, required evidence is missing, or the environment changed materially, stop and reassess before declaring completion. Close the release issue only after delivery verification and final cleanup are recorded. Historical published acceptance remains historical evidence; do not rewrite it to imply checks that were never performed.
