@@ -4,18 +4,15 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SdvKit.Cli.LiveLab;
-#if SDVKIT_GAME_AVAILABLE
 using StardewModdingAPI;
 using StardewValley;
 using xTile;
 using xTile.Layers;
 using xTile.ObjectModel;
 using xTile.Tiles;
-#endif
 
 namespace SdvKit.GameSide;
 
-#if SDVKIT_GAME_AVAILABLE
 internal static class ReviewMapCommand
 {
     private const string MissingToken = "-";
@@ -210,4 +207,3 @@ internal static class ReviewMapCommand
         ReviewResponseMailbox.Publish(responsePath, bytes);
     }
 }
-#endif

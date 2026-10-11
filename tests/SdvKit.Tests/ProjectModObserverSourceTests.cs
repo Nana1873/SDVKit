@@ -88,15 +88,22 @@ public sealed class ProjectModObserverSourceTests
         Assert.True(privateLog > controlledFailure);
     }
 
-    [Theory]
-    [MemberData(nameof(GameSideLinkedSourceFiles))]
-    public void PortablePackageIncludesGameSideLinkedCliSource(string fileName)
+    [Fact]
+    public void ConsumersReferenceSharedInsteadOfLinkingSource()
     {
-        string packageScript = ReadRepositoryFile(
-            "scripts",
-            "package-windows-x64.ps1");
-
-        Assert.Contains($"\"{fileName}\"", packageScript, StringComparison.Ordinal);
+        foreach (string[] path in new[]
+        {
+            new[] { "src", "SdvKit.Cli", "SdvKit.Cli.csproj" },
+            new[] { "src", "SdvKit.GameSide", "SdvKit.GameSide.csproj" },
+            new[] { "tests", "SdvKit.Tests", "SdvKit.Tests.csproj" },
+        })
+        {
+            XDocument project = XDocument.Parse(ReadRepositoryFile(path));
+            Assert.Contains(project.Descendants("ProjectReference"), reference =>
+                reference.Attribute("Include")!.Value.EndsWith("SdvKit.Shared.csproj", StringComparison.Ordinal));
+            Assert.DoesNotContain(project.Descendants("Compile"), compile =>
+                compile.Attribute("Include")!.Value.Contains("SdvKit.", StringComparison.Ordinal));
+        }
     }
 
     [Fact]
@@ -112,18 +119,6 @@ public sealed class ProjectModObserverSourceTests
         Assert.Contains("ReferenceEquals(finalMenu.context, expectedChest)", source, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(finalMenu.sourceItem, expectedChest)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SendInput", source, StringComparison.Ordinal);
-    }
-
-    public static TheoryData<string> GameSideLinkedSourceFiles
-    {
-        get
-        {
-            XDocument project = XDocument.Parse(ReadRepositoryFile("src", "SdvKit.GameSide", "SdvKit.GameSide.csproj"));
-            var files = new TheoryData<string>();
-            foreach (XElement compile in project.Descendants("Compile").Where(element => element.Attribute("Link") is not null))
-                files.Add(Path.GetFileName(compile.Attribute("Include")!.Value));
-            return files;
-        }
     }
 
     private static string ReadObserverSource()

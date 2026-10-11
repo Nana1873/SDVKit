@@ -62,6 +62,20 @@ public sealed class ModBuildIdentityTests
     }
 
     [Fact]
+    public void SharedDependencyParticipatesInTheDeclaredBuildIdentity()
+    {
+        using TemporaryDirectory build = new();
+        WriteDeclaredBuild(build, "assembly", "manifest");
+        string legacyIdentity = ModBuildIdentity.Compute(build.Path);
+        build.WriteFile("SdvKit.Shared.dll", "shared-v1");
+        string firstIdentity = ModBuildIdentity.Compute(build.Path);
+        build.WriteFile("SdvKit.Shared.dll", "shared-v2");
+
+        Assert.NotEqual(legacyIdentity, firstIdentity);
+        Assert.NotEqual(firstIdentity, ModBuildIdentity.Compute(build.Path));
+    }
+
+    [Fact]
     public void ComputeFileSetIsIndependentOfEnumerationAndCreationOrder()
     {
         using TemporaryDirectory first = new();

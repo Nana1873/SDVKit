@@ -12,15 +12,7 @@ public static partial class CliApplication
         TextWriter output,
         TextWriter error,
         Func<DoctorReport> discoverInstallations,
-        ProjectSmokeCommandRunner runProjectSmoke,
-        ProjectReviewCommandRunner runProjectReview,
-        ProjectReviewConsoleCommandRunner runProjectReviewConsole,
-        ProjectReviewDataCommandRunner runProjectReviewData,
-        ProjectReviewTextureCommandRunner runProjectReviewTexture,
-        ProjectReviewAudioCommandRunner runProjectReviewAudio,
-        ProjectReviewMcpCommandRunner runProjectReviewMcp,
-        ProjectReviewMapCommandRunner runProjectReviewMap,
-        ProjectReviewModAssetCommandRunner runProjectReviewModAsset)
+        CliCommandRunners runners)
     {
         if (arguments.Count == 2 && IsHelp(arguments[1]))
         {
@@ -42,19 +34,8 @@ public static partial class CliApplication
             "create" => RunProjectCreate(arguments, output, error),
             "build" => RunProjectBuild(arguments, output, error, discoverInstallations),
             "package" => RunProjectPackage(arguments, output, error, discoverInstallations),
-            "smoke" => RunProjectSmoke(arguments, output, error, runProjectSmoke),
-            "review" => RunProjectReview(
-                arguments,
-                output,
-                error,
-                runProjectReview,
-                runProjectReviewConsole,
-                runProjectReviewData,
-                runProjectReviewTexture,
-                runProjectReviewAudio,
-                runProjectReviewMcp,
-                runProjectReviewMap,
-                runProjectReviewModAsset),
+            "smoke" => RunProjectSmoke(arguments, output, error, runners.ProjectSmoke),
+            "review" => RunProjectReview(arguments, output, error, runners),
             _ => ProjectUsageError(error),
         };
     }

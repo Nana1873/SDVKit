@@ -49,6 +49,7 @@ try {
         'JsonPointer.Net.dll',
         'JsonSchema.Net.dll',
         'sdvkit.dll',
+        'SdvKit.Shared.dll',
         'Microsoft.Extensions.AI.Abstractions.dll',
         'Microsoft.Extensions.Caching.Abstractions.dll',
         'Microsoft.Extensions.Configuration.Abstractions.dll',
@@ -112,16 +113,16 @@ Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ExtractRoot
 $packageRoot = Join-Path $ExtractRoot $archive.BaseName
 $gameSideProjectPath = Join-Path $packageRoot 'src\SdvKit.GameSide\SdvKit.GameSide.csproj'
 [xml]$gameSideProject = Get-Content -LiteralPath $gameSideProjectPath -Raw
-foreach ($compile in $gameSideProject.SelectNodes('/Project/ItemGroup/Compile[@Include]')) {
+foreach ($reference in $gameSideProject.SelectNodes('/Project/ItemGroup/ProjectReference[@Include]')) {
     $sourcePath = [System.IO.Path]::GetFullPath(
-        [string]$compile.Include,
+        [string]$reference.Include,
         [System.IO.Path]::GetDirectoryName($gameSideProjectPath))
     $relativeSourcePath = [System.IO.Path]::GetRelativePath($packageRoot, $sourcePath)
     if ([System.IO.Path]::IsPathRooted($relativeSourcePath) `
         -or $relativeSourcePath -eq '..' `
         -or $relativeSourcePath.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)") `
         -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-        throw "The portable GameSide project has an invalid or missing linked source: $($compile.Include)"
+        throw "The portable GameSide project has an invalid or missing project reference: $($reference.Include)"
     }
 }
 $cli = Join-Path $packageRoot "sdvkit.exe"

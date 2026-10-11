@@ -27,11 +27,14 @@ public sealed class CliReviewQueryOptionsTests
             output,
             error,
             () => throw new InvalidOperationException("Discovery must not run."),
-            runProjectReviewData: (_, _, _, _, _) => Unexpected(),
-            runProjectReviewAudio: (_, _) => Unexpected(),
-            runProjectReviewMap: (_, _) => Unexpected(),
-            runProjectReviewTexture: (_, _) => Unexpected(),
-            runProjectReviewModAsset: (_, _) => Unexpected());
+            runners =>
+            {
+                runners.ProjectReviewData = (_, _, _, _, _) => Unexpected();
+                runners.ProjectReviewAudio = (_, _) => Unexpected();
+                runners.ProjectReviewMap = (_, _) => Unexpected();
+                runners.ProjectReviewTexture = (_, _) => Unexpected();
+                runners.ProjectReviewModAsset = (_, _) => Unexpected();
+            });
 
         Assert.Equal(2, exitCode);
         Assert.Equal(0, dispatched);
@@ -54,10 +57,13 @@ public sealed class CliReviewQueryOptionsTests
             output,
             error,
             () => throw new InvalidOperationException("Discovery must not run."),
-            runProjectReviewData: (query, _, _, _, _) =>
+            runners =>
+            {
+                runners.ProjectReviewData = (query, _, _, _, _) =>
             {
                 received = query;
                 return new LiveLabCommandResult(0, new { state = "ready" });
+            };
             });
 
         Assert.Equal(0, exitCode);

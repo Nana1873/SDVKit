@@ -26,7 +26,12 @@ internal static class ModBuildIdentity
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Span<byte> length = stackalloc byte[sizeof(long)];
         byte[] buffer = new byte[81920];
-        foreach (string fileName in RequiredFiles)
+        // Older lab builds predate Shared; retain their identity while hashing the
+        // dependency whenever it is part of the declared build.
+        IEnumerable<string> declaredFiles = File.Exists(Path.Combine(absoluteModPath, "SdvKit.Shared.dll"))
+            ? RequiredFiles.Concat(["SdvKit.Shared.dll"])
+            : RequiredFiles;
+        foreach (string fileName in declaredFiles)
         {
             string path = Path.Combine(absoluteModPath, fileName);
             if (!File.Exists(path))

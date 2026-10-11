@@ -196,7 +196,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
         DateTimeOffset now = default;
         GameSideStatusReport? report = null;
         var readExceptions = new StatusReaderExceptionCapture();
-        Task writes = Task.Run(() => WindowsStatusFile.CaptureTestFailures(path, () =>
+        Task writes = Task.Run(() => WindowsStatusFileFailureEvidence.CaptureTestFailures(path, () =>
         {
             start.SignalAndWait();
             for (; writeTick <= 500; writeTick++)

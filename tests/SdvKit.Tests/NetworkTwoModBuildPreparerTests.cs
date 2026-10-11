@@ -38,7 +38,7 @@ public sealed class NetworkTwoModBuildPreparerTests
             result.BuildIdentity,
             ModBuildIdentity.Compute(farmhandPaths.GameSideModPath));
         Assert.Equal(
-            ["SdvKit.GameSide.dll", "manifest.json"],
+            ["SdvKit.GameSide.dll", "SdvKit.Shared.dll", "manifest.json"],
             Directory.GetFileSystemEntries(farmhandPaths.GameSideModPath)
                 .Select(path => Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
@@ -172,6 +172,7 @@ public sealed class NetworkTwoModBuildPreparerTests
 
             paths.EnsureDirectories();
             Directory.CreateDirectory(paths.GameSideModPath);
+            File.WriteAllText(Path.Combine(paths.GameSideModPath, "SdvKit.Shared.dll"), "shared");
             File.WriteAllText(
                 Path.Combine(paths.GameSideModPath, "SdvKit.GameSide.dll"),
                 "same build");
