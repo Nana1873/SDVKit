@@ -161,10 +161,13 @@ This command neither saves nor resets; finish with the normal stop and reset. Fa
 - no open menu or event, no tool in use and no item held by the cursor;
 - an item that exists in the loaded item data, including items added by mods;
 - a stack of 1 to the item's own maximum (at most 999);
-- a quality of 0 (normal, the default), 1 (silver), 2 (gold) or 4 (iridium) that the item accepts;
+- a quality of 0 (normal, the default), 1 (silver), 2 (gold) or 4 (iridium); a quality above 0 only for objects, which are the items that keep one;
+- a qualified ID without spaces;
 - an empty backpack slot.
 
-It creates a new stack and puts it into the first empty backpack slot. It never merges with or replaces an existing stack; with a full backpack it refuses and changes nothing. The result reports `item.slot` and the `item.inventoryRevision` right after the change, ready for `stardew_world_act` or `stardew_world_interact`. Select the slot with its number key before acting on the item.
+It creates a new stack and puts it into the first empty backpack slot. It never merges with or replaces an existing stack; every refusal, including a full backpack, leaves the backpack unchanged. The result reports `item.slot` and the `item.inventoryRevision` right after the change.
+
+To act on the item, select its slot with its number key (toolbar slots 0 to 11 only; move an item from a lower row first). Selecting changes the revision, so read `stardew_inventory_get` again and pass that `inventoryRevision` to `stardew_world_act` or `stardew_world_interact`. The fixture is not idempotent: after a timeout that may have run, read the inventory before calling it again.
 
 ```powershell
 & $sdvkit project review call stardew_fixture_item_add '{"qualifiedItemId":"(BC)130","stack":1}' --allow-fixture-actions

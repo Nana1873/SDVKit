@@ -20,9 +20,14 @@ internal sealed partial class StardewReviewFixtureRuntime
         }
 
         Item? item = ItemRegistry.Create(qualifiedItemId, 1, quality, allowNull: true);
-        if (item is null || item.QualifiedItemId != qualifiedItemId || item.Quality != quality)
+        if (item is null || item.QualifiedItemId != qualifiedItemId)
         {
-            return new ReviewFixtureResult(false, $"Item {qualifiedItemId} could not be created exactly with quality {quality}; backpack unchanged.");
+            return new ReviewFixtureResult(false, $"Item {qualifiedItemId} could not be created exactly; backpack unchanged.");
+        }
+        // Only objects keep a quality; tools, rings, clothing and the like would silently ignore it.
+        if (quality != 0 && (item is not StardewValley.Object || item.Quality != quality))
+        {
+            return new ReviewFixtureResult(false, $"Item {qualifiedItemId} does not take quality {quality}; backpack unchanged.");
         }
         if (stack > item.maximumStackSize())
         {
@@ -40,11 +45,24 @@ internal sealed partial class StardewReviewFixtureRuntime
         player.Items[slot] = item;
         string? role = string.Equals(access.Role, ReviewFixtureTransportContract.SingleRoleToken, StringComparison.Ordinal)
             ? null : access.Role;
-        ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"),
-            access.LaunchId ?? "", access.Topology ?? "single", role);
-        if (inventory.State != "ready" || inventory.Data?.InventoryRevision is not { } revision)
+        string? revision = null;
+        string reason = "an exception";
+        try
         {
-            return new ReviewFixtureResult(false, $"Item {qualifiedItemId} was added to slot {slot}, but the backpack could not be read back ({inventory.ErrorCode}).");
+            ReviewInventoryReport inventory = ReviewInventoryCommand.Capture(Guid.NewGuid().ToString("N"),
+                access.LaunchId ?? "", access.Topology ?? "single", role);
+            reason = inventory.ErrorCode ?? "no revision";
+            revision = inventory.State == "ready" ? inventory.Data?.InventoryRevision : null;
+        }
+        catch (Exception exception)
+        {
+            reason = exception.GetType().Name;
+        }
+        if (revision is null)
+        {
+            // Undo in the same tick, so a refusal never leaves the item behind.
+            player.Items[slot] = null;
+            return new ReviewFixtureResult(false, $"The backpack could not be read back after adding {qualifiedItemId} ({reason}); the item was removed again and the backpack is unchanged.");
         }
 
         return new ReviewFixtureResult(true,

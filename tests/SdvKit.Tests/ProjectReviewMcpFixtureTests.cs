@@ -687,6 +687,44 @@ public sealed class ProjectReviewMcpFixtureTests
     }
 
     [Fact]
+    public void ItemPayloadIsAcceptedOnlyOnAReadyMatchingItemAdd()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+        DateTimeOffset requestedAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        var query = new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 5, Y: 2);
+        ReviewFixtureResponseEnvelope ready = Envelope(query, expected, DateTimeOffset.UtcNow);
+        bool Accepts(ReviewFixtureResponseEnvelope envelope, ReviewFixtureQuery sent) =>
+            ProjectReviewFixtureService.Matches(envelope, envelope.RequestId, envelope.Binding, sent, expected, requestedAt);
+
+        Assert.True(Accepts(ready, query));
+        Assert.False(Accepts(ready with { Report = ready.Report with { Item = null } }, query));
+        Assert.False(Accepts(ready with { Report = ready.Report with { Item = ready.Report.Item! with { Stack = 4 } } }, query));
+        Assert.False(Accepts(ready with
+        {
+            Report = ready.Report with
+            {
+                State = "blocked",
+                Problems = [new ReviewFixtureProblem("fixtureActionRejected", "Refused.")],
+            },
+        }, query));
+        Assert.True(Accepts(ready with
+        {
+            Report = ready.Report with
+            {
+                State = "blocked",
+                Problems = [new ReviewFixtureProblem("fixtureActionRejected", "Refused.")],
+                Item = null,
+            },
+        }, query));
+        var status = new ReviewFixtureQuery(ReviewFixtureTransportContract.StatusOperation);
+        ReviewFixtureResponseEnvelope statusReady = Envelope(status, expected, DateTimeOffset.UtcNow);
+        Assert.True(Accepts(statusReady, status));
+        Assert.False(Accepts(statusReady with { Report = statusReady.Report with { Item = ready.Report.Item } }, status));
+    }
+
+    [Fact]
     public void ItemAddReportMustMatchTheRequest()
     {
         var query = new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 5, Y: 2);

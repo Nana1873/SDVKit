@@ -273,8 +273,12 @@ try {
         if (@($fresh | Where-Object { Test-Free $_ }).Count -eq 2) { $spot = $candidate; break }
     }
     Assert-That ($null -ne $spot) 'no free tile with a free tile west of it for the placement.'
+    $beforeUnknown = (Invoke-SdvKit 'item-add-unknown-before' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision
     $unknown = (Invoke-Tool 'item-add-unknown' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)SDVKit_NoSuchItem'; stack = 1 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
     Assert-That ($unknown.state -ceq 'blocked' -and $null -eq $unknown.item) "an unknown item was not refused: $($unknown.message)"
+    Assert-That ((Invoke-SdvKit 'item-add-unknown-after' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision -ceq $beforeUnknown) 'refusing an unknown item changed the backpack.'
+    $toolQuality = (Invoke-Tool 'item-add-tool-quality' 'stardew_fixture_item_add' @{ qualifiedItemId = '(T)Hoe'; stack = 1; quality = 2 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
+    Assert-That ($toolQuality.state -ceq 'blocked') 'a tool with gold quality was not refused.'
     $add = (Invoke-Tool 'item-add' 'stardew_fixture_item_add' @{ qualifiedItemId = '(BC)130'; stack = 1 } -OptIn '--allow-fixture-actions').Json
     Assert-That ($add.state -ceq 'ready' -and $add.item.qualifiedItemId -ceq '(BC)130' -and $add.item.stack -eq 1) "item add failed: $($add.message)"
     $added = (Invoke-SdvKit 'item-add-inventory' @('project', 'review', 'inventory', '--json')).Json.data

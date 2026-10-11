@@ -109,7 +109,7 @@ internal static class ProjectReviewMcpFixtureTools
           "properties": {
             "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^\\([^\\s)]+\\)\\S+$" },
             "stack": { "type": "integer", "minimum": 1, "maximum": 999 },
-            "quality": { "type": "integer", "enum": [0, 1, 2, 4] }
+            "quality": { "type": "integer", "enum": [0, 1, 2, 4], "default": 0 }
           }
         }
         """);
