@@ -32,15 +32,15 @@ If a defect needs a separate fix PR, update the candidate to the new green main 
 
 ## Verify the extracted package
 
-From the checkout, substitute the selected artifact path and version:
+From a checkout at the archive's source commit (the commit that produced the ZIP), substitute the selected artifact path and version:
 
 ```powershell
-.\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-1.0.0-win-x64.zip -ExpectedVersion 1.0.0 -ExpectedDoctorStatus ready
+.\scripts\verify-windows-x64.ps1 -ArchivePath .\.sdvkit\release\SDVKit-2.0.0-win-x64.zip -ExpectedVersion 2.0.0 -ExpectedDoctorStatus ready
 ```
 
-Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
+Use `notFound` only on a host without a ready game/SMAPI installation (as in CI). This script verifies the sidecar, archive paths/binaries, CLI version, doctor, inactive-review MCP startup, create/inspect, and offline authoring checks using all three distributed schemas, including an invalid translation and CP packaging. It also compares the package's Shared and GameSide source files with the checkout's `src/` tree, and it exercises explicit project/installation selection and incomplete-installation diagnostics; on a ready host it builds/packages the selected generated C# mod from a multi-project example. It does not prove live MCP behavior or compile the game-bound adapter.
 
-The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves independence from repository files; this temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
+The verifier reports elapsed offline time and the retained fresh extraction directory. Extraction outside the checkout intentionally proves that the extracted package is independent of repository files; the verifier reads the checkout only for the source list it compares. This temporary directory is the documented exception to the usual `.sdvkit/` output rule. Do not point it at normal Saves/Mods or reuse an existing directory.
 
 Set `$packageRoot` to that reported extracted package, then build its game-side source without starting Stardew:
 
@@ -94,8 +94,8 @@ An externally disturbed desktop observation is inconclusive about isolation; ret
 After every required gate is green, tag the exact accepted green main commit and push the tag:
 
 ```powershell
-git tag -a v1.0.0 <accepted-main-commit> -m "SDVKit 1.0.0"
-git push origin v1.0.0
+git tag -a v2.0.0 <accepted-main-commit> -m "SDVKit 2.0.0"
+git push origin v2.0.0
 ```
 
 The `Release draft` workflow then finds the successful main CI run for that commit, downloads its unchanged `SDVKit-windows-x64` artifact, checks that the sidecar matches the ZIP and that the ZIP name matches the tag, and attaches both files to a draft release. Its body comes from `scripts/release-notes.ps1`. A version with a suffix, such as `2.0.0-rc.1`, is marked as a prerelease so it never becomes the latest release. It never rebuilds. It fails instead of creating a draft when no green main CI run exists for the commit, or when a release or draft for the tag already exists.
@@ -105,11 +105,11 @@ Before publishing the draft, confirm that its two assets have the same SHA-256 a
 To preview or edit the user-facing body that the draft uses, generate it locally from the changelog:
 
 ```powershell
-.\scripts\release-notes.ps1 -Version 1.0.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
+.\scripts\release-notes.ps1 -Version 2.0.0 | Set-Content -LiteralPath .\.sdvkit\release-notes.md -Encoding utf8
 ```
 
 The draft workflow uses the same helper for the release body; run it locally to preview or edit the text. The version section should link to the release acceptance and compare view. Keep detailed hashes, logs, and CI provenance in that linked acceptance; do not maintain a second editorial summary in README or a separate notes file. The helper only extracts text; it does not publish anything.
 
-Download the published assets freshly without relying on an authenticated cached copy. Compare both files byte-for-byte with the accepted CI products, then run the same short portable verifier on the downloaded ZIP. With identical bytes and unchanged relevant environment, the accepted live proof remains valid; do not run the entire live suite again merely because the download URL changed.
+Download the published assets freshly without relying on an authenticated cached copy. Compare both files byte-for-byte with the accepted CI products, then run the same short portable verifier on the downloaded ZIP from a checkout at the archive's source commit. With identical bytes and unchanged relevant environment, the accepted live proof remains valid; do not run the entire live suite again merely because the download URL changed.
 
 If bytes differ, required evidence is missing, or the environment changed materially, stop and reassess before declaring completion. Close the release issue only after delivery verification and final cleanup are recorded. Historical published acceptance remains historical evidence; do not rewrite it to imply checks that were never performed.

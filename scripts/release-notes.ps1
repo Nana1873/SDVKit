@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $changelogPath = Join-Path $PSScriptRoot '..\CHANGELOG.md'
-$lines = @(Get-Content -LiteralPath $changelogPath)
+$lines = @(Get-Content -LiteralPath $changelogPath -Encoding utf8)
 $heading = '^## \[' + [regex]::Escape($Version) + '\] - \d{4}-\d{2}-\d{2}$'
 $sectionMatches = @($lines | Select-String -Pattern $heading)
 if ($sectionMatches.Count -ne 1) {
@@ -27,6 +27,8 @@ if ($end -eq $start) {
 }
 
 $notes = ($lines[$start..($end - 1)] -join "`n").Trim()
+# A release body does not resolve repository-relative links, so point them at the tagged files.
+$notes = [regex]::Replace($notes, '\]\((?!https?:|#|mailto:)([^)\s]+)\)', { param($match) "](https://github.com/Nana1873/SDVKit/blob/v$Version/$($match.Groups[1].Value))" })
 if ([string]::IsNullOrWhiteSpace($notes)) {
     throw "The changelog section for $Version is empty."
 }
