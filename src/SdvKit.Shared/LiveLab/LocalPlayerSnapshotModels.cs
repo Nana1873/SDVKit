@@ -18,7 +18,21 @@ internal sealed record LocalPlayerValues(
     float MaxStamina,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? SelectedSlot,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] SelectedItemValues? SelectedItem,
-    FishingRodValues? Fishing = null);
+    FishingRodValues? Fishing = null,
+    PlayerPositionValues? Position = null);
+
+// Where the player stands and what it faces. StandingX/Y are the standing pixel divided by 64, so their floor
+// is the tile. The grab tile is Farmer.GetGrabTile(), which the action button checks first; depending on where
+// inside the tile the player stands it can be the player's own tile. The tool tile is where a tool used now
+// lands (Farmer.GetToolLocation without the mouse). The mouse cursor can redirect both when it is near the player.
+internal sealed record PlayerPositionValues(
+    string Facing,
+    float StandingX,
+    float StandingY,
+    int GrabTileX,
+    int GrabTileY,
+    int ToolTileX,
+    int ToolTileY);
 
 // Instantaneous observations, not a catch history or an automatic fishing controller.
 internal sealed record FishingRodValues(
@@ -59,7 +73,25 @@ internal static class LocalPlayerSnapshotContract
         && values.SelectedSlot is null or >= 0
         && (values.SelectedItem is null
             || values.SelectedSlot is not null && ItemValid(values.SelectedItem))
-        && (values.Fishing is null || values.SelectedItem is not null && FishingValid(values.Fishing));
+        && (values.Fishing is null || values.SelectedItem is not null && FishingValid(values.Fishing))
+        && (values.Position is null || PositionValid(values.Position));
+
+    public static readonly string[] FacingDirections = ["up", "right", "down", "left"];
+
+    // Stardew's FacingDirection: 0 up, 1 right, 2 down, 3 left.
+    public static string? FacingName(int direction) =>
+        direction is >= 0 and <= 3 ? FacingDirections[direction] : null;
+
+    private static bool PositionValid(PlayerPositionValues position) =>
+        FacingDirections.Contains(position.Facing)
+        && float.IsFinite(position.StandingX)
+        && float.IsFinite(position.StandingY)
+        && Math.Abs(position.StandingX) <= 100000
+        && Math.Abs(position.StandingY) <= 100000
+        && Math.Abs(position.GrabTileX) <= 100000
+        && Math.Abs(position.GrabTileY) <= 100000
+        && Math.Abs(position.ToolTileX) <= 100000
+        && Math.Abs(position.ToolTileY) <= 100000;
 
     private static bool FishingValid(FishingRodValues rod) =>
         float.IsFinite(rod.BobberTileX)

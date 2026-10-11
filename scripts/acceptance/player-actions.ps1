@@ -6,11 +6,11 @@ Live acceptance: everyday keyboard-and-mouse player actions in a single review o
 .DESCRIPTION
 Proves each action through a state read, not through the input acknowledgement:
 
-- walking in four directions (tile changes) and walking versus running (distance per tick count);
+- walking in four directions (tile changes and the reported facing) and walking versus running (distance per tick count);
 - stardew_lab_warp (runtime location and tile) and a location change by walking through a map warp;
 - hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
 - the game menu: open with E, switch tab by clicking its component, close with Escape;
-- hoe, pickaxe and scythe on the faced tile (soil appears, the stone or weeds disappear, stamina drops);
+- hoe, pickaxe and scythe on the faced tile, after checking the reported facing and tool tile (soil appears, the stone or weeds disappear, stamina drops);
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -87,6 +87,8 @@ function Invoke-ToolDown([string] $Label, [string] $ItemId, $Tile, [switch] $NoS
     Wait-Settled
     $before = Get-Runtime "$Label-before"
     Assert-That ($before.localPlayer.data.selectedSlot -eq $slot) "$ItemId is not selected."
+    $facing = $before.localPlayer.data.position
+    Assert-That ($facing.facing -ceq 'down' -and $facing.toolTileX -eq $Tile.x -and $facing.toolTileY -eq $Tile.y) "the player faces $($facing.facing) with the tool tile $($facing.toolTileX),$($facing.toolTileY), not down toward $($Tile.x),$($Tile.y)."
     Invoke-Press "$Label-use" 'C'
     Start-Sleep -Seconds 2
     $after = Get-Runtime "$Label-after"
@@ -110,13 +112,14 @@ try {
     Invoke-Warp 'walk-start' 'Farm' 64 16
     $start = Get-Runtime 'walk-start'
     $position = $start
-    foreach ($step in @(@{ key = 'S'; dx = 0; dy = 1 }, @{ key = 'D'; dx = 1; dy = 0 }, @{ key = 'A'; dx = -1; dy = 0 }, @{ key = 'W'; dx = 0; dy = -1 })) {
+    foreach ($step in @(@{ key = 'S'; dx = 0; dy = 1; facing = 'down' }, @{ key = 'D'; dx = 1; dy = 0; facing = 'right' }, @{ key = 'A'; dx = -1; dy = 0; facing = 'left' }, @{ key = 'W'; dx = 0; dy = -1; facing = 'up' })) {
         Invoke-Hold "walk-$($step.key)" @($step.key) 30
         Wait-Settled
         $next = Get-Runtime "walk-$($step.key)"
         $moveX = $next.tileX - $position.tileX
         $moveY = $next.tileY - $position.tileY
         Assert-That ([Math]::Sign($moveX) -eq $step.dx -and [Math]::Sign($moveY) -eq $step.dy) "walking $($step.key) moved by $moveX,$moveY."
+        Assert-That ($next.localPlayer.data.position.facing -ceq $step.facing) "after walking $($step.key) the player faces $($next.localPlayer.data.position.facing), expected $($step.facing)."
         $position = $next
     }
 

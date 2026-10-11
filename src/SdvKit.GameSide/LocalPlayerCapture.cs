@@ -45,7 +45,8 @@ internal static class LocalPlayerCapture
                     rod.bobber.Value.X / 64f, rod.bobber.Value.Y / 64f,
                     rod.timeUntilFishingBite,
                     rod.fishCaught ? rod.whichFish?.QualifiedItemId : null,
-                    rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null);
+                    rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null,
+                CapturePosition(player));
             return LocalPlayerSnapshotContract.ValuesValid(values)
                 ? new LocalPlayerSnapshot(LocalPlayerSnapshotContract.SchemaVersion, "available", null, values)
                 : LocalPlayerSnapshotContract.WithoutData("error", "invalidValues");
@@ -55,6 +56,21 @@ internal static class LocalPlayerCapture
             // Modded item getters can fail. Publish an explicit error, never last-known values.
             return LocalPlayerSnapshotContract.WithoutData("error", "captureFailed");
         }
+    }
+
+    private static PlayerPositionValues? CapturePosition(Farmer player)
+    {
+        string? facing = LocalPlayerSnapshotContract.FacingName(player.FacingDirection);
+        if (facing is null)
+        {
+            return null;
+        }
+
+        Microsoft.Xna.Framework.Point standing = player.StandingPixel;
+        Microsoft.Xna.Framework.Vector2 grab = player.GetGrabTile();
+        Microsoft.Xna.Framework.Vector2 tool = player.GetToolLocation(ignoreClick: true);
+        return new PlayerPositionValues(facing, standing.X / 64f, standing.Y / 64f, (int)grab.X, (int)grab.Y,
+            (int)Math.Floor(tool.X / 64f), (int)Math.Floor(tool.Y / 64f));
     }
 }
 #endif
