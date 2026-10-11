@@ -5,7 +5,7 @@ An agent-first Windows toolkit for developing Stardew Valley mods, with an isola
 - **Build mods:** inspect projects, create a SMAPI mod or Content Patcher pack, build, and package it.
 - **Test in game:** smoke-test a mod, or keep a review running with companions, test saves, screenshots and optional agent control.
 
-[Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Glossary](docs/glossary.md) · [Roadmap](https://github.com/Nana1873/SDVKit/issues/84)
+[Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Glossary](docs/glossary.md) · [Issues](https://github.com/Nana1873/SDVKit/issues)
 
 This documentation follows `main` for **v2.0.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) with the README from its tag. For this version, see its [release status](https://github.com/Nana1873/SDVKit/issues/286) and [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v2.0.0).
 

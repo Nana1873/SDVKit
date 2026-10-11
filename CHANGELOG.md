@@ -11,6 +11,9 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - `sdvkit lab init [<lab-root>] [--force] --json` prepares a lab root for Claude Code and Codex (#248). It writes `SDVKIT.md` (the lab guide), `KNOWLEDGEBASE.md` (sourced SMAPI 4, Stardew 1.6, Content Patcher and GMCM pitfalls), ten task skills in `.claude/skills/` and `.agents/skills/`, a Claude Code hook that blocks writes to the game folder (including its `Mods`), the normal `Saves` folder, `*.xnb` files and game binaries, a `sdvkit.cmd` launcher and an MCP template. It creates `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.gitignore` and `global.json` only when missing. Run it again after updating SDVKit: unchanged files are updated and locally edited ones are kept unless `--force`. The README's agent setup prompt, also in `SETUP_PROMPT.txt`, runs it when the downloaded release offers it.
 - Live acceptance scripts in `scripts/acceptance/` (#267): `shop.ps1`, `crop-machine.ps1` and `gmcm-number.ps1` run the shop purchase, machine rule and GMCM slider workflows end to end against the real game, stop at the first unmet check, always stop and reset, and keep their evidence below the lab root. Short guides replace the long recipes: [test a purchase in your shop](docs/test-a-shop-purchase.md), [test a machine rule](docs/test-a-machine-rule.md) and [change and verify a GMCM option](docs/test-a-gmcm-option.md). The sample mods now live in `docs/examples/`.
 - `docs/glossary.md` defines the documentation's recurring terms (owned, role, screen, test save, opt-in, evidence levels) once (#249). The capability matrix in `docs/README.md` is split into toolkit, lifecycle, observation and action tables.
+
+### Removed
+
 - **Breaking (2.0):** the repository's `.agents/skills/sdv-project-review` and `sdv-project-smoke` skills are replaced by the task skills in `agent/skills/` that `lab init` installs (`sdv-live-review`, `sdv-project-smoke` and others).
 
 ### Changed
@@ -30,15 +33,18 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Upgrade from 1.x
 
 1. Stop and reset every lab with the 1.x executable first. The next start, smoke or review with 2.0 removes the former `SDVKit.AlwaysOn` folder from the lab's isolated mod group, but only when it is exactly the install SDVKit 1.x generated; anything else is left untouched.
-2. In scripts and clients that read JSON, rename `alwaysOn` to `gameSide`, `alwaysOnPending` and similar problem codes to `gameSide...`, and the console-delivery problem codes to the `reviewCommand...` codes listed above.
+2. In scripts and clients that read JSON, rename `alwaysOn` to `gameSide`, `alwaysOnPending` and similar problem codes to `gameSide...`, the mod-asset coverage scope `observedRequestsSinceAlwaysOnSubscribed` to `observedRequestsSinceGameSideSubscribed`, and the console-delivery problem codes to the `reviewCommand...` codes listed above. `schemaVersion` stays `1`: tell 1.x and 2.x reports apart by the SDVKit version, not by the schema version.
 3. Replace `sdvkit ...` lines sent through `project review command` with `project review call <tool>` (input, screenshots, fixtures, lab state) or with `project review split-screen` and `project review network`.
 4. Build identities changed. Evidence recorded with 1.x does not count for a 2.0 package.
-5. For Claude Code or Codex, run `sdvkit lab init` in your lab root. It replaces the skills that 1.x kept in the repository's `.agents/skills/`.
+5. A mod that declares a dependency on `SDVKit.AlwaysOn` must use `SDVKit.GameSide` instead; the old ID is reported as unavailable.
+6. For Claude Code or Codex, run `sdvkit lab init` in your lab root. It replaces the skills that 1.x kept in the repository's `.agents/skills/`.
 
 ### Fixed
 
 - A world action could use the tool on a neighbouring tile while still reporting `completed`. Stardew aims a mouse tool use at the previous update's cursor position, and that could still be the physical pointer. World actions now first complete one cursor-only game update and revalidate the target before pressing, like menu clicks (#265).
 - A world action that SDVKit did not send after its cursor reached the target now reports `mayHaveRun` instead of `notDispatched` while action or tool input is held or queued, a tool is in use or the player cannot move, or when the target or backpack changed or could not be read. Physical input reaching the target in that window could previously run the action behind a `notDispatched` result (#264).
+
+[Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/286) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.0.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v1.0.0...v2.0.0)
 
 ## [1.0.0] - 2026-10-01
 

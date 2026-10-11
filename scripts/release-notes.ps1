@@ -27,6 +27,8 @@ if ($end -eq $start) {
 }
 
 $notes = ($lines[$start..($end - 1)] -join "`n").Trim()
+# A release body does not resolve repository-relative links, so point them at the tagged files.
+$notes = [regex]::Replace($notes, '\]\((?!https?:|#|mailto:)([^)\s]+)\)', { param($match) "](https://github.com/Nana1873/SDVKit/blob/v$Version/$($match.Groups[1].Value))" })
 if ([string]::IsNullOrWhiteSpace($notes)) {
     throw "The changelog section for $Version is empty."
 }
