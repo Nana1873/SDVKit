@@ -136,7 +136,7 @@ foreach ($project in @('SdvKit.Shared', 'SdvKit.GameSide')) {
             $kind = if ($_.SideIndicator -eq '<=') { 'Missing' } else { 'Unexpected' }
             "${kind}: $($_.InputObject)"
         }
-        throw "The portable source inventory does not match the checkout:`n$($details -join "`n")"
+        throw "The portable source inventory does not match the checkout:`n$($details -join "`n")`nRun the verifier from the checkout of the commit that produced this archive."
     }
 }
 
