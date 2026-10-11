@@ -20,7 +20,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - The lab starts the game window without giving it focus (SDL's `SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN`, set in the game's environment) (#311). Switching between other windows during a review or an acceptance run no longer makes the next input fail with `inputForegroundChanged`; the game window becoming the foreground window (a click into it, Alt+Tab, or Windows activating it after the window in front closes) still does.
 
 - `lab test-save` no longer fails with `gameSideStale` when loading the test save blocks the game for more than five seconds: while the exact test save is still loading or waiting, it keeps polling for up to 30 seconds after the marker becomes stale (#303). The acceptance scripts' readiness wait does the same.
-
+- Fishing preparation now requires natural fishable water both two and three tiles out from the nearest collision-free bank facing left or right. It skips vertical banks because down-facing short casts sometimes spent stamina without starting fishing; the cause remains undetermined. If no qualifying side-facing bank exists, the fixture stays unchanged (#305).
 - `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
 
 ## [2.0.0] - 2026-10-11
