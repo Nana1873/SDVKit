@@ -108,8 +108,11 @@ internal static class ReviewWorldActCommand
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position ? (cursorX, cursorY) : null,
                 () => Validate(query, launch, testSave));
+            // Keep the press-edge refusal so the report names it instead of a generic uncertainty.
+            string? gateProblem = null;
+            string? Gate() => gateProblem = dispatchGate.Validate();
             dispatched = true;
-            if (!input.TryWorldPress(request, dispatchGate.Validate, result =>
+            if (!input.TryWorldPress(request, Gate, result =>
                 {
                     bool cleared = input.TryClearCursor(out _);
                     cursorOwned = false;
@@ -123,7 +126,9 @@ internal static class ReviewWorldActCommand
                     Write(result.Succeeded
                         ? Report("completed", null, "completed", result.CanonicalButton,
                             result.StartTick, result.EndTick)
-                        : Report("unavailable", "worldActionCompletionUncertain",
+                        : Report("unavailable",
+                            result.StartTick is null && gateProblem is not null
+                                ? gateProblem : "worldActionCompletionUncertain",
                             result.StartTick is null ? Unsent() : "mayHaveRun", result.CanonicalButton,
                             result.StartTick, result.EndTick));
                 }, out _))

@@ -41,7 +41,7 @@ internal static class ProjectReviewMcpWorldActTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Press the action button (check: open, talk, give, read, eat, place) or use the selected tool (useTool) exactly once on a tile next to the player in the owned disposable single-player review. SDVKit aims the virtual cursor at that tile; Stardew may still fall back to tiles above or below it, the player's tile or the held item, and weapons swing by facing. Refused with worldActionCursorAimUnavailable in gamepad mode or with a hidden mouse. Requires a fresh inventoryRevision from stardew_inventory_get. Completion proves input delivery only; read menu, world or inventory again to prove the effect.",
+            Description = "Press the action button (check: open, talk, give, read, eat, place) or use the selected tool (useTool) exactly once on a tile next to the player in the owned disposable single-player review. SDVKit aims the virtual cursor at that tile; Stardew may still fall back to the held item, tiles above or below it or the player's tile, and weapons and the rod turn toward the tile and act in that direction. Refused with worldActionCursorAimUnavailable in gamepad mode or with a hidden mouse. Requires a fresh inventoryRevision from stardew_inventory_get. Completion proves input delivery only; read menu, world or inventory again to prove the effect.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations
