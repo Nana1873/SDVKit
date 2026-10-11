@@ -125,6 +125,20 @@ internal static class ProjectReviewMcpServer
                 "stamina": { "type": "number", "description": "Finite single-precision game value." },
                 "maxStamina": { "type": "number", "description": "Finite single-precision game value." },
                 "selectedSlot": { "type": ["integer", "null"], "minimum": 0, "maximum": 2147483647 },
+                "position": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["facing", "standingX", "standingY", "grabTileX", "grabTileY", "toolTileX", "toolTileY"],
+                  "properties": {
+                    "facing": { "enum": ["up", "right", "down", "left"] },
+                    "standingX": { "type": "number", "minimum": -100000, "maximum": 100000, "description": "Standing pixel divided by 64; its floor is the tile." },
+                    "standingY": { "type": "number", "minimum": -100000, "maximum": 100000, "description": "Standing pixel divided by 64; its floor is the tile." },
+                    "grabTileX": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Farmer.GetGrabTile(); can be the player's own tile." },
+                    "grabTileY": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Farmer.GetGrabTile(); can be the player's own tile." },
+                    "toolTileX": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Where a tool used now lands, without the mouse." },
+                    "toolTileY": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Where a tool used now lands, without the mouse." }
+                  }
+                },
                 "fishing": {
                   "type": ["object", "null"],
                   "additionalProperties": false,

@@ -12,10 +12,10 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
-| Walk in a direction | Chord `W`, `A`, `S` or `D` | `runtime.tileX`/`tileY` change | script | Equal tick counts can move 2 or 3 tiles; no exact stop ([#293](https://github.com/Nana1873/SDVKit/issues/293)) |
+| Walk in a direction | Chord `W`, `A`, `S` or `D` | `runtime.tileX`/`tileY` change; `position.facing` is the walking direction; `position.standingX`/`standingY` show the sub-tile position | script | Equal tick counts can move 2 or 3 tiles; no exact stop ([#293](https://github.com/Nana1873/SDVKit/issues/293)) |
 | Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script | No running state is reported |
 | Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script | — |
-| Face a direction | Press the direction key once | Not reported | indirect only | [#289](https://github.com/Nana1873/SDVKit/issues/289) |
+| Face a direction | Press the direction key once | `localPlayer.data.position.facing`; `toolTileX`/`toolTileY` is where a tool lands | script | — |
 | Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list` | `runtime.locationId` | script (Farm to BusStop) | Doors that need the action button are not listed ([#300](https://github.com/Nana1873/SDVKit/issues/300)) |
 | Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 

@@ -62,6 +62,13 @@ All `data` values describe **one observation** at the runtime's `observedAtUtc`.
 | `selectedItem.qualifiedItemId` | `Item.QualifiedItemId`, string | Qualified type key `(type)id`, at most 256 characters without control characters. Identifies an item type, not a unique item instance. |
 | `selectedItem.stack` | `Item.Stack`, integer | Signed 32-bit property value; no vanilla stack cap. |
 | `selectedItem.quality` | `StardewValley.Object.Quality`, integer or null | Signed 32-bit value for Object-derived items; null for other item types, not an invented zero. |
+| `position` | Object or absent | Absent from older GameSide versions. Null when the game reports no valid facing direction. |
+| `position.facing` | `Farmer.FacingDirection`, string | `up`, `right`, `down` or `left`. |
+| `position.standingX`, `position.standingY` | `Farmer.StandingPixel` divided by 64, numbers | Finite, within ±100000; their floor is the tile. Use them to see where inside a tile the player stands. |
+| `position.grabTileX`, `position.grabTileY` | `Farmer.GetGrabTile()`, integers | The tile the action button checks first. Depending on where inside its tile the player stands, it can be the player's own tile. If nothing is there, the game tries the tiles directly below and above it (unless behind the player), then the player's own tile; it never tries the next tile further in the facing direction. |
+| `position.toolTileX`, `position.toolTileY` | `Farmer.GetToolLocation(ignoreClick: true)` divided by 64, integers | The tile a tool used now would hit. |
+
+The mouse cursor redirects the action and tool buttons when it is within one tile of the player; then neither tile above applies. Park SDVKit's virtual cursor away from the player (for example `stardew_input_cursor_set` at `8,8`) before keyboard actions.
 
 The world fields stay available next to the player fields:
 

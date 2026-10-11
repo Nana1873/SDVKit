@@ -35,6 +35,55 @@ public sealed class LocalPlayerSnapshotTests
         Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Fishing = Rod, SelectedItem = null }));
     }
 
+    private static readonly PlayerPositionValues Position = new("down", 64.5f, 15.98f, 64, 15, 64, 16);
+
+    [Fact]
+    public void PositionObservationSurvivesStatusReadAndStaysOptional()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Position = Position } };
+        Assert.Equal(Position, Read(temporary, Runtime(player)).Runtime?.LocalPlayer?.Data?.Position);
+        // An older GameSide does not publish the position; the snapshot stays valid without it.
+        Assert.Null(Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Data?.Position);
+        Assert.Equal("available", Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Availability);
+    }
+
+    [Fact]
+    public void InvalidPositionValuesFailClosed()
+    {
+        foreach (var position in new[] { Position with { Facing = "north" }, Position with { Facing = "Down" },
+            Position with { StandingX = float.NaN }, Position with { StandingY = float.PositiveInfinity },
+            Position with { GrabTileX = 100001 }, Position with { StandingY = -100001 }, Position with { ToolTileY = -100001 } })
+        {
+            Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Position = position }));
+        }
+
+        Assert.True(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Position = Position }));
+    }
+
+    [Fact]
+    public void PartialPositionObjectIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Position = Position } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
+        payload["runtime"]!["localPlayer"]!["data"]!["position"]!.AsObject().Remove("toolTileX");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("invalid", GameSideStatusReader.Read(path, "launch", Process, Now).State);
+    }
+
+    [Theory]
+    [InlineData(0, "up")]
+    [InlineData(1, "right")]
+    [InlineData(2, "down")]
+    [InlineData(3, "left")]
+    [InlineData(4, null)]
+    [InlineData(-1, null)]
+    public void FacingDirectionsMapToNames(int direction, string? expected) =>
+        Assert.Equal(expected, LocalPlayerSnapshotContract.FacingName(direction));
+
     private static readonly DateTimeOffset Now = new(2026, 9, 5, 10, 0, 0, TimeSpan.Zero);
     private static readonly OwnedProcessIdentity Process = new(1234, Now.AddMinutes(-1), @"C:\Game\StardewModdingAPI.exe");
 
