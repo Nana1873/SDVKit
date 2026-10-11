@@ -11,6 +11,8 @@ Proves each action through a state read, not through the input acknowledgement:
 - hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
 - the game menu: open with E, switch tab by clicking its component, close with Escape;
 - hoe, pickaxe and scythe on the faced tile, after checking the reported facing and tool tile (soil appears, the stone or weeds disappear, stamina drops);
+- stardew_world_act: the hoe by useTool on a tile next to the player, check on the Farm sign opens its message, and a
+  tile that is not next to the player is refused;
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -226,17 +228,53 @@ try {
     $cut = Invoke-ToolDown 'scythe' '(W)47' $weed -NoStamina
     Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
 
+    Write-Step 'Faced-tile actions with stardew_world_act: hoe by useTool, read the Farm sign by check, refuse a far tile.'
+    $east = @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) -and $null -eq $byTile["$($_.x),$($_.y)"].soil })[1]
+    Assert-That ($null -ne $east) 'no free tile with a free tile west of it in the scanned area.'
+    Invoke-Warp 'act-hoe' 'Farm' ($east.x - 1) $east.y
+    $hoeSlot = Find-ToolSlot 'act-hoe' '(T)Hoe'
+    Invoke-Press 'act-hoe-select' (Get-SlotKey $hoeSlot)
+    Wait-Settled
+    $inventory = (Invoke-SdvKit 'act-hoe-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $act = Invoke-Tool 'act-hoe' 'stardew_world_act' @{ action = 'useTool'; x = $east.x; y = $east.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($act.Json.state -ceq 'completed' -and $act.Json.button -ceq 'MouseLeft') "useTool did not complete: $($act.Json.errorCode)"
+    Start-Sleep -Seconds 2
+    Assert-That ($null -ne (Get-Area 'act-hoe-result' $east.x $east.y 1 1)[0].soil) "useTool with the hoe did not till $($east.x),$($east.y)."
+
+    $sign = (Invoke-Tool 'sign-property' 'stardew_map_property_get' @{ asset = 'Maps/Farm'; property = 'Action'; scope = 'tile'; source = 'direct'; layer = 'Buildings'; x = 8; y = 7 }).Json
+    Assert-That ("$($sign.property.value)" -clike 'Message *') "Maps/Farm has no sign at 8,7 (Action is '$($sign.property.value)')."
+    Invoke-Warp 'act-sign' 'Farm' 8 8
+    $inventory = (Invoke-SdvKit 'act-sign-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    $far = Invoke-Tool 'act-far' 'stardew_world_act' @{ action = 'check'; x = 8; y = 5; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
+    Assert-That ($far.Json.errorCode -ceq 'worldActionTargetNotAdjacent' -and $far.Json.dispatchState -ceq 'notDispatched') "a far target returned $($far.Json.errorCode)/$($far.Json.dispatchState)."
+    $check = Invoke-Tool 'act-sign' 'stardew_world_act' @{ action = 'check'; x = 8; y = 7; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($check.Json.state -ceq 'completed' -and $check.Json.button -ceq 'MouseRight') "check did not complete: $($check.Json.errorCode)"
+    Wait-Settled
+    $dialogue = (Invoke-SdvKit 'act-sign-menu' @('project', 'review', 'menu', '--json')).Json
+    # The Farm sign shows its text in a LetterViewerMenu in Stardew 1.6.
+    Assert-That ($dialogue.menuOpen -eq $true -and @($dialogue.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.LetterViewerMenu' }).Count -eq 1) "check on the sign opened $(@($dialogue.menus | ForEach-Object type) -join ', ')."
+    Invoke-Press 'act-sign-close' 'Escape'
+    Wait-Settled
+
     Write-Step 'Fishing: prepare and cast.'
-    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
+    # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.
+    $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 64; y = 16 } -OptIn '--allow-fixture-actions'
     Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
     Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
     Wait-Settled
-    Invoke-Hold 'cast' @('C') 40
-    $deadline = [DateTime]::UtcNow.AddSeconds(8)
-    do {
-        Start-Sleep -Seconds 1
-        $fishing = (Get-Runtime 'cast').localPlayer.data.fishing
-    } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+    # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle:
+    # not charging, not casting, bobber not in the air and not fishing.
+    foreach ($attempt in 1, 2) {
+        Invoke-Hold "cast-$attempt" @('C') 40
+        $deadline = [DateTime]::UtcNow.AddSeconds(8)
+        do {
+            Start-Sleep -Seconds 1
+            $fishing = (Get-Runtime "cast-$attempt").localPlayer.data.fishing
+        } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+        if ($fishing.fishing -eq $true) { break }
+        Assert-That ($attempt -eq 1 -and -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)) 'the cast did not put the bobber in the water.'
+        Write-Step 'The rod is idle after the first cast; casting once more.'
+    }
     Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
     Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY). Hooking and the minigame are not covered."
 

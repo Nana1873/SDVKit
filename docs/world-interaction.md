@@ -1,6 +1,6 @@
 # Bounded world interaction
 
-Use `project review interact` or the MCP tool `stardew_world_interact` (opt-in `--allow-world-actions`) to send one native interaction to one adjacent target you just read. It works only in a single [owned](glossary.md#reviews-and-ownership) review on the [test save](glossary.md#worlds-and-fixtures), on screen 0. It is not available for a normal save, a network role or another split-screen screen.
+Use `project review interact` or the MCP tool `stardew_world_interact` (opt-in `--allow-world-actions`) to send one native interaction to one adjacent target you just read. For the action button or a tool on any neighbouring tile, see [`act`](#action-button-or-tool-on-a-tile-next-to-the-player). It works only in a single [owned](glossary.md#reviews-and-ownership) review on the [test save](glossary.md#worlds-and-fixtures), on screen 0. It is not available for a normal save, a network role or another split-screen screen.
 
 First read the one-tile target with [`project review world`](world-inspection.md) and the whole backpack with [`project review inventory`](inventory-inspection.md). Pass the target's `instanceId` and `revision`: the soil for `water`, the crop for `harvest`, or the machine. Also pass the full `inventoryRevision`:
 
@@ -16,6 +16,24 @@ Only these cases are supported:
 - `machineCollect`: a ready ordinary data-backed machine, an empty selected slot and room in the inventory. Sends one native right-mouse.
 
 SDVKit checks the target, inventory and player state before it queues the input and again when it presses. Any changed or unsupported fact fails closed. Input uses the process-local virtual cursor. SDVKit does not move the physical cursor, change focus, send global input, pathfind or navigate for you.
+
+## Action button or tool on a tile next to the player
+
+For everything else on a neighbouring tile, use `project review act` or the MCP tool `stardew_world_act` (same opt-in and limits). It needs no target identity, only a fresh `inventoryRevision`:
+
+```powershell
+& $sdvkit project review act check 8 7 <inventory-revision> --topology single --json
+& $sdvkit project review act useTool 65 20 <inventory-revision> --topology single --json
+```
+
+- `check` presses the action button (right mouse) on the tile: open a chest, read a sign, talk to an NPC, give the selected item, eat or place it.
+- `useTool` uses the selected tool (left mouse) on the tile: hoe, axe, pickaxe, scythe, watering can. It is refused with `worldActionWrongToolOrState` when no tool is selected.
+
+The target must be one of the four tiles next to the player's tile; otherwise the result is `worldActionTargetNotAdjacent` with `notDispatched`. The player does not need to face it: SDVKit puts the virtual cursor on the tile, and the game aims both buttons at the tile under the cursor when it is that close. Without the cursor, the game would pick the tile from where inside its own tile the player stands (see `position` in [runtime state](runtime-state.md#field-contract)).
+
+Verified live so far: `check` on the Farm sign and `useTool` with the hoe (`scripts/acceptance/player-actions.ps1`). The other uses rely on the game's own action button and tool behaviour; the [player-action matrix](player-actions.md) tracks which are verified.
+
+There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack and no open menu. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil or removed objects, `project review inventory` for gifts, food or placed items.
 
 ## Results
 

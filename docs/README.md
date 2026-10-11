@@ -89,7 +89,7 @@ Every read has a CLI command and a native MCP tool that need no opt-in. `project
 
 ### Live lab: actions
 
-MCP tools and `project review call` need the opt-in flag. The dedicated CLI commands `project review interact` and `container-transfer` need none.
+MCP tools and `project review call` need the opt-in flag. The dedicated CLI commands `project review interact`, `act` and `container-transfer` need none.
 
 | Capability | Tools | Opt-in | Where it works |
 | --- | --- | --- | --- |
@@ -98,6 +98,7 @@ MCP tools and `project review call` need the opt-in flag. The dedicated CLI comm
 | Buildings, animals and objects; time, weather, season; save | `stardew_fixture_*_ensure`, `stardew_fixture_object_clear`, `stardew_lab_set_time/weather/season`, `stardew_fixture_save` | `--allow-fixture-actions` | Test save; `single` or host |
 | Fishing preparation | `stardew_fixture_fishing_prepare` | `--allow-fixture-actions` | Test save; `single` or host. See [fishing](lab-reference.md#fishing-preparation) |
 | Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md) |
+| Action button or tool on a tile next to the player | `stardew_world_act` (CLI: `project review act`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player) |
 | Move a quantity between backpack and chest | `stardew_container_transfer` (CLI: `project review container-transfer`) | `--allow-container-transfer` | `single` test save, unbound. See [container transfer](container-transfer.md) |
 | Refresh CP patches | `stardew_cp_refresh` | `--allow-cp-refresh` | `single`, a root CP 2.9.1 pack |
 

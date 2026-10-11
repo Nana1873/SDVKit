@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `project review act <check|useTool> <x> <y> <inventory-revision>` and the MCP tool `stardew_world_act` (opt-in `--allow-world-actions`, test save, single) press the action button or use the selected tool once on a tile next to the player (#290). SDVKit puts the virtual cursor on the tile, so the target no longer depends on where inside its tile the player stands or on a leftover cursor. Targets that are not next to the player are refused with `worldActionTargetNotAdjacent`.
 - The local player runtime data has a `position` object with `facing` (`up`, `right`, `down`, `left`), the sub-tile `standingX`/`standingY`, Stardew's grab tile for the action button and the tile a tool would hit (`toolTileX`/`toolTileY`) (#289). It is optional, so status from an older GameSide stays readable.
 - `docs/player-actions.md` lists the everyday keyboard-and-mouse player actions with the tool to perform each and the state read that proves it, and links each gap to its issue (#270). `scripts/acceptance/player-actions.ps1` verifies the supported ones live: walking and running, warps, hotbar keys, the game menu and an inventory move, hoe, pickaxe, scythe and a fishing cast. Acceptance scripts keep the game's SMAPI log of a failed run in their evidence.
 

@@ -27,6 +27,7 @@ public static partial class CliApplication
             "container-transfer" => RunProjectReviewContainerTransfer(arguments, output, error),
             "container" => RunProjectReviewContainer(arguments, output, error),
             "interact" => RunProjectReviewWorldAction(arguments, output, error),
+            "act" => RunProjectReviewWorldAct(arguments, output, error),
             "menu" => RunProjectReviewMenu(arguments, output, error),
             "diagnostics" => RunProjectReviewDiagnostics(arguments, output, error),
             "data" => RunProjectReviewData(arguments, output, error, runners.ProjectReviewData),
