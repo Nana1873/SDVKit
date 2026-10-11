@@ -43,7 +43,7 @@ Documentation-only and offline toolkit changes need neither check. Record what r
 
 SDVKit has one maintainer, who merges their own pull requests. Do not wait for a second reviewer. A pull request merges when CI is green for its final commit, the checks above that apply have passed and are recorded in the pull request, and its review findings are fixed or answered. Agents merge only after the maintainer approves that pull request.
 
-Delete a branch after its pull request merges. Keep a branch whose pull request was closed unmerged, or that gained commits after its merge, until its content is either merged or deliberately dropped.
+GitHub deletes a pull request's branch automatically when it merges. Keep a branch whose pull request was closed unmerged, or that gained commits after its merge, until its content is either merged or deliberately dropped.
 
 Known risks whose cause is still open stay as issues with the `retained-risk` label rather than only as prose, so the backlog reflects reality.
 
