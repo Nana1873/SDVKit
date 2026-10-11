@@ -1,20 +1,12 @@
 # Read world and local-player state
 
-Use `project review status --json` or native `stardew_runtime_get {}` from the
-[owned active review](live-review.md). Both read the existing GameSide status;
-no console command, input opt-in or arbitrary game-object access is needed.
-For example, a reward mod test can compare money and the selected item's stack
-before and after its own feature runs. Confirm the exact target/companion,
-launch, role and observation time before comparing values.
+Use `project review status --json` or the MCP tool `stardew_runtime_get {}` in an active [review](live-review.md). Both read GameSide's regular status. You need no console command, no opt-in and no direct game-object access.
+
+For example, a reward mod test can compare money and the selected item's stack before and after its feature runs. Before you compare values, confirm the target and companions, the launch, the role and the observation time.
 
 ## Availability and compatibility
 
-The runtime envelope retains `schemaVersion: 1`. Its optional additive
-`localPlayer` member has `schemaVersion: 1`, `availability`, `reason` and `data`.
-Existing runtime fields keep their names and types. Older producers without
-the member remain readable; the new reader reports `unavailable/notPublished`
-with null data. Consumers with a closed old output schema must adopt the
-advertised additive MCP schema before accepting the new member.
+The runtime envelope keeps `schemaVersion: 1`. Its optional `localPlayer` member has its own `schemaVersion: 1`, plus `availability`, `reason` and `data`. Existing runtime fields keep their names and types. Output from older producers without the member stays readable; the reader reports `unavailable/notPublished` with null data. A consumer with a closed old output schema needs the new MCP schema before it accepts this member.
 
 | Availability | Meaning |
 | --- | --- |
@@ -24,41 +16,23 @@ advertised additive MCP schema before accepting the new member.
 | `unsupportedVersion` | An unknown slice schema version with a readable envelope; `reason=unsupportedSchema`, no data. An incompatible JSON shape instead fails validation. |
 | `error` | `captureFailed` for a game/mod getter exception, or `invalidValues` for values outside this contract. No partial or last-known data. |
 
-A malformed known payload, missing required field, invalid world/value
-combination or stale inner timestamp makes the runtime invalid. A stale,
-exiting or restore-failed outer marker now also withholds **all** runtime values
-in CLI status instead of retaining an inner `ready` projection. MCP already
-requires an active fresh binding and returns an error without a stale payload.
-This tightening applies to old producers too.
+These make the whole runtime invalid: a malformed payload, a missing required field, an invalid world or value combination, or a stale inner timestamp. In CLI status, a stale, exiting or restore-failed outer marker withholds **all** runtime values; it no longer keeps an inner `ready` view. MCP requires an active, fresh binding and returns an error without stale data. This also applies to older producers.
 
-Capture uses supported game members on the existing Stardew main-thread status
-path, normally once per second. It copies scalars, retaining no `Farmer`, `Item`
-or location objects. `ReturnedToTitle` immediately republishes world-not-ready
-state; the next normal tick continues that state. Readers may observe the last
-published sample until the transition publication arrives; this is a snapshot,
-not synchronous game execution. The inner `observedAtUtc` shares the existing
-five-second freshness limit and one-second future tolerance. Outer freshness,
-process/start identity, target, fixture and launch validation still apply.
+### Timing
 
-Single returns its local farmer; fixed network-2 host and farmhand readers each
-return only their own farmer. The player ID must also match the role's verified
-network identity. Returning to title/disconnecting a network role can invalidate
-the joined-pair gate, in which case MCP returns the existing binding error.
-There is no peer inventory or additional multiplayer topology.
+GameSide captures the values on the game's main thread, normally once per second. It copies plain values and keeps no `Farmer`, `Item` or location objects. Returning to the title publishes the world-not-ready state at once. Until that arrives, a reader can see the last sample: this is a snapshot, not a synchronous call into the game. The inner `observedAtUtc` is valid for five seconds and may be at most one second in the future. Outer freshness, process and start identity, target, fixture and launch validation still apply.
 
-This uses the public members available in the supported game-bound build; it
-does not infer missing fields through reflection or substitute zero for an
-unavailable member. The existing disposable-world version/capability gate
-remains in force (Stardew 1.6.15–<1.7 and SMAPI 4.5–<5, including its file-version
-check). A slice schema version is not a declaration that another game version
-has been tested.
+### Roles
+
+Single returns its local farmer. In `network-2`, the host and farmhand readers each return only their own farmer, and the player ID matches the role's verified network identity. Returning to the title or disconnecting a network role can break the joined-pair check; MCP then returns the binding error. There is no peer inventory and no other multiplayer topology.
+
+### Versions
+
+The values come from public members of the supported game build. SDVKit does not guess missing fields through reflection or substitute zero for an unavailable member. The test-save version gate still applies: Stardew 1.6.15 to <1.7 and SMAPI 4.5 to <5, including the file-version check. A slice schema version does not claim that another game version was tested.
 
 ## Fishing observations
 
-The additive optional `localPlayer.data.fishing` object describes the currently
-selected `FishingRod`, including an idle rod. It is null when no rod is selected;
-older producers may omit it. All fields are required when the object is present.
-CLI status and the existing `stardew_runtime_get` MCP tool expose the same data.
+The optional `localPlayer.data.fishing` object describes the selected `FishingRod`, also when the rod is idle. It is null when no rod is selected; older producers may leave it out. When present, all its fields are present. CLI status and `stardew_runtime_get` show the same data.
 
 | Field | Meaning |
 | --- | --- |
@@ -69,54 +43,42 @@ CLI status and the existing `stardew_runtime_get` MCP tool expose the same data.
 | `biteMilliseconds` | Current finite rod bite timer; zero/negative transitional values are retained. |
 | `catchItemId`, `catchQuantity` | Qualified caught item and nonnegative quantity while `catchReady`; otherwise null and zero. A ready catch does not prove inventory pickup. |
 
-Observations share the existing role, timestamp and freshness contract. They do
-not hook, reroll, finish or collect a catch. The normal one-second publication can
-miss short events, particularly the nibble window; polling cannot establish a
-complete catch history. Overhauls which replace the vanilla rod path may leave
-these fields idle or use different semantics. Use their supported APIs for
-provider-specific tests. Mod-specific counters, seeded probability comparisons
-and third-party internals remain the mod test's responsibility.
+These values follow the same role, timestamp and freshness rules. SDVKit does not hook, reroll, finish or collect a catch. The one-second publication can miss short events, especially the nibble window, so polling cannot give a full catch history. Fishing overhauls that replace the vanilla rod code may leave these fields idle or change their meaning; use their own APIs for such tests. Mod-specific counters, seeded probability checks and third-party internals belong to your mod test.
 
-Use [fishing preparation](lab-reference.md#fishing-preparation) to position an
-owned disposable main player without a separate helper mod.
+Use [fishing preparation](lab-reference.md#fishing-preparation) to place the main player of a [test save](glossary.md#worlds-and-fixtures) without a helper mod.
 
 ## Field contract
 
-All `data` values describe **one observation**, at runtime `observedAtUtc`.
-They may change on the next game tick; none proves persistence after saving.
+All `data` values describe **one observation** at the runtime's `observedAtUtc`. They can change on the next game tick. None proves persistence after saving.
 
 | Field | Source and JSON type | Identity, bounds and null meaning |
 | --- | --- | --- |
-| `playerId` | `Game1.player.UniqueMultiplayerID`, decimal string | Canonical nonzero signed 64-bit ID, at most 20 characters; stable for that farmer within a save, not a global account ID. |
+| `playerId` | `Game1.player.UniqueMultiplayerID`, decimal string | Nonzero signed 64-bit ID, at most 20 characters; stable for that farmer within a save, not a global account ID. |
 | `money` | `Farmer.Money`, integer | Local farmer accessor; reflects the game's shared/separate-wallet rules. Signed 32-bit value, no vanilla cap. |
 | `health`, `maxHealth` | `Farmer.health`, `Farmer.maxHealth`, integers | Signed 32-bit values; modified/negative values are retained, not clamped. |
 | `stamina`, `maxStamina` | `Farmer.Stamina`, `Farmer.MaxStamina`, numbers | Finite single-precision values, including negative stamina and modded maxima; NaN/infinity are errors. |
 | `selectedSlot` | `Farmer.CurrentToolIndex`, integer or null | Zero-based inventory position read against `Farmer.Items.Count`; nonnegative signed 32-bit index. The game's `-1` means no selection and is represented by null. Not a persistent item ID. |
 | `selectedItem` | `Farmer.Items[selectedSlot]`, object or null | At most one item. Null for an empty slot or no selection. No collection traversal. |
 | `selectedItem.qualifiedItemId` | `Item.QualifiedItemId`, string | Qualified type key `(type)id`, at most 256 characters without control characters. Identifies an item type, not a unique item instance. |
-| `selectedItem.stack` | `Item.Stack`, integer | Exact signed 32-bit property value; no vanilla stack cap. |
-| `selectedItem.quality` | `StardewValley.Object.Quality`, integer or null | Exact signed 32-bit value for Object-derived items; null for other item types, not an invented zero. |
+| `selectedItem.stack` | `Item.Stack`, integer | Signed 32-bit property value; no vanilla stack cap. |
+| `selectedItem.quality` | `StardewValley.Object.Quality`, integer or null | Signed 32-bit value for Object-derived items; null for other item types, not an invented zero. |
 
-The pre-existing world fields remain available alongside the new slice:
+The world fields stay available next to the player fields:
 
-| Field | Source/type | Existing validation/identity |
+| Field | Source/type | Validation and identity |
 | --- | --- | --- |
 | `worldReady` | SMAPI `Context.IsWorldReady`, boolean | Always present in a valid runtime sample. |
 | `season`, `dayOfMonth`, `year`, `timeOfDay` | `Game1.currentSeason/dayOfMonth/year/timeOfDay`, string/integers | Four season tokens, day 1–28, year >=1, time 0–2999. Null without a ready world. |
-| `locationId` | `Farmer.currentLocation.NameOrUniqueName`, string | Nonempty, <=256 characters; exact current location key, not a localized display name or stable cross-save building ID. Null without a world. |
+| `locationId` | `Farmer.currentLocation.NameOrUniqueName`, string | Nonempty, <=256 characters; the current location key, not a localized display name or stable cross-save building ID. Null without a world. |
 | `tileX`, `tileY` | `Farmer.TilePoint`, integers | -100000–100000; role-local position, null without a world. |
 | `menuOpen` | `Game1.activeClickableMenu is not null`, boolean | Coarse presence only; no menu CLR type or tree. |
 
-The payload has constant shape, one bounded item ID and no arrays. It stays
-within the existing **256 KiB total status limit**; this change adds no pagination,
-mailbox or transport. Missing or malformed fields are never defaulted into
-apparently available zero values.
+The payload has a fixed shape, one item ID and no arrays. It fits within the **256 KiB total status limit** and adds no paging. Missing or malformed fields do not turn into zero values that look available.
 
-Supported in this slice: existing world/time/location and the local-player
-fields above. Deferred: complete inventories, item instance identities, quests,
-relationships, skill/progression state and other players. Excluded: names,
-arbitrary `modData`, private account data, paths and object dumps. This is a
-bounded mod-test observation, not universal save inspection or gameplay mutation.
-Selected NPC friendship, mail membership and current quest-log counts are available
-separately through the narrower [progression query](progression-authoring.md#read-only-contract)
-in the exact owned disposable single-player review; they are not added to this status slice.
+## Scope
+
+- In this status: world, time and location fields and the local-player fields above.
+- Not in this status: full inventories, item instance identities, quests, relationships, skills and progression, and other players.
+- Not included at all: names, arbitrary `modData`, private account data, paths and object dumps.
+
+This is a mod-test observation, not save inspection or a way to change gameplay. For full backpacks use [inventory inspection](inventory-inspection.md). NPC friendship, mail flags and quest-log counts come from the separate [progression query](progression-authoring.md#read-only-contract), in a single review on the test save.

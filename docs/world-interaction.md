@@ -1,58 +1,45 @@
 # Bounded world interaction
 
-Use `project review interact` or the opt-in MCP `stardew_world_interact` tool to
-dispatch one native interaction against one freshly inspected adjacent target in
-the exact owned disposable single-player review. This capability is never
-available for a normal save, network role, split-screen role, or screen other
-than screen 0.
+Use `project review interact` or the MCP tool `stardew_world_interact` (opt-in `--allow-world-actions`) to send one native interaction to one adjacent target you just read. It works only in a single [owned](glossary.md#reviews-and-ownership) review on the [test save](glossary.md#worlds-and-fixtures), on screen 0. It is not available for a normal save, a network role or another split-screen screen.
 
-First read the one-tile target with [`project review world`](world-inspection.md)
-and read the complete backpack with [`project review inventory`](inventory-inspection.md).
-Pass the soil identity for `water`, the crop identity for `harvest`, or the
-machine `instanceId` and `revision`, plus the complete
-`inventoryRevision`:
+First read the one-tile target with [`project review world`](world-inspection.md) and the whole backpack with [`project review inventory`](inventory-inspection.md). Pass the target's `instanceId` and `revision`: the soil for `water`, the crop for `harvest`, or the machine. Also pass the full `inventoryRevision`:
 
 ```powershell
 & $sdvkit project review interact water 64 15 <soil-instance> <soil-revision> <inventory-revision> --topology single --json
 ```
 
-Supported cases are deliberately closed:
+Only these cases are supported:
 
-- `water`: a live, dry ordinary crop/soil target, selected watering can, and
-  remaining water; sends one native left-mouse/tool-use sample.
-- `harvest`: a ready ordinary hand-harvest (`Grab`) crop, empty selected slot,
-  no cursor-held item, and inventory capacity; scythe-required crops are rejected;
-  sends one native right-mouse/action sample.
-- `machineInsert`: an idle ordinary data-backed machine and a selected object
-  accepted by the machine's native probe; sends one native right-mouse/action sample.
-- `machineCollect`: a ready ordinary data-backed machine, empty selected slot,
-  and inventory capacity; sends one native right-mouse/action sample.
+- `water`: a live, dry ordinary crop or soil, a selected watering can with water left. Sends one native left-mouse (tool use).
+- `harvest`: a ready ordinary hand-harvest (`Grab`) crop, an empty selected slot, no item on the cursor and room in the inventory. Crops that need a scythe are rejected. Sends one native right-mouse (action).
+- `machineInsert`: an idle ordinary data-backed machine and a selected object that the machine's own check accepts. Sends one native right-mouse.
+- `machineCollect`: a ready ordinary data-backed machine, an empty selected slot and room in the inventory. Sends one native right-mouse.
 
-Before the sample is queued and again at its actual input edge, SDVKit verifies
-the exact launch and test save, screen 0, world/player readiness, no menu/event/
-minigame/UI mode/tool use, faced adjacency, visible zoom- and UI-scale-aware
-viewport-to-tile cursor mapping, target
-instance and revision, full inventory revision, relevant selected item/tool,
-resource, machine acceptance, and capacity. Any changed or unsupported fact
-fails closed. The process-local virtual cursor is used; physical cursor movement,
-focus changes, global input, pathfinding, and hidden navigation are outside this
-contract.
+SDVKit checks the target, inventory and player state before it queues the input and again when it presses. Any changed or unsupported fact fails closed. Input uses the process-local virtual cursor. SDVKit does not move the physical cursor, change focus, send global input, pathfind or navigate for you.
 
-Like menu clicks, the action first completes one cursor-only game update and
-revalidates the target before pressing, because Stardew aims a mouse tool use at
-the previous update's cursor position.
+## Results
 
-The result separates `notDispatched`, `completed`, and `mayHaveRun`. Once SDVKit
-has placed its cursor on the target, an outcome in which it sent no input is
-`notDispatched` only if no action or tool input is held or queued, no tool is in
-use, the player can move, and a fresh read of the exact target and backpack is
-unchanged. Physical or external
-input could otherwise still act on the target, so anything else is reported as
-`mayHaveRun`. `notDispatched` means SDVKit sent nothing; physical input remains
-outside this contract. Completed
-means the native input lifecycle finished, not that watering, harvest, insertion,
-or collection changed the world. Always capture the target and inventory again
-and compare their fresh revisions, selected slot/tool/item, and slot facts. The
-precondition rejects a cursor-held item, so successful before/after evidence must
-also retain that absence rather than assuming a hidden output. Never blindly replay a canceled,
-timed-out, or uncertain action.
+The result is one of `notDispatched`, `completed` or `mayHaveRun`.
+
+- `notDispatched`: SDVKit sent nothing. Once its cursor is on the target, SDVKit reports this only if all of these hold:
+  - no action or tool input is held or queued;
+  - no tool is in use and the player can move;
+  - a fresh read of the target and backpack shows no change.
+
+  Physical input is outside this contract.
+- `mayHaveRun`: anything else where SDVKit cannot rule out that input acted on the target.
+- `completed`: the native input finished. It does not prove that watering, harvest, insertion or collection changed the world.
+
+Always read the target and inventory again. Compare their fresh revisions, the selected slot, tool or item, and the slot facts. The preconditions reject an item on the cursor, so good before/after evidence also shows the cursor is still empty; do not assume a hidden output. Never replay a canceled, timed-out or uncertain action blindly.
+
+## Reference details
+
+The checks cover:
+
+- launch, test save, screen 0, and world and player readiness;
+- no menu, event, minigame, UI mode or tool use;
+- the player faces an adjacent target tile, and the cursor maps visibly to that tile at the current zoom and UI scale;
+- target instance and revision, and the full inventory revision;
+- the selected item or tool, resources, machine acceptance and capacity.
+
+Like menu clicks, the action first runs one game update that only moves the cursor, then revalidates the target before it presses. Stardew aims a mouse tool use at the previous update's cursor position.

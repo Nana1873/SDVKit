@@ -1,9 +1,6 @@
 # Inspect live crops, soil, and machines
 
-Use `project review world` or native `stardew_world_area_get` to capture one
-explicit rectangle in the current location observed by an exact world-ready
-single player, network role, or local screen. Both surfaces are read-only and
-return the same typed report without granting interaction rights.
+Use `project review world` or the MCP tool `stardew_world_area_get` to read one rectangle of the current location. The location is the one the selected player, network [role](glossary.md#topology-roles-and-screens) or local screen is in, and the world is [world ready](glossary.md#worlds-and-fixtures). Both surfaces are read-only and return the same report. They grant no interaction rights.
 
 ```powershell
 & $sdvkit project review world 60 12 8 8 --topology single --json
@@ -11,66 +8,38 @@ return the same typed report without granting interaction rights.
 & $sdvkit project review world 60 12 8 8 --topology single --screen 1 --json
 ```
 
-The four operands are `x y width height`. Width and height are each 1-32 tiles,
-their product is at most 256, and the complete rectangle must be inside the
-current map's loaded `Back` layer. Negative, overflowing, out-of-map, or larger
-requests fail without returning an apparently complete area. A successful
-report contains exactly `width * height` row-major tile entries, including
-empty tiles; `complete: true` means geometric coverage is complete, not that
-every object family or property is supported.
+The four operands are `x y width height`. Width and height are each 1-32 tiles, and their product is at most 256. The whole rectangle lies inside the current map's loaded `Back` layer. Negative, overflowing, out-of-map or larger requests fail; they do not return a partial area that looks complete.
+
+A successful report has exactly `width * height` tile entries in row-major order, including empty tiles. `complete: true` means the whole rectangle is covered. It does not mean every object type or property is supported.
 
 ## Supported observations
 
-Each tile has an optional `soil` value and one explicit `objectState`:
-`missing`, `machine`, `unsupported`, or `unavailable`. A missing object is
-therefore distinct from an unsupported placed object and from one whose safe
-properties couldn't be read. Unsupported and unavailable entries may still be
-part of a complete rectangle because they are reported rather than omitted.
+Each tile has an optional `soil` value and one `objectState`: `missing`, `machine`, `unsupported` or `unavailable`. So "no object" differs from "an unsupported object" and from "an object whose properties could not be read". Unsupported and unavailable entries still count toward a complete rectangle.
 
-Soil is a live `HoeDirt` terrain feature. `watered` uses
-`HoeDirt.isWatered()`, `needsWatering` uses `HoeDirt.needsWatering()`, and the
-optional fertilizer is its qualified object ID. Crop state is separately
-`missing`, `available`, `unsupported`, or `unavailable`. The initial available
-family is an ordinary non-forage crop with valid native seed and harvest item
-IDs. Its phase, day within phase, phase count, full-grown/dead flags,
-`HoeDirt.readyForHarvest()`, and `Crop.RegrowsAfterHarvest()` are returned
-without predicting future growth. Farmed forage crops are explicit unsupported
-families; malformed or unavailable native crop facts are explicit unavailable
-properties. Static `Data/Crops` alone is never treated as current world state.
+### Soil and crops
 
-A supported machine is an exact `StardewValley.Object`, is a big craftable, and
-has current `Data/Machines` behavior. Subclasses, chests, furniture, sprinklers,
-ordinary placed items, and objects without that machine data are not silently
-interpreted. The report preserves `readyForHarvest` and
-`minutesUntilReady` from the live object. Its derived state is narrowly:
+Soil is a live `HoeDirt` terrain feature. `watered` comes from `HoeDirt.isWatered()` and `needsWatering` from `HoeDirt.needsWatering()`. The optional fertilizer is its qualified object ID.
 
-- `idle`: no output, not ready, and the native countdown is `-1` or `0`;
-- `processing`: an output exists, it is not ready, and the countdown is positive;
-- `ready`: an output exists, the native ready flag is true, and the countdown is
-  `-1` or `0`.
+Crop state is `missing`, `available`, `unsupported` or `unavailable`. An available crop is an ordinary non-forage crop with valid seed and harvest item IDs. The report returns its phase, day within phase, phase count, full-grown and dead flags, `HoeDirt.readyForHarvest()` and `Crop.RegrowsAfterHarvest()`. It does not predict future growth. Farmed forage crops are `unsupported`. Malformed or unreadable crop facts are `unavailable`. Static `Data/Crops` alone does not count as current world state.
 
-Contradictory or out-of-range combinations are `unavailable`, not normalized.
-Input preserves `lastInputItem`; this is the last input for which the machine
-produced output and may remain present while the machine is idle, so it is not
-claimed as the item currently being consumed. Output uses `heldObject`. Both
-reuse the shared bounded item facts (`qualifiedItemId`, positive `stack`, and
-object `quality` when applicable). A missing item and unreadable item facts are
-distinct.
+### Machines
+
+A supported machine is a `StardewValley.Object` that is a big craftable and has current `Data/Machines` behavior. Subclasses, chests, furniture, sprinklers, ordinary placed items and objects without machine data are not interpreted. The report keeps `readyForHarvest` and `minutesUntilReady` from the live object. The derived state is:
+
+- `idle`: no output, not ready, and the countdown is `-1` or `0`.
+- `processing`: an output exists, it is not ready, and the countdown is positive.
+- `ready`: an output exists, the ready flag is true, and the countdown is `-1` or `0`.
+
+Contradictory or out-of-range combinations are `unavailable`; SDVKit does not normalize them.
+
+Input shows `lastInputItem`. This is the last input for which the machine produced output. It can remain while the machine is idle, so it is not the item being processed now. Output shows `heldObject`. Both use the shared item facts: `qualifiedItemId`, positive `stack` and object `quality` where it applies. A missing item differs from unreadable item facts.
 
 ## Freshness and identity
 
-The response is accepted only when its launch, topology, role, current-location
-name, player ID, request ID, response time, target build, process, and final
-review binding still match. It records `Game1.ticks` for the capture and a
-process-local location instance ID. Soil, crop, and machine entries each have a
-process-local `instanceId` plus a `revision` derived only from their exposed
-state. Compare the instance first to detect replacement at the same tile, then
-the revision to detect a state change. These values are comparison tokens for
-the same review process, not durable object handles and not mutation authority.
+The report records `Game1.ticks` for the capture and a process-local location instance ID. Soil, crop and machine entries each have a process-local `instanceId` and a `revision` over their exposed state. Compare the instance first to detect a replaced object on the same tile. Then compare the revision to detect a state change. These tokens are valid only within the same review process. They are not durable handles and do not authorize changes.
 
-Responses are create-new request files below the ignored review runtime, must
-arrive within five seconds, and are limited to 192 KiB. Stale, malformed,
-mismatched, oversized, re-bound, or incomplete responses fail closed. The
-query does not traverse maps, open containers, enumerate NPCs, inspect arbitrary
-fields or mutate the world. Stop and reset the owned review normally when the
-test is complete.
+The query does not walk maps, open containers, list NPCs, read arbitrary fields or change the world. Stop and reset the review normally when you finish.
+
+## Reference details
+
+SDVKit accepts a response only when its launch, topology, role, location name, player ID, request ID, response time, target build, process and final review binding still match. Each response is a new request-bound file below the ignored review runtime. Responses have five seconds to arrive and are limited to 192 KiB. Stale, malformed, mismatched, oversized, re-bound or incomplete responses fail closed.
