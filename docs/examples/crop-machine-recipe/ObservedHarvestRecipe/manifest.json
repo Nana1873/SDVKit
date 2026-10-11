@@ -1,0 +1,12 @@
+{
+  "Name": "Observed Harvest Recipe",
+  "Author": "SDVKit",
+  "Version": "1.0.0",
+  "Description": "Turns one strawberry into two Joja Cola in a Keg.",
+  "UniqueID": "SDVKit.ObservedHarvestRecipe",
+  "ContentPackFor": {
+    "UniqueID": "Pathoschild.ContentPatcher",
+    "MinimumVersion": "2.9.1"
+  },
+  "UpdateKeys": []
+}

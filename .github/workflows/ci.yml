@@ -70,6 +70,19 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
 
+      - name: Parse acceptance scripts
+        shell: pwsh
+        run: |
+          # The live acceptance scripts need the game; CI at least keeps them parseable and their module loadable.
+          $failed = $false
+          foreach ($file in Get-ChildItem scripts/acceptance -Include *.ps1, *.psm1 -Recurse) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
+            foreach ($e in $errors) { Write-Host "::error file=$($file.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"; $failed = $true }
+          }
+          Import-Module ./scripts/acceptance/SdvKitAcceptance.psm1 -Force
+          if ($failed) { exit 1 }
+
       - name: CLI smoke
         run: .\src\SdvKit.Cli\bin\Release\net8.0\sdvkit.exe --version
 
