@@ -98,7 +98,7 @@ internal static class ProjectReviewMcpWorldTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Read one complete bounded row-major rectangle of current-location soil, crops, machines, trees, fruit trees, grass, bushes, resource clumps, and furniture as observed by the exact selected world-ready role or local screen. Shared or replicated world state is reported through that selection without peer fallback. Missing, unsupported, and unavailable object state is explicit. Soil/crop/machine identities detect replacement; feature facts have no instance identity. No mutation.",
+            Description = "Read one complete bounded row-major rectangle of current-location soil, crops, machines, trees, fruit trees, grass, bushes, resource clumps, giant crops, and furniture (a feature that cannot be read is reported as kind unavailable) as observed by the exact selected world-ready role or local screen. Shared or replicated world state is reported through that selection without peer fallback. Missing, unsupported, and unavailable object state is explicit. Soil/crop/machine identities detect replacement; feature facts have no instance identity. No mutation.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations
