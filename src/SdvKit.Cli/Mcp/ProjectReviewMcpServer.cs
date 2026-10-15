@@ -145,7 +145,7 @@ internal static class ProjectReviewMcpServer
                   "required": ["gamepadControls", "gamepadMode", "mouseCursorVisible", "gamepadConnected"],
                   "description": "Which input mode this screen's game is in.",
                   "properties": {
-                    "gamepadControls": { "type": "boolean", "description": "Options.gamepadControls: gamepad play with snapped menus." },
+                    "gamepadControls": { "type": "boolean", "description": "Options.gamepadControls: gamepad play with controller prompts." },
                     "gamepadMode": { "enum": ["auto", "forceOn", "forceOff"] },
                     "mouseCursorVisible": { "type": "boolean" },
                     "gamepadConnected": { "type": "boolean", "description": "IsConnected of the gamepad state the game reads." }

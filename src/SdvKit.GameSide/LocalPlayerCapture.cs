@@ -62,18 +62,26 @@ internal static class LocalPlayerCapture
 
     private static PlayerInputModeValues? CaptureInputMode()
     {
-        string? mode = Game1.options.gamepadMode switch
+        // Left out rather than failing the whole player snapshot; the game's enum has no other modes.
+        try
         {
-            Options.GamepadModes.Auto => "auto",
-            Options.GamepadModes.ForceOn => "forceOn",
-            Options.GamepadModes.ForceOff => "forceOff",
-            _ => null,
-        };
-        return mode is null ? null : new PlayerInputModeValues(
-            Game1.options.gamepadControls,
-            mode,
-            Game1.wasMouseVisibleThisFrame && Game1.mouseCursorTransparency > 0f,
-            Game1.input.GetGamePadState().IsConnected);
+            string? mode = Game1.options.gamepadMode switch
+            {
+                Options.GamepadModes.Auto => "auto",
+                Options.GamepadModes.ForceOn => "forceOn",
+                Options.GamepadModes.ForceOff => "forceOff",
+                _ => null,
+            };
+            return mode is null ? null : new PlayerInputModeValues(
+                Game1.options.gamepadControls,
+                mode,
+                Game1.wasMouseVisibleThisFrame && Game1.mouseCursorTransparency > 0f,
+                Game1.input.GetGamePadState().IsConnected);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private static LocationNpcValues[]? CaptureNpcs(Farmer player)
