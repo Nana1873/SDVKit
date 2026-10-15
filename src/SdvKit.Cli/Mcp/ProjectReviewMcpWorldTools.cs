@@ -60,7 +60,11 @@ internal static class ProjectReviewMcpWorldTools
             {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
               "kind":{"const":"resourceClump"},"id":{"type":"string","maxLength":10,"pattern":"^(?:0|[1-9][0-9]{0,9})$"},"state":{"$ref":"#/$defs/clumpState"}}},
             {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
-              "kind":{"const":"furniture"},"id":{"type":"string","minLength":4,"maxLength":64,"pattern":"^\\(F\\).+"},"state":{"$ref":"#/$defs/furnitureState"}}}]},
+              "kind":{"const":"furniture"},"id":{"type":"string","minLength":4,"maxLength":64,"pattern":"^\\(F\\).+"},"state":{"$ref":"#/$defs/furnitureState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"giantCrop"},"id":{"$ref":"#/$defs/featureId"},"state":{"$ref":"#/$defs/clumpState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"unavailable"},"id":{"enum":["tree","fruitTree","grass","bush","resourceClump","giantCrop","furniture","unknown"]},"state":{"type":"object","additionalProperties":false,"maxProperties":0}}}]},
           "area":{"type":"object","additionalProperties":false,"required":["x","y","width","height"],
             "properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32}}},
           "item":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,

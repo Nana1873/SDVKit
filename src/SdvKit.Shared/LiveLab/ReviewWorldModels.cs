@@ -12,7 +12,12 @@ internal static class ReviewWorldContract
     public const int MaximumPhaseCount = 100;
     public const int MaximumMachineMinutes = 1_000_000;
     public const int MaximumTileCoordinate = 100_000;
+    // Keeps a full 16x16 read within the response limit; a longer (modded) ID makes only its tile "unavailable".
     public const int MaximumFeatureIdLength = 64;
+
+    /// <summary>Feature families named by an <c>unavailable</c> feature whose facts could not be read.</summary>
+    public static readonly IReadOnlyList<string> FeatureFamilies =
+        ["tree", "fruitTree", "grass", "bush", "resourceClump", "giantCrop", "furniture", "unknown"];
     public const int MaximumFeatureGrowthStage = 1_000_000;
     public const float MinimumFeatureHealth = -100;
     public const float MaximumFeatureHealth = 1_000_000;
@@ -94,6 +99,9 @@ internal static class ReviewWorldContract
                 && noGrowth && state.Health is null && noOrigin,
             "bush" => numericId && id <= 4 && noGrowth && health && state.NumberOfWeeds is null && origin,
             "resourceClump" => numericId && noGrowth && health && state.NumberOfWeeds is null && origin,
+            "giantCrop" => noGrowth && health && state.NumberOfWeeds is null && origin,
+            "unavailable" => FeatureFamilies.Contains(feature.Id) && noGrowth && state.Health is null
+                && state.NumberOfWeeds is null && noOrigin,
             "furniture" => QualifiedItemIdValid(feature.Id) && feature.Id!.StartsWith("(F)", StringComparison.Ordinal)
                 && noGrowth && state.Health is null && state.NumberOfWeeds is null && origin,
             _ => false,

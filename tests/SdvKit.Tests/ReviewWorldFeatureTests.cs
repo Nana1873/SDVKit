@@ -24,6 +24,9 @@ public sealed class ReviewWorldFeatureTests(ITestOutputHelper output)
     [InlineData("resourceClump", "672", "{\"health\":1000000,\"originX\":2,\"originY\":3}")]
     [InlineData("resourceClump", "2147483647", "{\"health\":0.25,\"originX\":2,\"originY\":3}")]
     [InlineData("furniture", "(F)Mod.Table", "{\"originX\":2,\"originY\":3}")]
+    [InlineData("giantCrop", "Mod.GiantPumpkin", "{\"health\":3,\"originX\":2,\"originY\":3}")]
+    [InlineData("unavailable", "furniture", "{}")]
+    [InlineData("unavailable", "unknown", "{}")]
     public void EachFeatureKindHasABoundedRoundTrip(string kind, string id, string stateJson)
     {
         var feature = new ReviewWorldFeature(kind, id,
@@ -93,6 +96,8 @@ public sealed class ReviewWorldFeatureTests(ITestOutputHelper output)
 
     [Theory]
     [InlineData("{\"kind\":\"unknown\",\"id\":\"1\",\"state\":{}}")]
+    [InlineData("{\"kind\":\"unavailable\",\"id\":\"tree\",\"state\":{\"health\":1}}")]
+    [InlineData("{\"kind\":\"giantCrop\",\"id\":\"0\",\"state\":{\"health\":3}}")]
     [InlineData("{\"kind\":\"grass\",\"id\":\"1\",\"state\":{}}")]
     [InlineData("{\"kind\":\"grass\",\"id\":\"1\",\"state\":{\"numberOfWeeds\":1,\"health\":null}}")]
     [InlineData("{\"kind\":\"grass\",\"id\":\"1\",\"state\":{\"numberOfWeeds\":1,\"numberOfWeeds\":2}}")]
@@ -188,13 +193,20 @@ public sealed class ReviewWorldFeatureTests(ITestOutputHelper output)
         Assert.DoesNotContain(tile.GetProperty("required").EnumerateArray(), field => field.GetString() == "feature");
         Assert.Equal("#/$defs/feature", tile.GetProperty("properties").GetProperty("feature").GetProperty("$ref").GetString());
         JsonElement[] kinds = definitions.GetProperty("feature").GetProperty("oneOf").EnumerateArray().Skip(1).ToArray();
-        Assert.Equal(6, kinds.Length);
+        Assert.Equal(8, kinds.Length);
         foreach (JsonElement kind in kinds)
         {
             Assert.False(kind.GetProperty("additionalProperties").GetBoolean());
-            string stateRef = kind.GetProperty("properties").GetProperty("state").GetProperty("$ref").GetString()!;
-            Assert.False(definitions.GetProperty(stateRef[8..]).GetProperty("additionalProperties").GetBoolean());
+            JsonElement state = kind.GetProperty("properties").GetProperty("state");
+            JsonElement stateSchema = state.TryGetProperty("$ref", out JsonElement reference)
+                ? definitions.GetProperty(reference.GetString()![8..])
+                : state;
+            Assert.False(stateSchema.GetProperty("additionalProperties").GetBoolean());
         }
+        JsonElement unavailable = kinds.Single(kind =>
+            kind.GetProperty("properties").GetProperty("kind").GetProperty("const").GetString() == "unavailable");
+        Assert.Equal(ReviewWorldContract.FeatureFamilies,
+            unavailable.GetProperty("properties").GetProperty("id").GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
         Assert.Equal(ReviewWorldContract.MaximumFeatureIdLength, definitions.GetProperty("featureId").GetProperty("maxLength").GetInt32());
         Assert.Equal(ReviewWorldContract.MaximumFeatureHealth, definitions.GetProperty("featureHealth").GetProperty("maximum").GetSingle());
         Assert.Equal(ReviewWorldContract.MaximumTileCoordinate, definitions.GetProperty("featureOrigin").GetProperty("maximum").GetInt32());

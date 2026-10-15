@@ -90,8 +90,9 @@ internal static class ProjectReviewWorldService
                         {
                             "tree" or "fruitTree" => ["growthStage", "stump", "health"],
                             "grass" => ["numberOfWeeds"],
-                            "bush" or "resourceClump" => ["health", "originX", "originY"],
+                            "bush" or "resourceClump" or "giantCrop" => ["health", "originX", "originY"],
                             "furniture" => ["originX", "originY"],
+                            "unavailable" => [],
                             _ => throw new InvalidDataException("The review-world feature kind is invalid."),
                         };
                         ResponseJson.RequireExactObject(feature.GetProperty("state"), stateProperties);

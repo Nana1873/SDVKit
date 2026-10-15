@@ -27,7 +27,7 @@ Without `--test-save` the game stays at the title screen (`worldReady` `false`).
 
 - `stardew_runtime_get`: location, tile, time, money, selected item, menu open.
 - `stardew_menu_get`: the open menu, its components and their screen bounds, and a `uiRevision`.
-- `stardew_inventory_get`, `stardew_container_get`, `stardew_world_area_get`: items, chests, soil, crops, machines.
+- `stardew_inventory_get`, `stardew_container_get`, `stardew_world_area_get`: items, chests, soil, crops, machines, trees, grass, bushes, clumps and furniture.
 - `stardew_screenshot_capture '{"mode":"viewport","label":"before-click"}'`: a PNG in the lab profile's `Screenshots` folder. Labels are 1-64 letters, digits, `-` or `_`, and must be new each time. Open the image to judge visuals.
 - `.\sdvkit.cmd project review diagnostics --mod <UniqueID> --json`: the mod's warnings and exceptions from the SMAPI log.
 

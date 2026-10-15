@@ -52,7 +52,7 @@ Every server has these tools. None sends input or changes the world.
 | `stardew_menu_get {}` | [Menu geometry and controls](menu-inspection.md), with the `uiRevision` that input needs. |
 | `stardew_inventory_get {}` | The [whole backpack](inventory-inspection.md), without opening a menu. |
 | `stardew_container_get {}` | The [open vanilla chest](container-inspection.md), both sides and the held item. |
-| `stardew_world_area_get { "x": 60, "y": 12, "width": 8, "height": 8 }` | Crops, soil and machines, as [`project review world`](world-inspection.md) returns them. |
+| `stardew_world_area_get { "x": 60, "y": 12, "width": 8, "height": 8 }` | Crops, soil, machines and terrain features (trees, grass, bushes, resource clumps, giant crops, furniture), as [`project review world`](world-inspection.md) returns them. |
 | `stardew_screenshot_capture { "mode": "viewport", "label": "menu-open" }` | A fresh PNG: `viewport` is the player's view, `map` the loaded map. |
 
 - **Runtime.** Before the world is ready, date, time, location and tile are `null`; `worldReady` and `menuOpen` stay set. `localPlayer` adds farmer identity, money, health, stamina and the selected item.

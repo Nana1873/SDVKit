@@ -113,54 +113,76 @@ internal static class ReviewWorldCommand
 
     private static ReviewWorldFeature? ReadFeature(GameLocation location, Vector2 tile, TerrainFeature? terrain)
     {
-        // A single feature is reported per tile. Earlier families/list entries win overlaps.
-        foreach (ResourceClump clump in location.resourceClumps)
+        // One feature per tile, found with the game's own lookups. A feature whose facts cannot be read or fall
+        // outside the contract (for example from a mod) degrades only this tile to "unavailable", never the read.
+        int x = (int)tile.X;
+        int y = (int)tile.Y;
+        string family = "unknown";
+        try
         {
-            if (Covers(clump.Tile, clump.width.Value, clump.height.Value, tile))
-                return new("resourceClump", clump.parentSheetIndex.Value.ToString(CultureInfo.InvariantCulture),
-                    new(Health: clump.health.Value, OriginX: (int)clump.Tile.X, OriginY: (int)clump.Tile.Y));
+            ReviewWorldFeature? feature = null;
+            foreach (ResourceClump clump in location.resourceClumps)
+            {
+                if (clump is null || !clump.occupiesTile(x, y)) continue;
+                var clumpState = new ReviewWorldFeatureState(Health: clump.health.Value,
+                    OriginX: TileCoordinate(clump.Tile.X), OriginY: TileCoordinate(clump.Tile.Y));
+                // Giant crops are clumps without a meaningful sprite index; their data ID identifies them.
+                family = clump is GiantCrop ? "giantCrop" : "resourceClump";
+                feature = clump is GiantCrop giant
+                    ? new("giantCrop", giant.Id, clumpState)
+                    : new("resourceClump", clump.parentSheetIndex.Value.ToString(CultureInfo.InvariantCulture), clumpState);
+                break;
+            }
+            // GetFurnitureAt prefers solid furniture over passable pieces such as a rug underneath.
+            if (feature is null && location.GetFurnitureAt(tile) is { } furniture)
+            {
+                family = "furniture";
+                feature = new("furniture", furniture.QualifiedItemId, new(
+                    OriginX: TileCoordinate(furniture.TileLocation.X), OriginY: TileCoordinate(furniture.TileLocation.Y)));
+            }
+            if (feature is null && location.getLargeTerrainFeatureAt(x, y) is Bush large)
+            {
+                family = "bush";
+                feature = ReadBush(large);
+            }
+            if (feature is null)
+            {
+                family = terrain switch
+                {
+                    Tree => "tree",
+                    FruitTree => "fruitTree",
+                    Grass => "grass",
+                    Bush => "bush",
+                    _ => "unknown",
+                };
+                feature = terrain switch
+                {
+                    Tree tree => new("tree", tree.treeType.Value,
+                        new(tree.growthStage.Value, tree.stump.Value, tree.health.Value)),
+                    FruitTree fruit => new("fruitTree", fruit.treeId.Value,
+                        new(fruit.growthStage.Value, fruit.stump.Value, fruit.health.Value)),
+                    Grass grass => new("grass", grass.grassType.Value.ToString(CultureInfo.InvariantCulture),
+                        new(NumberOfWeeds: grass.numberOfWeeds.Value)),
+                    Bush bush => ReadBush(bush),
+                    _ => null,
+                };
+            }
+            if (feature is null) return null;
+            bool originCovers = feature.State.OriginX is not { } originX || originX <= x
+                && feature.State.OriginY is { } originY && originY <= y;
+            return originCovers && ReviewWorldContract.FeatureValid(feature) ? feature : Unavailable(family);
         }
-        foreach (Furniture furniture in location.furniture)
+        catch (Exception)
         {
-            // These are the rotated placement dimensions, not the visual sprite bounds.
-            if (Covers(furniture.TileLocation, furniture.getTilesWide(), furniture.getTilesHigh(), tile))
-                return new("furniture", furniture.QualifiedItemId,
-                    new(OriginX: (int)furniture.TileLocation.X, OriginY: (int)furniture.TileLocation.Y));
+            return Unavailable(family);
         }
-        foreach (LargeTerrainFeature large in location.largeTerrainFeatures)
-        {
-            if (large is Bush bush && Covers(bush.Tile, bush.getBoundingBox().Width / 64,
-                    bush.getBoundingBox().Height / 64, tile))
-                return ReadBush(bush);
-        }
-        return terrain switch
-        {
-            Tree tree => new("tree", tree.treeType.Value,
-                new(tree.growthStage.Value, tree.stump.Value, tree.health.Value)),
-            FruitTree fruit => new("fruitTree", fruit.treeId.Value,
-                new(fruit.growthStage.Value, fruit.stump.Value, fruit.health.Value)),
-            Grass grass => new("grass", grass.grassType.Value.ToString(CultureInfo.InvariantCulture),
-                new(NumberOfWeeds: grass.numberOfWeeds.Value)),
-            Bush bush => ReadBush(bush),
-            _ => null,
-        };
     }
+
+    private static ReviewWorldFeature Unavailable(string family) => new("unavailable", family, new());
 
     private static ReviewWorldFeature ReadBush(Bush bush) => new("bush",
         bush.size.Value.ToString(CultureInfo.InvariantCulture),
         new(Health: bush.health, OriginX: TileCoordinate(bush.Tile.X), OriginY: TileCoordinate(bush.Tile.Y)));
-
-    private static bool Covers(Vector2 origin, int width, int height, Vector2 tile)
-    {
-        int x = TileCoordinate(origin.X);
-        int y = TileCoordinate(origin.Y);
-        if (width is < 1 or > ReviewWorldContract.MaximumTileCoordinate
-            || height is < 1 or > ReviewWorldContract.MaximumTileCoordinate
-            || (long)x + width - 1 > ReviewWorldContract.MaximumTileCoordinate
-            || (long)y + height - 1 > ReviewWorldContract.MaximumTileCoordinate)
-            throw new InvalidOperationException("The world feature footprint is invalid.");
-        return tile.X >= x && tile.X < x + width && tile.Y >= y && tile.Y < y + height;
-    }
 
     private static int TileCoordinate(float value)
     {
