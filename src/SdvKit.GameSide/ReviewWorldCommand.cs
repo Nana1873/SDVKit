@@ -124,10 +124,10 @@ internal static class ReviewWorldCommand
             foreach (ResourceClump clump in location.resourceClumps)
             {
                 if (clump is null || !clump.occupiesTile(x, y)) continue;
-                var clumpState = new ReviewWorldFeatureState(Health: clump.health.Value,
-                    OriginX: TileCoordinate(clump.Tile.X), OriginY: TileCoordinate(clump.Tile.Y));
                 // Giant crops are clumps without a meaningful sprite index; their data ID identifies them.
                 family = clump is GiantCrop ? "giantCrop" : "resourceClump";
+                var clumpState = new ReviewWorldFeatureState(Health: clump.health.Value,
+                    OriginX: TileCoordinate(clump.Tile.X), OriginY: TileCoordinate(clump.Tile.Y));
                 feature = clump is GiantCrop giant
                     ? new("giantCrop", giant.Id, clumpState)
                     : new("resourceClump", clump.parentSheetIndex.Value.ToString(CultureInfo.InvariantCulture), clumpState);
