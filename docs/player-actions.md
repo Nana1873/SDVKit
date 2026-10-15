@@ -26,12 +26,15 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Action button on a tile next to the player | `stardew_world_act` with `check` (`--allow-world-actions`, test save); or park the cursor away and press `X` | The effect, for example a menu | script (`check` on the Farm sign opens its `LetterViewerMenu`; `X` on a chest) | Single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Open a chest | As above | `stardew_menu_get` shows `ItemGrabMenu` | script (crop-machine) | — |
 | Hoe | Select the hoe, then `stardew_world_act` with `useTool`; or face the tile, park the cursor and press `C` | `stardew_world_area_get`: the tile gets `soil`; stamina drops | script (both ways) | — |
-| Pickaxe on a stone | Same, with the pickaxe | The stone object becomes `missing`; stamina drops | script | Boulders are not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
-| Scythe on weeds | Same, with the scythe | The weeds object becomes `missing` (the scythe costs no stamina) | script | Grass is not observable ([#295](https://github.com/Nana1873/SDVKit/issues/295)) |
-| Axe on a tree | Same, with the axe | Not observable | — | [#295](https://github.com/Nana1873/SDVKit/issues/295) |
+| Pickaxe on a stone | Same, with the pickaxe | The stone object becomes `missing`; stamina drops | script | — |
+| Pickaxe on a boulder | Same, with the pickaxe | `stardew_world_area_get`: `feature.kind: resourceClump`, compare `state.health` or `feature: null` on all covered tiles after the animation | not yet verified live | Tool upgrade and target determine the native effect |
+| Scythe on weeds | Same, with the scythe | The weeds object becomes `missing` (the scythe costs no stamina) | script | — |
+| Scythe on grass | Same, with the scythe | `stardew_world_area_get`: grass `feature.state.numberOfWeeds` drops or `feature` becomes `null` | live check (4 to 1 blades), not in the script | Read the swing area; a scythe swings an arc |
+| Axe on a tree | Same, with the axe | `stardew_world_area_get`: tree `feature.state.health` drops, `stump` becomes `true`, or `feature` becomes `null` after the animation | live check (health 10 to 9), not in the script | [Feature coverage and overlap limits](world-inspection.md#terrain-features-and-furniture) |
 | Water, harvest, machine insert and collect | `stardew_world_interact` (`--allow-world-actions`) | `world_area_get` soil, crop and machine fields; inventory | script (crop-machine) | Single and screen 0 only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Get an item to test with | `stardew_fixture_item_add` (`--allow-fixture-actions`, test save) | Its `item.slot` and `inventoryRevision`; `stardew_inventory_get` | script (a chest) | Setup, not proof |
 | Place an item or object | Select it, then `stardew_world_act` with `check` on the tile | `objectQualifiedItemId` on the tile; the slot empties | script (a chest from `stardew_fixture_item_add`) | — |
+| Place furniture | Select it, then `stardew_world_act` with `check` on the tile | `stardew_world_area_get`: `feature.kind: furniture` with its ID and origin on the covered tiles; the slot empties | — | Not verified live |
 | Eat or drink | Select it, `stardew_world_act` with `check` on a free neighbouring tile, click the Yes choice from `menu_get` | `localPlayer.data.stamina`/`health`, stack | — | Not in the script yet |
 | Find villagers | `stardew_runtime_get` `localPlayer.data.npcs` (name, tile, facing) | The list itself | script | Villagers only; current location only |
 | Bring a villager next to the player | `stardew_fixture_npc_place` (`--allow-fixture-actions`, test save) | Its `navigation` tile; `npcs` | script (Lewis) | Setup, not proof; its schedule can move it again |

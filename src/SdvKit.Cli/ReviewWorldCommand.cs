@@ -13,7 +13,7 @@ public static partial class CliApplication
         if (arguments.Count == 4 && IsHelp(arguments[3]))
         {
             output.WriteLine(ReviewWorldUsage);
-            output.WriteLine("Read one complete row-major rectangle of live tilled soil, crops, and ordinary data-backed vanilla machines. Width/height are 1-32 and area is at most 256 tiles. Missing, unsupported, and unavailable object state stays explicit; no world mutation.");
+            output.WriteLine("Read one complete row-major rectangle of live soil, crops, machines, trees, fruit trees, grass, bushes, resource clumps, and furniture. Width/height are 1-32 and area is at most 256 tiles. Missing, unsupported, and unavailable object state stays explicit; no world mutation.");
             return Success;
         }
         if (!TryParseWorldQuery(arguments, out ReviewWorldArea? area, out string topology,

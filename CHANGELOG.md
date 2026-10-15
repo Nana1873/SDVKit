@@ -6,6 +6,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- World-area reads expose an optional per-tile `feature` for trees, fruit trees, grass, bushes, resource clumps, giant crops and furniture, including bounded tool-effect facts and the origin of multi-tile features (#295). A feature that cannot be read makes only its tile `unavailable`. Older responses without the field remain valid. Verified live: an axe hit lowers tree health and the scythe cuts grass blades; furniture, giant crops and boulders are not yet verified live.
 - `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 - The local player runtime data has an optional `npcs` list: the visible villagers in the player's current location with internal and display name, tile and facing, at most 64 (#292). It is available to every role and screen, and absent in status from an older GameSide.
 - `stardew_fixture_npc_place { name, x, y }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) warps one named villager to a free tile in the player's location, stops its path and turns it toward the player, so dialogue and gift tests do not depend on schedules (#292). It is test setup, not proof of game behaviour.

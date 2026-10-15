@@ -35,6 +35,36 @@ internal static class ProjectReviewMcpWorldTools
          "$defs":{
           "token":{"type":"string","pattern":"^[0-9a-f]{32}$"},
           "qid":{"type":"string","minLength":4,"maxLength":256},
+          "featureId":{"type":"string","minLength":1,"maxLength":64},
+          "featureHealth":{"type":"number","minimum":-100,"maximum":1000000},
+          "featureOrigin":{"type":"integer","minimum":-100000,"maximum":100000},
+          "treeState":{"type":"object","additionalProperties":false,"required":["growthStage","stump","health"],
+            "properties":{"growthStage":{"type":"integer","minimum":0,"maximum":1000000},"stump":{"type":"boolean"},"health":{"$ref":"#/$defs/featureHealth"}}},
+          "fruitTreeState":{"type":"object","additionalProperties":false,"required":["growthStage","stump","health"],
+            "properties":{"growthStage":{"type":"integer","minimum":0,"maximum":4},"stump":{"type":"boolean"},"health":{"$ref":"#/$defs/featureHealth"}}},
+          "grassState":{"type":"object","additionalProperties":false,"required":["numberOfWeeds"],
+            "properties":{"numberOfWeeds":{"type":"integer","minimum":0,"maximum":4}}},
+          "clumpState":{"type":"object","additionalProperties":false,"required":["health","originX","originY"],
+            "properties":{"health":{"$ref":"#/$defs/featureHealth"},"originX":{"$ref":"#/$defs/featureOrigin"},"originY":{"$ref":"#/$defs/featureOrigin"}}},
+          "furnitureState":{"type":"object","additionalProperties":false,"required":["originX","originY"],
+            "properties":{"originX":{"$ref":"#/$defs/featureOrigin"},"originY":{"$ref":"#/$defs/featureOrigin"}}},
+          "feature":{"oneOf":[{"type":"null"},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"tree"},"id":{"$ref":"#/$defs/featureId"},"state":{"$ref":"#/$defs/treeState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"fruitTree"},"id":{"$ref":"#/$defs/featureId"},"state":{"$ref":"#/$defs/fruitTreeState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"grass"},"id":{"type":"string","maxLength":3,"pattern":"^(?:0|[1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"},"state":{"$ref":"#/$defs/grassState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"bush"},"id":{"enum":["0","1","2","3","4"]},"state":{"$ref":"#/$defs/clumpState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"resourceClump"},"id":{"type":"string","maxLength":10,"pattern":"^(?:0|[1-9][0-9]{0,9})$"},"state":{"$ref":"#/$defs/clumpState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"furniture"},"id":{"type":"string","minLength":4,"maxLength":64,"pattern":"^\\(F\\).+"},"state":{"$ref":"#/$defs/furnitureState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"giantCrop"},"id":{"$ref":"#/$defs/featureId"},"state":{"$ref":"#/$defs/clumpState"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","id","state"],"properties":{
+              "kind":{"const":"unavailable"},"id":{"enum":["tree","fruitTree","grass","bush","resourceClump","giantCrop","furniture","unknown"]},"state":{"type":"object","additionalProperties":false,"maxProperties":0}}}]},
           "area":{"type":"object","additionalProperties":false,"required":["x","y","width","height"],
             "properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer","minimum":1,"maximum":32},"height":{"type":"integer","minimum":1,"maximum":32}}},
           "item":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,
@@ -54,7 +84,7 @@ internal static class ProjectReviewMcpWorldTools
              "properties":{"instanceId":{"$ref":"#/$defs/token"},"revision":{"$ref":"#/$defs/token"},"qualifiedItemId":{"$ref":"#/$defs/qid"},"state":{"enum":["idle","processing","ready"]},"readyForHarvest":{"type":"boolean"},"minutesUntilReady":{"type":"integer","minimum":-1,"maximum":1000000},"input":{"$ref":"#/$defs/observation"},"output":{"$ref":"#/$defs/observation"}}}]},
           "tile":{"type":"object","additionalProperties":false,
             "required":["x","y","soil","objectState","objectReason","objectQualifiedItemId","machine"],
-            "properties":{"x":{"type":"integer"},"y":{"type":"integer"},"soil":{"$ref":"#/$defs/soil"},"objectState":{"enum":["missing","machine","unsupported","unavailable"]},"objectReason":{"enum":[null,"worldObjectFamilyUnsupported","worldObjectPropertiesUnavailable"]},"objectQualifiedItemId":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/qid"}]},"machine":{"$ref":"#/$defs/machine"}}}
+            "properties":{"x":{"type":"integer"},"y":{"type":"integer"},"soil":{"$ref":"#/$defs/soil"},"objectState":{"enum":["missing","machine","unsupported","unavailable"]},"objectReason":{"enum":[null,"worldObjectFamilyUnsupported","worldObjectPropertiesUnavailable"]},"objectQualifiedItemId":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/qid"}]},"machine":{"$ref":"#/$defs/machine"},"feature":{"$ref":"#/$defs/feature"}}}
          }}
         """).RootElement.Clone();
 
@@ -68,7 +98,7 @@ internal static class ProjectReviewMcpWorldTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Read one complete bounded row-major rectangle of current-location tilled soil, crops, and ordinary data-backed vanilla machines as observed by the exact selected world-ready role or local screen. Shared or replicated world state is reported through that selection without peer fallback. Missing, unsupported, and unavailable object state is explicit. Instance identities detect replacement within the process; revisions change with exposed state. No mutation.",
+            Description = "Read one complete bounded row-major rectangle of current-location soil, crops, machines, trees, fruit trees, grass, bushes, resource clumps, and furniture as observed by the exact selected world-ready role or local screen. Shared or replicated world state is reported through that selection without peer fallback. Missing, unsupported, and unavailable object state is explicit. Soil/crop/machine identities detect replacement; feature facts have no instance identity. No mutation.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

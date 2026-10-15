@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework;
 using SdvKit.Cli.LiveLab;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewObject = StardewValley.Object;
 
@@ -96,7 +97,10 @@ internal static class ReviewWorldCommand
                 var tile = new Vector2(tileX, tileY);
                 ReviewWorldSoil? soil = location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
                     && feature is HoeDirt dirt ? ReadSoil(dirt) : null;
-                tiles.Add(ReadObject(location, tile, tileX, tileY, soil));
+                tiles.Add(ReadObject(location, tile, tileX, tileY, soil) with
+                {
+                    Feature = ReadFeature(location, tile, feature),
+                });
             }
         }
         var values = new ReviewWorldValues(locationName, Identity(location),
@@ -105,6 +109,87 @@ internal static class ReviewWorldCommand
         return ReviewWorldContract.DataValid(values)
             ? new(1, "ready", null, launch, topology, role, DateTimeOffset.UtcNow, values)
             : Failure("worldValuesInvalid");
+    }
+
+    private static ReviewWorldFeature? ReadFeature(GameLocation location, Vector2 tile, TerrainFeature? terrain)
+    {
+        // One feature per tile, found with the game's own lookups. A feature whose facts cannot be read or fall
+        // outside the contract (for example from a mod) degrades only this tile to "unavailable", never the read.
+        int x = (int)tile.X;
+        int y = (int)tile.Y;
+        string family = "unknown";
+        try
+        {
+            ReviewWorldFeature? feature = null;
+            foreach (ResourceClump clump in location.resourceClumps)
+            {
+                if (clump is null || !clump.occupiesTile(x, y)) continue;
+                var clumpState = new ReviewWorldFeatureState(Health: clump.health.Value,
+                    OriginX: TileCoordinate(clump.Tile.X), OriginY: TileCoordinate(clump.Tile.Y));
+                // Giant crops are clumps without a meaningful sprite index; their data ID identifies them.
+                family = clump is GiantCrop ? "giantCrop" : "resourceClump";
+                feature = clump is GiantCrop giant
+                    ? new("giantCrop", giant.Id, clumpState)
+                    : new("resourceClump", clump.parentSheetIndex.Value.ToString(CultureInfo.InvariantCulture), clumpState);
+                break;
+            }
+            // GetFurnitureAt prefers solid furniture over passable pieces such as a rug underneath.
+            if (feature is null && location.GetFurnitureAt(tile) is { } furniture)
+            {
+                family = "furniture";
+                feature = new("furniture", furniture.QualifiedItemId, new(
+                    OriginX: TileCoordinate(furniture.TileLocation.X), OriginY: TileCoordinate(furniture.TileLocation.Y)));
+            }
+            if (feature is null && location.getLargeTerrainFeatureAt(x, y) is Bush large)
+            {
+                family = "bush";
+                feature = ReadBush(large);
+            }
+            if (feature is null)
+            {
+                family = terrain switch
+                {
+                    Tree => "tree",
+                    FruitTree => "fruitTree",
+                    Grass => "grass",
+                    Bush => "bush",
+                    _ => "unknown",
+                };
+                feature = terrain switch
+                {
+                    Tree tree => new("tree", tree.treeType.Value,
+                        new(tree.growthStage.Value, tree.stump.Value, tree.health.Value)),
+                    FruitTree fruit => new("fruitTree", fruit.treeId.Value,
+                        new(fruit.growthStage.Value, fruit.stump.Value, fruit.health.Value)),
+                    Grass grass => new("grass", grass.grassType.Value.ToString(CultureInfo.InvariantCulture),
+                        new(NumberOfWeeds: grass.numberOfWeeds.Value)),
+                    Bush bush => ReadBush(bush),
+                    _ => null,
+                };
+            }
+            if (feature is null) return null;
+            bool originCovers = feature.State.OriginX is not { } originX || originX <= x
+                && feature.State.OriginY is { } originY && originY <= y;
+            return originCovers && ReviewWorldContract.FeatureValid(feature) ? feature : Unavailable(family);
+        }
+        catch (Exception)
+        {
+            return Unavailable(family);
+        }
+    }
+
+    private static ReviewWorldFeature Unavailable(string family) => new("unavailable", family, new());
+
+    private static ReviewWorldFeature ReadBush(Bush bush) => new("bush",
+        bush.size.Value.ToString(CultureInfo.InvariantCulture),
+        new(Health: bush.health, OriginX: TileCoordinate(bush.Tile.X), OriginY: TileCoordinate(bush.Tile.Y)));
+
+    private static int TileCoordinate(float value)
+    {
+        if (!float.IsFinite(value) || value != MathF.Truncate(value)
+            || value is < -ReviewWorldContract.MaximumTileCoordinate or > ReviewWorldContract.MaximumTileCoordinate)
+            throw new InvalidOperationException("The world feature origin is invalid.");
+        return (int)value;
     }
 
     internal static ReviewWorldTile ReadObject(GameLocation location, Vector2 tile, int x, int y,
