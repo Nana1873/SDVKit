@@ -139,6 +139,18 @@ internal static class ProjectReviewMcpServer
                     "toolTileY": { "type": "integer", "minimum": -100000, "maximum": 100000, "description": "Where a tool used now lands, without the mouse." }
                   }
                 },
+                "input": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["gamepadControls", "gamepadMode", "mouseCursorVisible", "gamepadConnected"],
+                  "description": "Which input mode this screen's game is in.",
+                  "properties": {
+                    "gamepadControls": { "type": "boolean", "description": "Options.gamepadControls: gamepad play with controller prompts." },
+                    "gamepadMode": { "enum": ["auto", "forceOn", "forceOff"] },
+                    "mouseCursorVisible": { "type": "boolean" },
+                    "gamepadConnected": { "type": "boolean", "description": "IsConnected of the gamepad state the game reads." }
+                  }
+                },
                 "npcs": {
                   "type": ["array", "null"],
                   "maxItems": 64,

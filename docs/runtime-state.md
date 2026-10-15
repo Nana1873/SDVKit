@@ -72,6 +72,11 @@ All `data` values describe **one observation** at the runtime's `observedAtUtc`.
 | `npcs[].displayName` | `NPC.displayName`, string | The localized name shown in game. |
 | `npcs[].tileX`, `npcs[].tileY` | `NPC.TilePoint`, integers | Within ±100000. Target this tile with `stardew_world_act` `check` from a neighbouring tile to talk or give the selected item. |
 | `npcs[].facing` | `NPC.FacingDirection`, string | `up`, `right`, `down` or `left`. |
+| `input` | Object or absent | Which input mode this screen's game is in, so evidence states whether mouse-and-keyboard or gamepad play was tested. Absent from older GameSide versions, and absent when the game's input state cannot be read. |
+| `input.gamepadControls` | `Options.gamepadControls`, boolean | Gamepad play with controller prompts; menus also snap to components when the game's snappy-menus option is on. With `gamepadMode` `auto` the game switches it on the last device used. |
+| `input.gamepadMode` | `Options.gamepadMode`, string | `auto`, `forceOn` or `forceOff`. |
+| `input.mouseCursorVisible` | `Game1.wasMouseVisibleThisFrame` and a cursor transparency above 0, boolean | Whether the game drew the mouse cursor in the last world frame drawn without a menu; not meaningful while a menu is open. The action button aims at the cursor only while it is visible (the tool button checks the first part only). |
+| `input.gamepadConnected` | `Game1.input.GetGamePadState().IsConnected`, boolean | The gamepad state the game reads. With `gamepadMode` `auto` and no physical pad, a synthetic controller press makes the pad look connected for the press and disconnected right after; the disconnect sets `gamepadControls` false and, when no menu is open and the pause menu is allowed, opens the game menu ([#273](https://github.com/Nana1873/SDVKit/issues/273)). Sampled about once per second, so a one-tick connection is usually not seen. |
 
 The mouse cursor redirects the action and tool buttons when it is within one tile of the player; then neither tile above applies. Park SDVKit's virtual cursor away from the player (for example `stardew_input_cursor_set` at `8,8`) before keyboard actions.
 

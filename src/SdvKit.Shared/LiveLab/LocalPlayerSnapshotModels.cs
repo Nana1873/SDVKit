@@ -20,7 +20,18 @@ internal sealed record LocalPlayerValues(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] SelectedItemValues? SelectedItem,
     FishingRodValues? Fishing = null,
     PlayerPositionValues? Position = null,
-    IReadOnlyList<LocationNpcValues>? Npcs = null);
+    IReadOnlyList<LocationNpcValues>? Npcs = null,
+    PlayerInputModeValues? Input = null);
+
+// Which input mode this screen's game is in, so evidence states whether it tested mouse and keyboard or gamepad play.
+// GamepadControls is Options.gamepadControls (snapped menus, controller prompts); GamepadMode is the player's option
+// (auto switches on the last device used); MouseCursorVisible is whether the game drew the mouse cursor last frame;
+// GamepadConnected is the gamepad state the game reads (Game1.input.GetGamePadState().IsConnected).
+internal sealed record PlayerInputModeValues(
+    bool GamepadControls,
+    string GamepadMode,
+    bool MouseCursorVisible,
+    bool GamepadConnected);
 
 // A villager in the player's current location (NPC.IsVillager; no pets, horses or monsters). Name is the internal
 // name used by tools; DisplayName is the localized one.
@@ -87,7 +98,8 @@ internal static class LocalPlayerSnapshotContract
             || values.SelectedSlot is not null && ItemValid(values.SelectedItem))
         && (values.Fishing is null || values.SelectedItem is not null && FishingValid(values.Fishing))
         && (values.Position is null || PositionValid(values.Position))
-        && (values.Npcs is null || values.Npcs.Count <= MaximumNpcs && values.Npcs.All(NpcValid));
+        && (values.Npcs is null || values.Npcs.Count <= MaximumNpcs && values.Npcs.All(NpcValid))
+        && (values.Input is null || GamepadModes.Contains(values.Input.GamepadMode));
 
     public static bool NpcValid(LocationNpcValues npc) =>
         NameValid(npc.Name)
@@ -104,6 +116,7 @@ internal static class LocalPlayerSnapshotContract
         && ReviewTransportText.IsWellFormedUtf16(name);
 
     public static readonly string[] FacingDirections = ["up", "right", "down", "left"];
+    public static readonly string[] GamepadModes = ["auto", "forceOn", "forceOff"];
 
     // Stardew's FacingDirection: 0 up, 1 right, 2 down, 3 left.
     public static string? FacingName(int direction) =>
