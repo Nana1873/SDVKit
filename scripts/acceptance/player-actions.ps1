@@ -411,8 +411,8 @@ try {
     if (Test-Section 'fishing') {
         Write-Step 'Fishing: prepare and cast.'
         # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.
-        # The bank at 69,30 casts to the right. Short casts facing down sometimes cost stamina without landing (#305).
-        $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 69; y = 30 } -OptIn '--allow-fixture-actions'
+        # From 64,16 the search picks a side-facing bank (69,30 on the test save's Farm).
+        $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 64; y = 16 } -OptIn '--allow-fixture-actions'
         Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
         Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
         Wait-Settled
