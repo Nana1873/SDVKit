@@ -72,6 +72,11 @@ All `data` values describe **one observation** at the runtime's `observedAtUtc`.
 | `npcs[].displayName` | `NPC.displayName`, string | The localized name shown in game. |
 | `npcs[].tileX`, `npcs[].tileY` | `NPC.TilePoint`, integers | Within ±100000. Target this tile with `stardew_world_act` `check` from a neighbouring tile to talk or give the selected item. |
 | `npcs[].facing` | `NPC.FacingDirection`, string | `up`, `right`, `down` or `left`. |
+| `input` | Object or absent | Which input mode this screen's game is in, so evidence states whether mouse-and-keyboard or gamepad play was tested. Absent from older GameSide versions. |
+| `input.gamepadControls` | `Options.gamepadControls`, boolean | Gamepad play: snapped menus and controller prompts. With `gamepadMode` `auto` the game switches it on the last device used. |
+| `input.gamepadMode` | `Options.gamepadMode`, string | `auto`, `forceOn` or `forceOff`. |
+| `input.mouseCursorVisible` | `Game1.wasMouseVisibleThisFrame` and a cursor transparency above 0, boolean | Whether the game drew the mouse cursor last frame; the action and tool buttons aim at the cursor only while it is visible. |
+| `input.gamepadConnected` | `Game1.input.GetGamePadState().IsConnected`, boolean | The gamepad state the game reads. A synthetic controller press currently makes the game handle a gamepad disconnect, which opens the game menu ([#273](https://github.com/Nana1873/SDVKit/issues/273)). |
 
 The mouse cursor redirects the action and tool buttons when it is within one tile of the player; then neither tile above applies. Park SDVKit's virtual cursor away from the player (for example `stardew_input_cursor_set` at `8,8`) before keyboard actions.
 

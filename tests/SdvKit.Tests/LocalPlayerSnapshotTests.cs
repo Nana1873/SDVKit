@@ -97,6 +97,40 @@ public sealed class LocalPlayerSnapshotTests
         Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Npcs = Enumerable.Repeat(good, 65).ToArray() }));
     }
 
+    private static readonly PlayerInputModeValues InputMode = new(false, "auto", true, false);
+
+    [Fact]
+    public void InputModeSurvivesStatusReadAndStaysOptional()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Input = InputMode } };
+        Assert.Equal(InputMode, Read(temporary, Runtime(player)).Runtime?.LocalPlayer?.Data?.Input);
+        var gamepad = Player() with { Data = Player().Data! with { Input = new(true, "forceOn", false, true) } };
+        Assert.Equal("forceOn", Read(temporary, Runtime(gamepad)).Runtime?.LocalPlayer?.Data?.Input?.GamepadMode);
+        // An older GameSide does not publish the input mode; the snapshot stays valid without it.
+        Assert.Null(Read(temporary, Runtime(Player())).Runtime?.LocalPlayer?.Data?.Input);
+    }
+
+    [Theory]
+    [InlineData("Auto")]
+    [InlineData("on")]
+    [InlineData("")]
+    public void UnknownGamepadModesFailClosed(string mode) =>
+        Assert.False(LocalPlayerSnapshotContract.ValuesValid(Player().Data! with { Input = InputMode with { GamepadMode = mode } }));
+
+    [Fact]
+    public void PartialInputModeObjectIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        var player = Player() with { Data = Player().Data! with { Input = InputMode } };
+        Read(temporary, Runtime(player));
+        string path = Path.Combine(temporary.Path, "status.json");
+        JsonNode payload = JsonNode.Parse(File.ReadAllText(path))!;
+        payload["runtime"]!["localPlayer"]!["data"]!["input"]!.AsObject().Remove("gamepadConnected");
+        File.WriteAllText(path, payload.ToJsonString());
+        Assert.Equal("invalid", GameSideStatusReader.Read(path, "launch", Process, Now).State);
+    }
+
     [Fact]
     public void PartialNpcObjectIsRejected()
     {

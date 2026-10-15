@@ -47,7 +47,8 @@ internal static class LocalPlayerCapture
                     rod.fishCaught ? rod.whichFish?.QualifiedItemId : null,
                     rod.fishCaught ? Math.Max(0, rod.numberOfFishCaught) : 0) : null,
                 CapturePosition(player),
-                CaptureNpcs(player));
+                CaptureNpcs(player),
+                CaptureInputMode());
             return LocalPlayerSnapshotContract.ValuesValid(values)
                 ? new LocalPlayerSnapshot(LocalPlayerSnapshotContract.SchemaVersion, "available", null, values)
                 : LocalPlayerSnapshotContract.WithoutData("error", "invalidValues");
@@ -57,6 +58,22 @@ internal static class LocalPlayerCapture
             // Modded item getters can fail. Publish an explicit error, never last-known values.
             return LocalPlayerSnapshotContract.WithoutData("error", "captureFailed");
         }
+    }
+
+    private static PlayerInputModeValues? CaptureInputMode()
+    {
+        string? mode = Game1.options.gamepadMode switch
+        {
+            Options.GamepadModes.Auto => "auto",
+            Options.GamepadModes.ForceOn => "forceOn",
+            Options.GamepadModes.ForceOff => "forceOff",
+            _ => null,
+        };
+        return mode is null ? null : new PlayerInputModeValues(
+            Game1.options.gamepadControls,
+            mode,
+            Game1.wasMouseVisibleThisFrame && Game1.mouseCursorTransparency > 0f,
+            Game1.input.GetGamePadState().IsConnected);
     }
 
     private static LocationNpcValues[]? CaptureNpcs(Farmer player)
