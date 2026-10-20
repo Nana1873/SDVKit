@@ -48,7 +48,8 @@ function Initialize-Acceptance {
         ProtectedRoots = @((Join-Path $game 'Mods'), $stardewData)
         ProtectedBefore = $null
         SkipProtectedCheck = [bool]$SkipProtectedCheck
-        Selection = @($Selection)
+        # A $null selection must not become an array with one null element, which would break argument binding.
+        Selection = @($Selection | Where-Object { -not [string]::IsNullOrEmpty($_) })
         # Topologies this run started and may still need to stop, and those whose test save still needs a reset.
         StartedAtUtc = [DateTime]::UtcNow
         Running = [Collections.Generic.HashSet[string]]::new()
@@ -202,7 +203,8 @@ function Invoke-Tool {
 
 function Get-AcceptanceSelection {
     # The run's role or screen selection arguments, for queries that are selection-bound (menu, inventory, world).
-    @($script:Context.Selection)
+    # The unary comma keeps an empty selection an array instead of no output.
+    , [string[]]@($script:Context.Selection)
 }
 
 function Wait-ReviewReady {

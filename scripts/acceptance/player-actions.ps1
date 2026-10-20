@@ -75,7 +75,8 @@ $screenMode = $PSBoundParameters.ContainsKey('Screen')
 if ($Topology -eq 'network-2' -and -not $Role) { throw '-Topology network-2 needs -Role host or -Role farmhand.' }
 if ($Role -and $Topology -ne 'network-2') { throw '-Role needs -Topology network-2.' }
 if ($screenMode -and $Topology -ne 'single') { throw '-Screen selects a screen of a split-screen single review; it cannot be combined with -Topology network-2.' }
-$selection = if ($Role) { @('--topology', 'network-2', '--role', $Role) } elseif ($screenMode) { @('--screen', "$Screen") } else { @() }
+# Wrapped in @(), because an empty array assigned from an if statement collapses to $null.
+$selection = @(if ($Role) { @('--topology', 'network-2', '--role', $Role) } elseif ($screenMode) { @('--screen', "$Screen") })
 $mode = if ($Role) { $Role } elseif ($screenMode) { "screen$Screen" } else { 'single' }
 if ($mode -ne 'single') {
     $singleOnly = @($Only | Where-Object { $_ -cnotin $inputOnly })
