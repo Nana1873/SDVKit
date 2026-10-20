@@ -4,7 +4,7 @@
     <AssemblyName>SdvKit.GameSide</AssemblyName>
     <RootNamespace>SdvKit.GameSide</RootNamespace>
     <Description>SDVKit game-side mod for the isolated test lab.</Description>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <IsPackable>false</IsPackable>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**</DefaultItemExcludes>
