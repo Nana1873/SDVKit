@@ -7,7 +7,7 @@ An agent-first Windows toolkit for developing Stardew Valley mods, with an isola
 
 [Download](https://github.com/Nana1873/SDVKit/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs/README.md) · [Glossary](docs/glossary.md) · [Issues](https://github.com/Nana1873/SDVKit/issues)
 
-This documentation follows `main` for **v2.0.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) with the README from its tag. For this version, see its [release status](https://github.com/Nana1873/SDVKit/issues/286) and [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v2.0.0).
+This documentation follows `main` for **v2.1.0**. Install the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest) with the README from its tag. For this version, see its [release status](https://github.com/Nana1873/SDVKit/issues/320) and [tagged documentation](https://github.com/Nana1873/SDVKit/tree/v2.1.0).
 
 ## Set up with your agent
 
@@ -45,16 +45,16 @@ See [2.x support, compatibility and upgrades](docs/support.md) for companion ver
 
 ## Install
 
-Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v2.0.0; for another version, follow its tagged README. In the download folder, compare the hash with the sidecar, then extract to a fresh folder:
+Download the Windows-x64 ZIP and its `.sha256` file from the [latest published release](https://github.com/Nana1873/SDVKit/releases/latest). These examples use v2.1.0; for another version, follow its tagged README. In the download folder, compare the hash with the sidecar, then extract to a fresh folder:
 
 ```powershell
-$archive = '.\SDVKit-2.0.0-win-x64.zip'
+$archive = '.\SDVKit-2.1.0-win-x64.zip'
 $expectedHash = ((Get-Content "$archive.sha256" -Raw).Trim() -split '\s+')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'The download checksum does not match.'
 }
 Expand-Archive -LiteralPath $archive -DestinationPath .\SDVKit-install
-$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-2.0.0-win-x64\sdvkit.exe).Path
+$sdvkit = (Resolve-Path .\SDVKit-install\SDVKit-2.1.0-win-x64\sdvkit.exe).Path
 & $sdvkit --help
 & $sdvkit doctor --json
 ```
