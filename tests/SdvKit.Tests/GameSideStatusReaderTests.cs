@@ -27,6 +27,43 @@ public sealed class GameSideStatusReaderTests
     }
 
     [Fact]
+    public void MissingMarkerIsPendingOnlyAfterTheAbsentNameWindow()
+    {
+        using TemporaryDirectory temporary = new();
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+
+        GameSideStatusReport report = GameSideStatusReader.Read(
+            System.IO.Path.Combine(temporary.Path, "missing.json"),
+            "launch-1",
+            Process(),
+            ObservedAt);
+
+        Assert.Equal("pending", report.State);
+        Assert.InRange(elapsed.Elapsed, GameSideStatusReader.AbsentNameWindow, TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task ReadWaitsThroughATransientlyAbsentNameWhileAHeldSnapshotIsReplaced()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = WriteMarker(temporary, Process());
+        string aside = path + ".replaced";
+        File.Move(path, aside);
+        Task restore = Task.Run(() =>
+        {
+            Thread.Sleep(40);
+            File.Move(aside, path);
+        });
+
+        GameSideStatusReport report = GameSideStatusReader.Read(path, "launch-1", Process(), ObservedAt);
+        await restore;
+
+        Assert.Equal("active", report.State);
+        Assert.Equal(600, report.Tick);
+        Assert.Equal(ObservedAt, report.ObservedAtUtc);
+    }
+
+    [Fact]
     public void MatchingFreshMarkerReportsActiveTicks()
     {
         using TemporaryDirectory temporary = new();

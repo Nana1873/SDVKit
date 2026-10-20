@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -46,6 +47,9 @@ internal static class GameSideStatusReader
 {
     internal const int MaximumStatusBytes = 256 * 1024;
     private static readonly TimeSpan FreshnessWindow = TimeSpan.FromSeconds(5);
+
+    /// <summary>How long an absent destination name is re-read before it counts as pending.</summary>
+    internal static readonly TimeSpan AbsentNameWindow = TimeSpan.FromMilliseconds(250);
     private static readonly JsonSerializerOptions StatusJsonOptions = CreateStatusJsonOptions();
 
     private static JsonSerializerOptions CreateStatusJsonOptions()
@@ -85,34 +89,61 @@ internal static class GameSideStatusReader
         ArgumentException.ThrowIfNullOrWhiteSpace(launchId);
         ArgumentNullException.ThrowIfNull(process);
 
-        if (!File.Exists(statusPath))
-        {
-            return Pending();
-        }
-
+        // Publication replaces the destination name. While Windows delays the replacement of a
+        // snapshot that a kernel component holds open, the name is absent for tens of milliseconds,
+        // and a denied replacement moves the held snapshot aside for a moment (#136, #143). A name
+        // that is absent or still delete-pending is therefore re-read briefly before it counts as
+        // pending; a name that stays absent is still pending.
         GameSideStatusMarker? marker;
-        try
+        long absentSince = Stopwatch.GetTimestamp();
+        while (true)
         {
-            using FileStream stream = new(
-                statusPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-            if (stream.Length is <= 0 or > MaximumStatusBytes)
+            if (!File.Exists(statusPath))
+            {
+                if (WaitForReplacement(absentSince))
+                {
+                    continue;
+                }
+
+                return Pending();
+            }
+
+            try
+            {
+                using FileStream stream = new(
+                    statusPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length is <= 0 or > MaximumStatusBytes)
+                {
+                    return new GameSideStatusReport("invalid", null, null, null, null);
+                }
+
+                marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
+                    stream,
+                    StatusJsonOptions);
+                break;
+            }
+            catch (Exception exception) when (exception is FileNotFoundException
+                or DirectoryNotFoundException
+                or UnauthorizedAccessException)
+            {
+                if (WaitForReplacement(absentSince))
+                {
+                    continue;
+                }
+
+                return exception is UnauthorizedAccessException
+                    ? new GameSideStatusReport("invalid", null, null, null, null)
+                    : Pending();
+            }
+            catch (Exception exception) when (exception is IOException
+                or SecurityException
+                or JsonException)
             {
                 return new GameSideStatusReport("invalid", null, null, null, null);
             }
-
-            marker = JsonSerializer.Deserialize<GameSideStatusMarker>(
-                stream,
-                StatusJsonOptions);
-        }
-        catch (Exception exception) when (exception is IOException
-            or SecurityException
-            or UnauthorizedAccessException
-            or JsonException)
-        {
-            return new GameSideStatusReport("invalid", null, null, null, null);
         }
 
         if (marker is null
@@ -666,6 +697,21 @@ internal static class GameSideStatusReader
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Waits a little for an in-flight replacement to expose the destination name again. Returns
+    /// false once the name has been absent for <see cref="AbsentNameWindow"/>.
+    /// </summary>
+    private static bool WaitForReplacement(long absentSince)
+    {
+        if (Stopwatch.GetElapsedTime(absentSince) >= AbsentNameWindow)
+        {
+            return false;
+        }
+
+        Thread.Sleep(1);
+        return true;
     }
 
     private static GameSideStatusReport Pending() =>
