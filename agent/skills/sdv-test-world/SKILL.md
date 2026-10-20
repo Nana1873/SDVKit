@@ -34,6 +34,7 @@ The test world is an SDVKit-owned save copy. Each review changes a work copy; `r
 
 - `stardew_world_interact` with `--allow-world-actions` waters, harvests, or fills and empties a machine on the faced adjacent tile. Read `stardew_world_area_get` and `stardew_inventory_get` first; the action needs their fresh revisions.
 - `stardew_world_act` with `--allow-world-actions` presses the action button (`check`) or uses the selected tool (`useTool`) on one of the four tiles next to the player: open a chest, read a sign, talk, hoe or mine. It needs only a fresh `inventoryRevision`.
+- `stardew_world_move '{"direction":"down"}'` with `--allow-world-actions` walks exactly one tile and reports `tileX`/`tileY` and `reached`; `"turnOnly":true` only faces the direction. A blocked tile is refused with `worldMoveTargetBlocked`. There is no pathfinding: plan the route from `stardew_world_area_get`, one move at a time, or use `stardew_lab_warp` for setup.
 - `stardew_container_transfer` with `--allow-container-transfer` moves items between an open chest and the backpack.
 - Select a hotbar slot with `stardew_input_press '{"button":"D3"}' --allow-input`.
 

@@ -206,6 +206,12 @@ internal interface IReviewInputRuntime
         Action<ReviewInputResult> completed, out string error)
     { error = "Validated world input is unavailable."; return false; }
 
+    /// <summary>Holds one keyboard button for at most the request's ticks, releasing it as soon as
+    /// <paramref name="releaseWhen"/> is true at an input update after the first held tick.</summary>
+    bool TryWorldHold(ReviewInputRequest request, Func<string?> validateDispatch, Func<bool> releaseWhen,
+        Action<ReviewInputResult> completed, out string error)
+    { error = "Validated held input is unavailable."; return false; }
+
     bool TryText(ReviewInputRequest request, Action<ReviewInputResult> completed, out string error)
     { error = "Text input is unavailable."; return false; }
 
@@ -531,6 +537,13 @@ internal sealed class ReviewChordProgress
     public bool Canceled { get; private set; }
     public bool Finished => EndTick is not null;
     public void Cancel() { Canceled = true; Remaining = 0; }
+    /// <summary>Ends a plain chord before its requested ticks: the next input sample releases it normally.</summary>
+    public void StopEarly()
+    {
+        if (Gesture is not null || Canceled || Finished || StartTick is null)
+            throw new InvalidOperationException("Only a started plain chord can stop early.");
+        Remaining = 0;
+    }
     public void Consumed(int tick, bool canceledGestureSample = false)
     {
         if (PreparingCursor || Finished || ((Canceled || Remaining == 0) && !(canceledGestureSample && Gesture is not null))) throw new InvalidOperationException("No input sample was requested.");

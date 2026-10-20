@@ -179,10 +179,13 @@ public sealed class ProjectReviewMcpTests
             runContainerTransfer: (_, _) => throw new InvalidOperationException(
                 "Screen-bound container transfer must stay absent."),
             runWorldAct: (_, _) => throw new InvalidOperationException(
-                "Screen-bound faced-tile action must stay absent."));
+                "Screen-bound faced-tile action must stay absent."),
+            runWorldMove: (_, _) => throw new InvalidOperationException(
+                "Screen-bound move must stay absent."));
         string[] names = options.ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
 
         Assert.DoesNotContain(ProjectReviewMcpWorldActTools.ToolName, names);
+        Assert.DoesNotContain(ProjectReviewMcpWorldMoveTools.ToolName, names);
         Assert.Contains(ProjectReviewMcpServer.RuntimeToolName, names);
         Assert.Contains(ProjectReviewMcpMenuTools.ToolName, names);
         Assert.Contains(ProjectReviewMcpScreenshotTools.CaptureToolName, names);

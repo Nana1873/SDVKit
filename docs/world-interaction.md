@@ -38,6 +38,22 @@ The cursor sets where the game starts, not everything it may touch. Stardew's ow
 
 `completed` therefore means the button reached the target tile, not where the effect landed.
 
+## Move exactly one tile
+
+`project review act move` and the MCP tool `stardew_world_move` (same opt-in and limits) walk the player onto the next tile in a direction, or only turn it. A timed chord (`stardew_input_chord`) has no exact stop: equal tick counts move 2 or 3 tiles depending on the sub-tile position and speed. The move needs no revision:
+
+```powershell
+& $sdvkit project review act move down --topology single --json
+& $sdvkit project review act move left --turn-only --topology single --json
+```
+
+- SDVKit holds the game's own movement key for the direction (the first keyboard key bound in the game's options, `W`, `A`, `S` or `D` by default) through its process-local input and releases it at the first input update at which the player stands on the target tile with its standing pixel at or past the tile's centre line; the game halts the player in that same tick. Repeated moves therefore land one tile apart, and a move after a warp or another move starts near the middle of the tile. The hold is bounded to 120 input ticks (two seconds); walking a tile takes about 30, running about 12.
+- `--turn-only` (`turnOnly: true`) presses the key for one input tick: the player faces the direction and shifts a few pixels inside its tile, like a single key press.
+- The result carries `locationId`, `tileX`/`tileY`, `position` (as in [runtime state](runtime-state.md#field-contract)), the `targetX`/`targetY` the move aimed at and `reached`. `reached` is true only when the player ended on the target tile of the same location facing the direction (for a turn: on its start tile). `completed` with `reached: false` means the key was held and released but the player ended elsewhere, for example after being stopped by a villager that walked in; read `tileX`/`tileY`.
+- A warp on the target tile changes the location during the move. The result then names the new `locationId` with `reached: false`.
+- Before any input, the target must be on the map and free for the player's bounding box, checked the way the game checks each movement step (map collisions, objects, terrain features, buildings, villagers and animals) but without its side effects; otherwise the result is `worldMoveTargetBlocked` with `notDispatched`. A menu, event, minigame, tool use, warp in progress or a player that is already moving is `worldActionPlayerBusy`. The checks run again right before the key goes down; a player that moved in between is `worldActionTargetChanged`.
+- There is no pathfinding. Plan a route from `stardew_world_area_get` and `stardew_runtime_get`, one move at a time.
+
 Verified live so far: `check` on the Farm sign and `useTool` with the hoe (`scripts/acceptance/player-actions.ps1`). The other uses rely on the game's own action button and tool behaviour; the [player-action matrix](player-actions.md) tracks which are verified.
 
 There is no target revision, so `notDispatched` after the cursor was placed also requires an unchanged backpack, no open menu, and an unchanged player (location, tile, facing, stamina, health) and 3x3 tiles around the player. Effects these reads do not cover, such as a toggled gate or a petted animal, can still slip through, so treat `notDispatched` as "SDVKit sent nothing" and read the state you care about. Prove the effect with a fresh read: `project review menu` for a chest, sign or dialogue, `project review world` for tilled soil, removed objects or [feature changes](world-inspection.md#terrain-features-and-furniture), `project review inventory` for gifts, food or placed items.
