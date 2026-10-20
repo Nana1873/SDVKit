@@ -44,9 +44,9 @@ internal static class ReviewWorldMoveCommand
         (int dx, int dy) = ReviewWorldMoveContract.Delta(query.Direction);
         int? targetX = null, targetY = null;
         ReviewWorldMoveReport Report(string state, string? code, string dispatch, string? button = null,
-            int? start = null, int? end = null, bool reached = false)
+            int? start = null, int? end = null, bool reached = false, Observation? seen = null)
         {
-            Observation seen = Observe();
+            seen ??= Observe();
             return new(ReviewWorldMoveContract.SchemaVersion, state, code, launch, "single", null,
                 DateTimeOffset.UtcNow, query.Direction, query.TurnOnly, dispatch, button, start, end,
                 seen.LocationId, seen.TileX, seen.TileY, seen.Position, targetX, targetY, reached);
@@ -124,7 +124,7 @@ internal static class ReviewWorldMoveCommand
                             && ReviewWorldMoveContract.Reached(query, start.X, start.Y, targetX.Value, targetY.Value,
                                 startLocation, seen.LocationId, seen.TileX.Value, seen.TileY.Value, seen.Position?.Facing);
                         Write(Report("completed", null, "completed", result.CanonicalButton,
-                            result.StartTick, result.EndTick, reached));
+                            result.StartTick, result.EndTick, reached, seen));
                         return;
                     }
                     Write(Report("unavailable",
@@ -183,19 +183,29 @@ internal static class ReviewWorldMoveCommand
         bool playerReady = player is not null && player.IsLocalPlayer && Game1.activeClickableMenu is null
             && Game1.currentMinigame is null && !Game1.uiMode && !Game1.eventUp && !Game1.fadeToBlack
             && !Game1.freezeControls && !Game1.globalFade && !Game1.isWarping && Game1.locationRequest is null
-            && !player.UsingTool && player.CanMove && !player.isMoving() && player.movementDirections.Count == 0;
+            && !player.UsingTool && player.CanMove && !player.isMoving() && player.movementDirections.Count == 0
+            && !player.isRidingHorse();
         bool targetFree = false;
         if (playerReady && !query.TurnOnly && Game1.currentLocation is { } location)
         {
             Point tile = player!.TilePoint;
             var target = new Vector2(tile.X + dx, tile.Y + dy);
+            // The move ends with the standing pixel (the bounding box centre) at or just past the target tile's
+            // centre line, so check the whole path from the current box to that final box: their union is the
+            // swept area of an axis-aligned move, and one movement step of overshoot is allowed for.
             Rectangle box = player.GetBoundingBox();
-            box.Offset(dx * Game1.tileSize, dy * Game1.tileSize);
+            Point standing = player.StandingPixel;
+            int overshoot = (int)Math.Ceiling(player.getMovementSpeed());
+            Rectangle final = box;
+            final.Offset(
+                dx == 0 ? 0 : (tile.X + dx) * Game1.tileSize + Game1.tileSize / 2 - standing.X + dx * overshoot,
+                dy == 0 ? 0 : (tile.Y + dy) * Game1.tileSize + Game1.tileSize / 2 - standing.Y + dy * overshoot);
+            Rectangle swept = Rectangle.Union(box, final);
             // The same check the game makes before each movement step, without its side effects (pushing
             // animals or villagers, touching terrain features). Warps are not collisions: a warp on the target
             // tile changes the location during the move, which the report then names.
             targetFree = location.isTileOnMap(target)
-                && !location.isCollidingPosition(box, Game1.viewport, isFarmer: true, damagesFarmer: 0,
+                && !location.isCollidingPosition(swept, Game1.viewport, isFarmer: true, damagesFarmer: 0,
                     glider: false, character: player, pathfinding: false, projectile: false,
                     ignoreCharacterRequirement: false, skipCollisionEffects: true);
         }

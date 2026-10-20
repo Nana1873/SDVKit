@@ -9,7 +9,7 @@ Connect an MCP client to an [already-running review](live-review.md#start-a-revi
 | Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +15 | Unsupported | +15 | +6 |
-| Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-world-actions` | +3 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 

@@ -104,7 +104,7 @@ internal static class ProjectReviewWorldMoveService
                 && report.StartTick is >= 0 && report.EndTick >= report.StartTick
                 && report.TileX is not null && report.TileY is not null && report.LocationId is not null
                 && report.TargetX is not null && report.TargetY is not null
-                && (!report.Reached || report.LocationId is not null && report.Position is not null);
+                && (!report.Reached || report.Position is not null);
         return report.State == "unavailable" && ReviewWorldMoveContract.IsGameError(report.ErrorCode)
             && report.DispatchState is "notDispatched" or "mayHaveRun" && !report.Reached;
     }
