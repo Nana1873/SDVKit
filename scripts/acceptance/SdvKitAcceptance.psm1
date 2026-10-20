@@ -15,7 +15,10 @@ function Initialize-Acceptance {
         [Parameter(Mandatory)] [string] $SdvKit,
         [Parameter(Mandatory)] [string] $GamePath,
         [Parameter(Mandatory)] [string] $LabRoot,
-        [switch] $SkipProtectedCheck
+        [switch] $SkipProtectedCheck,
+        # Role or screen selection that every tool call and selection-bound query runs through, for example
+        # @('--topology', 'network-2', '--role', 'farmhand') or @('--screen', '1'). Empty for an unbound single review.
+        [string[]] $Selection = @()
     )
 
     $sdvkitPath = (Resolve-Path -LiteralPath $SdvKit).Path
@@ -45,6 +48,7 @@ function Initialize-Acceptance {
         ProtectedRoots = @((Join-Path $game 'Mods'), $stardewData)
         ProtectedBefore = $null
         SkipProtectedCheck = [bool]$SkipProtectedCheck
+        Selection = @($Selection)
         # Topologies this run started and may still need to stop, and those whose test save still needs a reset.
         StartedAtUtc = [DateTime]::UtcNow
         Running = [Collections.Generic.HashSet[string]]::new()
@@ -181,7 +185,8 @@ function Invoke-SdvKit {
 function Invoke-Tool {
     <#
     .SYNOPSIS
-    Runs one SDVKit tool through `project review call` with an argument object and optional opt-ins.
+    Runs one SDVKit tool through `project review call` with an argument object and optional opt-ins, through the
+    run's role or screen selection.
     #>
     param(
         [Parameter(Mandatory, Position = 0)] [string] $Label,
@@ -192,13 +197,19 @@ function Invoke-Tool {
     )
 
     $json = $Arguments | ConvertTo-Json -Compress -Depth 20
-    return Invoke-SdvKit $Label (@('project', 'review', 'call', $Tool, $json) + $OptIn) -AllowExit $AllowExit
+    return Invoke-SdvKit $Label (@('project', 'review', 'call', $Tool, $json) + (Get-AcceptanceSelection) + $OptIn) -AllowExit $AllowExit
+}
+
+function Get-AcceptanceSelection {
+    # The run's role or screen selection arguments, for queries that are selection-bound (menu, inventory, world).
+    @($script:Context.Selection)
 }
 
 function Wait-ReviewReady {
     <#
     .SYNOPSIS
     Polls review status until GameSide is active, the project mod is loaded and, with -TestSave, the test save passed.
+    For network-2, both roles must be loaded and each must report the pair as passed.
     #>
     param(
         [string] $Topology = 'single',
@@ -215,14 +226,25 @@ function Wait-ReviewReady {
         $ready = $false
         try {
             $status = & $script:Context.SdvKit project review status --topology $Topology --json | ConvertFrom-Json -Depth 100
-            $gameSide = $status.lab.gameSide
-            $ready = $gameSide.state -ceq 'active' -and $gameSide.projectMod.phase -ceq 'loaded' -and
-                $gameSide.projectMod.loadConfirmed -eq $true -and (-not $TestSave -or $gameSide.testSave.phase -ceq 'passed')
+            if ($Topology -ceq 'network-2') {
+                $ready = $true
+                foreach ($role in 'host', 'farmhand') {
+                    $gameSide = $status.network.$role.gameSide
+                    $ready = $ready -and $gameSide.state -ceq 'active' -and $gameSide.projectMod.phase -ceq 'loaded' -and
+                        $gameSide.projectMod.loadConfirmed -eq $true -and $gameSide.networkTwo.phase -ceq 'passed'
+                }
+            }
+            else {
+                $gameSide = $status.lab.gameSide
+                $ready = $gameSide.state -ceq 'active' -and $gameSide.projectMod.phase -ceq 'loaded' -and
+                    $gameSide.projectMod.loadConfirmed -eq $true -and (-not $TestSave -or $gameSide.testSave.phase -ceq 'passed')
+            }
         }
         catch { $ready = $false }
         if ($ready) {
             $status | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $script:Context.Evidence ('{0:d3}-ready.json' -f ++$script:Context.Step)) -Encoding utf8
-            Write-Step "Review ready (launch $($status.lab.launchId))."
+            $launch = if ($Topology -ceq 'network-2') { "host $($status.network.host.launchId), farmhand $($status.network.farmhand.launchId)" } else { $status.lab.launchId }
+            Write-Step "Review ready (launch $launch)."
             return $status
         }
 
@@ -401,5 +423,5 @@ function Invoke-ComponentClick {
     return $click
 }
 
-Export-ModuleMember -Function Initialize-Acceptance, Get-AcceptanceContext, Write-Step, Assert-That, Invoke-SdvKit, Invoke-Tool,
+Export-ModuleMember -Function Initialize-Acceptance, Get-AcceptanceContext, Get-AcceptanceSelection, Write-Step, Assert-That, Invoke-SdvKit, Invoke-Tool,
     Wait-ReviewReady, Stop-Review, Complete-Acceptance, Add-ProviderIdentity, Get-ToolErrorCode, Get-ProtectedFingerprint, Save-ViewportScreenshot, Get-ComponentCenter, Invoke-ComponentClick

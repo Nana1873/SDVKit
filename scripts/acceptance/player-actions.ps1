@@ -29,16 +29,32 @@ sections: walk, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Sections 
 starts from the Farm. Such a partial run writes its evidence under player-actions-partial and never counts as
 acceptance; PRs and releases need a full run.
 
+-Topology network-2 -Role <host|farmhand> runs the input-only sections (walk, hotbar, menu) through the selected
+network role, and -Screen <id> runs them on one screen of a split-screen test-save review (#299). The other sections
+need fixture or world actions that are single-only (#297), so those modes skip them with a console note. Every tool
+call and every menu, inventory and world read then carries the role or screen selection. A screen cannot be warped,
+so its walking test starts from the tile the local farmhand spawns on. Evidence goes to player-actions-<role> or
+player-actions-screen<id>. Both topologies are stopped and reset at the end, also after a failure.
+
 .EXAMPLE
 pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance
 
 .EXAMPLE
 pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance -Only npc,item
+
+.EXAMPLE
+pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance -Topology network-2 -Role farmhand
+
+.EXAMPLE
+pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance -Screen 1
 #>
 param(
     [Parameter(Mandatory)] [string] $SdvKit,
     [Parameter(Mandatory)] [string] $GamePath,
     [Parameter(Mandatory)] [string] $LabRoot,
+    [ValidateSet('single', 'network-2')] [string] $Topology = 'single',
+    [ValidateSet('host', 'farmhand')] [string] $Role,
+    [ValidateRange(0, 99)] [int] $Screen,
     [switch] $SkipProtectedCheck,
     [string[]] $Only
 )
@@ -47,16 +63,61 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
 # Accept both -Only npc,item from PowerShell and a single comma-separated string from pwsh -File.
 $sections = @('walk', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'item', 'npc', 'fishing')
+$inputOnly = @('walk', 'hotbar', 'menu')
 $Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 if ($PSBoundParameters.ContainsKey('Only') -and $Only.Count -eq 0) { throw "-Only needs at least one section. Use: $($sections -join ', ')." }
 $unknown = @($Only | Where-Object { $_ -cnotin $sections })
 if ($unknown.Count -gt 0) { throw "Unknown -Only section(s): $($unknown -join ', '). Use: $($sections -join ', ')." }
 $partial = $Only.Count -gt 0
-$context = Initialize-Acceptance -Name ($partial ? 'player-actions-partial' : 'player-actions') -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck
+
+# The selected player: an unbound single review (the default), one network-2 role, or one split-screen screen.
+$screenMode = $PSBoundParameters.ContainsKey('Screen')
+if ($Topology -eq 'network-2' -and -not $Role) { throw '-Topology network-2 needs -Role host or -Role farmhand.' }
+if ($Role -and $Topology -ne 'network-2') { throw '-Role needs -Topology network-2.' }
+if ($screenMode -and $Topology -ne 'single') { throw '-Screen selects a screen of a split-screen single review; it cannot be combined with -Topology network-2.' }
+$selection = if ($Role) { @('--topology', 'network-2', '--role', $Role) } elseif ($screenMode) { @('--screen', "$Screen") } else { @() }
+$mode = if ($Role) { $Role } elseif ($screenMode) { "screen$Screen" } else { 'single' }
+if ($mode -ne 'single') {
+    $singleOnly = @($Only | Where-Object { $_ -cnotin $inputOnly })
+    if ($singleOnly.Count -gt 0) { throw "The $mode mode runs only the input-only sections ($($inputOnly -join ', ')); $($singleOnly -join ', ') need fixture or world actions that are single-only (#297)." }
+}
+$name = if ($partial) { 'player-actions-partial' } elseif ($mode -eq 'single') { 'player-actions' } else { "player-actions-$mode" }
+$context = Initialize-Acceptance -Name $name -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck -Selection $selection
 
 function Test-Section([string[]] $Names) {
-    # Every section runs in a full run; -Only selects some for a partial development run.
+    # Every section runs in a full single run; -Only selects some for a partial development run; a role or screen
+    # run covers only the input-only sections.
+    if ($mode -ne 'single' -and @($Names | Where-Object { $_ -cin $inputOnly }).Count -eq 0) { return $false }
     -not $partial -or @($Names | Where-Object { $_ -in $Only }).Count -gt 0
+}
+
+function Get-Menu([string] $Label) {
+    (Invoke-SdvKit $Label (@('project', 'review', 'menu', '--json') + $selection)).Json
+}
+
+function Get-Inventory([string] $Label) {
+    (Invoke-SdvKit $Label (@('project', 'review', 'inventory', '--json') + $selection)).Json.data
+}
+
+function Join-SplitScreen {
+    # Opts the ready single test-save review into local split-screen, then requires the selected screen to answer a
+    # runtime read with its own screen ID. The game's runner joins the fixture's marked local farmhand on a new screen.
+    Invoke-SdvKit 'split-screen-join' @('project', 'review', 'split-screen', 'join', '--json') | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(120)
+    $attempt = 0
+    while ($true) {
+        Start-Sleep -Seconds 3
+        $attempt++
+        $status = (Invoke-SdvKit "split-screen-status-$attempt" @('project', 'review', 'status', '--topology', 'single', '--json')).Json
+        if ($status.lab.gameSide.testSave.localSplitScreen -eq $true) {
+            $runtime = (Invoke-Tool "runtime-screen-$attempt" 'stardew_runtime_get' -AllowExit @(0, 3)).Json
+            if ($runtime -and $runtime.PSObject.Properties['screen'] -and $runtime.screen.screenId -eq $Screen) {
+                Write-Step "Screen $Screen joined: farmer $($runtime.screen.farmerId), context $($runtime.screen.contextId), in $($runtime.runtime.locationId) at $($runtime.runtime.tileX),$($runtime.runtime.tileY)."
+                return
+            }
+        }
+        Assert-That ([DateTime]::UtcNow -le $deadline) "screen $Screen did not become readable after the split-screen join; read the reported screen IDs from 'project review split-screen status'."
+    }
 }
 
 $stones = @('(O)343', '(O)450', '(O)668', '(O)670', '(O)760', '(O)762')
@@ -77,7 +138,7 @@ function Invoke-Press([string] $Label, [string] $Button) {
 }
 
 function Invoke-Hold([string] $Label, [string[]] $Buttons, [int] $Ticks) {
-    $revision = (Invoke-SdvKit "menu-$Label" @('project', 'review', 'menu', '--json')).Json.uiRevision
+    $revision = (Get-Menu "menu-$Label").uiRevision
     $chord = Invoke-Tool "chord-$Label" 'stardew_input_chord' @{ buttons = $Buttons; durationTicks = $Ticks; uiRevision = $revision } -OptIn '--allow-input'
     Assert-That ($chord.Json.succeeded -eq $true -and $chord.Json.released -eq $true) "holding $($Buttons -join '+') did not complete."
 }
@@ -89,7 +150,7 @@ function Invoke-Warp([string] $Label, [string] $Location, [int] $X, [int] $Y) {
 }
 
 function Get-Area([string] $Label, [int] $X, [int] $Y, [int] $Width, [int] $Height) {
-    (Invoke-SdvKit "world-$Label" @('project', 'review', 'world', $X, $Y, $Width, $Height, '--json')).Json.data.tiles
+    (Invoke-SdvKit "world-$Label" (@('project', 'review', 'world', $X, $Y, $Width, $Height, '--json') + $selection)).Json.data.tiles
 }
 
 function Get-SlotKey([int] $Slot) {
@@ -109,18 +170,18 @@ function Close-Dialogue([string] $Label) {
     # Escape does not close a DialogueBox. Each click on it finishes the text or turns the page; decide every click
     # from a fresh read.
     foreach ($attempt in 1..8) {
-        $menu = (Invoke-SdvKit "menu-$Label-$attempt" @('project', 'review', 'menu', '--json')).Json
+        $menu = (Get-Menu "menu-$Label-$attempt")
         if ($menu.menuOpen -eq $false) { return }
         $box = @($menu.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.DialogueBox' })
         Assert-That ($box.Count -eq 1) "expected a dialogue, found $(@($menu.menus | ForEach-Object type) -join ', ')."
         Invoke-ComponentClick "$Label-$attempt" -Menu $menu -Component $box[0] | Out-Null
         Wait-Settled
     }
-    Assert-That ((Invoke-SdvKit "menu-$Label-closed" @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'the dialogue did not close.'
+    Assert-That ((Get-Menu "menu-$Label-closed").menuOpen -eq $false) 'the dialogue did not close.'
 }
 
 function Find-ToolSlot([string] $Label, [string] $ItemId) {
-    $slot = @((Invoke-SdvKit "inventory-$Label" @('project', 'review', 'inventory', '--json')).Json.data.slots |
+    $slot = @((Get-Inventory "inventory-$Label").slots |
         Where-Object { $_.item.qualifiedItemId -ceq $ItemId })[0].slot
     Assert-That ($null -ne $slot) "the backpack has no $ItemId."
     return $slot
@@ -151,20 +212,44 @@ try {
     $mod = Join-Path $context.Evidence 'work\PlayerActionsTarget'
     Invoke-SdvKit 'create' @('project', 'create', 'smapi-mod', $mod, '--name', 'Player Actions Target', '--author', 'SDVKit',
         '--unique-id', 'SDVKit.PlayerActionsTarget', '--description', 'Empty target for the player-action acceptance.', '--json') | Out-Null
+    # The single test save is the baseline for every topology; a network-2 review loads it for both roles.
     Invoke-SdvKit 'test-save' @('lab', 'test-save', '--topology', 'single', '--game-path', $context.GamePath, '--json') | Out-Null
-    Invoke-SdvKit 'start' @('project', 'review', 'start', $mod, '--game-path', $context.GamePath, '--topology', 'single', '--test-save', '--json') | Out-Null
-    Wait-ReviewReady -TestSave | Out-Null
-    Invoke-Tool 'farm' 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
-    Wait-Settled
+    if ($Topology -eq 'network-2') {
+        Invoke-SdvKit 'start' @('project', 'review', 'start', $mod, '--game-path', $context.GamePath, '--topology', 'network-2', '--json') | Out-Null
+        Wait-ReviewReady -Topology 'network-2' | Out-Null
+    }
+    else {
+        Invoke-SdvKit 'start' @('project', 'review', 'start', $mod, '--game-path', $context.GamePath, '--topology', 'single', '--test-save', '--json') | Out-Null
+        Wait-ReviewReady -TestSave | Out-Null
+        if ($screenMode) { Join-SplitScreen }
+    }
+
+    if ($screenMode) {
+        Write-Step "Screen ${Screen}: fixture tools are single-only (#297), so the local farmhand is not warped and starts in its cabin bed."
+    }
+    else {
+        Invoke-Tool 'farm' 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
+        Wait-Settled
+    }
+    if ($mode -ne 'single') { Write-Step "$mode mode: only the input-only sections run ($($inputOnly -join ', ')); mapwarp, tools, act, item, npc and fishing need fixture or world actions that are single-only (#297) and are skipped." }
     $spot = $null
     if ($partial) { Write-Step "Partial run ($($Only -join ', ')): development only, not acceptance evidence." }
 
     if (Test-Section 'walk') {
         Write-Step 'Walking: four directions, then walking versus running.'
-        Invoke-Warp 'walk-start' 'Farm' 64 16
+        if ($screenMode) {
+            # No warp on a screen: the local farmhand starts in its bed (9,9 of the fixture's cabin). Left, up, down and
+            # right in this order stay on free floor and rug tiles and end on the bed again; the bed blocks walking
+            # south from the tile above it, so the single order S, D, A, W cannot be used here.
+            $steps = @(@{ key = 'A'; dx = -1; dy = 0; facing = 'left' }, @{ key = 'W'; dx = 0; dy = -1; facing = 'up' }, @{ key = 'S'; dx = 0; dy = 1; facing = 'down' }, @{ key = 'D'; dx = 1; dy = 0; facing = 'right' })
+        }
+        else {
+            Invoke-Warp 'walk-start' 'Farm' 64 16
+            $steps = @(@{ key = 'S'; dx = 0; dy = 1; facing = 'down' }, @{ key = 'D'; dx = 1; dy = 0; facing = 'right' }, @{ key = 'A'; dx = -1; dy = 0; facing = 'left' }, @{ key = 'W'; dx = 0; dy = -1; facing = 'up' })
+        }
         $start = Get-Runtime 'walk-start'
         $position = $start
-        foreach ($step in @(@{ key = 'S'; dx = 0; dy = 1; facing = 'down' }, @{ key = 'D'; dx = 1; dy = 0; facing = 'right' }, @{ key = 'A'; dx = -1; dy = 0; facing = 'left' }, @{ key = 'W'; dx = 0; dy = -1; facing = 'up' })) {
+        foreach ($step in $steps) {
             Invoke-Hold "walk-$($step.key)" @($step.key) 30
             Wait-Settled
             $next = Get-Runtime "walk-$($step.key)"
@@ -184,15 +269,31 @@ try {
         $position = $released.runtime
         Assert-That ($still.tileX -eq $position.tileX -and $still.tileY -eq $position.tileY) 'the player kept moving after the input was released.'
 
-        Invoke-Warp 'run-start' 'Farm' 64 16
-        Invoke-Hold 'run' @('S') 30
-        Wait-Settled
-        $run = (Get-Runtime 'run').tileY - $start.tileY
-        Invoke-Warp 'walk-start-2' 'Farm' 64 16
-        Invoke-Hold 'walk-slow' @('LeftShift', 'S') 30
-        Wait-Settled
-        $walk = (Get-Runtime 'walk-slow').tileY - $start.tileY
-        Assert-That ($run -gt $walk -and $walk -ge 1) "30 ticks moved $run tiles normally and $walk with Shift; expected Shift to be slower but still moving."
+        if ($screenMode) {
+            # From the bed, run west over the rug, then walk back east over the same tiles. Without a warp to a tile
+            # center the run ends at a tile edge, so the distances are measured in tiles from the sub-tile position.
+            $runStart = Get-Runtime 'run-start'
+            Invoke-Hold 'run' @('A') 30
+            Wait-Settled
+            $ran = Get-Runtime 'run'
+            $run = [Math]::Round($runStart.localPlayer.data.position.standingX - $ran.localPlayer.data.position.standingX, 2)
+            Invoke-Hold 'walk-slow' @('LeftShift', 'D') 30
+            Wait-Settled
+            $walk = [Math]::Round((Get-Runtime 'walk-slow').localPlayer.data.position.standingX - $ran.localPlayer.data.position.standingX, 2)
+        }
+        else {
+            Invoke-Warp 'run-start' 'Farm' 64 16
+            Invoke-Hold 'run' @('S') 30
+            Wait-Settled
+            $run = (Get-Runtime 'run').tileY - $start.tileY
+            Invoke-Warp 'walk-start-2' 'Farm' 64 16
+            Invoke-Hold 'walk-slow' @('LeftShift', 'S') 30
+            Wait-Settled
+            $walk = (Get-Runtime 'walk-slow').tileY - $start.tileY
+        }
+        # Whole tiles from a tile center in single and role runs; on a screen, sub-tile distances with half a tile as the minimum.
+        $walkMinimum = if ($screenMode) { 0.5 } else { 1 }
+        Assert-That ($run -gt $walk -and $walk -ge $walkMinimum) "30 ticks moved $run tiles normally and $walk with Shift; expected Shift to be slower but still moving."
         Write-Step "Walked 4 directions; 30 ticks moved $run tiles normally, $walk with Shift."
     }
 
@@ -212,7 +313,7 @@ try {
 
     if (Test-Section 'hotbar') {
         Write-Step 'Hotbar: number keys select slots; the mouse wheel needs a menu.'
-        Invoke-Warp 'hotbar' 'Farm' 64 16
+        if (-not $screenMode) { Invoke-Warp 'hotbar' 'Farm' 64 16 }
         foreach ($slot in 2, 5) {
             Invoke-Press "hotbar-$slot" (Get-SlotKey $slot)
             Wait-Settled
@@ -228,39 +329,44 @@ try {
         Write-Step 'Game menu: open with E, click a tab, close with Escape.'
         Invoke-Press 'menu-open' 'E'
         Wait-Settled
-        $menu = (Invoke-SdvKit 'menu-opened' @('project', 'review', 'menu', '--json')).Json
+        $menu = (Get-Menu 'menu-opened')
         $gameMenu = @($menu.menus | Where-Object adapter -ceq 'gameMenu')[0]
         Assert-That ($null -ne $gameMenu -and $gameMenu.currentTab -eq 0) 'E did not open the game menu on its first tab.'
+        if ($screenMode -and $Screen -ne 0) {
+            # Input is screen-local: the menu opened on the selected screen only, and the host screen shows none.
+            $hostMenu = (Invoke-SdvKit 'menu-screen-0' @('project', 'review', 'menu', '--screen', '0', '--json')).Json
+            Assert-That ($hostMenu.menuOpen -eq $false) "E on screen $Screen also opened a menu on screen 0."
+        }
         $tabs = @($gameMenu.components | Where-Object kind -ceq 'tab' | Sort-Object { $_.bounds.x })
         Assert-That ($tabs.Count -ge 4) "the game menu shows $($tabs.Count) tabs."
         Write-Step 'Inventory: move the first item to an empty slot (click to pick up, click to place).'
-        $inventory = (Invoke-SdvKit 'move-inventory-before' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'move-inventory-before')
         $from = @($inventory.slots | Where-Object { $null -ne $_.item })[0]
         $to = @($inventory.slots | Where-Object { $_.state -ceq 'empty' })[0]
         Assert-That ($null -ne $from -and $null -ne $to) 'the backpack needs one item and one empty slot.'
         foreach ($step in @(@{ label = 'pick-up'; slot = $from.slot }, @{ label = 'place'; slot = $to.slot })) {
             # The slots belong to the inventory page's InventoryMenu, a child node of the game menu.
-            $current = (Invoke-SdvKit "menu-$($step.label)" @('project', 'review', 'menu', '--json')).Json
+            $current = (Get-Menu "menu-$($step.label)")
             $component = @($current.menus.components | Where-Object { $_.kind -ceq 'inventorySlot' -and $_.controllerId -eq $step.slot -and $_.visibleFlag -and $_.intersectsViewport })
             Assert-That ($component.Count -eq 1) "inventory slot $($step.slot) has no single visible component."
             Invoke-ComponentClick "inventory-$($step.label)" -Menu $current -Component $component[0] | Out-Null
         }
 
         Wait-Settled
-        $moved = (Invoke-SdvKit 'move-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
+        $moved = (Get-Inventory 'move-inventory-after')
         $fromAfter = @($moved.slots | Where-Object slot -eq $from.slot)[0]
         $toAfter = @($moved.slots | Where-Object slot -eq $to.slot)[0]
         Assert-That ($fromAfter.state -ceq 'empty' -and $toAfter.item.qualifiedItemId -ceq $from.item.qualifiedItemId) "clicking $($from.item.qualifiedItemId) from slot $($from.slot) to $($to.slot) did not move it."
 
-        $menu = (Invoke-SdvKit 'menu-after-move' @('project', 'review', 'menu', '--json')).Json
+        $menu = (Get-Menu 'menu-after-move')
         $tabs = @(@($menu.menus | Where-Object adapter -ceq 'gameMenu')[0].components | Where-Object kind -ceq 'tab' | Sort-Object { $_.bounds.x })
         Invoke-ComponentClick 'menu-tab' -Menu $menu -Component $tabs[3] | Out-Null
         Wait-Settled
-        $switched = @((Invoke-SdvKit 'menu-switched' @('project', 'review', 'menu', '--json')).Json.menus | Where-Object adapter -ceq 'gameMenu')[0]
+        $switched = @((Get-Menu 'menu-switched').menus | Where-Object adapter -ceq 'gameMenu')[0]
         Assert-That ($switched.currentTab -eq 3) "clicking the fourth tab left currentTab at $($switched.currentTab)."
         Invoke-Press 'menu-close' 'Escape'
         Wait-Settled
-        Assert-That ((Invoke-SdvKit 'menu-closed' @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'Escape did not close the game menu.'
+        Assert-That ((Get-Menu 'menu-closed').menuOpen -eq $false) 'Escape did not close the game menu.'
     }
 
     if (Test-Section 'tools', 'act', 'item', 'npc') {
@@ -307,7 +413,7 @@ try {
         $before = Get-Runtime 'act-hoe-before'
         # Prove cursor aim: the player must not already face the target to the east.
         Assert-That ($before.localPlayer.data.position.facing -cne 'right') 'the player already faces the hoe target; the act would not prove cursor aim.'
-        $inventory = (Invoke-SdvKit 'act-hoe-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'act-hoe-inventory')
         $act = Invoke-Tool 'act-hoe' 'stardew_world_act' @{ action = 'useTool'; x = $east.x; y = $east.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($act.Json.state -ceq 'completed' -and $act.Json.button -ceq 'MouseLeft') "useTool did not complete: $($act.Json.errorCode)"
         Start-Sleep -Seconds 2
@@ -318,13 +424,13 @@ try {
         Assert-That ("$($sign.property.value)" -clike 'Message *') "Maps/Farm has no sign at 8,7 (Action is '$($sign.property.value)')."
         Invoke-Warp 'act-sign' 'Farm' 8 8
         Assert-That ((Get-Runtime 'act-sign-before').localPlayer.data.position.facing -cne 'up') 'the player already faces the sign; the check would not prove cursor aim.'
-        $inventory = (Invoke-SdvKit 'act-sign-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'act-sign-inventory')
         $far = Invoke-Tool 'act-far' 'stardew_world_act' @{ action = 'check'; x = 8; y = 5; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
         Assert-That ($far.Json.errorCode -ceq 'worldActionTargetNotAdjacent' -and $far.Json.dispatchState -ceq 'notDispatched') "a far target returned $($far.Json.errorCode)/$($far.Json.dispatchState)."
         $check = Invoke-Tool 'act-sign' 'stardew_world_act' @{ action = 'check'; x = 8; y = 7; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($check.Json.state -ceq 'completed' -and $check.Json.button -ceq 'MouseRight') "check did not complete: $($check.Json.errorCode)"
         Wait-Settled
-        $dialogue = (Invoke-SdvKit 'act-sign-menu' @('project', 'review', 'menu', '--json')).Json
+        $dialogue = (Get-Menu 'act-sign-menu')
         # The Farm sign shows its text in a LetterViewerMenu in Stardew 1.6.
         Assert-That ($dialogue.menuOpen -eq $true -and @($dialogue.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.LetterViewerMenu' }).Count -eq 1) "check on the sign opened $(@($dialogue.menus | ForEach-Object type) -join ', ')."
         Invoke-Press 'act-sign-close' 'Escape'
@@ -340,27 +446,27 @@ try {
             if (@($fresh | Where-Object { Test-Free $_ }).Count -eq 2) { $spot = $candidate; break }
         }
         Assert-That ($null -ne $spot) 'no free tile with a free tile west of it for the placement.'
-        $beforeUnknown = (Invoke-SdvKit 'item-add-unknown-before' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision
+        $beforeUnknown = (Get-Inventory 'item-add-unknown-before').inventoryRevision
         $unknown = (Invoke-Tool 'item-add-unknown' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)SDVKit_NoSuchItem'; stack = 1 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
         Assert-That ($unknown.state -ceq 'blocked' -and $null -eq $unknown.item) "an unknown item was not refused: $($unknown.message)"
-        Assert-That ((Invoke-SdvKit 'item-add-unknown-after' @('project', 'review', 'inventory', '--json')).Json.data.inventoryRevision -ceq $beforeUnknown) 'refusing an unknown item changed the backpack.'
+        Assert-That ((Get-Inventory 'item-add-unknown-after').inventoryRevision -ceq $beforeUnknown) 'refusing an unknown item changed the backpack.'
         $toolQuality = (Invoke-Tool 'item-add-tool-quality' 'stardew_fixture_item_add' @{ qualifiedItemId = '(T)Hoe'; stack = 1; quality = 2 } -OptIn '--allow-fixture-actions' -AllowExit @(3)).Json
         Assert-That ($toolQuality.state -ceq 'blocked') 'a tool with gold quality was not refused.'
         $add = (Invoke-Tool 'item-add' 'stardew_fixture_item_add' @{ qualifiedItemId = '(BC)130'; stack = 1 } -OptIn '--allow-fixture-actions').Json
         Assert-That ($add.state -ceq 'ready' -and $add.item.qualifiedItemId -ceq '(BC)130' -and $add.item.stack -eq 1) "item add failed: $($add.message)"
-        $added = (Invoke-SdvKit 'item-add-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $added = (Get-Inventory 'item-add-inventory')
         $addedSlot = @($added.slots | Where-Object slot -eq $add.item.slot)[0]
         Assert-That ($addedSlot.item.qualifiedItemId -ceq '(BC)130' -and $added.inventoryRevision -ceq $add.item.inventoryRevision) "the backpack read does not show the chest in slot $($add.item.slot) with the reported revision."
         Invoke-Warp 'place' 'Farm' ($spot.x - 1) $spot.y
         Invoke-Press 'place-select' (Get-SlotKey $add.item.slot)
         Wait-Settled
-        $inventory = (Invoke-SdvKit 'place-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'place-inventory')
         Assert-That ($inventory.selectedSlot -eq $add.item.slot) "the chest in slot $($add.item.slot) is not selected."
         $place = Invoke-Tool 'place' 'stardew_world_act' @{ action = 'check'; x = $spot.x; y = $spot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($place.Json.state -ceq 'completed') "check with the chest did not complete: $($place.Json.errorCode)"
         Wait-Settled
         Assert-That ((Get-Area 'place-result' $spot.x $spot.y 1 1)[0].objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($spot.x),$($spot.y)."
-        $placed = (Invoke-SdvKit 'place-inventory-after' @('project', 'review', 'inventory', '--json')).Json.data
+        $placed = (Get-Inventory 'place-inventory-after')
         Assert-That (@($placed.slots | Where-Object slot -eq $add.item.slot)[0].state -ceq 'empty') "slot $($add.item.slot) still holds the chest."
     }
 
@@ -382,11 +488,11 @@ try {
         $friendship = Get-Friendship 'npc-before' 'Lewis'
         Invoke-Press 'npc-talk-select' (Get-SlotKey (Find-ToolSlot 'npc-talk' '(T)Hoe'))
         Wait-Settled
-        $inventory = (Invoke-SdvKit 'npc-talk-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'npc-talk-inventory')
         $talk = Invoke-Tool 'npc-talk' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($talk.Json.state -ceq 'completed') "check on Lewis did not complete: $($talk.Json.errorCode)"
         Wait-Settled
-        $talkMenu = (Invoke-SdvKit 'npc-talk-menu' @('project', 'review', 'menu', '--json')).Json
+        $talkMenu = (Get-Menu 'npc-talk-menu')
         Assert-That (@($talkMenu.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.DialogueBox' }).Count -eq 1) "talking to Lewis opened $(@($talkMenu.menus | ForEach-Object type) -join ', ')."
         Close-Dialogue 'npc-talk-close'
         $talked = Get-Friendship 'npc-talked' 'Lewis'
@@ -396,14 +502,14 @@ try {
         Assert-That ($gift.state -ceq 'ready') "adding the parsnip failed: $($gift.message)"
         Invoke-Press 'npc-gift-select' (Get-SlotKey $gift.item.slot)
         Wait-Settled
-        $inventory = (Invoke-SdvKit 'npc-gift-inventory' @('project', 'review', 'inventory', '--json')).Json.data
+        $inventory = (Get-Inventory 'npc-gift-inventory')
         Assert-That ($inventory.selectedSlot -eq $gift.item.slot) 'the parsnip is not selected.'
         $give = Invoke-Tool 'npc-gift' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($give.Json.state -ceq 'completed') "check with the parsnip did not complete: $($give.Json.errorCode)"
         Wait-Settled
         Close-Dialogue 'npc-gift-close'
         $gifted = Get-Friendship 'npc-gifted' 'Lewis'
-        $giftSlot = @((Invoke-SdvKit 'npc-gift-after' @('project', 'review', 'inventory', '--json')).Json.data.slots | Where-Object slot -eq $gift.item.slot)[0]
+        $giftSlot = @((Get-Inventory 'npc-gift-after').slots | Where-Object slot -eq $gift.item.slot)[0]
         Assert-That ($gifted -gt $talked -and $giftSlot.state -ceq 'empty') "the gift did not register: friendship $gifted (after talking $talked), slot $($giftSlot.state)."
         Write-Step "Lewis: friendship $friendship before, $talked after talking, $gifted after the gift."
     }
@@ -437,7 +543,7 @@ try {
     }
 
     if ($partial) { Write-Step 'The selected sections passed. Run without -Only for acceptance evidence.' }
-    Stop-Review -Reset -Label 'final'
+    Stop-Review -Topology $Topology -Reset -Label 'final'
 }
 catch {
     $failed = $true
