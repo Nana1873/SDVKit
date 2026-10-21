@@ -51,6 +51,9 @@ internal sealed record ReviewFixtureFarmRequest()
 internal sealed record ReviewFixtureFishingRequest(bool SkipTutorial, int? X = null, int? Y = null)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 
+internal sealed record ReviewFixtureFishingCatchRequest()
+    : ReviewFixtureRequest(RequiresMainPlayer: true);
+
 internal sealed record ReviewFixtureItemAddRequest(string QualifiedItemId, int Stack, int Quality)
     : ReviewFixtureRequest(RequiresMainPlayer: true);
 

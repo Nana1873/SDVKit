@@ -469,6 +469,10 @@ internal static class ProjectReviewFixtureService
                     && none(query, x: true, y: true),
                 "fixtureRequestInvalid",
                 "Fishing preparation accepts the tutorial choice and an optional search start with both x and y."), true),
+            ReviewFixtureTransportContract.FishingCatchOperation => (Check(
+                !query.SkipTutorial && none(query),
+                "fixtureRequestInvalid",
+                "The fishing catch takes no operands."), true),
             ReviewFixtureTransportContract.NpcPlaceOperation => (Check(
                 ReviewFixtureTransportContract.IsValidNpcName(query.Value) && query.X is >= 0 && query.Y is >= 0
                     && !query.SkipTutorial && none(query, x: true, y: true, value: true),
@@ -584,7 +588,27 @@ internal static class ProjectReviewFixtureService
                 && report.Animal is null
                 && report.Save is null
                 && report.Lab is null
-                && report.Item is null;
+                && report.Item is null
+                && report.Catch is null;
+        }
+
+        if (query.Operation == ReviewFixtureTransportContract.FishingCatchOperation)
+        {
+            return string.Equals(report.State, "ready", StringComparison.Ordinal)
+                && report.Problems.Count == 0
+                && report.Status is null
+                && report.Navigation is null
+                && report.Building is null
+                && report.Animal is null
+                && report.Save is null
+                && report.Lab is null
+                && report.Item is null
+                && CatchValid(report.Catch);
+        }
+
+        if (report.Catch is not null)
+        {
+            return false;
         }
 
         if (query.Operation == ReviewFixtureTransportContract.ItemAddOperation)
@@ -766,6 +790,14 @@ internal static class ProjectReviewFixtureService
         && item.Quality == query.Y
         && item.Slot is >= 0 and < ReviewInventoryContract.MaximumSlots
         && ReviewInventoryContract.IsRevision(item.InventoryRevision);
+
+    internal static bool CatchValid(ReviewFixtureCatchReport? caught) =>
+        caught is not null
+        && ReviewFixtureTransportContract.IsQualifiedItemId(caught.QualifiedItemId)
+        && caught.Stack is >= 1 and <= ReviewFixtureTransportContract.MaximumItemStack
+        && ReviewFixtureTransportContract.ItemQualities.Contains(caught.Quality)
+        && caught.Size >= -1
+        && ReviewInventoryContract.IsRevision(caught.InventoryRevision);
 
     private static ReviewFixtureProblem Problem(string code, string message) =>
         new(code, message);

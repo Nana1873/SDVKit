@@ -52,6 +52,7 @@ public sealed class ProjectReviewMcpFixtureTests
                 ProjectReviewMcpFixtureTools.BuildingToolName,
                 ProjectReviewMcpFixtureTools.EnterToolName,
                 ProjectReviewMcpFixtureTools.FarmToolName,
+                ProjectReviewMcpFixtureTools.FishingCatchToolName,
                 ProjectReviewMcpFixtureTools.FishingToolName,
                 ProjectReviewMcpFixtureTools.ItemAddToolName,
                 ProjectReviewMcpFixtureTools.NpcPlaceToolName,
@@ -103,6 +104,7 @@ public sealed class ProjectReviewMcpFixtureTests
         AssertOutput(ProjectReviewMcpFixtureTools.WarpToolName, "warp", "lab");
         AssertOutput(ProjectReviewMcpFixtureTools.ItemAddToolName, "itemAdd", "item");
         AssertOutput(ProjectReviewMcpFixtureTools.NpcPlaceToolName, "npcPlace", "navigation");
+        AssertOutput(ProjectReviewMcpFixtureTools.FishingCatchToolName, "fishingCatch", "catch");
         Assert.False(Find(ProjectReviewMcpFixtureTools.NpcPlaceToolName).Annotations?.IdempotentHint);
         Assert.False(Find(ProjectReviewMcpFixtureTools.ItemAddToolName).Annotations?.IdempotentHint);
 

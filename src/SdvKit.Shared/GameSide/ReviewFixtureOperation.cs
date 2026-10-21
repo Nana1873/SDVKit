@@ -28,7 +28,9 @@ internal sealed record ReviewFixtureResult(
     ReviewFixtureBuildingReport? Building = null,
     ReviewFixtureAnimalReport? Animal = null,
     ReviewFixtureLabReport? Lab = null,
-    ReviewFixtureItemReport? Item = null);
+    ReviewFixtureItemReport? Item = null,
+    ReviewFixtureCatchReport? Catch = null,
+    string? ProblemCode = null);
 
 internal interface IReviewFixtureRuntime
 {
@@ -69,6 +71,10 @@ internal interface IReviewFixtureRuntime
     /// <summary>Puts one new item stack into the first empty backpack slot of the main player.</summary>
     ReviewFixtureResult AddItem(ReviewFixtureAccess access, string qualifiedItemId, int stack, int quality) =>
         new(false, "Item fixtures are unavailable in this runtime.");
+
+    /// <summary>Completes the main player's current cast through the game's own catch path, skipping only the minigame.</summary>
+    ReviewFixtureResult CatchFish(ReviewFixtureAccess access) =>
+        new(false, "Fishing catch fixtures are unavailable in this runtime.");
 
     /// <summary>Warps one named villager to a free tile in the main player's current location.</summary>
     ReviewFixtureResult PlaceNpc(ReviewFixtureAccess access, string name, int x, int y) =>
@@ -142,6 +148,7 @@ internal static class ReviewFixtureOperation
             ReviewFixtureEnterRequest enter => runtime.Enter(access, enter.Building),
             ReviewFixtureFarmRequest => runtime.Farm(access),
             ReviewFixtureFishingRequest fishing => runtime.PrepareFishing(access, fishing.SkipTutorial, fishing.X, fishing.Y),
+            ReviewFixtureFishingCatchRequest => runtime.CatchFish(access),
             ReviewFixtureItemAddRequest item => runtime.AddItem(access, item.QualifiedItemId, item.Stack, item.Quality),
             ReviewFixtureNpcPlaceRequest npc => runtime.PlaceNpc(access, npc.Name, npc.X, npc.Y),
             ReviewFixtureSetTimeRequest
