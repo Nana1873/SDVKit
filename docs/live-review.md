@@ -20,7 +20,7 @@ Terms such as [owned](glossary.md#reviews-and-ownership), [role](glossary.md#top
 
 Continue only with one complete installation and a supported target. If discovery is ambiguous, or the game is installed outside discovery, check it with `doctor --game-path <directory> --json`. Then pass the same `--game-path <directory>` to every command that builds or launches against it: `lab start`, `lab test-save`, `lab smoke`, `project smoke` and `project review start`. Status, stop and reset use the installation recorded at start and do not accept a new one.
 
-Only one task may operate a lab at a time. If another task owns an active lab or review, wait for its verified stop. Do not stop its game.
+Only one task may operate a lab root at a time. If another task owns an active lab or review in this lab root, wait for its verified stop. Do not stop its game. Tasks with separate lab roots can run reviews at the same time; see [several lab roots](lab-reference.md#several-lab-roots-on-one-pc).
 
 ## Automated smoke
 
