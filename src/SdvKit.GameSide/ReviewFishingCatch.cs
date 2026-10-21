@@ -60,13 +60,13 @@ internal sealed partial class StardewReviewFixtureRuntime
             TemporaryAnimatedSprite? hitOverlay = Game1.screenOverlayTempSprites.FirstOrDefault(sprite => sprite.id == FishHitOverlayId);
             if (hitOverlay?.endFunction is null)
             {
-                return Refused("fishingCatchNotHooked", "The game marked a hit but showed no minigame start; the rod is hooked and waits for the game.");
+                return Refused("fishingCatchNotHooked", "The game marked a hit but showed no minigame start; the rod stays hooked until the review is stopped and reset.");
             }
             Game1.screenOverlayTempSprites.Remove(hitOverlay);
             hitOverlay.endFunction(0);
             if (Game1.activeClickableMenu is not BobberBar bar)
             {
-                return Refused("fishingCatchNotHooked", "The game did not open the bobber bar after the hit; the rod is reeling and waits for the game.");
+                return Refused("fishingCatchNotHooked", "The game did not open the bobber bar after the hit; the rod stays reeling until the review is stopped and reset.");
             }
 
             // Only the minigame is skipped: finish it as BobberBar.update does for a won catch that was not perfect
@@ -77,9 +77,10 @@ internal sealed partial class StardewReviewFixtureRuntime
             }
             string? bait = rod.GetBait()?.QualifiedItemId;
             int numCaught = bar.bossFish || bait != "(O)774" || Game1.random.NextDouble() >= 0.25 + player.DailyLuck / 2.0 ? 1 : 2;
-            if (bar.challengeBaitFishes > 0)
+            // A non-perfect win missed at least once, and each miss costs challenge bait one fish.
+            if (bar.challengeBaitFishes > 1)
             {
-                numCaught = bar.challengeBaitFishes;
+                numCaught = bar.challengeBaitFishes - 1;
             }
             bar.handledFishResult = true;
             bossFish = bar.bossFish;

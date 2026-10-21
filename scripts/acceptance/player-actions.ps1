@@ -25,8 +25,8 @@ Proves each action through a state read, not through the input acknowledgement:
 - stardew_container_transfer: a placed chest opened by check, two parsnips moved one way and one back, each change and
   the unchanged total confirmed by a chest read;
 - fishing: at the Mountain lake, preparation, a cast that puts the bobber in the water, and stardew_fixture_fishing_catch
-  landing what the game hooks, which a fresh inventory read shows in the backpack; casting repeats (at most four
-  catches) until a fish rather than trash went through the bobber bar (the bite and minigame are skipped, not proven).
+  landing what the game hooks, which a fresh inventory read shows in the backpack; preparing and casting repeat (at
+  most four catches) until a fish rather than trash went through the bobber bar (the bite and minigame are skipped, not proven).
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
 parked in the screen corner before keyboard tool use, because Stardew aims at the tile under the cursor when it is
@@ -822,14 +822,15 @@ try {
         $mountain = Invoke-Tool 'warp-fishing' 'stardew_lab_warp' @{ location = 'Mountain' } -OptIn '--allow-fixture-actions'
         Assert-That ($mountain.Json.state -ceq 'ready' -and $mountain.Json.lab.locationId -ceq 'Mountain') 'the warp to the Mountain failed.'
         Wait-Settled
-        $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
-        Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
-        Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
-        Wait-Settled
         # Trash comes out of the water at once; only a fish goes through the game's bobber bar, which the fixture
         # finishes. The game picks what bites, so cast again while the backpack has room, up to four catches.
+        # A catch turns the player south, so every round prepares the bank again to face the water.
         $fish = $null
         foreach ($round in 1..4) {
+            $prepare = Invoke-Tool "fishing-prepare-$round" 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
+            Assert-That ($prepare.Json.state -ceq 'ready') "fishing preparation failed: $($prepare.Json.message)"
+            Invoke-Tool "park-fishing-$round" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+            Wait-Settled
             # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle
             # (not charging, not casting, bobber not in the air, not fishing) and no stamina spent, so the first cast never ran.
             $staminaBeforeCast = (Get-Runtime "cast-$round-before").localPlayer.data.stamina
@@ -871,7 +872,6 @@ try {
             if ($caught.size -ge 0) { $fish = $caught; break }
             $free = @($afterCatch.slots | Where-Object { $_.state -ceq 'empty' }).Count
             if ($free -lt 1) { break }
-            Wait-Settled
         }
         Assert-That ($null -ne $fish) 'every catch was trash, so the bobber-bar path was not exercised; rerun the fishing section.'
         Write-Step "The game hooked $($fish.qualifiedItemId) and the fixture finished its bobber bar. The bite and the minigame were skipped, not proven."

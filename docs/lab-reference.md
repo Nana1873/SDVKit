@@ -173,7 +173,17 @@ This command neither saves nor resets; finish with the normal stop and reset. Fa
 - a rod that waits for a bite: not casting, hooked, reeling, pulling out or holding a catch;
 - an empty backpack slot.
 
-It runs the game's own code. It starts the bite as the rod's update does and hooks with `FishingRod.DoFunction`, as the auto-hook enchantment does, so the game chooses the fish, or trash, for this bobber, bait and location. For a fish it opens the game's `BobberBar` and finishes it as a won catch that was not perfect and found no treasure, then calls `FishingRod.pullFishFromWater`, `playerCaughtFishEndFunction` and `doneHoldingFish`. The game therefore records the catch (fish collection and size record, Fishing experience, stats, special orders, bait and tackle use) and adds the fish to the backpack, so Harmony patches on these methods and SMAPI inventory events see a normal catch. Only the waiting time, the bite timing and the minigame are skipped. Trash comes out of the water at once, as in normal play, and never reaches the bobber bar. Near shore at Fishing level 0 the game gives mostly trash: five Farm-bank catches on the test save were all trash, while the first Mountain-lake catch was a Carp. The result reports `catch.qualifiedItemId`, `stack`, `quality`, `size` (in inches; -1 for trash) and the `inventoryRevision` after the catch.
+It runs the game's own code in one tick. It starts the bite as the rod's update does and hooks with `FishingRod.DoFunction`, as the auto-hook enchantment does, so the game chooses the fish, or trash, for this bobber, bait and location. Trash comes out of the water at once, as in normal play. For a fish, the game's `startMinigameEndFunction` creates its `BobberBar`; the fixture closes it at once as a won catch that was not perfect and found no treasure (with challenge bait, one fish fewer, as after one miss) and calls `FishingRod.pullFishFromWater`, `playerCaughtFishEndFunction` and `doneHoldingFish`.
+
+What mods see as in a normal catch:
+
+- Harmony patches on `FishingRod.DoFunction`, `startMinigameEndFunction`, the `BobberBar` constructor, `pullFishFromWater`, `playerCaughtFishEndFunction` and `doneHoldingFish`, with the game's own arguments;
+- what those methods record: fish collection and size record, Fishing experience, stats, special orders, bait and tackle use;
+- the fish entering the backpack, and with it SMAPI's inventory and stat-related events.
+
+What mods do not see: the bobber bar never runs `update` or `draw` and never becomes the active menu across a tick, so SMAPI's `Display.MenuChanged` and rendering events never show it. The waiting time, the bite timing, the "Hit!" overlay's lifetime, the minigame, the flight animation and their sounds are skipped. On Summer 20 and 21 a Rainbow Trout can also win a derby tag; the game then shows the tag and opens its own chest menu after the catch, as in normal play, so read `stardew_menu_get` before acting.
+
+The result reports `catch.qualifiedItemId`, `stack`, `quality`, `size` (in inches; -1 for trash) and the `inventoryRevision` after the catch.
 
 Refusals carry a named code: `fishingCatchBlocked`, `fishingCatchNotFishing`, `fishingCatchRodState`, `fishingCatchBobberNotInWater`, `fishingCatchFishPond` and `fishingCatchBackpackFull` change nothing. `fishingCatchNotHooked`, `fishingCatchNotInBackpack` and `fishingCatchReadBackFailed` mean the game state may already have moved; read `stardew_runtime_get` and `stardew_inventory_get` before going on. A catch is not idempotent: after a timeout that may have run, read the inventory before calling it again.
 
