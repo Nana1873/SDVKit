@@ -1,7 +1,9 @@
+using System.Text.Json;
 using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
+[Collection("WindowsStatusFile")]
 public sealed class StatusPublicationTests
 {
     [Theory]
@@ -62,5 +64,113 @@ public sealed class StatusPublicationTests
         var publication = new StatusPublication();
         Assert.Throws<InvalidOperationException>(() => publication.TryWrite(
             "exiting", () => throw new InvalidOperationException("unexpected"), _ => { }));
+    }
+
+    [Fact]
+    public void FallbackUseIsLoggedOnceAtInfoLevel()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        var writer = new StatusWriter("11111111111111111111111111111111", path);
+        var publication = new StatusPublication();
+        var info = new List<string>();
+        var errors = new List<string>();
+        Assert.True(publication.TryWrite("active", () => writer.Write("active", 1, false, false), errors.Add, info.Add));
+        Assert.Empty(info);
+
+        for (int tick = 2; tick <= 3; tick++)
+        {
+            int current = tick;
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            try
+            {
+                Assert.True(publication.TryWrite("active", () => writer.Write("active", current, false, false), errors.Add, info.Add));
+            }
+            finally
+            {
+                WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+            }
+        }
+
+        Assert.Single(info);
+        Assert.Contains("held-destination fallback", info[0], StringComparison.Ordinal);
+        Assert.Contains("#136", info[0], StringComparison.Ordinal);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void FailedAsideRemovalKeepsThePublicationAndIsLoggedOncePerPeriod()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        string aside = path + WindowsStatusFile.ReplacedSuffix;
+        var writer = new StatusWriter("11111111111111111111111111111111", path);
+        var publication = new StatusPublication();
+        var warnings = new List<string>();
+        var errors = new List<string>();
+        var observed = new List<(int Error, string Path)>();
+        Assert.True(publication.TryWrite("active", () => writer.Write("active", 1, false, false), errors.Add, null, warnings.Add));
+
+        Action<int, string>? previous = WindowsStatusFile.AsideCleanupObserver;
+        WindowsStatusFile.AsideCleanupObserver = (error, observedPath) => observed.Add((error, observedPath));
+        try
+        {
+            for (int tick = 2; tick <= 3; tick++)
+            {
+                int current = tick;
+                WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+                WindowsStatusFile.SimulatedAsideDeleteFailures = 1;
+                Assert.True(publication.TryWrite("active", () => writer.Write("active", current, false, false), errors.Add, null, warnings.Add));
+                Assert.Equal(current, TickOf(path));
+                Assert.True(File.Exists(aside));
+            }
+
+            Assert.Single(warnings);
+            Assert.Contains("aside name", warnings[0], StringComparison.Ordinal);
+            Assert.Equal(2, observed.Count);
+
+            // An ordinary publication neither fails because of the leftover nor reports it again.
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 4, false, false), errors.Add, null, warnings.Add));
+            Assert.Equal(4, TickOf(path));
+            Assert.True(File.Exists(aside));
+            Assert.Single(warnings);
+            Assert.Empty(errors);
+
+            // The ordinary publication re-armed the report, so a new failed removal logs again.
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            WindowsStatusFile.SimulatedAsideDeleteFailures = 1;
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 6, false, false), errors.Add, null, warnings.Add));
+            Assert.Equal(2, warnings.Count);
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 7, false, false), errors.Add, null, warnings.Add));
+            Assert.Equal(2, warnings.Count);
+
+            // A later successful fallback replaces the leftover.
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 5, false, false), errors.Add, null, warnings.Add));
+            Assert.False(File.Exists(aside));
+            Assert.Equal(2, warnings.Count);
+        }
+        finally
+        {
+            WindowsStatusFile.AsideCleanupObserver = previous;
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+            WindowsStatusFile.SimulatedAsideDeleteFailures = 0;
+        }
+    }
+
+    private static int TickOf(string path)
+    {
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(path));
+        return document.RootElement.GetProperty("tick").GetInt32();
     }
 }
