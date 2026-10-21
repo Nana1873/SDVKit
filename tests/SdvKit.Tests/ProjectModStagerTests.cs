@@ -728,7 +728,8 @@ public sealed class ProjectModStagerTests
     [InlineData("1.0.0", null)]
     [InlineData("2.0.0", null)]
     [InlineData("2.1.0", null)]
-    [InlineData("2.1.1", "runtimeDependencyUnavailable")]
+    [InlineData("2.2.0", null)]
+    [InlineData("2.2.1", "runtimeDependencyUnavailable")]
     [InlineData("999.0.0", "runtimeDependencyUnavailable")]
     public void RequiredGameSideMinimumVersionMustBeProvidedByTheLab(
         string minimumVersion,
