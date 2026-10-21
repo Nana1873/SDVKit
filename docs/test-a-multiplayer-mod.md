@@ -2,7 +2,7 @@
 
 Use this pattern when your mod gives or tracks something per player and you want to prove that a host and a farmhand each get their own state, in the live game, through SDVKit's role-bound tools. The complete worked example is [`scripts/acceptance/multiplayer.ps1`](../scripts/acceptance/multiplayer.ps1) with the mods in [`docs/examples/multiplayer-recipe`](examples/multiplayer-recipe/): the sample gives one Stone to the player who presses F7 and shows that player's result on F8. Its design and the manual steps the script does not run are in [the multiplayer recipe](multiplayer-authoring.md).
 
-Read [live review](live-review.md#leave-and-rejoin-the-network-farmhand) and [roles and screens](world-interaction.md#roles-and-screens) first. A `network-2` review starts two game processes on the test-save baseline; every command names `--topology network-2 --role host` or `--role farmhand`, and no read of one role stands in for the other. The script needs both players,.
+Read [live review](live-review.md#leave-and-rejoin-the-network-farmhand) and [roles and screens](world-interaction.md#roles-and-screens) first. A `network-2` review starts two game processes on the test-save baseline; every command names `--topology network-2 --role host` or `--role farmhand`, and no read of one role stands in for the other. The script starts the network-2 review three times and a split-screen review once, so allow several minutes.
 
 ## 1. Prove the failure first
 
