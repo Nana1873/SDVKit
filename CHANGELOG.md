@@ -12,7 +12,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - The sporadic status publication error 5 (#136) has a reproduced cause, and the reader's momentary `pending` or `invalid` report (#143) is a reproduced symptom attributed to the same cause: a kernel-mode hold (the System process; the holder's identity is not proven) on the previous `status.json` makes Windows deny the in-place replacement for up to several seconds, and a delayed replacement leaves the name absent for tens of milliseconds. When the in-place replacement is denied for a destination that is openable and not read-only, GameSide now moves the held snapshot aside, gives the completed snapshot its name and removes the aside name at once; open readers keep the old bytes and later opens see the new ones. The reader re-reads an absent or delete-pending name for up to 250 ms before reporting `pending`, so a read of an absent status now takes up to 250 ms. Read-only targets, sharing conflicts and other errors stay visible unchanged, and no publication is retried.
 
-## [2.1.0] - 2026-10-20
+## [2.1.0] - 2026-10-21
 
 ### Added
 
