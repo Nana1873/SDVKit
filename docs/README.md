@@ -15,7 +15,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Check the GMCM contract and API interface | [GMCM contract](gmcm-authoring.md) |
 | Transfer items to a chest and prove they persist | [Chest transfer guide](test-a-container-transfer.md) |
 | Test a machine rule with native harvest, machine and chest actions | [Machine rule guide](test-a-machine-rule.md) |
-| Author a per-player multiplayer mod and prove distinct role and screen state | [Multiplayer authoring recipe](multiplayer-authoring.md) |
+| Test a per-player multiplayer mod (host, farmhand, split-screen) | [Multiplayer guide](test-a-multiplayer-mod.md), [recipe](multiplayer-authoring.md) |
 | Test a save-data migration across restarts | [Data migration guide](test-a-data-migration.md) |
 | Check the data migration sample's schema and behaviour table | [Data migration recipe](data-migration-authoring.md) |
 | Run a smoke, review a mod, or test persistence | [Live review](live-review.md) |

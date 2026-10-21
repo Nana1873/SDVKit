@@ -1,0 +1,10 @@
+{
+  "Name": "Per-Player Proof Chest Probe",
+  "Author": "SDVKitAcceptance",
+  "Version": "1.0.0",
+  "Description": "Bounded disposable chest setup for selected-client observation proof.",
+  "UniqueID": "SDVKitAcceptance.PerPlayerProofChestProbe",
+  "EntryDll": "PerPlayerProofChestProbe.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

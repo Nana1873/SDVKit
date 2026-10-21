@@ -11,6 +11,7 @@ Each script runs one SDVKit workflow end to end against the real game: build, pa
 | [`gmcm-checkbox.ps1`](gmcm-checkbox.ps1) | A GMCM checkbox toggle stays unsaved; Save writes `Enabled=true`, `config-reconcile` accepts it, and a restart with the saved config warps to Farm 64,15. | `-Gmcm` (1.16.0 folder) | [Change and verify a GMCM option](../../docs/test-a-gmcm-option.md) |
 | [`container.ps1`](container.ps1) | A one-time reward gives ten Stone; `stardew_container_transfer` deposits three and withdraws one with exact `7/3/0` and `8/2/0` totals, a stale request is refused with `containerTransferSelectionStale`, and the chest contents survive a fixture save, stop and restart without the reward repeating. | none | [Test a chest transfer](../../docs/test-a-container-transfer.md) |
 | [`data-migration.ps1`](data-migration.ps1) | v1 saves a ledger and a one-time reward; a broken v2 refuses to migrate and keeps the data; the corrected v2 migrates it once (schema 2, no second reward); after a save and a restart v2 loads the existing ledger without migrating again. | none | [Test a save-data migration](../../docs/test-a-data-migration.md) |
+| [`multiplayer.ps1`](multiplayer.ps1) | A broken per-player mod gives the farmhand's Stone to the host; the corrected mod gives host 1 and farmhand 2 with each role's own F8 dialog; the farmhand walks one tile, opens a chest the host prepared and withdraws one Stone through `stardew_container_transfer`, and the host reads the chest and its own unchanged backpack; the farmhand leaves and rejoins with a new session while the host keeps its own; after a save and restart both players' state persists. A split-screen review shows per-screen state and refuses `stardew_world_act` on screen 1 in gamepad mode. | none | [Test a per-player multiplayer mod](../../docs/test-a-multiplayer-mod.md) |
 
 ## Run a script
 
@@ -42,7 +43,6 @@ The remaining recipes in `docs/` are guides. These are worth converting into scr
 | Recipe | Why |
 | --- | --- |
 | [Progression](../../docs/progression-authoring.md) | NPC, mail and quest reads through a reload. |
-| [Multiplayer](../../docs/multiplayer-authoring.md) | The only end-to-end `network-2` and split-screen workflow. |
 | [Multilingual UI](../../docs/multilingual-ui-authoring.md) | Title-screen language change and controller input. |
 
 These stay guides only, because `project smoke` and the scripts above already cover their live steps: [CP authoring](../../docs/cp-authoring.md), [SMAPI authoring](../../docs/smapi-authoring.md), [Bundle Arrival](../../docs/bundle-authoring.md) and [CP patch order](../../docs/cp-patch-order-recipe.md).

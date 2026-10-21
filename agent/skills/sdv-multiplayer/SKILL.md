@@ -50,4 +50,4 @@ Use the screen IDs that `status` reports. Join and leave run on the host screen 
 
 State which roles or screens showed which behavior, and keep host and farmhand evidence apart.
 
-References: {{docs}}/multiplayer-authoring.md, {{docs}}/live-review.md
+References: {{docs}}/test-a-multiplayer-mod.md, {{docs}}/multiplayer-authoring.md, {{docs}}/live-review.md
