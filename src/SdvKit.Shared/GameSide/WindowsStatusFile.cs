@@ -29,6 +29,8 @@ internal static class WindowsStatusFile
 
     public static void Publish(string temporaryPath, string statusPath)
     {
+        AsideCleanupError = null;
+        UsedHeldDestinationFallback = false;
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
         {
             throw new IOException("Atomic lab status publication requires Windows 10 version 1709 or later.");
@@ -139,15 +141,30 @@ internal static class WindowsStatusFile
         }
 
         Interlocked.Increment(ref heldDestinationReplacements);
+        UsedHeldDestinationFallback = true;
         IntPtr disposition = Marshal.AllocHGlobal(sizeof(uint));
         try
         {
             Marshal.WriteInt32(disposition, unchecked((int)(DispositionDelete | DispositionPosixSemantics)));
-            if (!SetFileInformationByHandle(held, FileDispositionInfoEx, disposition, sizeof(uint)))
+            int deleteError = 0;
+            if (SimulatedAsideDeleteFailures > 0)
+            {
+                SimulatedAsideDeleteFailures--;
+                deleteError = ErrorAccessDenied;
+            }
+            else if (!SetFileInformationByHandle(held, FileDispositionInfoEx, disposition, sizeof(uint)))
+            {
+                deleteError = Marshal.GetLastWin32Error();
+            }
+
+            if (deleteError != 0)
             {
                 // The publication itself succeeded. A leftover aside name is replaced by the next
-                // held-destination replacement and ignored by the reader.
-                AsideCleanupObserver?.Invoke(Marshal.GetLastWin32Error(), statusPath + ReplacedSuffix);
+                // held-destination replacement and ignored by the reader, but the caller reports it.
+                AsideCleanupError = $"Removing the aside name '{asidePath}' after a held-destination replacement failed "
+                    + $"(error {deleteError}): {new Win32Exception(deleteError).Message} The new snapshot is in place; "
+                    + "the leftover is replaced by the next fallback replacement.";
+                AsideCleanupObserver?.Invoke(deleteError, asidePath);
             }
         }
         finally
@@ -178,12 +195,27 @@ internal static class WindowsStatusFile
         }
     }
 
+    /// <summary>Whether the last <see cref="Publish"/> on this thread succeeded through the held-destination fallback.</summary>
+    [ThreadStatic]
+    internal static bool UsedHeldDestinationFallback;
+
+    /// <summary>
+    /// Set by the last <see cref="Publish"/> on this thread when it succeeded through the held-destination
+    /// fallback but could not remove the aside name; null otherwise. The caller reports it.
+    /// </summary>
+    [ThreadStatic]
+    internal static string? AsideCleanupError;
+
     // Test-only diagnostics; production leaves these thread-local observers unset.
     [ThreadStatic]
     internal static Action<int, string, string>? FailureObserver;
 
     [ThreadStatic]
     internal static Action<int, string>? AsideCleanupObserver;
+
+    /// <summary>Test-only: while positive, the next aside-name removals fail with ERROR_ACCESS_DENIED without being attempted.</summary>
+    [ThreadStatic]
+    internal static int SimulatedAsideDeleteFailures;
 
     /// <summary>
     /// Test-only: while positive, the next in-place replacements are treated as denied with

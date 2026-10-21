@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
+[Collection("WindowsStatusFile")]
 public sealed class StatusWriterTests(ITestOutputHelper output)
 {
     private const string LaunchId = "11111111111111111111111111111111";
