@@ -9,7 +9,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Added
 
 - `stardew_world_move` and `project review act move` (opt-in `--allow-world-actions`, test save) walk the player exactly one tile, or only turn them (#293).
-- World actions and container transfer now also work for the `network-2` host and farmhand and for split-screen screens through MCP and `project review call`; the direct CLI commands stay single (#297). On screens other than 0 the game forces gamepad mode, so `stardew_world_act` is refused there.
+- World actions and container transfer (opt-ins `--allow-world-actions` and `--allow-container-transfer`, test save) now also work for the `network-2` host and farmhand and for split-screen screens through MCP and `project review call`; the direct CLI commands stay single (#297). On screens other than 0 the game forces gamepad mode, so `stardew_world_act` is refused there.
 - The mouse wheel now scrolls the hotbar in the world, not only in menus (#294).
 - `stardew_fixture_fishing_catch` (opt-in `--allow-fixture-actions`, test save) lands a catch through the game's own catch path as test setup, skipping the wait, the bite and the minigame (#296).
 - New live acceptance scripts: `gmcm-checkbox`, `container`, `data-migration`, `multiplayer`, `progression` and `multilingual-ui` (#284). `player-actions.ps1` can also run as a `network-2` role or on a split-screen screen (#299). The guides moved to `docs/test-a-*.md` and the samples to `docs/examples/`; see [`scripts/acceptance/README.md`](scripts/acceptance/README.md).
