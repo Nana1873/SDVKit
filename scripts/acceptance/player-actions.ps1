@@ -490,7 +490,7 @@ try {
         }
 
         # Game1.pressSwitchToolButton: wheel down selects the next and wheel up the previous slot of the
-        # 12-slot row, wrapping and skipping empty slots (lab options keep invertScrollDirection off).
+        # 12-slot row, wrapping and skipping empty slots.
         $occupied = @((Get-Inventory 'hotbar-wheel-slots').slots | Where-Object { $_.slot -lt 12 -and $null -ne $_.item } | ForEach-Object { [int] $_.slot })
         Assert-That ($occupied -contains 0 -and $occupied.Count -ge 2) "the hotbar needs slot 0 and one more occupied slot, has $($occupied -join ',')."
         Invoke-Press 'hotbar-wheel-start' (Get-SlotKey 0)

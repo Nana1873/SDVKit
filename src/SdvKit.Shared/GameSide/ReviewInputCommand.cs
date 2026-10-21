@@ -698,7 +698,7 @@ internal static class ReviewInputOperation
                 return Failure(worldRefusal, worldRefusal switch
                 {
                     "inputWheelPlayerBusy" =>
-                        "The local player cannot switch tools now: the world is not ready, a tool, dialogue, event, fade or frozen controls blocks hotbar wheel input, or the player cannot move.",
+                        "The local player cannot switch tools now: the world or location is not ready; a minigame, emote menu, text entry, chat, pause, pan mode, fade, frozen controls, tool use, dialogue or event blocks hotbar wheel input; or the player cannot move.",
                     "inputWheelInventoryEmpty" =>
                         "The local player's inventory is empty, so the game ignores hotbar wheel input.",
                     _ => "Mouse-wheel review input requires an active game menu.",

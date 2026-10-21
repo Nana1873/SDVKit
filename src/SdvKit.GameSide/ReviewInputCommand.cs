@@ -328,10 +328,15 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
         return ReviewVirtualCursor.TryScroll(direction, out error);
     }
 
-    // Mirrors the gate before Game1.pressSwitchToolButton in UpdateControlInput, which is reached
-    // only without a menu, fade or frozen controls. The game reads the wheel with gamepad controls too.
+    // Mirrors the path to Game1.pressSwitchToolButton: Game1 calls UpdateControlInput only with a
+    // location and no minigame, emote menu, text entry, menu, fade or frozen controls; UpdateControlInput
+    // returns early in pan mode, while chatting or freeze-paused, and while paused; its final gate needs
+    // a free player outside events. The game reads the mouse wheel with gamepad controls too.
     public string? WorldWheelRefusal =>
-        !Context.IsWorldReady || Game1.player is not { } player || Game1.globalFade || Game1.freezeControls
+        !Context.IsWorldReady || Game1.player is not { } player || Game1.currentLocation is null
+            || Game1.currentMinigame is not null || Game1.emoteMenu is not null || Game1.textEntry is not null
+            || Game1.globalFade || Game1.freezeControls || Game1.panMode || Game1.IsChatting || player.freezePause > 0
+            || Game1.paused || Game1.HostPaused
             || player.UsingTool || Game1.dialogueUp || !player.CanMove || Game1.eventUp || Game1.farmEvent is not null
             ? "inputWheelPlayerBusy"
             : !player.Items.HasAny() ? "inputWheelInventoryEmpty" : null;
