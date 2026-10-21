@@ -786,7 +786,7 @@ try {
 
         # Placed villagers can resume their schedule and walk off. Before every talk or gift input take a fresh runtime read of
         # Lewis; if he moved, place him again (at most twice, each placement re-read) and fail if he is still not on the tile.
-        # Then require the player's tool tile to be that tile, so the right-click can only land on Lewis.
+        # Then require the player's tool tile (the facing-based tile; stardew_world_act aims the cursor itself, so the runtime grab tile follows the last mouse click and cannot predict it) to be that tile, so the right-click can only land on Lewis.
         function Confirm-LewisAtTarget([string] $Label) {
             for ($replace = 0; $replace -le 2; $replace++) {
                 $read = Get-Runtime "$Label-$replace"
@@ -808,8 +808,8 @@ try {
         $friendship = Get-Friendship 'npc-before' 'Lewis'
         Invoke-Press 'npc-talk-select' (Get-SlotKey (Find-ToolSlot 'npc-talk' '(T)Hoe'))
         Wait-Settled
-        Confirm-LewisAtTarget 'npc-talk'
         $inventory = (Get-Inventory 'npc-talk-inventory')
+        Confirm-LewisAtTarget 'npc-talk'
         $talk = Invoke-Tool 'npc-talk' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($talk.Json.state -ceq 'completed') "check on Lewis did not complete: $($talk.Json.errorCode)"
         Wait-Settled
