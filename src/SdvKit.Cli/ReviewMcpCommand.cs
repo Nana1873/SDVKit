@@ -139,8 +139,8 @@ public static partial class CliApplication
             || httpCount > 1
             || portCount > 1
             || portCount == 1 && httpCount == 0
-            || screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh)
-            || (allowCpRefresh || allowWorldActions || allowContainerTransfer) && topology != LiveLabState.SingleTopology)
+            || screenId is not null && (allowFixtureActions || allowCpRefresh)
+            || allowCpRefresh && topology != LiveLabState.SingleTopology)
         {
             return false;
         }

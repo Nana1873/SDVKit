@@ -110,7 +110,7 @@ See [live reviews](docs/live-review.md) for test saves, companions, screenshots 
 | Create, inspect, package | `project` | C# mods and content packs; C# build |
 | Automated smoke | `project smoke` | Standalone C# mod; single or local host/farmhand |
 | Functional/visual review | `project review` | C# in either topology; content-pack target in single |
-| Inspect game content, inventories and the current world; move a chest quantity | `project review data/map/texture/audio/mod-assets/inventory/container/container-transfer/world` | Data, inventory, container and world reads support roles and local screens; other asset families are single-only. Transfer needs an unbound single review on a test save and the MCP opt-in |
+| Inspect game content, inventories and the current world; move a chest quantity | `project review data/map/texture/audio/mod-assets/inventory/container/container-transfer/world` | Data, inventory, container and world reads support roles and local screens; other asset families are single-only. Transfer needs a test save and the MCP opt-in; it works for the single review, a network role or a local screen |
 | Agent observation/actions | `project review mcp serve` or `project review call <tool>` | Single or one fixed host/farmhand role; actions opt in |
 
 The [capability matrix](docs/README.md#capability-matrix) lists fixture and role requirements.

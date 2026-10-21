@@ -2,7 +2,7 @@
 
 Use this pattern when your mod gives items, or you want to prove that items moved into a chest are still there after a save and a restart. The complete worked example is [`scripts/acceptance/container.ps1`](../scripts/acceptance/container.ps1) with the mod in [`docs/examples/container-recipe`](examples/container-recipe/InventoryReward/): it grants ten Stone once per save, places one marked wooden chest and opens it on command.
 
-Read [container inspection](container-inspection.md) and [container transfer](container-transfer.md) first. The transfer works in an unbound `single` review on the test save and needs `--allow-container-transfer` (a separate grant from input and fixture actions).
+Read [container inspection](container-inspection.md) and [container transfer](container-transfer.md) first. The transfer works on the test save and needs `--allow-container-transfer` (a separate grant from input and fixture actions). This recipe uses an unbound `single` review; for a network role or a local screen see [roles and screens](world-interaction.md#roles-and-screens).
 
 The reward mod writes its grant marker only after the whole stack was accepted into the backpack, so a failed or partial grant is never marked done and a completed one never repeats. Keep that order in your own mod; the restart check below depends on it.
 

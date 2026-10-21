@@ -21,11 +21,10 @@ internal static class ProjectReviewContainerTransferService
             null, reader.Topology, reader.Role, clock(), null);
         if (ReviewContainerTransferContract.Validate(query) is string invalid) return Failure(invalid);
         if (cancellationToken.IsCancellationRequested) return Failure("containerTransferRequestCanceled", true);
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("containerTransferTopologyUnsupported");
         using ProjectReviewActionLock? actionLock = ProjectReviewActionLock.TryAcquire(
             ProjectReviewInputService.RuntimePath(reader.ProjectRoot, reader.Topology, reader.Role));
         if (actionLock is null) return Failure("containerTransferBusy");
-        ProjectReviewMcpReadResult before = reader.Read();
+        ProjectReviewMcpReadResult before = reader.ReadForAction();
         if (!before.Succeeded) return Failure(before.ErrorCode!);
         if (expectedSnapshot is not null
             && !PermissionBindingValid(expectedSnapshot, before.Snapshot!))
@@ -41,9 +40,10 @@ internal static class ProjectReviewContainerTransferService
             return Failure("containerTransferSelectionStale");
         string requestId = Guid.NewGuid().ToString("N");
         string runtimePath = ProjectReviewInputService.RuntimePath(reader.ProjectRoot, reader.Topology, reader.Role);
-        string command = string.Join(' ', "sdvkit", "container-transfer", requestId, before.Snapshot.LaunchId,
-            query.Direction, query.SourceSlot, query.Quantity, query.QualifiedItemId, query.SelectionIdentity,
-            query.ContainerRevision, query.InstanceIdentity, query.ItemRevision);
+        string command = reader.SelectCommand(string.Join(' ', "sdvkit", "container-transfer", requestId,
+            before.Snapshot.LaunchId, query.Direction, query.SourceSlot, query.Quantity, query.QualifiedItemId,
+            query.SelectionIdentity, query.ContainerRevision, query.InstanceIdentity, query.ItemRevision,
+            ReviewWorldActionContract.SelectionToken(reader.Role, reader.ScreenId)));
         ProjectReviewResponseTransportResult<ReviewContainerTransferResponseEnvelope> transported =
             ProjectReviewResponseTransport.Execute(command,
                 ReviewContainerTransferContract.ResponsePath(runtimePath, requestId),
@@ -51,12 +51,13 @@ internal static class ProjectReviewContainerTransferService
                 reader.ProjectRoot, Deserialize,
                 response => response.SchemaVersion == 1 && response.RequestId == requestId
                     && Valid(response.Report, before.Snapshot, query, clock()),
-                responseTimeout: responseTimeout, send: send, topology: "single",
+                responseTimeout: responseTimeout, send: send, topology: reader.Topology, role: reader.Role,
                 drainAfterDispatchOnCancellation: true,
                 onCancellation: () =>
                 {
-                    if (send is not null) send($"sdvkit container-transfer cancel {requestId}");
-                    else ProjectReviewService.ExecuteCommand($"sdvkit container-transfer cancel {requestId}", "single", null, reader.ProjectRoot);
+                    string cancel = reader.SelectCommand($"sdvkit container-transfer cancel {requestId}");
+                    if (send is not null) send(cancel);
+                    else ProjectReviewService.ExecuteCommand(cancel, reader.Topology, reader.Role, reader.ProjectRoot);
                 },
                 cancellationToken: cancellationToken);
         if (transported.Response is null)
@@ -68,7 +69,7 @@ internal static class ProjectReviewContainerTransferService
         ReviewContainerTransferReport report = transported.Response.Report;
         if (transported.CancellationRequested && report.Data is { } data && !data.CancellationRequested)
             report = report with { Data = data with { CancellationRequested = true } };
-        ProjectReviewMcpReadResult afterBinding = reader.Read();
+        ProjectReviewMcpReadResult afterBinding = reader.ReadForAction();
         if (report.Data is { Dispatched: true } delivered
             && (!afterBinding.Succeeded || !PermissionBindingValid(before.Snapshot, afterBinding.Snapshot!)))
         {
@@ -88,7 +89,7 @@ internal static class ProjectReviewContainerTransferService
         ReviewContainerTransferQuery query, DateTimeOffset now)
     {
         if (report is null || report.SchemaVersion != 1 || report.LaunchId != expected.LaunchId
-            || report.Topology != "single" || report.Role is not null
+            || report.Topology != expected.Topology || report.Role != expected.Role
             || report.CapturedAtUtc > now.AddSeconds(5) || now - report.CapturedAtUtc > TimeSpan.FromSeconds(15))
             return false;
         if (report.Data is not { } data)
@@ -151,7 +152,7 @@ internal static class ProjectReviewContainerTransferService
         ProjectReviewMcpRuntimeSnapshot snapshot, ReviewContainerValues before, string code,
         bool commandMayHaveBeenWritten, bool cancellationRequested, DateTimeOffset observedAt) =>
         commandMayHaveBeenWritten
-            ? new(1, "uncertain", code, snapshot.LaunchId, "single", null, observedAt,
+            ? new(1, "uncertain", code, snapshot.LaunchId, snapshot.Topology, snapshot.Role, observedAt,
                 new(query.Direction, ReviewContainerTransferContract.SourceSide(query.Direction), query.SourceSlot,
                     query.Quantity, null, query.QualifiedItemId, true, cancellationRequested,
                     "uncertain", before, null, ["afterObservationUnavailable"]))
@@ -167,7 +168,7 @@ internal static class ProjectReviewContainerTransferService
         ReviewContainerTransferValues delivered = report.Data
             ?? throw new ArgumentException("A delivered transfer report is required.", nameof(report));
         return new(1, "uncertain", "containerTransferBindingChanged", report.LaunchId,
-            "single", null, observedAt, delivered with
+            report.Topology, report.Role, observedAt, delivered with
             {
                 Outcome = "uncertain",
                 CancellationRequested = delivered.CancellationRequested || cancellationRequested,

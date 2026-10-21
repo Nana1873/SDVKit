@@ -15,31 +15,30 @@ internal static class ReviewContainerTransferCommand
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal static void Handle(string[] args, string runtimePath, IMonitor monitor,
-        IModHelper helper, ReviewMenuCommand menuCommand, Func<TestSaveAutomation?> testSave)
+        IModHelper helper, ReviewMenuCommand menuCommand, Func<TestSaveAutomation?> testSave,
+        Func<NetworkTwoAutomation?> networkTwo)
     {
         if (args.Length == 3 && args[1] == "cancel" && ReviewTransportToken.IsRequestId(args[2]))
         {
             ReviewVirtualCursor.CancelRequest(args[2]);
             return;
         }
-        if (!TryParse(args, out string requestId, out string launch, out ReviewContainerTransferQuery? query))
+        if (!TryParse(args, out string requestId, out string launch, out ReviewContainerTransferQuery? query,
+                out ReviewActionSelection selection))
         {
             monitor.Log("SDVKit container transfer rejected an invalid transport request.", LogLevel.Error);
             return;
         }
         ReviewContainerTransferReport Refused(string code, ReviewContainerValues? before = null) =>
-            new(1, "refused", code, launch, "single", null, DateTimeOffset.UtcNow,
+            new(1, "refused", code, launch, selection.Topology, selection.Role, DateTimeOffset.UtcNow,
                 before is null ? null : new(query!.Direction, ReviewContainerTransferContract.SourceSide(query.Direction),
                     query.SourceSlot, query.Quantity, 0, query.QualifiedItemId, false, false, "refused", before, null, []));
         bool dispatchAccepted = false;
         ReviewContainerValues? retainedBefore = null;
         try
         {
-            if (Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") != "1"
-                || Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") != launch
-                || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
-                || Context.ScreenId != 0 || testSave() is not { } fixture
-                || !fixture.TryVerifyReviewFixture(out _, out _))
+            if (Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") != launch
+                || !selection.BindingReady(launch) || !selection.FixtureReady(testSave, networkTwo))
             { Write(Refused("containerTransferReviewBindingInvalid")); return; }
             if (!Context.IsWorldReady || Game1.exitToTitle)
             { Write(Refused("containerTransferWorldNotReady")); return; }
@@ -148,7 +147,7 @@ internal static class ReviewContainerTransferCommand
                     || !ReferenceEquals(finalMenu.sourceItem, expectedChest)
                     || finalMenu.source != ItemGrabMenu.source_chest)
                 {
-                    Write(new(1, "uncertain", "containerTransferBindingChanged", launch, "single", null,
+                    Write(new(1, "uncertain", "containerTransferBindingChanged", launch, selection.Topology, selection.Role,
                         DateTimeOffset.UtcNow, new(query.Direction, sourceSide, query.SourceSlot, query.Quantity,
                             null, query.QualifiedItemId, true, result.ProblemCode is "inputChordInterrupted",
                             "uncertain", before, null, ["afterObservationUnavailable"])));
@@ -163,7 +162,7 @@ internal static class ReviewContainerTransferCommand
                 string? code = complete ? null : result.ProblemCode ?? (after is null
                     ? "containerTransferAfterUnavailable" : observed is > 0
                         ? "containerTransferPartial" : "containerTransferNotObserved");
-                Write(new(1, complete ? "completed" : outcome, code, launch, "single", null, DateTimeOffset.UtcNow,
+                Write(new(1, complete ? "completed" : outcome, code, launch, selection.Topology, selection.Role, DateTimeOffset.UtcNow,
                     new(query.Direction, sourceSide, query.SourceSlot, query.Quantity, observed, query.QualifiedItemId,
                         true, result.ProblemCode is "inputChordInterrupted", outcome, before, after,
                         after is null ? ["afterObservationUnavailable"] : [])));
@@ -172,7 +171,7 @@ internal static class ReviewContainerTransferCommand
         catch (Exception exception)
         {
             Write(dispatchAccepted && retainedBefore is not null
-                ? new(1, "uncertain", "containerTransferFailed", launch, "single", null, DateTimeOffset.UtcNow,
+                ? new(1, "uncertain", "containerTransferFailed", launch, selection.Topology, selection.Role, DateTimeOffset.UtcNow,
                     new(query!.Direction, ReviewContainerTransferContract.SourceSide(query.Direction), query.SourceSlot,
                         query.Quantity, null, query.QualifiedItemId, true, false, "uncertain", retainedBefore, null,
                         ["afterObservationUnavailable"]))
@@ -192,14 +191,16 @@ internal static class ReviewContainerTransferCommand
         }
     }
 
-    private static bool TryParse(string[] args, out string requestId, out string launch, out ReviewContainerTransferQuery? query)
+    private static bool TryParse(string[] args, out string requestId, out string launch, out ReviewContainerTransferQuery? query,
+        out ReviewActionSelection selection)
     {
-        requestId = launch = string.Empty; query = null;
-        if (args.Length != 11 || args[0] != "container-transfer" || !ReviewTransportToken.IsRequestId(args[1])
+        requestId = launch = string.Empty; query = null; selection = new(null, null);
+        if (args.Length != 12 || args[0] != "container-transfer" || !ReviewTransportToken.IsRequestId(args[1])
             || !ReviewTransportToken.IsRequestId(args[2]) || !ReviewContainerTransferContract.IsDirection(args[3])
             || !int.TryParse(args[4], NumberStyles.None, CultureInfo.InvariantCulture, out int slot)
             || !int.TryParse(args[5], NumberStyles.None, CultureInfo.InvariantCulture, out int quantity)
-            || quantity is < 1 or > ReviewContainerTransferContract.MaximumQuantity) return false;
+            || quantity is < 1 or > ReviewContainerTransferContract.MaximumQuantity
+            || !ReviewActionSelection.TryParse(args[11], out selection)) return false;
         requestId=args[1]; launch=args[2];
         query = new(args[3], slot, quantity, args[6], args[7], args[8], args[9], args[10]);
         return true;

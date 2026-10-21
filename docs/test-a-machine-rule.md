@@ -2,7 +2,7 @@
 
 Use this pattern when your mod or content pack changes what a machine produces, and you want to prove it with native player actions: harvest the input, put it in the machine, wait, and collect the output. The complete worked example is [`scripts/acceptance/crop-machine.ps1`](../scripts/acceptance/crop-machine.ps1). It tests a Content Patcher rule in [`docs/examples/crop-machine-recipe`](examples/crop-machine-recipe/) that turns a Strawberry into two Joja Cola in a Keg.
 
-Read [world inspection](world-inspection.md) and [world interaction](world-interaction.md) first. World actions work in a `single` review on the test save and need `--allow-world-actions` for MCP.
+Read [world inspection](world-inspection.md) and [world interaction](world-interaction.md) first. World actions work on the test save and need `--allow-world-actions` for MCP. This recipe uses a `single` review; for a network role or a local screen see [roles and screens](world-interaction.md#roles-and-screens).
 
 ## 1. Check the rule before playing
 

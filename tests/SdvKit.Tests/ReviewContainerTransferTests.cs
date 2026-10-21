@@ -193,6 +193,44 @@ public sealed class ReviewContainerTransferTests
         Assert.Contains("postBindingChanged", result.Data!.Limitations);
     }
 
+    [Fact]
+    public void ScreenTransferCarriesTheScreenTokenAndBinding()
+    {
+        using TemporaryDirectory temporary = new();
+        const string context = "11111111111111111111111111111111";
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyLocalScreenReview(temporary, 1, command =>
+        {
+            ProjectReviewMcpTests.WriteScreenBindingResponse(temporary, command, "202", context);
+            return Sent(temporary.Path);
+        });
+        Assert.True(reader.Read().Succeeded);
+        ReviewContainerValues before = Values(new string('b', 32), 3, 0, playerId: "202", location: "FarmHouse");
+        ReviewContainerValues capturedBefore = before;
+        ReviewContainerTransferQuery query = QueryFrom(before, "deposit", 0, 2);
+        var commands = new List<string>();
+        ReviewContainerTransferReport result = ProjectReviewContainerTransferService.Execute(query, reader, command =>
+        {
+            commands.Add(command);
+            string[] parts = command.Split(' ');
+            if (parts[1] == "container")
+            {
+                capturedBefore = before with { CaptureId = parts[2] };
+                PublishContainer(temporary.Path, parts[2], capturedBefore);
+            }
+            else
+            {
+                PublishTransfer(temporary.Path, parts[2], new(1, "completed", null, Launch, "single", null,
+                    DateTimeOffset.UtcNow, new("deposit", "player", 0, 2, 2, "(O)390", true, false, "completed",
+                        capturedBefore, Values(new string('b', 32), 1, 2, playerId: "202", location: "FarmHouse"), [])));
+            }
+            return Sent(temporary.Path);
+        }, TimeSpan.Zero);
+        Assert.True(result.State == "completed", $"{result.State}:{result.ErrorCode}");
+        string suffix = $" binding={context} farmer=202 screen=1";
+        Assert.EndsWith(suffix, commands[0], StringComparison.Ordinal);
+        Assert.EndsWith(" screen-1" + suffix, commands.Single(command => command.Contains(" container-transfer ", StringComparison.Ordinal)), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -272,7 +310,8 @@ public sealed class ReviewContainerTransferTests
             values.ContainerRevision, source.Identity!.InstanceIdentity, source.Identity.ItemRevision);
     }
 
-    private static ReviewContainerValues Values(string scope, int playerStack, int chestStack, int tileX = 7)
+    private static ReviewContainerValues Values(string scope, int playerStack, int chestStack, int tileX = 7,
+        string playerId = "101", string location = "Farm")
     {
         string launch = Launch;
         string backing = ReviewContainerContract.OpaqueIdentity(launch, scope, "chest", 99);
@@ -291,9 +330,9 @@ public sealed class ReviewContainerTransferTests
         }
         ReviewContainerSide player = Side("player", 12, playerStack, 1), chest = Side("container", 36, chestStack, 2);
         ReviewObservedItem held = new("empty", null, null, null);
-        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, "101", "Farm", tileX, 7, "(BC)130");
-        return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, "101",
-            "Farm", tileX, 7, "(BC)130", player, chest, held, true, []);
+        string selection = ReviewContainerContract.SelectionIdentity(launch, scope, backing, playerId, location, tileX, 7, "(BC)130");
+        return new(scope, selection, ReviewContainerContract.Revision(selection, player, chest, held), scope, backing, playerId,
+            location, tileX, 7, "(BC)130", player, chest, held, true, []);
     }
 
     private static ProjectReviewMcpRuntimeSnapshot Snapshot(string launch)

@@ -9,8 +9,8 @@ Connect an MCP client to an [already-running review](live-review.md#start-a-revi
 | Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +15 | Unsupported | +15 | +6 |
-| Add `--allow-world-actions` | +3 | Unsupported | Unsupported | Unsupported |
-| Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-world-actions` | +3 | +3 | +3 | +3 |
+| Add `--allow-container-transfer` | +1 | +1 | +1 | +1 |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 
 Counts describe these profiles, not a client allowlist. Enable only the [opt-in flags](glossary.md#commands-and-results) the task needs. No flag implies another.
@@ -37,7 +37,7 @@ The role or screen is fixed at startup; see [bound and unbound](glossary.md#topo
 
 A screen-bound server freezes the screen ID, farmer ID and game context. If the screen leaves or is replaced, the server stops working, even if the ID is reused. Start a new one for the new screen.
 
-A network-role server freezes its role's session. While the farmhand leaves and rejoins through the [CLI network lifecycle commands](live-review.md#leave-and-rejoin-the-network-farmhand), an existing host client keeps observing. A new host client cannot start in that window, and input and fixture actions are refused until the pair passes again. When the farmhand returns to the title, its session changes and its client is rejected, even after rejoin. Start a new farmhand client once the pair passes again. MCP cannot leave or join.
+A network-role server freezes its role's session. While the farmhand leaves and rejoins through the [CLI network lifecycle commands](live-review.md#leave-and-rejoin-the-network-farmhand), an existing host client keeps observing. A new host client cannot start in that window, and input, fixture, world actions and container transfer are refused with `reviewPairNotReady` until the pair passes again. When the farmhand returns to the title, its session changes and its client is rejected, even after rejoin. Start a new farmhand client once the pair passes again. MCP cannot leave or join.
 
 ## Default observation and screenshots
 
@@ -205,7 +205,7 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 ## Opt-in world interactions
 
-`--allow-world-actions` adds `stardew_world_interact`, `stardew_world_act` and `stardew_world_move` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player). `stardew_world_move { "direction": "up" | "right" | "down" | "left", "turnOnly"? }` walks the player exactly one tile (or only turns it) and reports `tileX`/`tileY`, `position` and `reached`; a blocked target is refused with `worldMoveTargetBlocked`; see [move exactly one tile](world-interaction.md#move-exactly-one-tile).
+`--allow-world-actions` adds `stardew_world_interact`, `stardew_world_act` and `stardew_world_move` on a ready test save. They act as the server's player: the unbound single review's main player, the bound `network-2` role, or the bound split-screen screen (see [roles and screens](world-interaction.md#roles-and-screens)). `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player). `stardew_world_move { "direction": "up" | "right" | "down" | "left", "turnOnly"? }` walks the player exactly one tile (or only turns it) and reports `tileX`/`tileY`, `position` and `reached`; a blocked target is refused with `worldMoveTargetBlocked`; see [move exactly one tile](world-interaction.md#move-exactly-one-tile).
 
 - `water`: dry crop soil, watering can selected.
 - `harvest`: a ready hand-harvest crop, empty hand. Scythe crops are rejected.
@@ -220,7 +220,7 @@ The permission belongs to the review the server started with. After that review 
 
 ## Opt-in container transfer
 
-`--allow-container-transfer` adds `stardew_container_transfer` for the [native chest transfer](container-transfer.md). Only unbound single-review servers on a test save accept it.
+`--allow-container-transfer` adds `stardew_container_transfer` for the [native chest transfer](container-transfer.md) on a test save. It moves items between the server's player's backpack and the chest that player has open, for the unbound single review, a `network-2` role or a split-screen screen.
 
 ## Client configuration
 

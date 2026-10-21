@@ -73,9 +73,9 @@ public static partial class CliApplication
     private const string ReviewMcpSingleUsage =
         "       sdvkit project review mcp serve [--topology single] [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-container-transfer] [--allow-cp-refresh] [--http [--port <n>]]";
     private const string ReviewMcpScreenUsage =
-        "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input] [--http [--port <n>]]";
+        "       sdvkit project review mcp serve [--topology single] --screen <id> [--allow-input] [--allow-world-actions] [--allow-container-transfer] [--http [--port <n>]]";
     private const string ReviewMcpNetworkUsage =
-        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions] [--http [--port <n>]]";
+        "       sdvkit project review mcp serve --topology network-2 --role <host|farmhand> [--allow-input] [--allow-fixture-actions] [--allow-world-actions] [--allow-container-transfer] [--http [--port <n>]]";
     private const string ReviewMcpToolsDescription =
         "       all MCP topologies/selections: stardew_runtime_get, stardew_review_get, stardew_mods_list, stardew_mod_diagnostics, stardew_menu_get, stardew_screenshot_capture, stardew_inventory_get, stardew_container_get, stardew_world_area_get, stardew_data_assets_list, stardew_data_keys_list, stardew_data_record_get; unbound single additionally: stardew_map_assets_list, stardew_map_get, stardew_map_layers_list, stardew_map_layer_get, stardew_map_tilesheets_list, stardew_map_warps_list, stardew_map_actions_list, stardew_map_tile_get, stardew_map_property_get, stardew_texture_assets_list, stardew_texture_get, stardew_texture_preview, stardew_audio_cues_list, stardew_audio_cue_get, stardew_mod_assets_list, stardew_mod_asset_keys_list, stardew_mod_asset_record_get, stardew_shop_get, stardew_progression_get (owned disposable single only), stardew_cp_diagnose";
     private const string ReviewMcpInputDescription =
@@ -83,9 +83,9 @@ public static partial class CliApplication
     private const string ReviewMcpFixtureDescription =
         "       --allow-fixture-actions additionally exposes only: stardew_fixture_status_get, stardew_fixture_enter, stardew_fixture_farm, stardew_fixture_building_ensure, stardew_fixture_animal_ensure, stardew_fixture_object_ensure, stardew_fixture_object_clear, stardew_fixture_fishing_prepare, stardew_fixture_item_add, stardew_fixture_npc_place, stardew_fixture_save, stardew_lab_set_time, stardew_lab_set_weather, stardew_lab_set_season, stardew_lab_warp, stardew_lab_set_zoom, stardew_lab_set_window as allowed for the selected role; unsupported with --screen";
     private const string ReviewMcpWorldActionDescription =
-        "       --allow-world-actions additionally exposes only: stardew_world_interact, stardew_world_act and stardew_world_move for the exact owned disposable single-player review";
+        "       --allow-world-actions additionally exposes only: stardew_world_interact, stardew_world_act and stardew_world_move, acting as the selected role or screen of the exact owned disposable review";
     private const string ReviewMcpContainerTransferDescription =
-        "       --allow-container-transfer additionally exposes only: stardew_container_transfer for the exact owned unbound disposable single-player review";
+        "       --allow-container-transfer additionally exposes only: stardew_container_transfer, acting as the selected role or screen of the exact owned disposable review";
     private const string LabSingleUsage =
         "Usage: sdvkit lab <start|status|stop|test-save> --topology single --json";
     private const string LabNetworkTwoUsage =

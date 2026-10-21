@@ -231,13 +231,18 @@ internal static class ProjectReviewCpRefresh
     // A server permission belongs to the original launch and selected sources.
     // Successful refreshes may advance staged hashes without changing that grant.
     internal static bool SamePermissionBinding(ProjectReviewMcpVerifiedContext expected, ProjectReviewMcpVerifiedContext actual) =>
+        expected.Staging.Topology == LiveLabState.SingleTopology && SameReviewBinding(expected, actual);
+
+    /// <summary>The same launch, role, test save and staged review, in any topology.</summary>
+    internal static bool SameReviewBinding(ProjectReviewMcpVerifiedContext expected, ProjectReviewMcpVerifiedContext actual) =>
         expected.State == actual.State && expected.Role == actual.Role && expected.TestSave == actual.TestSave
-        && expected.Staging.Topology == LiveLabState.SingleTopology && actual.Staging.Topology == LiveLabState.SingleTopology
+        && expected.Staging.Topology == actual.Staging.Topology
         && expected.Staging.OwnershipPath == actual.Staging.OwnershipPath
-        && expected.Staging.Artifacts.Select(a => (a.Role, a.SourceRoot, a.StagingPath, a.Manifest.UniqueId,
-            a.Manifest.Version, a.Manifest.ContentPackFor, a.BuildIdentity)).SequenceEqual(
-            actual.Staging.Artifacts.Select(a => (a.Role, a.SourceRoot, a.StagingPath, a.Manifest.UniqueId,
-                a.Manifest.Version, a.Manifest.ContentPackFor, a.BuildIdentity)));
+        && expected.Staging.Artifacts.Select(StagedIdentity).SequenceEqual(actual.Staging.Artifacts.Select(StagedIdentity));
+
+    private static (string, string, string, string, string, string?, string) StagedIdentity(ProjectReviewOwnedArtifact a) =>
+        (a.Role, a.SourceRoot, string.Join('|', a.RoleStagingPaths.Select(path => path.Role + "=" + path.StagingPath)),
+            a.Manifest.UniqueId, a.Manifest.Version, a.Manifest.ContentPackFor, a.BuildIdentity);
 
     private static byte[] ReadPatch(string path)
     {

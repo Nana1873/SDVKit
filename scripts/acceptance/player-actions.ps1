@@ -21,6 +21,9 @@ Proves each action through a state read, not through the input acknowledgement:
 - stardew_fixture_npc_place brings Lewis next to the player, the runtime NPC list shows him there, check with a tool
   selected talks to him (dialogue opens, friendship rises), and check with an added parsnip selected gives it as a gift
   (friendship rises again);
+- stardew_world_interact: a tilled and planted plot is watered (the soil reads watered);
+- stardew_container_transfer: a placed chest opened by check, two parsnips moved one way and one back, each change and
+  the unchanged total confirmed by a chest read;
 - fishing: preparation and a cast that puts the bobber in the water.
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
@@ -28,19 +31,21 @@ parked in the screen corner before keyboard tool use, because Stardew aims at th
 within one tile of the player. Matrix and gaps: docs/player-actions.md.
 
 While developing SDVKit, -Only runs the shared setup (lab, test save, review start, Farm) and then only the named
-sections: walk, move, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Sections always run in this order, and each one
+sections: walk, move, mapwarp, hotbar, menu, tools, act, interact, item, transfer, npc, fishing. Sections always run in this order, and each one
 starts from the Farm. Such a partial run writes its evidence under player-actions-partial and never counts as
 acceptance; PRs and releases need a full run.
 
--Topology network-2 -Role <host|farmhand> runs the input-only sections (walk, hotbar, menu) through the selected
-network role, and -Screen <id> (1 or higher; screen 0 is the host) runs them on one screen of a split-screen test-save
-review (#299). The other sections (move, mapwarp, tools, act, item, npc, fishing) need fixture or world actions that
-are single-only (#297), so those modes skip them with a console note; a role run still uses stardew_fixture_farm and
-stardew_lab_warp as setup on the host or farmhand, a screen has no warp and starts from the local farmhand's cabin bed.
-Every tool call and every menu, inventory and world read carries the role or screen selection; every runtime read
-asserts the selected role or screen, and inventory reads assert that player's ID. Such a run proves only walking,
-hotbar and menu input on that player and is not full acceptance; it complements the full single run. Evidence goes to
-player-actions-<role> or player-actions-screen<id>. The topology the run started (network-2 for a role, single for a
+-Topology network-2 -Role <host|farmhand> runs walk, move, hotbar, menu, act, interact and transfer through the
+selected network role (#297, #299). Setup that changes the world (tilling, planting, the chest and parsnips) runs as the
+same role in a host run and through the host in a farmhand run; the farmhand then waters the plot and withdraws and
+deposits through the chest the host filled. -Screen <id> (1 or higher; screen 0 is the host) runs walk, move, hotbar and
+menu on one screen of a split-screen test-save review, starting from the local farmhand's cabin bed because screens have
+no fixture tools, and checks that stardew_world_act is refused in the game's forced gamepad mode
+(worldActionCursorAimUnavailable) and that stardew_world_interact on the cabin floor is refused at the target. Map reads
+and fixture-only sections (mapwarp, tools, item, npc, fishing) are skipped with a console note. Every tool call and every
+menu, inventory and world read carries the role or screen selection; every runtime read asserts the selected role or
+screen, and inventory reads assert that player's ID. Such a run is not full acceptance; it complements the full single
+run. Evidence goes to player-actions-<role> or player-actions-screen<id>. The topology the run started (network-2 for a role, single for a
 screen) is stopped and reset at the end, also after a failure. A network-2 start that fails with gameSideStale (#325)
 stops and resets its host and can simply be rerun.
 
@@ -70,8 +75,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
 # Accept both -Only npc,item from PowerShell and a single comma-separated string from pwsh -File.
-$sections = @('walk', 'move', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'item', 'npc', 'fishing')
-$inputOnly = @('walk', 'hotbar', 'menu')
+$sections = @('walk', 'move', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'interact', 'item', 'transfer', 'npc', 'fishing')
+# A role or screen run covers input and the world actions and container transfer that act as the selected player
+# (#297). The other sections need map reads or fixture tools that roles or screens do not have.
+$roleSections = @('walk', 'move', 'hotbar', 'menu', 'act', 'interact', 'transfer')
+# A screen has no fixture tools, so its farmhand stays in its cabin without soil or a chest: act and interact
+# run there only as refusals that the game gives after accepting the screen binding.
+$screenSections = @('walk', 'move', 'hotbar', 'menu', 'act', 'interact')
 $Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 if ($PSBoundParameters.ContainsKey('Only') -and $Only.Count -eq 0) { throw "-Only needs at least one section. Use: $($sections -join ', ')." }
 $unknown = @($Only | Where-Object { $_ -cnotin $sections })
@@ -86,17 +96,16 @@ if ($screenMode -and $Topology -ne 'single') { throw '-Screen selects a screen o
 # Wrapped in @(), because an empty array assigned from an if statement collapses to $null.
 $selection = @(if ($Role) { @('--topology', 'network-2', '--role', $Role) } elseif ($screenMode) { @('--screen', "$Screen") })
 $mode = if ($Role) { $Role } elseif ($screenMode) { "screen$Screen" } else { 'single' }
-if ($mode -ne 'single') {
-    $singleOnly = @($Only | Where-Object { $_ -cnotin $inputOnly })
-    if ($singleOnly.Count -gt 0) { throw "The $mode mode runs only the input-only sections ($($inputOnly -join ', ')); $($singleOnly -join ', ') need fixture or world actions that are single-only (#297)." }
-}
+$modeSections = if ($Role) { $roleSections } elseif ($screenMode) { $screenSections } else { $sections }
+$unsupported = @($Only | Where-Object { $_ -cnotin $modeSections })
+if ($unsupported.Count -gt 0) { throw "The $mode mode runs only $($modeSections -join ', '); $($unsupported -join ', ') need map reads or fixture tools that this selection does not have." }
 $name = if ($partial) { ($mode -eq 'single') ? 'player-actions-partial' : "player-actions-partial-$mode" } elseif ($mode -eq 'single') { 'player-actions' } else { "player-actions-$mode" }
 $context = Initialize-Acceptance -Name $name -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck -Selection $selection
 
 function Test-Section([string[]] $Names) {
     # Every section runs in a full single run; -Only selects some for a partial development run; a role or screen
-    # run covers only the input-only sections.
-    if ($mode -ne 'single' -and @($Names | Where-Object { $_ -cin $inputOnly }).Count -eq 0) { return $false }
+    # run covers only its sections.
+    if (@($Names | Where-Object { $_ -cin $modeSections }).Count -eq 0) { return $false }
     -not $partial -or @($Names | Where-Object { $_ -in $Only }).Count -gt 0
 }
 
@@ -125,6 +134,7 @@ function Join-SplitScreen {
         if ($status.lab.gameSide.testSave.localSplitScreen -eq $true) {
             $runtime = (Invoke-Tool "runtime-screen-$attempt" 'stardew_runtime_get' -AllowExit @(0, 3)).Json
             if ($runtime -and $runtime.PSObject.Properties['screen'] -and $runtime.screen.screenId -eq $Screen) {
+                $script:screenStart = $runtime.runtime
                 Write-Step "Screen $Screen joined: farmer $($runtime.screen.farmerId), context $($runtime.screen.contextId), in $($runtime.runtime.locationId) at $($runtime.runtime.tileX),$($runtime.runtime.tileY)."
                 return
             }
@@ -230,6 +240,70 @@ function Invoke-ToolDown([string] $Label, [string] $ItemId, $Tile, [switch] $NoS
     return (Get-Area "$Label-result" $Tile.x $Tile.y 1 1)[0]
 }
 
+# Setup that changes the world (adding items) runs through a player that has those fixture tools: the selected player
+# in single and host runs, the host in a farmhand run. Each call names that player explicitly.
+$setupSelection = @(if ($Role -eq 'farmhand') { @('--topology', 'network-2', '--role', 'host') } else { $selection })
+$setupIsActor = $Role -ne 'farmhand'
+
+function Invoke-SetupTool([string] $Label, [string] $Tool, [hashtable] $Arguments = @{}, [string[]] $OptIn = @(), [int[]] $AllowExit = @(0)) {
+    $json = $Arguments | ConvertTo-Json -Compress -Depth 20
+    Invoke-SdvKit "setup-$Label" (@('project', 'review', 'call', $Tool, $json) + $setupSelection + $OptIn) -AllowExit $AllowExit
+}
+
+function Get-SetupInventory([string] $Label) {
+    (Invoke-SdvKit "setup-$Label" (@('project', 'review', 'inventory', '--json') + $setupSelection)).Json.data
+}
+
+function Get-SetupArea([string] $Label, [int] $X, [int] $Y) {
+    (Invoke-SdvKit "setup-world-$Label" (@('project', 'review', 'world', $X, $Y, 1, 1, '--json') + $setupSelection)).Json.data.tiles[0]
+}
+
+function Select-SetupItem([string] $Label, [string] $ItemId, [int] $Stack = 1) {
+    # Selects $ItemId in the setup player's backpack, adding it with the item fixture when it is missing.
+    $slot = @((Get-SetupInventory "$Label-find").slots | Where-Object { $_.item.qualifiedItemId -ceq $ItemId })[0].slot
+    if ($null -eq $slot) {
+        $add = (Invoke-SetupTool "$Label-add" 'stardew_fixture_item_add' @{ qualifiedItemId = $ItemId; stack = $Stack } -OptIn '--allow-fixture-actions').Json
+        Assert-That ($add.state -ceq 'ready' -and $add.item.qualifiedItemId -ceq $ItemId) "adding $ItemId for the setup failed: $($add.message)"
+        $slot = $add.item.slot
+    }
+    $press = Invoke-SetupTool "$Label-select" 'stardew_input_press' @{ button = (Get-SlotKey $slot) } -OptIn '--allow-input'
+    Assert-That ($press.Json.succeeded -eq $true) "selecting $ItemId for the setup did not complete."
+    Wait-Settled
+    $inventory = Get-SetupInventory "$Label-selected"
+    Assert-That ($inventory.selectedSlot -eq $slot) "$ItemId in slot $slot is not selected for the setup."
+    return $inventory
+}
+
+function Invoke-SetupAct([string] $Label, [string] $Action, $Tile, [string] $InventoryRevision) {
+    $act = Invoke-SetupTool $Label 'stardew_world_act' @{ action = $Action; x = $Tile.x; y = $Tile.y; inventoryRevision = $InventoryRevision } -OptIn '--allow-world-actions'
+    Assert-That ($act.Json.state -ceq 'completed') "the setup $Action on $($Tile.x),$($Tile.y) did not complete: $($act.Json.errorCode)"
+    Wait-Settled
+}
+
+function Invoke-Turn([string] $Label, [string] $Direction) {
+    $turn = Invoke-Tool "turn-$Label" 'stardew_world_move' @{ direction = $Direction; turnOnly = $true } -OptIn '--allow-world-actions'
+    Assert-That ($turn.Json.state -ceq 'completed' -and $turn.Json.position.facing -ceq $Direction) "turning $Direction returned $($turn.Json.state)/$($turn.Json.errorCode) facing $($turn.Json.position.facing)."
+    Wait-Settled
+}
+
+$usedTiles = [System.Collections.Generic.List[object]]::new()
+function Find-FreeSpot([string] $Label, [object[]] $Offsets) {
+    # A free tile whose listed neighbours (dx,dy) are free too in a fresh read, at least three tiles away from the
+    # tiles earlier sections used. The scan is older than the earlier sections, so it only proposes candidates.
+    foreach ($candidate in @($area | Where-Object { Test-Free $_ })) {
+        $earlier = @($usedTiles) + @($east, $spot, $npcSpot, $plain, $stone, $weed, $blocker | Where-Object { $null -ne $_ })
+        $near = @($earlier | Where-Object { [Math]::Max([Math]::Abs($_.x - $candidate.x), [Math]::Abs($_.y - $candidate.y)) -lt 3 })
+        if ($near.Count -gt 0) { continue }
+        $fresh = @(Get-Area "$Label-candidate-$($candidate.x)-$($candidate.y)" ($candidate.x - 1) ($candidate.y - 1) 3 3)
+        $needed = @(@(, @(0, 0)) + $Offsets | ForEach-Object { $dx = $_[0]; $dy = $_[1]; @($fresh | Where-Object { $_.x -eq $candidate.x + $dx -and $_.y -eq $candidate.y + $dy })[0] })
+        if (@($needed | Where-Object { Test-Free $_ }).Count -eq $needed.Count) {
+            $usedTiles.Add(@{ x = $candidate.x; y = $candidate.y })
+            return $candidate
+        }
+    }
+    Assert-That $false "no free tile for $Label in the scanned area."
+}
+
 $failed = $false
 try {
     $mod = Join-Path $context.Evidence 'work\PlayerActionsTarget'
@@ -248,13 +322,13 @@ try {
     }
 
     if ($screenMode) {
-        Write-Step "Screen ${Screen}: fixture tools are single-only (#297), so the local farmhand is not warped and starts in its cabin bed."
+        Write-Step "Screen ${Screen}: screens have no fixture tools, so the local farmhand is not warped and starts in its cabin bed."
     }
     else {
         Invoke-Tool 'farm' 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
         Wait-Settled
     }
-    if ($mode -ne 'single') { Write-Step "$mode mode: only the input-only sections run ($($inputOnly -join ', ')); move, mapwarp, tools, act, item, npc and fishing need fixture or world actions that are single-only (#297) and are skipped. This proves input on the selected player only and is not full acceptance." }
+    if ($mode -ne 'single') { Write-Step "$mode mode: only $($modeSections -join ', ') run; the other sections need map reads or fixture tools this selection does not have. This proves these actions on the selected player only and is not full acceptance." }
     $spot = $null
     if ($partial) { Write-Step "Partial run ($($Only -join ', ')): development only, not acceptance evidence." }
 
@@ -320,7 +394,7 @@ try {
         Write-Step "Walked 4 directions; 30 ticks moved $run tiles normally, $walk with Shift."
     }
 
-    if (Test-Section 'move', 'tools', 'act', 'item', 'npc') {
+    if (-not $screenMode -and (Test-Section 'move', 'tools', 'act', 'interact', 'item', 'transfer', 'npc')) {
         # One world read for the sections that pick their tiles from it.
         $area = @(Get-Area 'scan' 58 18 16 16)
         $byTile = @{}
@@ -332,17 +406,34 @@ try {
     }
 
     if (Test-Section 'move') {
-        Write-Step 'Bounded move: exactly one tile in four directions back to the start, a turn, and a blocked target refused.'
-        Invoke-Warp 'move-start' 'Farm' 64 16
+        Write-Step ($screenMode ? 'Bounded move: exactly one tile in four directions back to the start and a turn.' : 'Bounded move: exactly one tile in four directions back to the start, a turn, and a blocked target refused.')
+        if ($screenMode) {
+            # Back to the cabin bed on the row the walk section ran along, then left, up, down and right on free floor (see
+            # the walk section), ending on the bed again.
+            $here = Get-Runtime 'move-return'
+            foreach ($attempt in 1..4) {
+                if ($here.tileX -ge $screenStart.tileX) { break }
+                $back = Invoke-Tool "move-return-$attempt" 'stardew_world_move' @{ direction = 'right' } -OptIn '--allow-world-actions'
+                Assert-That ($back.Json.state -ceq 'completed' -and $back.Json.reached -eq $true) "moving back right returned $($back.Json.state)/$($back.Json.errorCode)."
+                Wait-Settled
+                $here = Get-Runtime "move-return-$attempt"
+            }
+            Assert-That ($here.tileX -eq $screenStart.tileX -and $here.tileY -eq $screenStart.tileY) "the farmhand is at $($here.tileX),$($here.tileY), not back on the bed at $($screenStart.tileX),$($screenStart.tileY)."
+            $moveSteps = @(@{ dir = 'left'; dx = -1; dy = 0 }, @{ dir = 'up'; dx = 0; dy = -1 }, @{ dir = 'down'; dx = 0; dy = 1 }, @{ dir = 'right'; dx = 1; dy = 0 })
+        }
+        else {
+            Invoke-Warp 'move-start' 'Farm' 64 16
+            $moveSteps = @(@{ dir = 'down'; dx = 0; dy = 1 }, @{ dir = 'right'; dx = 1; dy = 0 }, @{ dir = 'up'; dx = 0; dy = -1 }, @{ dir = 'left'; dx = -1; dy = 0 })
+        }
         $start = Get-Runtime 'move-start'
         $position = $start
-        foreach ($step in @(@{ dir = 'down'; dx = 0; dy = 1 }, @{ dir = 'right'; dx = 1; dy = 0 }, @{ dir = 'up'; dx = 0; dy = -1 }, @{ dir = 'left'; dx = -1; dy = 0 })) {
+        foreach ($step in $moveSteps) {
             $expectedX = $position.tileX + $step.dx
             $expectedY = $position.tileY + $step.dy
             $move = Invoke-Tool "move-$($step.dir)" 'stardew_world_move' @{ direction = $step.dir } -OptIn '--allow-world-actions'
             Assert-That ($move.Json.state -ceq 'completed' -and $move.Json.reached -eq $true) "moving $($step.dir) from $($position.tileX),$($position.tileY) returned $($move.Json.state)/$($move.Json.errorCode) with reached=$($move.Json.reached) at $($move.Json.tileX),$($move.Json.tileY)."
             Assert-That ($move.Json.tileX -eq $expectedX -and $move.Json.tileY -eq $expectedY -and $move.Json.targetX -eq $expectedX -and $move.Json.targetY -eq $expectedY) "moving $($step.dir) reported $($move.Json.tileX),$($move.Json.tileY) (target $($move.Json.targetX),$($move.Json.targetY)), expected $expectedX,$expectedY."
-            Assert-That ($move.Json.position.facing -ceq $step.dir -and $move.Json.locationId -ceq 'Farm') "after moving $($step.dir) the player faces $($move.Json.position.facing) in $($move.Json.locationId)."
+            Assert-That ($move.Json.position.facing -ceq $step.dir -and $move.Json.locationId -ceq $start.locationId) "after moving $($step.dir) the player faces $($move.Json.position.facing) in $($move.Json.locationId)."
             Assert-That ([Math]::Floor($move.Json.position.standingX) -eq $expectedX -and [Math]::Floor($move.Json.position.standingY) -eq $expectedY) "the standing position $($move.Json.position.standingX),$($move.Json.position.standingY) is not inside $expectedX,$expectedY."
             Wait-Settled
             $next = Get-Runtime "move-$($step.dir)"
@@ -358,6 +449,10 @@ try {
         $turned = Get-Runtime 'move-turned'
         Assert-That ($turned.tileX -eq $position.tileX -and $turned.tileY -eq $position.tileY -and $turned.localPlayer.data.position.facing -ceq 'down') 'a runtime read after the turn disagrees with its result.'
 
+        if ($screenMode) {
+            Write-Step "Screen ${Screen}: moved one tile left, up, down and right back to the bed and turned; the blocked-target refusal needs a world scan of the Farm and is covered by the single and role runs."
+        }
+        else {
         $blocker = Find-Target { param($t) $t.objectQualifiedItemId -cin ($stones + $weeds) }
         Assert-That ($null -ne $blocker) 'no stone or weeds with a free tile north of it in the scanned area.'
         Invoke-Warp 'move-blocked' 'Farm' $blocker.x ($blocker.y - 1)
@@ -368,6 +463,7 @@ try {
         $still = Get-Runtime 'move-blocked-after'
         Assert-That ($still.tileX -eq $blocker.x -and $still.tileY -eq $blocker.y - 1) 'the refused move changed the tile.'
         Write-Step "Moved one tile down, right, up and left back to $($start.tileX),$($start.tileY); turned in place; $($blocker.objectQualifiedItemId) at $($blocker.x),$($blocker.y) was refused."
+        }
     }
 
     if (Test-Section 'mapwarp') {
@@ -460,7 +556,22 @@ try {
         Assert-That ($cut.objectState -ceq 'missing') "the scythe left $($weed.objectQualifiedItemId) at $($weed.x),$($weed.y)."
     }
 
-    if (Test-Section 'act') {
+    if ($screenMode -and (Test-Section 'act')) {
+        # Stardew forces gamepad controls on split-screen screens other than 0 and then acts on the faced tile, not under
+        # the cursor; stardew_world_act refuses instead of acting elsewhere, after the game accepted the screen binding.
+        Write-Step "Screen ${Screen}: stardew_world_act is refused in gamepad mode with worldActionCursorAimUnavailable."
+        $before = Get-Runtime 'act-screen-before'
+        Assert-That ($before.localPlayer.data.input.gamepadControls -eq $true) "screen $Screen does not report gamepad controls; this check expects the game's forced gamepad mode."
+        $faced = $before.localPlayer.data.position
+        $inventory = Get-Inventory 'act-screen-inventory'
+        $refused = Invoke-Tool 'act-screen' 'stardew_world_act' @{ action = 'useTool'; x = $faced.toolTileX; y = $faced.toolTileY; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
+        Assert-That ($refused.Json.errorCode -ceq 'worldActionCursorAimUnavailable' -and $refused.Json.dispatchState -ceq 'notDispatched' -and $null -eq $refused.Json.role -and $refused.Json.topology -ceq 'single') "useTool on screen $Screen returned $($refused.Json.state)/$($refused.Json.errorCode)/$($refused.Json.dispatchState)."
+        Wait-Settled
+        $after = Get-Runtime 'act-screen-after'
+        Assert-That ($after.localPlayer.data.stamina -eq $before.localPlayer.data.stamina -and $after.tileX -eq $before.tileX -and $after.tileY -eq $before.tileY) 'the refused act changed stamina or the tile.'
+    }
+
+    if (-not $screenMode -and (Test-Section 'act')) {
         Write-Step 'Faced-tile actions with stardew_world_act: hoe by useTool, read the Farm sign by check, refuse a far tile.'
         $east = @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) -and $null -eq $byTile["$($_.x),$($_.y)"].soil })[1]
         Assert-That ($null -ne $east) 'no free tile with a free tile west of it in the scanned area.'
@@ -482,8 +593,11 @@ try {
         Assert-That ((Get-Runtime 'act-hoe-after').localPlayer.data.stamina -lt $before.localPlayer.data.stamina) 'useTool with the hoe did not cost stamina.'
         Assert-That ($null -ne (Get-Area 'act-hoe-result' $east.x $east.y 1 1)[0].soil) "useTool with the hoe did not till $($east.x),$($east.y)."
 
-        $sign = (Invoke-Tool 'sign-property' 'stardew_map_property_get' @{ asset = 'Maps/Farm'; property = 'Action'; scope = 'tile'; source = 'direct'; layer = 'Buildings'; x = 8; y = 7 }).Json
-        Assert-That ("$($sign.property.value)" -clike 'Message *') "Maps/Farm has no sign at 8,7 (Action is '$($sign.property.value)')."
+        if ($mode -eq 'single') {
+            # Map reads are single-only; a role run relies on the same sign of the test save's Farm.
+            $sign = (Invoke-Tool 'sign-property' 'stardew_map_property_get' @{ asset = 'Maps/Farm'; property = 'Action'; scope = 'tile'; source = 'direct'; layer = 'Buildings'; x = 8; y = 7 }).Json
+            Assert-That ("$($sign.property.value)" -clike 'Message *') "Maps/Farm has no sign at 8,7 (Action is '$($sign.property.value)')."
+        }
         Invoke-Warp 'act-sign' 'Farm' 8 8
         Assert-That ((Get-Runtime 'act-sign-before').localPlayer.data.position.facing -cne 'up') 'the player already faces the sign; the check would not prove cursor aim.'
         $inventory = (Get-Inventory 'act-sign-inventory')
@@ -497,6 +611,53 @@ try {
         Assert-That ($dialogue.menuOpen -eq $true -and @($dialogue.menus | Where-Object { $_.type -ceq 'StardewValley.Menus.LetterViewerMenu' }).Count -eq 1) "check on the sign opened $(@($dialogue.menus | ForEach-Object type) -join ', ')."
         Invoke-Press 'act-sign-close' 'Escape'
         Wait-Settled
+    }
+
+    if ($screenMode -and (Test-Section 'interact')) {
+        # The cabin has no soil: water on the faced tile passes the binding, fixture, player, facing and backpack checks
+        # in the game and is refused at the target, before any input.
+        Write-Step "Screen ${Screen}: stardew_world_interact on the faced cabin floor is refused at the target."
+        $faced = (Get-Runtime 'interact-screen').localPlayer.data.position
+        $canSlot = Find-ToolSlot 'interact-screen-can' '(T)WateringCan'
+        Invoke-Press 'interact-screen-can' (Get-SlotKey $canSlot)
+        Wait-Settled
+        $floor = (Get-Area 'interact-screen-floor' $faced.grabTileX $faced.grabTileY 1 1)[0]
+        Assert-That ($null -eq $floor.soil) "the faced tile $($faced.grabTileX),$($faced.grabTileY) has soil."
+        $inventory = Get-Inventory 'interact-screen-inventory'
+        $refused = Invoke-Tool 'interact-screen' 'stardew_world_interact' @{ action = 'water'; x = $faced.grabTileX; y = $faced.grabTileY; targetInstanceId = ('0' * 32); targetRevision = ('0' * 32); inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
+        Assert-That ($refused.Json.errorCode -ceq 'worldActionTargetChanged' -and $refused.Json.dispatchState -ceq 'notDispatched' -and $refused.Json.topology -ceq 'single') "water on screen $Screen returned $($refused.Json.state)/$($refused.Json.errorCode)/$($refused.Json.dispatchState)."
+    }
+
+    if (-not $screenMode -and (Test-Section 'interact')) {
+        Write-Step 'stardew_world_interact: the setup player tills and plants a plot, the selected player waters it with the watering can.'
+        # The setup player tills and plants from the tile north of the plot; the selected player waters from the west.
+        $plot = Find-FreeSpot 'interact' @(@(0, -1), @(-1, 0))
+        Invoke-SetupTool 'interact-warp' 'stardew_lab_warp' @{ location = 'Farm'; x = $plot.x; y = ($plot.y - 1) } -OptIn '--allow-fixture-actions' | Out-Null
+        Wait-Settled
+        $setupInventory = Select-SetupItem 'interact-hoe' '(T)Hoe'
+        Invoke-SetupAct 'interact-till' 'useTool' $plot $setupInventory.inventoryRevision
+        Start-Sleep -Seconds 1
+        Assert-That ($null -ne (Get-SetupArea 'interact-tilled' $plot.x $plot.y).soil) "the setup hoe did not till $($plot.x),$($plot.y)."
+        $setupInventory = Select-SetupItem 'interact-seed' '(O)472'
+        Invoke-SetupAct 'interact-plant' 'check' $plot $setupInventory.inventoryRevision
+        # Watering needs the plot as the grab tile. Facing down from the tile north of it leaves the grab tile on the
+        # player's own tile unless the player stands low in it, so the selected player always waters from the west.
+        Invoke-Warp 'interact-actor' 'Farm' ($plot.x - 1) $plot.y
+        Invoke-Turn 'interact-face' 'right'
+        $canSlot = Find-ToolSlot 'interact-can' '(T)WateringCan'
+        Invoke-Press 'interact-can-select' (Get-SlotKey $canSlot)
+        Wait-Settled
+        $dry = (Get-Area 'interact-dry' $plot.x $plot.y 1 1)[0]
+        Assert-That ($null -ne $dry.soil.crop.data -and $dry.soil.watered -eq $false -and $dry.soil.needsWatering -eq $true) "$($plot.x),$($plot.y) has no dry planted soil for the selected player (crop $($dry.soil.crop.state), watered $($dry.soil.watered))."
+        $inventory = Get-Inventory 'interact-inventory'
+        Assert-That ($inventory.selectedSlot -eq $canSlot) 'the watering can is not selected.'
+        $water = Invoke-Tool 'interact-water' 'stardew_world_interact' @{ action = 'water'; x = $plot.x; y = $plot.y; targetInstanceId = $dry.soil.instanceId; targetRevision = $dry.soil.revision; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+        Assert-That ($water.Json.state -ceq 'completed' -and $water.Json.button -ceq 'MouseLeft') "watering did not complete: $($water.Json.errorCode)/$($water.Json.dispatchState)"
+        if ($mode -ne 'single') { Assert-That ($water.Json.topology -ceq $(if ($Role) { 'network-2' } else { 'single' }) -and $water.Json.role -ceq $Role) "the water result names $($water.Json.topology)/$($water.Json.role)." }
+        Start-Sleep -Seconds 2
+        $watered = (Get-Area 'interact-watered' $plot.x $plot.y 1 1)[0]
+        Assert-That ($watered.soil.watered -eq $true) "$($plot.x),$($plot.y) is not watered after stardew_world_interact."
+        Write-Step "Watered the parsnip at $($plot.x),$($plot.y) as $mode."
     }
 
     if (Test-Section 'item') {
@@ -530,6 +691,62 @@ try {
         Assert-That ((Get-Area 'place-result' $spot.x $spot.y 1 1)[0].objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($spot.x),$($spot.y)."
         $placed = (Get-Inventory 'place-inventory-after')
         Assert-That (@($placed.slots | Where-Object slot -eq $add.item.slot)[0].state -ceq 'empty') "slot $($add.item.slot) still holds the chest."
+    }
+
+    if (Test-Section 'transfer') {
+        Write-Step 'stardew_container_transfer: the setup player places a chest; the selected player opens it by check and moves parsnips both ways.'
+        # The setup player stands west of the chest; in a farmhand run the farmhand stands north of it.
+        $chestTile = Find-FreeSpot 'transfer' @(@(-1, 0), @(0, -1))
+        Invoke-SetupTool 'transfer-warp' 'stardew_lab_warp' @{ location = 'Farm'; x = ($chestTile.x - 1); y = $chestTile.y } -OptIn '--allow-fixture-actions' | Out-Null
+        Wait-Settled
+        $parsnips = (Invoke-SetupTool 'transfer-parsnips' 'stardew_fixture_item_add' @{ qualifiedItemId = '(O)24'; stack = 3 } -OptIn '--allow-fixture-actions').Json
+        Assert-That ($parsnips.state -ceq 'ready') "adding parsnips for the transfer failed: $($parsnips.message)"
+        $setupInventory = Select-SetupItem 'transfer-chest' '(BC)130'
+        Invoke-SetupAct 'transfer-place' 'check' $chestTile $setupInventory.inventoryRevision
+        Assert-That ((Get-SetupArea 'transfer-placed' $chestTile.x $chestTile.y).objectQualifiedItemId -ceq '(BC)130') "the chest was not placed on $($chestTile.x),$($chestTile.y)."
+        if (-not $setupIsActor) {
+            # The host fills the chest with its own transfer and closes it, so the farmhand withdraws first.
+            Invoke-SetupAct 'transfer-host-open' 'check' $chestTile (Get-SetupInventory 'transfer-host-open').inventoryRevision
+            $hostChest = (Invoke-SetupTool 'transfer-host-chest' 'stardew_container_get').Json.data
+            $hostSlot = @($hostChest.player.slots | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' })[0]
+            $hostDeposit = (Invoke-SetupTool 'transfer-host-deposit' 'stardew_container_transfer' @{ direction = 'deposit'; sourceSlot = $hostSlot.slot; quantity = 3; qualifiedItemId = '(O)24'; selectionIdentity = $hostChest.selectionIdentity; containerRevision = $hostChest.containerRevision; instanceIdentity = $hostSlot.identity.instanceIdentity; itemRevision = $hostSlot.identity.itemRevision } -OptIn '--allow-container-transfer').Json
+            Assert-That ($hostDeposit.state -ceq 'completed') "the host deposit returned $($hostDeposit.state)/$($hostDeposit.errorCode)."
+            Invoke-SetupTool 'transfer-host-close' 'stardew_input_press' @{ button = 'Escape' } -OptIn '--allow-input' | Out-Null
+            Wait-Settled
+            Invoke-Warp 'transfer-actor' 'Farm' $chestTile.x ($chestTile.y - 1)
+            Invoke-Turn 'transfer-face' 'down'
+        }
+        $inventory = Get-Inventory 'transfer-open-inventory'
+        $open = Invoke-Tool 'transfer-open' 'stardew_world_act' @{ action = 'check'; x = $chestTile.x; y = $chestTile.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
+        Assert-That ($open.Json.state -ceq 'completed') "check on the chest did not complete: $($open.Json.errorCode)"
+        Wait-Settled
+        # Deposit from the backpack where the parsnips are, withdraw where the host put them; then move one back.
+        foreach ($step in @(@{ label = 'first'; quantity = 2 }, @{ label = 'back'; quantity = 1 })) {
+            $chest = (Invoke-Tool "transfer-$($step.label)-read" 'stardew_container_get').Json.data
+            Assert-That ($null -ne $chest -and [string]$chest.playerId -ceq [string]((Get-Runtime "transfer-$($step.label)").localPlayer.data.playerId)) 'the open chest does not belong to the selected player.'
+            $inBackpack = @($chest.player.slots | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' })[0]
+            $inChest = @($chest.container.slots | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' })[0]
+            $deposit = if ($step.label -ceq 'first') { $null -ne $inBackpack -and $null -eq $inChest } else { -not $firstDeposit }
+            if ($step.label -ceq 'first') { $firstDeposit = $deposit }
+            $source = if ($deposit) { $inBackpack } else { $inChest }
+            Assert-That ($null -ne $source -and $source.item.stack -ge $step.quantity) "no parsnip stack of $($step.quantity) to move ($($step.label))."
+            $total = @($chest.player.slots + $chest.container.slots | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' } | ForEach-Object { $_.item.stack } | Measure-Object -Sum).Sum
+            $direction = if ($deposit) { 'deposit' } else { 'withdraw' }
+            $moved = (Invoke-Tool "transfer-$($step.label)" 'stardew_container_transfer' @{ direction = $direction; sourceSlot = $source.slot; quantity = $step.quantity; qualifiedItemId = '(O)24'; selectionIdentity = $chest.selectionIdentity; containerRevision = $chest.containerRevision; instanceIdentity = $source.identity.instanceIdentity; itemRevision = $source.identity.itemRevision } -OptIn '--allow-container-transfer').Json
+            Assert-That ($moved.state -ceq 'completed' -and $moved.data.observedQuantity -eq $step.quantity) "the $direction of $($step.quantity) returned $($moved.state)/$($moved.errorCode)."
+            if ($mode -ne 'single') { Assert-That ($moved.topology -ceq $(if ($Role) { 'network-2' } else { 'single' }) -and $moved.role -ceq $Role) "the transfer result names $($moved.topology)/$($moved.role)." }
+            Wait-Settled
+            $after = (Invoke-Tool "transfer-$($step.label)-after" 'stardew_container_get').Json.data
+            $sideAfter = if ($deposit) { $after.container.slots } else { $after.player.slots }
+            $destinationBefore = @(($(if ($deposit) { $chest.container.slots } else { $chest.player.slots })) | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' } | ForEach-Object { $_.item.stack } | Measure-Object -Sum).Sum
+            $destinationAfter = @($sideAfter | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' } | ForEach-Object { $_.item.stack } | Measure-Object -Sum).Sum
+            $totalAfter = @($after.player.slots + $after.container.slots | Where-Object { $_.item.qualifiedItemId -ceq '(O)24' } | ForEach-Object { $_.item.stack } | Measure-Object -Sum).Sum
+            Assert-That ($destinationAfter - $destinationBefore -eq $step.quantity -and $totalAfter -eq $total) "after the $direction the destination holds $destinationAfter (before $destinationBefore) of $totalAfter parsnips (before $total)."
+            Write-Step "$direction of $($step.quantity) parsnip(s) observed as $mode."
+        }
+        Invoke-Press 'transfer-close' 'Escape'
+        Wait-Settled
+        Assert-That ((Get-Menu 'transfer-closed').menuOpen -eq $false) 'Escape did not close the chest.'
     }
 
     if (Test-Section 'npc') {

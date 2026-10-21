@@ -27,6 +27,33 @@ internal static class ReviewWorldActionContract
     public static string ResponsePath(string runtimePath, string requestId) =>
         Path.Combine(runtimePath, $"review-world-action-{requestId}.json");
 
+    /// <summary>
+    /// The last transport argument of a world action or container transfer: the review selection the request was
+    /// bound to, so the game refuses it on any other role or screen. <c>single</c> is the unbound single review on
+    /// screen 0, a network-2 role is its name, and a local split-screen screen is <c>screen-</c> and its ID.
+    /// </summary>
+    public static string SelectionToken(string? role, int? screenId) =>
+        screenId is int screen ? "screen-" + screen.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : role ?? "single";
+
+    public static bool TryParseSelection(string? token, out string? role, out int? screenId)
+    {
+        role = null;
+        screenId = null;
+        if (token == "single") return true;
+        if (token is NetworkTwoContract.HostRole or NetworkTwoContract.FarmhandRole)
+        {
+            role = token;
+            return true;
+        }
+        if (token is null || !token.StartsWith("screen-", StringComparison.Ordinal)
+            || !int.TryParse(token["screen-".Length..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out int screen)
+            || SelectionToken(null, screen) != token) return false;
+        screenId = screen;
+        return true;
+    }
+
     public static string? Validate(ReviewWorldActionQuery? query)
     {
         if (query is null || !IsAction(query.Action)

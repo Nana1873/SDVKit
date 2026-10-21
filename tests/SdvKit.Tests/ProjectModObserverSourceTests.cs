@@ -110,8 +110,9 @@ public sealed class ProjectModObserverSourceTests
     public void ContainerTransferUsesOwnedNativeCapacityAndProcessLocalInputPaths()
     {
         string source = ReadSource("ReviewContainerTransferCommand.cs");
-        Assert.Contains("Context.ScreenId != 0", source, StringComparison.Ordinal);
-        Assert.Contains("TryVerifyReviewFixture", source, StringComparison.Ordinal);
+        Assert.Contains("!selection.BindingReady(launch) || !selection.FixtureReady(testSave, networkTwo)", source,
+            StringComparison.Ordinal);
+        Assert.Contains("ReviewActionSelection.TryParse(args[11], out selection)", source, StringComparison.Ordinal);
         Assert.Contains("Game1.player.couldInventoryAcceptThisItem(probe)", source, StringComparison.Ordinal);
         Assert.Contains("Utility.addItemToThisInventoryList", source, StringComparison.Ordinal);
         Assert.Contains("original.canStackWith(item)", source, StringComparison.Ordinal);
@@ -119,6 +120,27 @@ public sealed class ProjectModObserverSourceTests
         Assert.Contains("ReferenceEquals(finalMenu.context, expectedChest)", source, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(finalMenu.sourceItem, expectedChest)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SendInput", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorldActionsAndTransferBindToTheExactRoleOrScreen()
+    {
+        string selection = ReadSource("ReviewActionSelection.cs");
+        Assert.Contains("ProcessRole == Role", selection, StringComparison.Ordinal);
+        Assert.Contains("(Role is null || ScreenId is null && !Context.IsSplitScreen)", selection, StringComparison.Ordinal);
+        Assert.Contains("Context.ScreenId == (ScreenId ?? 0)", selection, StringComparison.Ordinal);
+        Assert.Contains("verifiedRole != Role || network.IsHost != Context.IsMainPlayer", selection, StringComparison.Ordinal);
+        Assert.Contains("host.TryVerifyReviewFixture", selection, StringComparison.Ordinal);
+        Assert.Contains("fixture.VerifyCurrentLocalScreen()", selection, StringComparison.Ordinal);
+        foreach (string file in new[] { "ReviewWorldActionCommand.cs", "ReviewWorldActCommand.cs", "ReviewWorldMoveCommand.cs" })
+        {
+            string source = ReadSource(file);
+            Assert.Contains("ReviewActionSelection.TryParse(", source, StringComparison.Ordinal);
+            Assert.Contains("bool bindingReady = selection.BindingReady(launch);", source, StringComparison.Ordinal);
+            Assert.Contains("bindingReady && selection.FixtureReady(testSave, networkTwo)", source, StringComparison.Ordinal);
+            Assert.Contains("selection.Topology, selection.Role", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("SDVKIT_NETWORK_TWO_ROLE", source, StringComparison.Ordinal);
+        }
     }
 
     private static string ReadObserverSource()

@@ -197,14 +197,11 @@ public sealed class ReviewWorldMoveTests
     }
 
     [Fact]
-    public void PermissionAndTopologyFailBeforeDispatch()
+    public void PermissionFailsBeforeDispatch()
     {
         using TemporaryDirectory temporary = new();
         Assert.Equal("worldActionTestSaveRequired", ProjectReviewWorldMoveService.Execute(
             ProjectReviewMcpTests.CreateReadyReview(temporary), new("down", false),
-            _ => throw new InvalidOperationException()).ErrorCode);
-        Assert.Equal("worldActionTopologyUnsupported", ProjectReviewWorldMoveService.Execute(
-            ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host"), new("down", false),
             _ => throw new InvalidOperationException()).ErrorCode);
     }
 
@@ -232,7 +229,7 @@ public sealed class ReviewWorldMoveTests
     }
 
     [Fact]
-    public void ServerRegistersTheToolOnlyForAnOptedInUnboundSingleReview()
+    public void ServerRegistersTheToolOnlyWhenOptedInForEverySelection()
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpWorldMoveRunner run = (_, _) => throw new InvalidOperationException("Listing must not act.");
@@ -242,8 +239,8 @@ public sealed class ReviewWorldMoveTests
         ProjectReviewMcpRuntimeReader single = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
         Assert.Contains(ProjectReviewMcpWorldMoveTools.ToolName, Names(single, run));
         Assert.DoesNotContain(ProjectReviewMcpWorldMoveTools.ToolName, Names(single, null));
-        Assert.DoesNotContain(ProjectReviewMcpWorldMoveTools.ToolName,
-            Names(ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host"), run));
+        Assert.Contains(ProjectReviewMcpWorldMoveTools.ToolName,
+            Names(ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "farmhand"), run));
     }
 
     [Theory]
