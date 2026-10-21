@@ -3,13 +3,38 @@ namespace SdvKit.GameSide;
 internal sealed class StatusPublication
 {
     private bool _activeWriteErrorLogged;
+    private bool _fallbackLogged;
+    private bool _asideLeftoverLogged;
 
-    public bool TryWrite(string phase, Action write, Action<string> logError)
+    public bool TryWrite(
+        string phase,
+        Action write,
+        Action<string> logError,
+        Action<string>? logInfo = null,
+        Action<string>? logWarn = null)
     {
         try
         {
+            long replacements = WindowsStatusFile.HeldDestinationReplacements;
             write();
             _activeWriteErrorLogged = false;
+            if (!_fallbackLogged && WindowsStatusFile.HeldDestinationReplacements > replacements)
+            {
+                _fallbackLogged = true;
+                logInfo?.Invoke("SDVKit status snapshot replaced through the held-destination fallback; see #136.");
+            }
+
+            string? leftover = WindowsStatusFile.AsideCleanupError;
+            if (leftover is null)
+            {
+                _asideLeftoverLogged = false;
+            }
+            else if (!_asideLeftoverLogged)
+            {
+                _asideLeftoverLogged = true;
+                logWarn?.Invoke($"SDVKit lab status: {leftover}");
+            }
+
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
