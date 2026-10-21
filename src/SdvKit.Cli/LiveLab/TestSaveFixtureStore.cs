@@ -1,6 +1,8 @@
 using System.Security;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace SdvKit.Cli.LiveLab;
 
@@ -70,6 +72,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
     public TestSavePreparation PrepareForStart()
     {
         TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: true);
+        RemoveStaleCreationCopy(FindStaleCreationCopy(identity));
 
         string mode;
         if (Directory.Exists(_paths.TestSaveBaselinePath))
@@ -112,7 +115,9 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         return Activate(identity, TestSaveContract.ReviewMode);
     }
 
-    public void ResetReview()
+    // Restores the work save and the language of this profile and of the other given profiles
+    // (the network-2 farmhand). Everything is checked before the first change.
+    public void ResetReview(params string[] otherStardewDataPaths)
     {
         if (!File.Exists(_paths.TestSaveManifestPath)
             || !Directory.Exists(_paths.TestSaveBaselinePath))
@@ -122,12 +127,106 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         }
 
         TestSaveIdentity identity = PrepareFixtureAccess(allowCreateIdentity: false);
+        string? staleCopy = FindStaleCreationCopy(identity);
+        string[] profiles = [_paths.StardewDataPath, .. otherStardewDataPaths];
+        foreach (string profile in profiles)
+        {
+            LabWindowPreferences.VerifyLanguageRestorable(profile);
+        }
+
         ResetWorkFromBaseline(identity);
         _junction.VerifyInactive(
             _savesRoot,
             identity.SaveId,
             _paths.TestSaveWorkPath);
-        LabWindowPreferences.RestoreDefaultLanguage(_paths.StardewDataPath);
+        RemoveStaleCreationCopy(staleCopy);
+        foreach (string profile in profiles)
+        {
+            LabWindowPreferences.RestoreDefaultLanguage(profile);
+        }
+    }
+
+    // SDVKit 2.1.0 and earlier let Stardew's first serialization of a new fixture avoid the
+    // fixture's slot binding, which left a '<farm>2_<id>' copy that the Load menu lists in
+    // arbitrary order beside the fixture (#341). Only that exact, marked copy is removed.
+    private string? FindStaleCreationCopy(TestSaveIdentity identity)
+    {
+        string name = $"{identity.FarmName}2_{identity.UniqueGameId.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        string path = Path.Combine(_savesRoot, name);
+        if (!Directory.Exists(path))
+        {
+            return File.Exists(path)
+                ? throw new TestSaveStaleCopyException($"The stale fixture copy '{name}' is not a directory; SDVKit leaves it alone.")
+                : null;
+        }
+
+        try
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException("It is a link.");
+            }
+
+            LiveLabPaths.RejectReparsePointsBelow(path);
+            string[] allowed = [name, name + "_old", "SaveGameInfo", "SaveGameInfo_old"];
+            if (Directory.EnumerateDirectories(path).Any()
+                || Directory.EnumerateFiles(path).Any(file => !allowed.Contains(Path.GetFileName(file), StringComparer.Ordinal))
+                || !File.Exists(Path.Combine(path, name)))
+            {
+                throw new InvalidDataException("It holds other entries than one Stardew save.");
+            }
+
+            XElement farmer = ReadSaveGameInfo(Path.Combine(path, "SaveGameInfo"));
+            if (ReadMarker(farmer, TestSaveContract.FixtureMarkerKey) != identity.FixtureId
+                || ReadMarker(farmer, TestSaveContract.WorkspaceOwnerMarkerKey) != identity.WorkspaceOwnerId)
+            {
+                throw new InvalidDataException("Its fixture markers differ from the registered fixture.");
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+            or InvalidDataException
+            or InvalidOperationException
+            or UnauthorizedAccessException
+            or XmlException)
+        {
+            throw new TestSaveStaleCopyException(
+                $"The isolated profile holds '{name}', which is not SDVKit's own stale copy of this fixture; SDVKit leaves it alone. {exception.Message}");
+        }
+
+        return path;
+    }
+
+    private static void RemoveStaleCreationCopy(string? path)
+    {
+        if (path is not null)
+        {
+            LiveLabPaths.RejectReparsePointsBelow(path);
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private static XElement ReadSaveGameInfo(string path)
+    {
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+        };
+        using XmlReader reader = XmlReader.Create(path, settings);
+        XElement root = XDocument.Load(reader).Root
+            ?? throw new InvalidDataException("Its SaveGameInfo is empty.");
+        return string.Equals(root.Name.LocalName, "Farmer", StringComparison.Ordinal)
+            ? root
+            : throw new InvalidDataException("Its SaveGameInfo is not a Stardew farmer.");
+    }
+
+    private static string? ReadMarker(XElement farmer, string key)
+    {
+        string?[] values = (farmer.Element("modData")?.Elements("item") ?? [])
+            .Where(item => string.Equals(item.Element("key")?.Element("string")?.Value, key, StringComparison.Ordinal))
+            .Select(item => item.Element("value")?.Element("string")?.Value)
+            .ToArray();
+        return values.Length == 1 ? values[0] : null;
     }
 
     internal string SelectInspectionSource(string selection, out TestSaveIdentity identity)
@@ -779,3 +878,5 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
         return value == 0 ? 1 : value;
     }
 }
+
+internal sealed class TestSaveStaleCopyException(string message) : InvalidOperationException(message);

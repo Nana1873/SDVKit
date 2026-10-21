@@ -27,9 +27,10 @@ script:
 
 The title screen exposes no menu components, so Language, Deutsch, Load and the save row are clicked at fixed positions
 measured for the default 1280x720 viewport (each screenshot is checked for that size); pass other positions as parameters.
-The fixture must be the only save in the isolated profile, so the Load menu has one row; a lab whose fixture was created
-by SDVKit 2.1.0 or earlier also holds a stale `SDVKit2_<id>` copy that the Load menu shows in arbitrary order (issue
-#341, see docs/live-review.md). The game's log must name the fixture's save as the loaded one, or the run fails.
+The fixture is clicked in the first Load-menu row. `lab test-save` removes the stale `SDVKit2_<uniqueGameId>` copy that a
+fixture created by SDVKit 2.1.0 or earlier left in the isolated profile and that the Load menu shows in arbitrary order
+(issue #341, see docs/live-review.md); the script requires it gone before the first start. The game's log must name the
+fixture's save as the loaded one, or the run fails.
 Controller input is not covered (issue #271).
 
 Guide: docs/test-a-multilingual-ui.md.
@@ -178,22 +179,8 @@ function Select-Language([string] $Label, [int] $X, [int] $Y, [string] $Code) {
     Save-TitleScreenshot "$Label-title"
 }
 
-function Assert-OnlyFixtureSave {
-    # At the title screen the suspended review makes status exit 3 with only testSaveFailed until the reload.
-    $read = Invoke-SdvKit 'status-row' @('project', 'review', 'status', '--topology', 'single', '--json') -AllowExit @(0, 3)
-    $status = $read.Json
-    Assert-That ($read.Exit -eq 0 -or (@($status.problems).Count -eq 1 -and $status.problems[0].code -ceq 'testSaveFailed')) 'the title-screen status reports a problem other than the suspended fixture.'
-    $saveId = [string]$status.lab.gameSide.testSave.saveId
-    $script:saveId = $saveId
-    # The Load menu orders saves by their save minute, so a second save of the same farm could take the first row; loading it
-    # is refused and ends the review. Require the fixture to be the only save: the Load menu then has exactly one row.
-    $folders = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $profileRoot 'Saves') -Directory | ForEach-Object Name)
-    Assert-That ($folders.Count -eq 1 -and $folders[0] -ceq $saveId) "the isolated profile holds the saves $($folders -join ', '); only the fixture $saveId may be there. A stale SDVKit2_ copy comes from a fixture created by SDVKit 2.1.0 or earlier (#341): stop the lab and remove that folder from $(Join-Path $profileRoot 'Saves'), or use a new lab root."
-}
-
 function Load-FixtureFromTitle([string] $Label) {
-    # Native Load menu, then its only row; the review then revalidates the registered save.
-    Assert-OnlyFixtureSave
+    # Native Load menu, then its first row; the review then revalidates the registered save.
     Invoke-TitleClick "$Label-load" $LoadX $LoadY
     Save-TitleScreenshot "$Label-load"
     Invoke-TitleClick "$Label-row" $LoadRowX $LoadRowY
@@ -273,6 +260,12 @@ try {
         Assert-That ((Get-FileHash (Join-Path $mod $file)).Hash -eq (Get-FileHash (Join-Path $ready $file)).Hash) "$file differs between the source and the package."
     }
     Invoke-SdvKit 'test-save' @('lab', 'test-save', '--topology', 'single', '--game-path', $context.GamePath, '--json') | Out-Null
+    # The Load menu orders saves by their save minute, so the stale copy of the fixture could take the first row; loading it
+    # is refused and ends the review. lab test-save removes SDVKit's own copy; require it gone (#341).
+    $fixture = Get-Content -Raw -LiteralPath (Join-Path $context.Lab '.sdvkit\lab\single\test-save\fixture.json') | ConvertFrom-Json
+    $script:saveId = [string]$fixture.saveId
+    $staleCopy = "$($fixture.farmName)2_$($fixture.uniqueGameId)"
+    Assert-That (-not (Test-Path -LiteralPath (Join-Path $profileRoot "Saves\$staleCopy"))) "the isolated profile still holds the stale fixture copy $staleCopy after lab test-save."
 
     Write-Step 'English start: the dialogue, then cancel with a mouse click.'
     Start-Package 'initial'

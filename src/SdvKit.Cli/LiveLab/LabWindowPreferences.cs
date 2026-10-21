@@ -8,7 +8,8 @@ internal static class LabWindowPreferences
     internal const int Width = 1280;
     internal const int Height = 720;
 
-    // Stardew's default language, which every new isolated profile starts with.
+    // Stardew's default language. A new isolated profile has no startup preferences until the
+    // game writes them, and SDVKit assumes it starts in this language.
     internal const string DefaultLanguageCode = "en";
 
     public static void Prepare(string stardewDataPath)
@@ -34,7 +35,13 @@ internal static class LabWindowPreferences
             RequiredChild(root, "languageCode").Value = DefaultLanguageCode);
     }
 
-    private static void Update(string stardewDataPath, Action<XElement> change)
+    // Checks without writing, so a reset can refuse before it changes anything.
+    public static void VerifyLanguageRestorable(string stardewDataPath)
+    {
+        Update(stardewDataPath, root => RequiredChild(root, "languageCode"), write: false);
+    }
+
+    private static void Update(string stardewDataPath, Action<XElement> change, bool write = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stardewDataPath);
 
@@ -86,6 +93,10 @@ internal static class LabWindowPreferences
         }
 
         change(root);
+        if (!write)
+        {
+            return;
+        }
 
         string temporaryPath = preferencesPath + ".sdvkit-" + Guid.NewGuid().ToString("N");
         try

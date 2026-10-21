@@ -341,7 +341,7 @@ To test persistence:
 
 While the game is at the title screen, status reports `testSaveFailed` (phase `failed`, `identityVerified=false`) and fixture tools answer `reviewTestSaveNotReady`; after the reload it reports phase `passed` with the message `Exact fixture reloaded and revalidated for interactive review.`. The review's scenario log records the order: `returningToTitle`, `returnedToTitle`, `failed`, then `passed`. A refused reload records `The reload after the return to title was not the registered fixture: ...` and stays failed; stop and reset the review.
 
-The Load menu should list only the fixture. A lab whose fixture was created by SDVKit 2.1.0 or earlier also keeps a stale `SDVKit2_<id>` save in the isolated profile's `Saves` folder: Stardew's own first serialization of the new fixture, with the same farm and markers. The Load menu shows the two rows in arbitrary order, and loading that copy is refused. Remove the `SDVKit2_<id>` folder from `.sdvkit/lab/profiles/single/AppData/Roaming/StardewValley/Saves` while the lab is stopped, or use a new lab root.
+The Load menu should list only the fixture; older labs may also hold a [stale fixture copy](#stale-fixture-copy).
 
 Always finish the review:
 
@@ -367,6 +367,10 @@ For `network-2`:
 The language is the isolated profile's `languageCode` in `startup_preferences`, which a title-screen language change sets and a stop keeps for the restart. Reset sets it back to `en`, Stardew's default and the language every new lab profile starts with. Other options in the isolated profile are kept; SDVKit sets the 1280x720 window options itself at every start.
 
 An unconfirmed restore of the isolated game option after a verified exit is a **warning**. These block: unknown process identity, unconfirmed exit, unsafe paths, or missing fixture or staging cleanup. Let stop and reset choose the paths. Never delete ownership records by hand or kill the game by process name. The [lab reference](lab-reference.md#identity-and-exit) explains these results.
+
+### Stale fixture copy
+
+The Load menu should list only the fixture. A lab whose fixture was created by SDVKit 2.1.0 or earlier also keeps a stale `SDVKit2_<uniqueGameId>` save in the isolated profile's `Saves` folder: Stardew's own first serialization of the new fixture, with the same farm and markers. The Load menu shows the two rows in arbitrary order, and loading that copy is refused. `lab test-save` and `project review reset` remove it while the lab is stopped, but only that exact folder name, as a plain directory holding one Stardew save whose `SDVKit/FixtureId` and `SDVKit/WorkspaceOwnerId` markers match the registered fixture. Anything else under that name is left alone and refused with `testSaveStaleCopyRefused`. A fixture created now has Stardew's own `_old` backups (`SDVKit_<id>_old`, `SaveGameInfo_old`) in its baseline instead.
 
 ## Troubleshooting
 

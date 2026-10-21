@@ -398,8 +398,7 @@ internal static partial class ProjectReviewService
             LiveLabPaths hostPaths = LiveLabPaths.ResolveNetworkRole(
                 paths,
                 NetworkTwoContract.HostRole);
-            new TestSaveFixtureStore(hostPaths).ResetReview();
-            LabWindowPreferences.RestoreDefaultLanguage(
+            new TestSaveFixtureStore(hostPaths).ResetReview(
                 LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StardewDataPath);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
@@ -411,7 +410,12 @@ internal static partial class ProjectReviewService
                 null,
                 fixtureReset: false,
                 stagingRemoved: false,
-                [Problem("reviewFixtureResetFailed", null, exception.Message)]);
+                [Problem(
+                    exception is TestSaveStaleCopyException
+                        ? "testSaveStaleCopyRefused"
+                        : "reviewFixtureResetFailed",
+                    null,
+                    exception.Message)]);
         }
 
         ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(

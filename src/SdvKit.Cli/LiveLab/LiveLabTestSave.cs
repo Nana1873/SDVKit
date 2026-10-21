@@ -41,7 +41,9 @@ internal sealed partial class LiveLabService
                 return TestSaveWorkflowFailure(
                     identity,
                     logs,
-                    "testSavePreparationFailed",
+                    exception is TestSaveStaleCopyException
+                        ? "testSaveStaleCopyRefused"
+                        : "testSavePreparationFailed",
                     exception.Message,
                     warnings);
             }

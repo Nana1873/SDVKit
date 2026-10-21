@@ -69,7 +69,12 @@ internal static partial class ProjectReviewService
                 "blocked",
                 null,
                 stagingRemoved: false,
-                [Problem("reviewFixtureResetFailed", null, exception.Message)]);
+                [Problem(
+                    exception is TestSaveStaleCopyException
+                        ? "testSaveStaleCopyRefused"
+                        : "reviewFixtureResetFailed",
+                    null,
+                    exception.Message)]);
         }
 
         ProjectReviewCleanupResult cleanup = ProjectModStager.RemoveReview(paths);
