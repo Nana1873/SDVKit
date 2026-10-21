@@ -560,7 +560,9 @@ public sealed class ModEntry : Mod
                 _projectMod?.Snapshot,
                 CaptureRuntimeSnapshot(),
                 _projectMod?.LoadedModsSnapshot),
-            message => Monitor.Log(message, LogLevel.Error));
+            message => Monitor.Log(message, LogLevel.Error),
+            message => Monitor.Log(message, LogLevel.Info),
+            message => Monitor.Log(message, LogLevel.Warn));
     }
 
     internal static RuntimeSnapshotMarker CaptureRuntimeSnapshot()

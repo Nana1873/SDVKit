@@ -5,6 +5,7 @@ using Xunit.Abstractions;
 
 namespace SdvKit.Tests;
 
+[Collection("WindowsStatusFile")]
 public sealed class LiveLabStorageTests(ITestOutputHelper output)
 {
     [Fact]

@@ -50,6 +50,14 @@ internal static class GameSideStatusReader
 
     /// <summary>How long an absent destination name is re-read before it counts as pending.</summary>
     internal static readonly TimeSpan AbsentNameWindow = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Test-only: invoked on every wait for an absent destination name, on the reading thread, so a
+    /// test can restore the name at a chosen wait instead of racing a timer. Production leaves it
+    /// unset.
+    /// </summary>
+    [ThreadStatic]
+    internal static Action? AbsentNameWaitObserver;
     private static readonly JsonSerializerOptions StatusJsonOptions = CreateStatusJsonOptions();
 
     private static JsonSerializerOptions CreateStatusJsonOptions()
@@ -713,6 +721,7 @@ internal static class GameSideStatusReader
             return false;
         }
 
+        AbsentNameWaitObserver?.Invoke();
         Thread.Sleep(1);
         return true;
     }
