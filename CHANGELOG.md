@@ -11,6 +11,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 - `scripts/acceptance/gmcm-checkbox.ps1` proves a GMCM checkbox live: the toggle stays unsaved, Save writes `Enabled=true`, `config-reconcile` accepts it and a restart with the saved config warps to Farm 64,15 (#284). It shares its GMCM steps with `gmcm-number.ps1` through new helpers in `SdvKitAcceptance.psm1`. `docs/gmcm-authoring.md` now keeps only the checkbox contract and API notes; the steps are in `docs/test-a-gmcm-option.md`.
 - `scripts/acceptance/container.ps1` proves `stardew_container_transfer` and `stardew_container_get` live: a one-time reward, an exact deposit and withdrawal, a stale request refused with `containerTransferSelectionStale`, and the chest contents after a fixture save, stop and restart (#284). `docs/inventory-container-authoring.md` is replaced by `docs/test-a-container-transfer.md`.
+- `scripts/acceptance/data-migration.ps1` proves a save-data migration live with the three builds of the data-migration sample: v1 saves, a broken v2 refuses and keeps the data, the corrected v2 migrates once without a second reward, and a restart loads the existing ledger (#284). `docs/test-a-data-migration.md` carries the steps; `docs/data-migration-authoring.md` keeps the schema and behaviour table and the manual missing/future-data cases.
 
 ### Fixed
 
