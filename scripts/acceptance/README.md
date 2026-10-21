@@ -9,6 +9,7 @@ Each script runs one SDVKit workflow end to end against the real game: build, pa
 | [`player-actions.ps1`](player-actions.ps1) | Walking in four directions and walking versus running; `stardew_world_move` (exactly one tile in each direction with the reported tile confirmed by a runtime read, a turn without a tile change, and a blocked target refused with `worldMoveTargetBlocked`); `lab_warp` and a location change through a map warp; hotbar number keys and the wheel refusal; game menu open, inventory move by two clicks, tab click and Escape; hoe, pickaxe and scythe on the faced tile; `stardew_world_act` (hoe by `useTool`, the Farm sign by `check`, refusal of a far tile); `stardew_fixture_item_add` and placing the added chest by `check`; `stardew_fixture_npc_place`, the runtime NPC list, talking to Lewis and giving him a gift (friendship rises each time); fishing preparation and cast. With `-Topology network-2 -Role <host\|farmhand>` or `-Screen <id>`, only the input-only sections (walking, hotbar keys, game menu with tab switch, inventory move by two clicks, Escape) run, through that network role or split-screen screen; such a run is not full acceptance. | none | [Player actions](../../docs/player-actions.md) |
 | [`gmcm-number.ps1`](gmcm-number.ps1) | GMCM slider moves stay unsaved; Save writes the new value, `config-reconcile` accepts it, and a restart with the saved config shows its effect. | `-Gmcm` (1.16.0 folder) | [Change and verify a GMCM option](../../docs/test-a-gmcm-option.md) |
 | [`gmcm-checkbox.ps1`](gmcm-checkbox.ps1) | A GMCM checkbox toggle stays unsaved; Save writes `Enabled=true`, `config-reconcile` accepts it, and a restart with the saved config warps to Farm 64,15. | `-Gmcm` (1.16.0 folder) | [Change and verify a GMCM option](../../docs/test-a-gmcm-option.md) |
+| [`container.ps1`](container.ps1) | A one-time reward gives ten Stone; `stardew_container_transfer` deposits three and withdraws one with exact `7/3/0` and `8/2/0` totals, a stale request is refused with `containerTransferSelectionStale`, and the chest contents survive a fixture save, stop and restart without the reward repeating. | none | [Test a chest transfer](../../docs/test-a-container-transfer.md) |
 
 ## Run a script
 
@@ -39,7 +40,6 @@ The remaining recipes in `docs/` are guides. These are worth converting into scr
 
 | Recipe | Why |
 | --- | --- |
-| [Inventory and chest](../../docs/inventory-container-authoring.md) | Native chest transfer and persistence; container transfer is a separate capability. |
 | [Data migration](../../docs/data-migration-authoring.md) | Save data across stop and restart. |
 | [Progression](../../docs/progression-authoring.md) | NPC, mail and quest reads through a reload. |
 | [Multiplayer](../../docs/multiplayer-authoring.md) | The only end-to-end `network-2` and split-screen workflow. |
