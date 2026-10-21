@@ -229,7 +229,7 @@ internal sealed class PendingReviewCommand(string[] arguments, int screenId)
 internal sealed class ReviewHttpEndpoint : IDisposable
 {
     private const int HeaderLimit = 8192;
-    private const int MaximumConnections = 8;
+    internal const int MaximumConnections = 8;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly string _launchId;
@@ -241,6 +241,9 @@ internal sealed class ReviewHttpEndpoint : IDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
     private int _connections;
+
+    /// <summary>Connections currently being handled; for tests that need to wait for the limit deterministically.</summary>
+    internal int ActiveConnections => Volatile.Read(ref _connections);
 
     private ReviewHttpEndpoint(
         string launchId,
