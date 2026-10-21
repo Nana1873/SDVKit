@@ -1,0 +1,17 @@
+{
+  "Name": "GMCM Arrival",
+  "Author": "ExampleAuthor",
+  "Version": "1.0.0",
+  "Description": "Configure an optional start-of-day Farm warp through GMCM.",
+  "UniqueID": "ExampleAuthor.GmcmArrival",
+  "EntryDll": "GmcmArrival.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": [],
+  "Dependencies": [
+    {
+      "UniqueID": "spacechase0.GenericModConfigMenu",
+      "MinimumVersion": "1.16.0",
+      "IsRequired": false
+    }
+  ]
+}

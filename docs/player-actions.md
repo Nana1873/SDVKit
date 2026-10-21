@@ -53,10 +53,10 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script; host; farmhand; screen 1 | — |
 | Close a menu | Press `Escape` (the close component is also listed by `menu_get`) | `menuOpen=false` | script (game menu, `Escape`); host; farmhand; screen 1 | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
 | Move items in the inventory | Click the source `inventorySlot` component (picks the item up), then the target one (places it); a drag only picks it up | `stardew_inventory_get` slots | script; host; farmhand; screen 1 | The held item is not reported by `inventory_get` |
-| Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine; tool both ways in player-actions); farmhand (tool: withdraw 2, deposit 1); host (setup: deposit 3) | Not verified live on a screen: screens have no fixture tools for a chest |
+| Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine, container; tool both ways in player-actions); farmhand (tool: withdraw 2, deposit 1); host (setup: deposit 3) | Not verified live on a screen: screens have no fixture tools for a chest |
 | Buy in a shop | Click a sale row from `menu_get` | `stardew_shop_get` money, stock, held item | script (shop) | `SeedShop` Gold offers only |
 | Craft | Give the ingredients with `stardew_fixture_item_add`, then click a recipe component of the crafting page | Inventory and crafting page | — | Not in the script yet |
-| Change a GMCM option | Click or drag at measured screen positions | Mod state and saved config | script (gmcm-number) | GMCM exposes no components |
+| Change a GMCM option | Click or drag at measured screen positions | Mod state and saved config | script (gmcm-number, gmcm-checkbox) | GMCM exposes no components |
 
 ## Fishing
 
