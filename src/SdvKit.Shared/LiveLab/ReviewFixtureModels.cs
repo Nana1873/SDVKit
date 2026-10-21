@@ -16,6 +16,7 @@ internal static class ReviewFixtureTransportContract
     public const string ObjectEnsureOperation = "objectEnsure";
     public const string ObjectClearOperation = "objectClear";
     public const string FishingPrepareOperation = "fishingPrepare";
+    public const string FishingCatchOperation = "fishingCatch";
     public const string ItemAddOperation = "itemAdd";
     public const string NpcPlaceOperation = "npcPlace";
     public const string SetTimeOperation = "setTime";
@@ -76,6 +77,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectEnsureOperation
         or ObjectClearOperation
         or FishingPrepareOperation
+        or FishingCatchOperation
         or ItemAddOperation
         or NpcPlaceOperation
         or SetTimeOperation
@@ -110,6 +112,7 @@ internal static class ReviewFixtureTransportContract
         or ObjectEnsureOperation
         or ObjectClearOperation
         or FishingPrepareOperation
+        or FishingCatchOperation
         or ItemAddOperation
         or NpcPlaceOperation
         || IsLabOperation(value);
@@ -144,6 +147,14 @@ internal sealed record ReviewFixtureItemReport(
     int Stack,
     int Quality,
     int Slot,
+    string InventoryRevision);
+
+/// <summary>The fish or item a completed catch fixture put into the backpack, and the inventory revision right after it.</summary>
+internal sealed record ReviewFixtureCatchReport(
+    string QualifiedItemId,
+    int Stack,
+    int Quality,
+    int Size,
     string InventoryRevision);
 
 internal sealed record ReviewFixtureRequestBinding(
@@ -221,7 +232,9 @@ internal sealed record ReviewFixtureReport(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ReviewFixtureLabReport? Lab = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    ReviewFixtureItemReport? Item = null);
+    ReviewFixtureItemReport? Item = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ReviewFixtureCatchReport? Catch = null);
 
 internal sealed record ReviewFixtureResponseEnvelope(
     int SchemaVersion,

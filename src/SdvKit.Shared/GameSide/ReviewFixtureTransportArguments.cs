@@ -186,6 +186,10 @@ internal static class ReviewFixtureTransportArguments
                 }
 
                 return false;
+            case ReviewFixtureTransportContract.FishingCatchOperation when arguments.Count == 8:
+                query = new ReviewFixtureQuery(operation);
+                request = new ReviewFixtureFishingCatchRequest();
+                return true;
             case ReviewFixtureTransportContract.ItemAddOperation
                 when arguments.Count == 11
                     && TryDecode(arguments[8], out string itemId)

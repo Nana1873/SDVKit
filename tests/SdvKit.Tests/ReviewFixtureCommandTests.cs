@@ -244,6 +244,22 @@ public sealed class ReviewFixtureCommandTests
     }
 
     [Fact]
+    public void FishingCatchRunsOnlyForTheMainPlayer()
+    {
+        var farmhand = new FakeRuntime
+        {
+            Access = new ReviewFixtureAccess(true, false, "fixture-a", "farmhand", "verified"),
+        };
+        ReviewFixtureResult refused = ReviewFixtureOperation.Execute(new ReviewFixtureFishingCatchRequest(), farmhand);
+        Assert.False(refused.Succeeded);
+        Assert.Equal(0, farmhand.Dispatches);
+
+        var host = new FakeRuntime();
+        Assert.True(ReviewFixtureOperation.Execute(new ReviewFixtureFishingCatchRequest(), host).Succeeded);
+        Assert.Equal(1, host.Dispatches);
+    }
+
+    [Fact]
     public void RequestBindingIsRecheckedImmediatelyBeforeMutation()
     {
         const string launchId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -1304,6 +1320,8 @@ public sealed class ReviewFixtureCommandTests
         public ReviewFixtureResult Farm(ReviewFixtureAccess access) => Dispatched();
 
         public ReviewFixtureResult PrepareFishing(ReviewFixtureAccess access, bool skipTutorial, int? originX, int? originY) => Dispatched();
+
+        public ReviewFixtureResult CatchFish(ReviewFixtureAccess access) => Dispatched();
 
         public void BeginNavigation(
             ReviewFixtureAccess access,

@@ -98,6 +98,7 @@ MCP tools and `project review call` need the opt-in flag. The dedicated CLI comm
 | Fixture status and navigation; warp, zoom, window | `stardew_fixture_*`, `stardew_lab_warp/set_zoom/set_window` | `--allow-fixture-actions` | Test save; any role, not with `--screen` |
 | Buildings, animals and objects; time, weather, season; save | `stardew_fixture_*_ensure`, `stardew_fixture_object_clear`, `stardew_lab_set_time/weather/season`, `stardew_fixture_save` | `--allow-fixture-actions` | Test save; `single` or host |
 | Fishing preparation | `stardew_fixture_fishing_prepare` | `--allow-fixture-actions` | Test save; `single` or host. See [fishing](lab-reference.md#fishing-preparation) |
+| Land a fish for the current cast | `stardew_fixture_fishing_catch` | `--allow-fixture-actions` | Test save; `single` or host. See [fishing catch](lab-reference.md#fishing-catch) |
 | Give the player an item | `stardew_fixture_item_add` | `--allow-fixture-actions` | Test save; `single` or host. See [item preparation](lab-reference.md#item-preparation) |
 | Bring a villager next to the player | `stardew_fixture_npc_place` | `--allow-fixture-actions` | Test save; `single` or host. See [NPC placement](lab-reference.md#npc-placement) |
 | Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | Test save; single, role or screen ([roles and screens](world-interaction.md#roles-and-screens)). See [world interaction](world-interaction.md) |

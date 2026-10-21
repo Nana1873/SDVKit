@@ -23,6 +23,7 @@ internal static class ProjectReviewMcpFixtureTools
     internal const string ObjectEnsureToolName = "stardew_fixture_object_ensure";
     internal const string ObjectClearToolName = "stardew_fixture_object_clear";
     internal const string FishingToolName = "stardew_fixture_fishing_prepare";
+    internal const string FishingCatchToolName = "stardew_fixture_fishing_catch";
     internal const string ItemAddToolName = "stardew_fixture_item_add";
     internal const string NpcPlaceToolName = "stardew_fixture_npc_place";
     internal const string SetTimeToolName = "stardew_lab_set_time";
@@ -280,6 +281,18 @@ internal static class ProjectReviewMcpFixtureTools
                 "inventoryRevision": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
               }
             },
+            "catch": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["qualifiedItemId", "stack", "quality", "size", "inventoryRevision"],
+              "properties": {
+                "qualifiedItemId": { "type": "string", "minLength": 4, "maxLength": 128 },
+                "stack": { "type": "integer", "minimum": 1, "maximum": 999 },
+                "quality": { "type": "integer", "enum": [0, 1, 2, 4] },
+                "size": { "type": "integer", "minimum": -1, "description": "Fish size in inches as the game records it; -1 for a catch without a size, such as trash." },
+                "inventoryRevision": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+              }
+            },
             "lab": {
               "type": "object",
               "additionalProperties": false,
@@ -492,6 +505,14 @@ internal static class ProjectReviewMcpFixtureTools
                 FishingInputSchema, MessageOutputSchema(ReviewFixtureTransportContract.FishingPrepareOperation),
                 readOnly: false, destructive: false, idempotent: false,
                 TryFishing));
+            tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, FishingCatchToolName,
+                ReviewFixtureTransportContract.FishingCatchOperation,
+                "Test setup, not proof of the bite or the bobber-bar minigame: while the main player's cast bobber is in the water (stardew_runtime_get localPlayer.data.fishing.fishing=true), make the fish bite now and hook it through the game's own FishingRod path, which picks the fish for this bobber; then skip only the minigame as a won, non-perfect catch without treasure. The game itself records the catch (collections, fishing XP, stats, special orders) and adds the fish to the backpack, so patches on the FishingRod catch methods and the BobberBar constructor and inventory events see it; the bobber bar is never updated, drawn or seen by Display.MenuChanged, and animations and sounds are skipped. Refuses fail-closed with a named code when not fishing, when the bobber is not in fishable water, at a fish pond, when the rod is mid-bite, reeling or holding a catch, or when the backpack has no empty slot. Reports the item, stack, quality, size and the new inventoryRevision.",
+                EmptyInputSchema, CreateOutputSchema(ReviewFixtureTransportContract.FishingCatchOperation, "catch"),
+                readOnly: false, destructive: false, idempotent: false,
+                arguments => HasOnly(arguments, [])
+                    ? new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingCatchOperation)
+                    : null));
             tools.Add(new FixtureMcpTool(runtimeReader, runQuery, topology, role, ItemAddToolName,
                 ReviewFixtureTransportContract.ItemAddOperation,
                 "Test setup: put one new stack of an existing item (qualified ID such as (O)24, optional quality 0, 1, 2 or 4) into the main player's first empty backpack slot. Never merges or replaces; fails closed when the backpack is full. Reports the slot and the new inventoryRevision. Not proof of game behaviour.",
@@ -826,6 +847,8 @@ internal static class ProjectReviewMcpFixtureTools
                 or ReviewFixtureTransportContract.FishingPrepareOperation => report.Lab is null && report.Item is null,
             ReviewFixtureTransportContract.ItemAddOperation => report.Lab is null
                 && ProjectReviewFixtureService.ItemMatches(report.Item, query),
+            ReviewFixtureTransportContract.FishingCatchOperation => report.Lab is null && report.Item is null
+                && ProjectReviewFixtureService.CatchValid(report.Catch),
             _ when ReviewFixtureTransportContract.IsLabOperation(query.Operation) => report.Lab is not null,
             _ => false,
         };
@@ -875,6 +898,7 @@ internal static class ProjectReviewMcpFixtureTools
             "save",
             "lab",
             "item",
+            "catch",
         })
         {
             if (!string.Equals(candidate, payloadName, StringComparison.Ordinal))

@@ -185,6 +185,7 @@ Input success proves delivery only. For text, first check the field on a screens
 | `stardew_fixture_object_ensure { "building": "coop-a", "qualifiedItemId": "(O)388" }` | Places an object in a fixture building. |
 | `stardew_fixture_object_clear { "building": "coop-a" }` | Removes SDVKit's objects from a fixture building. |
 | `stardew_fixture_fishing_prepare { "skipTutorial": true, "x": 40, "y": 12 }` | [Fishing preparation](lab-reference.md#fishing-preparation) at the bank nearest the start point or player. |
+| `stardew_fixture_fishing_catch` | [Fishing catch](lab-reference.md#fishing-catch): lands the game's own fish for the current cast, skipping only the minigame; returns it in `catch` with the inventory revision. |
 | `stardew_fixture_item_add { "qualifiedItemId": "(O)24", "stack": 5, "quality": 2 }` | [Item preparation](lab-reference.md#item-preparation): a new stack in the first empty backpack slot; returns the slot and inventory revision. |
 | `stardew_fixture_npc_place { "name": "Lewis", "x": 65, "y": 18 }` | [NPC placement](lab-reference.md#npc-placement): warps a villager to a free tile in the player's location; returns it in `navigation`. |
 | `stardew_fixture_save {}` | Saves and returns `saveId` and `persistedAtUtc`. |

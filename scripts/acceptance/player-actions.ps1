@@ -24,7 +24,9 @@ Proves each action through a state read, not through the input acknowledgement:
 - stardew_world_interact: a tilled and planted plot is watered (the soil reads watered);
 - stardew_container_transfer: a placed chest opened by check, two parsnips moved one way and one back, each change and
   the unchanged total confirmed by a chest read;
-- fishing: preparation and a cast that puts the bobber in the water.
+- fishing: at the Mountain lake, preparation, a cast that puts the bobber in the water, and stardew_fixture_fishing_catch
+  landing what the game hooks, which a fresh inventory read shows in the backpack; preparing and casting repeat (at
+  most four catches) until a fish rather than trash went through the bobber bar (the bite and minigame are skipped, not proven).
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
 parked in the screen corner before keyboard tool use, because Stardew aims at the tile under the cursor when it is
@@ -837,31 +839,65 @@ try {
     }
 
     if (Test-Section 'fishing') {
-        Write-Step 'Fishing: prepare and cast.'
-        # A fixed search start keeps the same bank whatever the previous steps did; the default starts at the player.
-        # From 64,16 the search picks a side-facing bank (69,30 on the test save's Farm).
-        $prepare = Invoke-Tool 'fishing-prepare' 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true; x = 64; y = 16 } -OptIn '--allow-fixture-actions'
-        Assert-That ($prepare.Json.state -ceq 'ready') 'fishing preparation failed.'
-        Invoke-Tool 'park-fishing' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+        Write-Step 'Fishing: prepare, cast and catch until the game hooks a fish rather than trash.'
+        # A short cast from the Farm bank lands in shallow water, where the game almost always gives trash at Fishing
+        # level 0. The Mountain lake has fish; the search starts at the warp's arrival tile, so the bank is the same each run.
+        $mountain = Invoke-Tool 'warp-fishing' 'stardew_lab_warp' @{ location = 'Mountain' } -OptIn '--allow-fixture-actions'
+        Assert-That ($mountain.Json.state -ceq 'ready' -and $mountain.Json.lab.locationId -ceq 'Mountain') 'the warp to the Mountain failed.'
         Wait-Settled
-        # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle
-        # (not charging, not casting, bobber not in the air, not fishing) and no stamina spent, so the first cast never ran.
-        $staminaBeforeCast = (Get-Runtime 'cast-before').localPlayer.data.stamina
-        foreach ($attempt in 1, 2) {
-            Invoke-Hold "cast-$attempt" @('C') 40
-            $deadline = [DateTime]::UtcNow.AddSeconds(8)
+        # Trash comes out of the water at once; only a fish goes through the game's bobber bar, which the fixture
+        # finishes. The game picks what bites, so cast again while the backpack has room, up to four catches.
+        # A catch turns the player south, so every round prepares the bank again to face the water.
+        $fish = $null
+        foreach ($round in 1..4) {
+            $prepare = Invoke-Tool "fishing-prepare-$round" 'stardew_fixture_fishing_prepare' @{ skipTutorial = $true } -OptIn '--allow-fixture-actions'
+            Assert-That ($prepare.Json.state -ceq 'ready') "fishing preparation failed: $($prepare.Json.message)"
+            Invoke-Tool "park-fishing-$round" 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
+            Wait-Settled
+            # The game can drop a cast right after other input. Cast once more only when a fresh read shows the rod idle
+            # (not charging, not casting, bobber not in the air, not fishing) and no stamina spent, so the first cast never ran.
+            $staminaBeforeCast = (Get-Runtime "cast-$round-before").localPlayer.data.stamina
+            foreach ($attempt in 1, 2) {
+                Invoke-Hold "cast-$round-$attempt" @('C') 40
+                $deadline = [DateTime]::UtcNow.AddSeconds(8)
+                do {
+                    Start-Sleep -Seconds 1
+                    $fishing = (Get-Runtime "cast-$round-$attempt").localPlayer.data.fishing
+                } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
+                if ($fishing.fishing -eq $true) { break }
+                $idle = -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)
+                $unspent = (Get-Runtime "cast-$round-$attempt-stamina").localPlayer.data.stamina -eq $staminaBeforeCast
+                Assert-That ($attempt -eq 1 -and $idle -and $unspent) 'the cast did not put the bobber in the water.'
+                Write-Step 'The rod is idle after the first cast; casting once more.'
+            }
+            Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
+
+            # The catch fixture forces the bite and skips the minigame; the game picks the catch and adds it to the backpack.
+            $beforeCatch = Get-Inventory "fishing-catch-$round-before"
+            $catch = (Invoke-Tool "fishing-catch-$round" 'stardew_fixture_fishing_catch' -OptIn '--allow-fixture-actions').Json
+            Assert-That ($catch.state -ceq 'ready' -and $null -ne $catch.catch) "the fishing catch failed: $($catch.message)"
+            $caught = $catch.catch
+            $afterCatch = Get-Inventory "fishing-catch-$round-after"
+            $count = { param($inventory) [int](@($inventory.slots | Where-Object { $_.item.qualifiedItemId -ceq $caught.qualifiedItemId } | ForEach-Object { $_.item.stack }) | Measure-Object -Sum).Sum }
+            $gained = (& $count $afterCatch) - (& $count $beforeCatch)
+            Assert-That ($gained -eq $caught.stack) "the backpack gained $gained x $($caught.qualifiedItemId), not the reported $($caught.stack)."
+            Assert-That ($afterCatch.inventoryRevision -ceq $caught.inventoryRevision) 'the fresh inventory read does not match the revision the catch reported.'
+            # The runtime sample is taken about once per second; wait for one taken after the catch.
+            $deadline = [DateTime]::UtcNow.AddSeconds(5)
             do {
-                Start-Sleep -Seconds 1
-                $fishing = (Get-Runtime "cast-$attempt").localPlayer.data.fishing
-            } until (($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) -or [DateTime]::UtcNow -gt $deadline)
-            if ($fishing.fishing -eq $true) { break }
-            $idle = -not ($fishing.timingCast -or $fishing.casting -or $fishing.bobberInAir)
-            $unspent = (Get-Runtime "cast-$attempt-stamina").localPlayer.data.stamina -eq $staminaBeforeCast
-            Assert-That ($attempt -eq 1 -and $idle -and $unspent) 'the cast did not put the bobber in the water.'
-            Write-Step 'The rod is idle after the first cast; casting once more.'
+                Start-Sleep -Milliseconds 500
+                $landed = (Invoke-Tool "runtime-fishing-catch-$round-after" 'stardew_runtime_get').Json
+            } until ([DateTimeOffset]$landed.observedAtUtc -gt [DateTimeOffset]$catch.completedAtUtc -or [DateTime]::UtcNow -gt $deadline)
+            Assert-That ([DateTimeOffset]$landed.observedAtUtc -gt [DateTimeOffset]$catch.completedAtUtc) 'no runtime sample arrived after the catch.'
+            $rod = $landed.runtime.localPlayer.data.fishing
+            Assert-That (-not ($rod.fishing -or $rod.nibbling -or $rod.hit -or $rod.pullingOut -or $rod.catchReady)) 'the rod did not return to idle after the catch.'
+            Write-Step "Catch $round`: $($caught.stack) x $($caught.qualifiedItemId) (quality $($caught.quality), size $($caught.size)), found in a fresh backpack read."
+            if ($caught.size -ge 0) { $fish = $caught; break }
+            $free = @($afterCatch.slots | Where-Object { $_.state -ceq 'empty' }).Count
+            if ($free -lt 1) { break }
         }
-        Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
-        Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY). Hooking and the minigame are not covered."
+        Assert-That ($null -ne $fish) 'every catch was trash, so the bobber-bar path was not exercised; rerun the fishing section.'
+        Write-Step "The game hooked $($fish.qualifiedItemId) and the fixture finished its bobber bar. The bite and the minigame were skipped, not proven."
     }
 
     if ($partial) { Write-Step 'The selected sections passed. Run without -Only for acceptance evidence.' }
