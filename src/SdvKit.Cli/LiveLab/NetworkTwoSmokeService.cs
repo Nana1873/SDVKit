@@ -904,6 +904,7 @@ internal sealed class NetworkTwoSmokeService
     {
         DateTimeOffset deadline = _utcNow().ToUniversalTime() + SmokeTimeout;
         bool retriedInvalidStatus = false;
+        DateTimeOffset? staleSince = null;
         while (_utcNow().ToUniversalTime() <= deadline)
         {
             LiveLabCommandResult status = _hostService.StatusNetwork();
@@ -918,6 +919,15 @@ internal sealed class NetworkTwoSmokeService
                     continue;
                 }
 
+                if (WithinHostFixtureLoadGrace(
+                        _hostReport,
+                        _utcNow().ToUniversalTime(),
+                        ref staleSince))
+                {
+                    _delay(PollInterval);
+                    continue;
+                }
+
                 AddReportProblems(
                     _hostReport,
                     "networkHostStatusFailed",
@@ -926,6 +936,7 @@ internal sealed class NetworkTwoSmokeService
             }
 
             retriedInvalidStatus = false;
+            staleSince = null;
 
             NetworkTwoStatusReport? network = _hostReport.GameSide?.NetworkTwo;
             if (network is not null
@@ -1015,6 +1026,31 @@ internal sealed class NetworkTwoSmokeService
             "networkTwoTimedOut",
             "The exact host/farmhand pair did not complete the live join and unfocused tick proof within two minutes."));
         return false;
+    }
+
+    // The host's fixture load blocks the main thread and pauses the heartbeat (#303, #325). While the exact
+    // fixture is still on its way and the host has not started hosting, wait a bounded time for it to resume.
+    internal static bool IsHostFixtureLoad(LiveLabReport report) =>
+        report.Problems.Count == 1
+        && string.Equals(report.Problems[0].Code, "gameSideStale", StringComparison.Ordinal)
+        && report.GameSide is
+        {
+            NetworkTwo: { State: "ready", Role: NetworkTwoContract.HostRole, Phase: "waitingForFixture" },
+            TestSave: { State: "ready", Phase: "waitingForTitle" or "creating" or "loading" or "waiting" },
+        };
+
+    internal static bool WithinHostFixtureLoadGrace(
+        LiveLabReport report,
+        DateTimeOffset now,
+        ref DateTimeOffset? staleSince)
+    {
+        if (!IsHostFixtureLoad(report))
+        {
+            return false;
+        }
+
+        staleSince ??= now;
+        return now - staleSince.Value <= LiveLabService.TestSaveStaleLoadGrace;
     }
 
     internal static bool IsSynchronousJoinLoad(LiveLabReport report) =>

@@ -92,6 +92,156 @@ public sealed class NetworkTwoSmokeServiceTests
         Assert.Equal(expected, NetworkTwoSmokeService.IsSynchronousJoinLoad(report));
     }
 
+    [Theory]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "loading", "gameSideStale", true)]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "waitingForTitle", "gameSideStale", true)]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "passed", "gameSideStale", false)]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "failed", "gameSideStale", false)]
+    [InlineData("host", "ready", "waitingForFixture", "mismatch", "loading", "gameSideStale", false)]
+    [InlineData("host", "mismatch", "waitingForFixture", "ready", "loading", "gameSideStale", false)]
+    [InlineData("host", "ready", "hosting", "ready", "loading", "gameSideStale", false)]
+    [InlineData("farmhand", "ready", "waitingForFixture", "ready", "loading", "gameSideStale", false)]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "loading", "gameSideMismatch", false)]
+    [InlineData("host", "ready", "waitingForFixture", "ready", "loading", "gameSideNotApplied", false)]
+    public void HostFixtureLoadAllowsOnlyAStaleMarkerOfTheExactLoadingFixture(
+        string role,
+        string networkState,
+        string networkPhase,
+        string testSaveState,
+        string testSavePhase,
+        string problemCode,
+        bool expected)
+    {
+        LiveLabReport report = HostLoadReport(
+            role,
+            networkState,
+            networkPhase,
+            testSaveState,
+            testSavePhase,
+            [new LiveLabProblem(problemCode, "transient")]);
+
+        Assert.Equal(expected, NetworkTwoSmokeService.IsHostFixtureLoad(report));
+    }
+
+    [Fact]
+    public void HostFixtureLoadRejectsAStaleMarkerWithAnyFurtherProblem()
+    {
+        LiveLabReport report = HostLoadReport(
+            NetworkTwoContract.HostRole,
+            "ready",
+            "waitingForFixture",
+            "ready",
+            "loading",
+            [
+                new LiveLabProblem("gameSideStale", "transient"),
+                new LiveLabProblem("testSaveStatusMismatch", "mismatch"),
+            ]);
+
+        Assert.False(NetworkTwoSmokeService.IsHostFixtureLoad(report));
+    }
+
+    [Fact]
+    public void HostFixtureLoadGraceIsBoundedFromTheFirstStaleRead()
+    {
+        LiveLabReport stale = HostLoadReport(
+            NetworkTwoContract.HostRole,
+            "ready",
+            "waitingForFixture",
+            "ready",
+            "loading",
+            [new LiveLabProblem("gameSideStale", "stale")]);
+        DateTimeOffset start = DateTimeOffset.UnixEpoch;
+        DateTimeOffset? staleSince = null;
+
+        Assert.True(NetworkTwoSmokeService.WithinHostFixtureLoadGrace(stale, start, ref staleSince));
+        Assert.Equal(start, staleSince);
+        Assert.True(NetworkTwoSmokeService.WithinHostFixtureLoadGrace(
+            stale,
+            start + LiveLabService.TestSaveStaleLoadGrace,
+            ref staleSince));
+        Assert.False(NetworkTwoSmokeService.WithinHostFixtureLoadGrace(
+            stale,
+            start + LiveLabService.TestSaveStaleLoadGrace + TimeSpan.FromMilliseconds(250),
+            ref staleSince));
+        Assert.Equal(start, staleSince);
+    }
+
+    [Fact]
+    public void HostFixtureLoadGraceDoesNotStartForOtherFailures()
+    {
+        LiveLabReport hosting = HostLoadReport(
+            NetworkTwoContract.HostRole,
+            "ready",
+            "hosting",
+            "ready",
+            "passed",
+            [new LiveLabProblem("gameSideStale", "stale")]);
+        DateTimeOffset? staleSince = null;
+
+        Assert.False(NetworkTwoSmokeService.WithinHostFixtureLoadGrace(
+            hosting,
+            DateTimeOffset.UnixEpoch,
+            ref staleSince));
+        Assert.Null(staleSince);
+    }
+
+    private static LiveLabReport HostLoadReport(
+        string role,
+        string networkState,
+        string networkPhase,
+        string testSaveState,
+        string testSavePhase,
+        IReadOnlyList<LiveLabProblem> problems)
+    {
+        var network = new NetworkTwoStatusReport(
+            networkState,
+            role,
+            networkPhase,
+            BuildIdentity,
+            "fixture",
+            "save",
+            false,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "C:\\network.log",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var testSave = new TestSaveStatusReport(
+            testSaveState,
+            TestSaveContract.ReviewMode,
+            testSavePhase,
+            "fixture",
+            "save",
+            false,
+            0,
+            null,
+            "C:\\scenario.log");
+        var gameSide = new GameSideStatusReport(
+            "stale",
+            1,
+            true,
+            false,
+            DateTimeOffset.UtcNow,
+            testSave,
+            NetworkTwo: network);
+        return new LiveLabReport(
+            1,
+            NetworkTwoContract.Topology,
+            "running",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            gameSide,
+            problems,
+            []);
+    }
+
     [Fact]
     public void RecoveredRoleIsNotReportedOrArchivedAsEvidenceForTheNewSmoke()
     {

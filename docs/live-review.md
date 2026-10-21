@@ -114,7 +114,7 @@ A completed scenario can proceed to the normal clean-stop step even if its activ
 
 Before fixture or world commands, require `testSave.state=ready`, `phase=passed`, the expected Save and fixture IDs, and `identityVerified=true`. Reuse an existing verified baseline. Do not recreate it for each read. A plain `single` review without `--test-save` uses its own persistent isolated profile instead.
 
-For a C# host and farmhand review, prepare the same baseline. Start with `--topology network-2`, without `--test-save`. Confirm both roles, the loaded target and build identity, and that each role sees the other joined. Each role has its own isolated profile.
+For a C# host and farmhand review, prepare the same baseline. Start with `--topology network-2`, without `--test-save`. Confirm both roles, the loaded target and build identity, and that each role sees the other joined. Each role has its own isolated profile. The host's fixture load can pause its heartbeat; while the host still waits for its exact fixture, the start keeps polling for up to 30 seconds after the marker becomes stale before it fails with `gameSideStale`.
 
 ### Leave and rejoin the network farmhand
 
@@ -293,7 +293,7 @@ Results:
 
 Reconcile does not update source files, rebuild, reload the mod or restart Stardew. The launch, build identity and process stay the same. Observe the menu or gameplay effect separately: saved JSON does not prove the mod applied the settings in memory.
 
-Keep the returned audit and export paths if you need the saved config later; they do not become the next review's input. Export, restage and restart form the separate [GMCM persistence workflow](test-a-gmcm-option.md#4-prove-the-effect-after-a-restart). Finish with the normal [stop and reset](#finish-or-test-persistence), also after a rejected reconcile. Never edit ownership markers to accept drift.
+Keep the returned audit and export paths if you need the saved config later; they do not become the next review's input. Export, restage and restart form the separate [GMCM persistence workflow](test-a-gmcm-option.md#3-save-and-accept-the-change). Finish with the normal [stop and reset](#finish-or-test-persistence), also after a rejected reconcile. Never edit ownership markers to accept drift.
 
 ## Diagnose selected-mod warnings and exceptions
 
