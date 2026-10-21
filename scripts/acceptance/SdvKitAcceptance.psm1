@@ -426,27 +426,32 @@ function Invoke-ComponentClick {
 }
 
 function Get-SmapiLogPath {
-    # The SMAPI log of a review, next to its persistent saves, from a ready status.
-    param([Parameter(Mandatory)] $Status)
+    # The SMAPI log of a review, next to its persistent saves, from a ready status. For a network-2 role (no single-review
+    # status needed), pass -Role host or farmhand: that role's own profile log.
+    param([object] $Status, [ValidateSet('', 'host', 'farmhand')] [string] $Role = '')
+    if ($Role) { return Join-Path $script:Context.Lab ".sdvkit\lab\profiles\network-2\$Role\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt" }
     Join-Path (Split-Path ([IO.Path]::GetFullPath((Join-Path $Status.labRoot $Status.persistentSavesPath))) -Parent) 'ErrorLogs\SMAPI-latest.txt'
 }
 
 function Invoke-ModLogCommand {
     <#
     .SYNOPSIS
-    Runs a mod console command and returns the first regex match its output adds to the SMAPI log within 10 seconds.
+    Runs a mod console command and returns the first regex match its output adds to the SMAPI log within the timeout
+    (10 seconds by default). -Selection names the network role (or other selection arguments) the command runs through.
     #>
     param(
         [Parameter(Mandatory, Position = 0)] [string] $Label,
         [Parameter(Mandatory)] [string] $Command,
         [Parameter(Mandatory)] [string] $Pattern,
-        [Parameter(Mandatory)] [string] $Log
+        [Parameter(Mandatory)] [string] $Log,
+        [string[]] $Selection = @(),
+        [int] $TimeoutSeconds = 10
     )
 
     $offset = (Get-Item -LiteralPath $Log).Length
-    $result = Invoke-SdvKit $Label @('project', 'review', 'command', $Command, '--json')
+    $result = Invoke-SdvKit $Label (@('project', 'review', 'command', $Command, '--json') + @($Selection | Where-Object { -not [string]::IsNullOrEmpty($_) }))
     Assert-That ($result.Json.commandWritten -eq $true) "the command $Command did not run."
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         Start-Sleep -Milliseconds 300
         $stream = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite')

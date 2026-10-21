@@ -1,0 +1,10 @@
+{
+  "Name": "Per-Player Inventory Proof",
+  "Author": "SDVKitAcceptance",
+  "Version": "1.0.0",
+  "Description": "Track and display an exact player's host-authorized Stone inventory result.",
+  "UniqueID": "SDVKitAcceptance.PerPlayerInventoryProof",
+  "EntryDll": "PerPlayerInventoryProof.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
