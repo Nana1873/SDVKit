@@ -4,6 +4,10 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
+### Added
+
+- `project review act move <up|right|down|left> [--turn-only]` and the MCP tool `stardew_world_move` (opt-in `--allow-world-actions`, test save, single) walk the player exactly one tile in a direction, or only turn it, and report the reached `locationId`, `tileX`/`tileY`, `position` and `reached` (#293). SDVKit holds the game's own movement key through its process-local input until the player stands past the centre of the next tile, then releases it, so repeated moves land one tile apart where a timed chord moved 2 or 3 tiles. A target that is off the map or blocked for the player is refused with `worldMoveTargetBlocked` before any input; a warp on the target changes the location instead. There is no pathfinding.
+
 ## [2.1.0] - 2026-10-20
 
 ### Added

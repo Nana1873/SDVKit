@@ -160,6 +160,11 @@ internal static class ReviewCommand
                     ReviewWorldActCommand.Handle(arguments, runtimePath, monitor,
                         inputRuntimes.Value, testSave);
                 }
+                else if (arguments.Length > 0 && arguments[0] == "world-move")
+                {
+                    ReviewWorldMoveCommand.Handle(arguments, runtimePath, monitor,
+                        inputRuntimes.Value, testSave);
+                }
                 else if (arguments.Length > 0 && arguments[0] == "world-action")
                 {
                     ReviewWorldActionCommand.Handle(arguments, runtimePath, monitor,

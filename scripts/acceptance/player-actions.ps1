@@ -7,6 +7,9 @@ Live acceptance: everyday keyboard-and-mouse player actions in a single review o
 Proves each action through a state read, not through the input acknowledgement:
 
 - walking in four directions (tile changes and the reported facing) and walking versus running (distance per tick count);
+- stardew_world_move: exactly one tile in each of the four directions back to the start tile (the reported tile, facing and
+  reached flag, confirmed by a runtime read), a turn that keeps the tile, and a blocked target refused with
+  worldMoveTargetBlocked before any input;
 - stardew_lab_warp (runtime location and tile) and a location change by walking through a map warp;
 - hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
 - the game menu: open with E, switch tab by clicking its component, close with Escape;
@@ -25,7 +28,7 @@ parked in the screen corner before keyboard tool use, because Stardew aims at th
 within one tile of the player. Matrix and gaps: docs/player-actions.md.
 
 While developing SDVKit, -Only runs the shared setup (lab, test save, review start, Farm) and then only the named
-sections: walk, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Sections always run in this order, and each one
+sections: walk, move, mapwarp, hotbar, menu, tools, act, item, npc, fishing. Sections always run in this order, and each one
 starts from the Farm. Such a partial run writes its evidence under player-actions-partial and never counts as
 acceptance; PRs and releases need a full run.
 
@@ -46,7 +49,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
 # Accept both -Only npc,item from PowerShell and a single comma-separated string from pwsh -File.
-$sections = @('walk', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'item', 'npc', 'fishing')
+$sections = @('walk', 'move', 'mapwarp', 'hotbar', 'menu', 'tools', 'act', 'item', 'npc', 'fishing')
 $Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 if ($PSBoundParameters.ContainsKey('Only') -and $Only.Count -eq 0) { throw "-Only needs at least one section. Use: $($sections -join ', ')." }
 $unknown = @($Only | Where-Object { $_ -cnotin $sections })
@@ -196,6 +199,56 @@ try {
         Write-Step "Walked 4 directions; 30 ticks moved $run tiles normally, $walk with Shift."
     }
 
+    if (Test-Section 'move', 'tools', 'act', 'item', 'npc') {
+        # One world read for the sections that pick their tiles from it.
+        $area = @(Get-Area 'scan' 58 18 16 16)
+        $byTile = @{}
+        foreach ($tile in $area) { $byTile["$($tile.x),$($tile.y)"] = $tile }
+        function Test-Free($tile) { $null -ne $tile -and $tile.objectState -ceq 'missing' -and $null -eq $tile.soil }
+        function Find-Target([scriptblock] $Match) {
+            @($area | Where-Object { (& $Match $_) -and (Test-Free $byTile["$($_.x),$($_.y - 1)"]) })[0]
+        }
+    }
+
+    if (Test-Section 'move') {
+        Write-Step 'Bounded move: exactly one tile in four directions back to the start, a turn, and a blocked target refused.'
+        Invoke-Warp 'move-start' 'Farm' 64 16
+        $start = Get-Runtime 'move-start'
+        $position = $start
+        foreach ($step in @(@{ dir = 'down'; dx = 0; dy = 1 }, @{ dir = 'right'; dx = 1; dy = 0 }, @{ dir = 'up'; dx = 0; dy = -1 }, @{ dir = 'left'; dx = -1; dy = 0 })) {
+            $expectedX = $position.tileX + $step.dx
+            $expectedY = $position.tileY + $step.dy
+            $move = Invoke-Tool "move-$($step.dir)" 'stardew_world_move' @{ direction = $step.dir } -OptIn '--allow-world-actions'
+            Assert-That ($move.Json.state -ceq 'completed' -and $move.Json.reached -eq $true) "moving $($step.dir) from $($position.tileX),$($position.tileY) returned $($move.Json.state)/$($move.Json.errorCode) with reached=$($move.Json.reached) at $($move.Json.tileX),$($move.Json.tileY)."
+            Assert-That ($move.Json.tileX -eq $expectedX -and $move.Json.tileY -eq $expectedY -and $move.Json.targetX -eq $expectedX -and $move.Json.targetY -eq $expectedY) "moving $($step.dir) reported $($move.Json.tileX),$($move.Json.tileY) (target $($move.Json.targetX),$($move.Json.targetY)), expected $expectedX,$expectedY."
+            Assert-That ($move.Json.position.facing -ceq $step.dir -and $move.Json.locationId -ceq 'Farm') "after moving $($step.dir) the player faces $($move.Json.position.facing) in $($move.Json.locationId)."
+            Assert-That ([Math]::Floor($move.Json.position.standingX) -eq $expectedX -and [Math]::Floor($move.Json.position.standingY) -eq $expectedY) "the standing position $($move.Json.position.standingX),$($move.Json.position.standingY) is not inside $expectedX,$expectedY."
+            Wait-Settled
+            $next = Get-Runtime "move-$($step.dir)"
+            Assert-That ($next.tileX -eq $expectedX -and $next.tileY -eq $expectedY) "a runtime read after moving $($step.dir) shows $($next.tileX),$($next.tileY), not $expectedX,$expectedY."
+            $position = $next
+        }
+        Assert-That ($position.tileX -eq $start.tileX -and $position.tileY -eq $start.tileY) "four moves ended at $($position.tileX),$($position.tileY), not back at $($start.tileX),$($start.tileY)."
+
+        $turn = Invoke-Tool 'move-turn' 'stardew_world_move' @{ direction = 'down'; turnOnly = $true } -OptIn '--allow-world-actions'
+        Assert-That ($turn.Json.state -ceq 'completed' -and $turn.Json.reached -eq $true -and $turn.Json.turnOnly -eq $true) "the turn returned $($turn.Json.state)/$($turn.Json.errorCode) with reached=$($turn.Json.reached)."
+        Assert-That ($turn.Json.tileX -eq $position.tileX -and $turn.Json.tileY -eq $position.tileY -and $turn.Json.position.facing -ceq 'down') "the turn left the player at $($turn.Json.tileX),$($turn.Json.tileY) facing $($turn.Json.position.facing)."
+        Wait-Settled
+        $turned = Get-Runtime 'move-turned'
+        Assert-That ($turned.tileX -eq $position.tileX -and $turned.tileY -eq $position.tileY -and $turned.localPlayer.data.position.facing -ceq 'down') 'a runtime read after the turn disagrees with its result.'
+
+        $blocker = Find-Target { param($t) $t.objectQualifiedItemId -cin ($stones + $weeds) }
+        Assert-That ($null -ne $blocker) 'no stone or weeds with a free tile north of it in the scanned area.'
+        Invoke-Warp 'move-blocked' 'Farm' $blocker.x ($blocker.y - 1)
+        $blocked = Invoke-Tool 'move-blocked' 'stardew_world_move' @{ direction = 'down' } -OptIn '--allow-world-actions' -AllowExit @(3)
+        Assert-That ($blocked.Json.state -ceq 'unavailable' -and $blocked.Json.errorCode -ceq 'worldMoveTargetBlocked' -and $blocked.Json.dispatchState -ceq 'notDispatched' -and $blocked.Json.reached -eq $false) "moving onto $($blocker.objectQualifiedItemId) at $($blocker.x),$($blocker.y) returned $($blocked.Json.state)/$($blocked.Json.errorCode)/$($blocked.Json.dispatchState)."
+        Assert-That ($blocked.Json.tileX -eq $blocker.x -and $blocked.Json.tileY -eq $blocker.y - 1) "the refusal reports $($blocked.Json.tileX),$($blocked.Json.tileY), not the start tile."
+        Wait-Settled
+        $still = Get-Runtime 'move-blocked-after'
+        Assert-That ($still.tileX -eq $blocker.x -and $still.tileY -eq $blocker.y - 1) 'the refused move changed the tile.'
+        Write-Step "Moved one tile down, right, up and left back to $($start.tileX),$($start.tileY); turned in place; $($blocker.objectQualifiedItemId) at $($blocker.x),$($blocker.y) was refused."
+    }
+
     if (Test-Section 'mapwarp') {
         Write-Step 'Location change by walking through the Farm-to-BusStop map warp.'
         $warps = (Invoke-Tool 'warps' 'stardew_map_warps_list' @{ asset = 'Maps/Farm' }).Json.warps
@@ -261,17 +314,6 @@ try {
         Invoke-Press 'menu-close' 'Escape'
         Wait-Settled
         Assert-That ((Invoke-SdvKit 'menu-closed' @('project', 'review', 'menu', '--json')).Json.menuOpen -eq $false) 'Escape did not close the game menu.'
-    }
-
-    if (Test-Section 'tools', 'act', 'item', 'npc') {
-        # One world read for the sections that pick their tiles from it.
-        $area = @(Get-Area 'scan' 58 18 16 16)
-        $byTile = @{}
-        foreach ($tile in $area) { $byTile["$($tile.x),$($tile.y)"] = $tile }
-        function Test-Free($tile) { $null -ne $tile -and $tile.objectState -ceq 'missing' -and $null -eq $tile.soil }
-        function Find-Target([scriptblock] $Match) {
-            @($area | Where-Object { (& $Match $_) -and (Test-Free $byTile["$($_.x),$($_.y - 1)"]) })[0]
-        }
     }
 
     if (Test-Section 'tools') {
