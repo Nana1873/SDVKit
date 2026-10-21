@@ -56,7 +56,7 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine) | The transfer tool has no script yet; single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Buy in a shop | Click a sale row from `menu_get` | `stardew_shop_get` money, stock, held item | script (shop) | `SeedShop` Gold offers only |
 | Craft | Give the ingredients with `stardew_fixture_item_add`, then click a recipe component of the crafting page | Inventory and crafting page | — | Not in the script yet |
-| Change a GMCM option | Click or drag at measured screen positions | Mod state and saved config | script (gmcm-number) | GMCM exposes no components |
+| Change a GMCM option | Click or drag at measured screen positions | Mod state and saved config | script (gmcm-number, gmcm-checkbox) | GMCM exposes no components |
 
 ## Fishing
 

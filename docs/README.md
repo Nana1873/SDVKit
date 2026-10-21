@@ -11,8 +11,8 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Build and review one explicit C# and associated content-pack bundle | [Bundle Arrival recipe](bundle-authoring.md) |
 | Author a multilingual SMAPI dialogue through fallback, controller, and reload proof | [Multilingual UI authoring recipe](multilingual-ui-authoring.md) |
 | Test a purchase in your shop | [Shop purchase guide](test-a-shop-purchase.md) |
-| Author one GMCM checkbox and explicitly restage its saved config | [GMCM authoring recipe](gmcm-authoring.md) |
-| Change and verify a GMCM option | [GMCM option guide](test-a-gmcm-option.md) |
+| Change and verify a GMCM option (checkbox or slider) | [GMCM option guide](test-a-gmcm-option.md) |
+| Check the GMCM contract and API interface | [GMCM contract](gmcm-authoring.md) |
 | Author a one-time inventory reward and prove native chest persistence | [Inventory and chest authoring recipe](inventory-container-authoring.md) |
 | Test a machine rule with native harvest, machine and chest actions | [Machine rule guide](test-a-machine-rule.md) |
 | Author a per-player multiplayer mod and prove distinct role and screen state | [Multiplayer authoring recipe](multiplayer-authoring.md) |
