@@ -1481,8 +1481,8 @@ public sealed class CliApplicationTests
     [Theory]
     [InlineData("--allow-world-actions", "--allow-world-actions")]
     [InlineData("--allow-world-actions", "true")]
-    [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "host")]
-    public void ProjectReviewMcpWorldActionsRejectDuplicateValueAndNetworkOptIns(params string[] suffix)
+    [InlineData("--allow-world-actions", "--role", "host")]
+    public void ProjectReviewMcpWorldActionsRejectDuplicateValueAndInvalidSelection(params string[] suffix)
     {
         var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid opt-in dispatched"),
@@ -1491,14 +1491,29 @@ public sealed class CliApplicationTests
     }
 
     [Theory]
-    [InlineData("0")]
-    [InlineData("7")]
-    public void ProjectReviewMcpWorldActionsRejectEveryLocalScreenBinding(string screenId)
+    [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "farmhand")]
+    [InlineData("--allow-world-actions", "--topology", "network-2", "--role", "host")]
+    [InlineData("--allow-world-actions", "--screen", "1")]
+    [InlineData("--allow-container-transfer", "--topology", "network-2", "--role", "farmhand")]
+    [InlineData("--allow-container-transfer", "--screen", "0")]
+    public void ProjectReviewMcpWorldActionAndTransferOptInsForwardRoleAndScreen(params string[] suffix)
     {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _, _) =>
-            throw new InvalidOperationException("Screen-bound world opt-in dispatched"),
-            "project", "review", "mcp", "serve", "--screen", screenId, "--allow-world-actions");
-        Assert.Equal(2, exitCode);
+        bool network = suffix.Contains("--role");
+        bool screen = suffix.Contains("--screen");
+        bool worldActions = suffix[0] == "--allow-world-actions";
+        ProjectReviewMcpCommandRunner runner = (topology, role, screenId, _, input, fixture, world, transfer, refresh, _, _) =>
+        {
+            Assert.Equal(network ? "network-2" : "single", topology);
+            Assert.Equal(network ? suffix[^1] : null, role);
+            Assert.Equal(screen ? int.Parse(suffix[^1], CultureInfo.InvariantCulture) : null, screenId);
+            Assert.Equal(worldActions, world);
+            Assert.Equal(!worldActions, transfer);
+            Assert.False(input || fixture || refresh);
+            return 0;
+        };
+        var (exitCode, _, error) = RunWithProjectReviewMcp(runner, ["project", "review", "mcp", "serve", .. suffix]);
+        Assert.Equal(0, exitCode);
+        Assert.Empty(error);
     }
 
     [Fact]
@@ -1527,23 +1542,12 @@ public sealed class CliApplicationTests
     [Theory]
     [InlineData("--allow-container-transfer", "--allow-container-transfer")]
     [InlineData("--allow-container-transfer", "true")]
-    [InlineData("--allow-container-transfer", "--topology", "network-2", "--role", "host")]
-    public void ProjectReviewMcpContainerTransferRejectsDuplicateValueAndNetworkOptIns(params string[] suffix)
+    [InlineData("--allow-container-transfer", "--topology", "network-2", "--screen", "1")]
+    public void ProjectReviewMcpContainerTransferRejectsDuplicateValueAndInvalidSelection(params string[] suffix)
     {
         var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _, _) =>
             throw new InvalidOperationException("Invalid transfer opt-in dispatched"),
             ["project", "review", "mcp", "serve", .. suffix]);
-        Assert.Equal(2, exitCode);
-    }
-
-    [Theory]
-    [InlineData("0")]
-    [InlineData("7")]
-    public void ProjectReviewMcpContainerTransferRejectsEveryLocalScreenBinding(string screenId)
-    {
-        var (exitCode, _, _) = RunWithProjectReviewMcp((_, _, _, _, _, _, _, _, _, _, _) =>
-            throw new InvalidOperationException("Screen-bound transfer opt-in dispatched"),
-            "project", "review", "mcp", "serve", "--screen", screenId, "--allow-container-transfer");
         Assert.Equal(2, exitCode);
     }
 

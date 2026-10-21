@@ -459,9 +459,9 @@ internal static class ProjectReviewMcpServer
             return null;
         }
 
-        if (screenId is not null && (allowFixtureActions || allowWorldActions || allowContainerTransfer || allowCpRefresh))
+        if (screenId is not null && (allowFixtureActions || allowCpRefresh))
         {
-            error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions, world interactions, container transfers, or CP refresh.");
+            error.WriteLine("SDVKit MCP startup failed [screenCapabilityUnsupported]: Screen-bound servers do not expose fixture actions or CP refresh.");
             return null;
         }
 
@@ -472,10 +472,9 @@ internal static class ProjectReviewMcpServer
             return null;
         }
 
-        if (allowWorldActions && (topology != LiveLabState.SingleTopology || role is not null
-            || preflight.Context!.TestSave is null || !preflight.Context.AllTargetsReady))
+        if (allowWorldActions && (preflight.Context!.TestSave is null || !preflight.Context.AllTargetsReady))
         {
-            error.WriteLine("SDVKit MCP startup failed [worldActionTestSaveRequired]: World interactions require the exact ready SDVKit-owned single-player test save.");
+            error.WriteLine("SDVKit MCP startup failed [worldActionTestSaveRequired]: World interactions require the exact ready SDVKit-owned test save.");
             return null;
         }
 
@@ -483,11 +482,10 @@ internal static class ProjectReviewMcpServer
         if (allowContainerTransfer)
         {
             ProjectReviewMcpReadResult permissionRead = reader.Read();
-            if (screenId is not null || preflight.Context!.TestSave is null || !permissionRead.Succeeded
-                || permissionRead.Snapshot!.TestSave is null || !permissionRead.Snapshot.Runtime.WorldReady
-                || topology != LiveLabState.SingleTopology || role is not null)
+            if (preflight.Context!.TestSave is null || !permissionRead.Succeeded
+                || permissionRead.Snapshot!.TestSave is null || !permissionRead.Snapshot.Runtime.WorldReady)
             {
-                error.WriteLine("SDVKit MCP startup failed [containerTransferTestSaveRequired]: Container transfers require the exact ready owned unbound single disposable-world review.");
+                error.WriteLine("SDVKit MCP startup failed [containerTransferTestSaveRequired]: Container transfers require the exact ready owned disposable-world review.");
                 return null;
             }
             transferPermission = permissionRead.Snapshot;
@@ -561,7 +559,7 @@ internal static class ProjectReviewMcpServer
                 cancellationToken: token, expectedContext: preflight.Context)
             : null;
         Func<ReviewContainerTransferQuery, CancellationToken, ReviewContainerTransferReport>? runContainerTransfer =
-            allowContainerTransfer && topology == LiveLabState.SingleTopology && role is null && screenId is null
+            allowContainerTransfer
                 ? (query, token) => ProjectReviewContainerTransferService.Execute(query, reader,
                     cancellationToken: token, expectedSnapshot: transferPermission)
                 : null;
@@ -719,22 +717,18 @@ internal static class ProjectReviewMcpServer
     {
         ArgumentNullException.ThrowIfNull(reader);
         var tools = new List<McpServerTool> { new RuntimeMcpTool(reader) };
-        bool containerTransferEnabled = runContainerTransfer is not null
-            && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null
-            && reader.ScreenId is null;
         tools.AddRange(ProjectReviewMcpDiagnosticsTools.Create(reader));
         tools.Add(ProjectReviewMcpLogTools.Create(reader));
         tools.Add(ProjectReviewMcpMenuTools.Create(reader));
         tools.Add(ProjectReviewMcpInventoryTools.Create(reader));
         tools.Add(ProjectReviewMcpContainerTools.Create(reader));
         tools.Add(ProjectReviewMcpWorldTools.Create(reader));
+        if (runContainerTransfer is not null)
+            tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer));
         if (reader.Topology == "single"
             && reader.Role is null
             && reader.ScreenId is null)
         {
-            if (containerTransferEnabled)
-                tools.Add(ProjectReviewMcpContainerTransferTools.Create(runContainerTransfer!));
             tools.Add(ProjectReviewMcpShopTools.Create(reader));
             tools.Add(ProjectReviewMcpProgressionTools.Create(reader));
         }
@@ -795,20 +789,11 @@ internal static class ProjectReviewMcpServer
                 topology,
                 role));
         }
-        if (runWorldAction is not null
-            && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null
-            && reader.ScreenId is null)
+        if (runWorldAction is not null)
             tools.Add(ProjectReviewMcpWorldActionTools.Create(runWorldAction));
-        if (runWorldAct is not null
-            && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null
-            && reader.ScreenId is null)
+        if (runWorldAct is not null)
             tools.Add(ProjectReviewMcpWorldActTools.Create(runWorldAct));
-        if (runWorldMove is not null
-            && reader.Topology == LiveLabState.SingleTopology
-            && reader.Role is null
-            && reader.ScreenId is null)
+        if (runWorldMove is not null)
             tools.Add(ProjectReviewMcpWorldMoveTools.Create(runWorldMove));
 
         return new McpServerOptions
@@ -820,7 +805,7 @@ internal static class ProjectReviewMcpServer
                     .GetName().Version?.ToString(3) ?? "2.1.0",
             },
             ServerInstructions =
-                "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection, one screenshot capture, player-local backpack and chest reads, role-local world reads, and process-shared canonical Data reads are available for every valid selection. Data selection validates freshness and identity but does not create a role- or screen-local cache. Shop, map, texture, audio, mod-asset, Content Patcher, and mutation capabilities retain their narrower gates. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
+                "Tools are bound to one exact active project review and expose only its selected role or local screen. A local-screen binding freezes its observed farmer and context identity; departure or replacement invalidates the server. Review diagnostics, bounded active-menu inspection, one screenshot capture, player-local backpack and chest reads, role-local world reads, and process-shared canonical Data reads are available for every valid selection. Data selection validates freshness and identity but does not create a role- or screen-local cache. Shop, map, texture, audio, mod-asset, Content Patcher, and fixture capabilities retain their narrower gates; world actions and container transfers act only as the selected role or screen. Screenshot capture creates one non-overwriting PNG in the selected role's isolated profile and returns it as MCP image content. Texture preview returns its checked bounded PNG as MCP image content. "
                 + (inputSession is null
                     ? "Input actions are disabled. "
                     : "Process-local input was explicitly enabled for this server and each typed action is bounded, acknowledged, and never retried automatically. ")
@@ -829,10 +814,10 @@ internal static class ProjectReviewMcpServer
                     : "Fixture actions were explicitly enabled and remain limited to the verified disposable test save. ")
                 + (runWorldAction is null
                     ? "World interactions are disabled. "
-                    : "World interactions were separately enabled for this exact owned disposable single-player review; stardew_world_interact requires fresh world and inventory revisions, stardew_world_act a fresh inventory revision and a tile next to the player, and stardew_world_move walks exactly one tile or turns; none is ever retried. ")
-                + (!containerTransferEnabled
+                    : "World interactions were separately enabled for the selected player of this exact owned disposable review; stardew_world_interact requires fresh world and inventory revisions, stardew_world_act a fresh inventory revision and a tile next to the player, and stardew_world_move walks exactly one tile or turns; none is ever retried. ")
+                + (runContainerTransfer is null
                     ? "Container transfers are disabled. "
-                    : "Container transfers were separately enabled for this exact owned unbound disposable single-player review; they require fresh container and item revisions and are never retried. ")
+                    : "Container transfers were separately enabled for the selected player of this exact owned disposable review; they require fresh container and item revisions and are never retried. ")
                 + (cpRefreshPermission is null
                     ? "CP refresh is disabled; input and fixture permissions do not authorize it. "
                     : "CP refresh was separately enabled for the exact startup launch and root pack. Select existing patch JSON files and one Data observation explicitly; retain incomplete receipts and never retry blindly. ")

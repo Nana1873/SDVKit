@@ -28,22 +28,12 @@ internal static class ProjectReviewWorldActionService
             new(1, "unavailable", code, null, reader.Topology, reader.Role, clock(), query.Action,
                 query.X, query.Y, dispatch, null, null, null);
         if (ReviewWorldActionContract.Validate(query) is { } problem) return Failure(problem);
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("worldActionTopologyUnsupported");
-        ProjectReviewMcpContextResult context = reader.ReadContext();
-        if (!context.Succeeded) return Failure(context.ErrorCode!);
-        if (context.Context!.TestSave is null) return Failure("worldActionTestSaveRequired");
-        ProjectReviewMcpVerifiedContext permission = expectedContext ?? context.Context;
-        if (!permission.AllTargetsReady || permission.TestSave is null
-            || !ProjectReviewCpRefresh.SamePermissionBinding(permission, context.Context))
-            return Failure("worldActionStartupBindingChanged");
-        beforeSnapshotRead?.Invoke();
-        ProjectReviewMcpReadResult before = reader.Read();
-        if (!before.Succeeded || !before.Snapshot!.Runtime.WorldReady) return Failure("worldActionWorldNotReady");
-        if (!SamePermissionSnapshot(permission, before.Snapshot))
-            return Failure("worldActionStartupBindingChanged");
+        if (Prepare(reader, expectedContext, beforeSnapshotRead, out ProjectReviewMcpVerifiedContext? permission,
+                out ProjectReviewMcpRuntimeSnapshot? before) is { } refused)
+            return Failure(refused);
         string requestId = Guid.NewGuid().ToString("N");
-        string command = string.Create(CultureInfo.InvariantCulture,
-            $"sdvkit world-action {requestId} {permission.State.LaunchId} {query.Action} {query.X} {query.Y} {query.TargetInstanceId} {query.TargetRevision} {query.InventoryRevision} single");
+        string command = reader.SelectCommand(string.Create(CultureInfo.InvariantCulture,
+            $"sdvkit world-action {requestId} {permission!.State.LaunchId} {query.Action} {query.X} {query.Y} {query.TargetInstanceId} {query.TargetRevision} {query.InventoryRevision} {SelectionToken(reader)}"));
         DateTimeOffset started = clock();
         ProjectReviewResponseTransportResult<ReviewWorldActionResponseEnvelope> result =
             ProjectReviewResponseTransport.Execute(command,
@@ -51,23 +41,67 @@ internal static class ProjectReviewWorldActionService
                     reader.ProjectRoot, reader.Topology, reader.Role), requestId),
                 ReviewWorldActionContract.MaximumResponseBytes, "worldAction", "review-world-action",
                 reader.ProjectRoot, Deserialize, response => Valid(response, requestId, query,
-                    before.Snapshot, started, clock()), responseTimeout: responseTimeout,
+                    before!, started, clock()), responseTimeout: responseTimeout,
                 topology: reader.Topology, role: reader.Role, send: send,
                 drainAfterDispatchOnCancellation: true, cancellationToken: cancellationToken,
                 onCancellation: () => ProjectReviewInputService.DispatchCancellation(() =>
                     send is null
-                        ? ProjectReviewService.ExecuteCommand($"sdvkit world-action cancel {requestId}",
+                        ? ProjectReviewService.ExecuteCommand(reader.SelectCommand($"sdvkit world-action cancel {requestId}"),
                             reader.Topology, reader.Role, reader.ProjectRoot)
-                        : send($"sdvkit world-action cancel {requestId}")));
+                        : send(reader.SelectCommand($"sdvkit world-action cancel {requestId}"))));
         if (result.Response is null)
             return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "worldActionResponseInvalid",
                 result.CommandMayHaveBeenWritten ? "mayHaveRun" : "notDispatched");
         if (result.CancellationRequested)
             return Failure("worldActionCancellationRequested", "mayHaveRun");
-        ProjectReviewMcpContextResult after = reader.ReadContext();
-        if (!after.Succeeded || !ProjectReviewCpRefresh.SamePermissionBinding(permission, after.Context!))
+        if (!BindingHeld(reader, permission))
             return Failure("worldActionBindingChanged", "mayHaveRun");
         return result.Response.Report;
+    }
+
+    /// <summary>The selection token sent to the game: the role, local screen or unbound single review.</summary>
+    internal static string SelectionToken(ProjectReviewMcpRuntimeReader reader) =>
+        ReviewWorldActionContract.SelectionToken(reader.Role, reader.ScreenId);
+
+    /// <summary>
+    /// The checks every world action makes before dispatch: the exact ready test save of this review, the startup
+    /// permission still naming this launch, role and staged target, and a fresh world-ready snapshot of the selected
+    /// role or screen. A network-2 role also needs the joined and passed pair, and a local screen its unchanged
+    /// farmer and context. Returns the refusal code, or null with the permission and snapshot.
+    /// </summary>
+    internal static string? Prepare(ProjectReviewMcpRuntimeReader reader,
+        ProjectReviewMcpVerifiedContext? expectedContext, Action? beforeSnapshotRead,
+        out ProjectReviewMcpVerifiedContext? permission, out ProjectReviewMcpRuntimeSnapshot? snapshot)
+    {
+        permission = null;
+        snapshot = null;
+        ProjectReviewMcpContextResult context = reader.ReadContext();
+        if (!context.Succeeded) return context.ErrorCode!;
+        if (context.Context!.TestSave is null) return "worldActionTestSaveRequired";
+        ProjectReviewMcpVerifiedContext startup = expectedContext ?? context.Context;
+        if (!startup.AllTargetsReady || startup.TestSave is null
+            || !ProjectReviewCpRefresh.SameReviewBinding(startup, context.Context))
+            return "worldActionStartupBindingChanged";
+        beforeSnapshotRead?.Invoke();
+        ProjectReviewMcpReadResult before = reader.ReadForAction();
+        if (!before.Succeeded)
+            return before.ErrorCode is "reviewPairNotReady" or "reviewScreenBindingChanged"
+                ? before.ErrorCode : "worldActionWorldNotReady";
+        if (!before.Snapshot!.Runtime.WorldReady) return "worldActionWorldNotReady";
+        if (!SamePermissionSnapshot(startup, before.Snapshot)) return "worldActionStartupBindingChanged";
+        permission = startup;
+        snapshot = before.Snapshot;
+        return null;
+    }
+
+    /// <summary>
+    /// After a response: the same launch, role and staged review, and for a local screen the same farmer and context.
+    /// </summary>
+    internal static bool BindingHeld(ProjectReviewMcpRuntimeReader reader, ProjectReviewMcpVerifiedContext permission)
+    {
+        ProjectReviewMcpContextResult after = reader.ReadContext();
+        return after.Succeeded && ProjectReviewCpRefresh.SameReviewBinding(permission, after.Context!)
+            && (reader.ScreenId is null || reader.Read().Succeeded);
     }
 
     internal static bool SamePermissionSnapshot(ProjectReviewMcpVerifiedContext permission,
@@ -95,7 +129,7 @@ internal static class ProjectReviewWorldActionService
         if (envelope is null || envelope.SchemaVersion != 1 || envelope.RequestId != requestId) return false;
         ReviewWorldActionReport report = envelope.Report;
         return report is not null && report.SchemaVersion == 1 && report.LaunchId == expected.LaunchId
-            && report.Topology == "single" && report.Role is null && report.Action == query.Action
+            && report.Topology == expected.Topology && report.Role == expected.Role && report.Action == query.Action
             && report.X == query.X && report.Y == query.Y && report.ObservedAtUtc.Offset == TimeSpan.Zero
             && report.ObservedAtUtc >= started && report.ObservedAtUtc <= now.AddSeconds(5)
             && now - report.ObservedAtUtc <= TimeSpan.FromSeconds(20)

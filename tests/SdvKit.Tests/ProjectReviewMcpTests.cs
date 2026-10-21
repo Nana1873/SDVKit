@@ -157,7 +157,7 @@ public sealed class ProjectReviewMcpTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    public void LocalScreenServerAdvertisesOwnedReadsButNotUnsupportedDomainsOrSharedWindowText(int screenId)
+    public void LocalScreenServerAdvertisesOwnedReadsAndActionsButNotUnsupportedDomainsOrSharedWindowText(int screenId)
     {
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeReader reader = CreateReadyLocalScreenReview(temporary, screenId, command =>
@@ -174,18 +174,14 @@ public sealed class ProjectReviewMcpTests
             reader,
             runData: _ => throw new InvalidOperationException("Data must not run while listing tools."),
             inputSession: input,
-            runWorldAction: (_, _) => throw new InvalidOperationException(
-                "Screen-bound world action must stay absent."),
-            runContainerTransfer: (_, _) => throw new InvalidOperationException(
-                "Screen-bound container transfer must stay absent."),
-            runWorldAct: (_, _) => throw new InvalidOperationException(
-                "Screen-bound faced-tile action must stay absent."),
-            runWorldMove: (_, _) => throw new InvalidOperationException(
-                "Screen-bound move must stay absent."));
+            runWorldAction: (_, _) => throw new InvalidOperationException("Listing must not act."),
+            runContainerTransfer: (_, _) => throw new InvalidOperationException("Listing must not transfer."),
+            runWorldAct: (_, _) => throw new InvalidOperationException("Listing must not act."),
+            runWorldMove: (_, _) => throw new InvalidOperationException("Listing must not move."));
         string[] names = options.ToolCollection!.Select(tool => tool.ProtocolTool.Name).ToArray();
 
-        Assert.DoesNotContain(ProjectReviewMcpWorldActTools.ToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpWorldMoveTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpWorldActTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpWorldMoveTools.ToolName, names);
         Assert.Contains(ProjectReviewMcpServer.RuntimeToolName, names);
         Assert.Contains(ProjectReviewMcpMenuTools.ToolName, names);
         Assert.Contains(ProjectReviewMcpScreenshotTools.CaptureToolName, names);
@@ -198,10 +194,10 @@ public sealed class ProjectReviewMcpTests
         Assert.Contains(ProjectReviewMcpContainerTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpShopTools.ToolName, names);
         Assert.Contains(ProjectReviewMcpWorldTools.ToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpWorldActionTools.ToolName, names);
-        Assert.DoesNotContain(ProjectReviewMcpContainerTransferTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpWorldActionTools.ToolName, names);
+        Assert.Contains(ProjectReviewMcpContainerTransferTools.ToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpCpTools.DiagnoseToolName, names);
-        Assert.Contains("Container transfers are disabled.", options.ServerInstructions, StringComparison.Ordinal);
+        Assert.Contains("Container transfers were separately enabled for the selected player", options.ServerInstructions, StringComparison.Ordinal);
         Assert.DoesNotContain(ProjectReviewMcpMapTools.AssetsToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpTextureTools.AssetsToolName, names);
         Assert.DoesNotContain(ProjectReviewMcpAssetTools.AudioCuesToolName, names);

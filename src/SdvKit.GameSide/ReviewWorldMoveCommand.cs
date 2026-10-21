@@ -21,7 +21,7 @@ internal static class ReviewWorldMoveCommand
     private sealed record Observation(string? LocationId, int? TileX, int? TileY, PlayerPositionValues? Position);
 
     internal static void Handle(string[] args, string runtimePath, IMonitor monitor,
-        IReviewInputRuntime input, Func<TestSaveAutomation?> testSave)
+        IReviewInputRuntime input, Func<TestSaveAutomation?> testSave, Func<NetworkTwoAutomation?> networkTwo)
     {
         if (args.Length == 3 && args[1] == "cancel" && ReviewTransportToken.IsRequestId(args[2]))
         {
@@ -35,7 +35,8 @@ internal static class ReviewWorldMoveCommand
             return;
         }
         var query = new ReviewWorldMoveQuery(args[3], args[4] == "true");
-        if (ReviewWorldMoveContract.Validate(query) is not null || args[5] != "single")
+        if (ReviewWorldMoveContract.Validate(query) is not null
+            || !ReviewActionSelection.TryParse(args[5], out ReviewActionSelection selection))
         {
             monitor.Log("SDVKit world move rejected invalid bounded arguments.", LogLevel.Error);
             return;
@@ -47,7 +48,7 @@ internal static class ReviewWorldMoveCommand
             int? start = null, int? end = null, bool reached = false, Observation? seen = null)
         {
             seen ??= Observe();
-            return new(ReviewWorldMoveContract.SchemaVersion, state, code, launch, "single", null,
+            return new(ReviewWorldMoveContract.SchemaVersion, state, code, launch, selection.Topology, selection.Role,
                 DateTimeOffset.UtcNow, query.Direction, query.TurnOnly, dispatch, button, start, end,
                 seen.LocationId, seen.TileX, seen.TileY, seen.Position, targetX, targetY, reached);
         }
@@ -74,7 +75,7 @@ internal static class ReviewWorldMoveCommand
                 Write(Report("unavailable", "worldActionBindingInvalid", "notDispatched"));
                 return;
             }
-            string? rejection = Validate(query, launch, testSave, dx, dy);
+            string? rejection = Validate(query, launch, selection, testSave, networkTwo, dx, dy);
             if (rejection is not null)
             {
                 Write(Report("unavailable", rejection, "notDispatched"));
@@ -99,7 +100,7 @@ internal static class ReviewWorldMoveCommand
             string? gateProblem = null;
             string? Gate()
             {
-                gateProblem = Validate(query, launch, testSave, dx, dy);
+                gateProblem = Validate(query, launch, selection, testSave, networkTwo, dx, dy);
                 if (gateProblem is null && (!ReferenceEquals(Game1.player, player) || player.TilePoint != start
                     || Game1.currentLocation?.NameOrUniqueName != startLocation))
                     gateProblem = "worldActionTargetChanged";
@@ -168,15 +169,11 @@ internal static class ReviewWorldMoveCommand
         }
     }
 
-    private static string? Validate(ReviewWorldMoveQuery query, string launch, Func<TestSaveAutomation?> testSave,
-        int dx, int dy)
+    private static string? Validate(ReviewWorldMoveQuery query, string launch, ReviewActionSelection selection,
+        Func<TestSaveAutomation?> testSave, Func<NetworkTwoAutomation?> networkTwo, int dx, int dy)
     {
-        bool bindingReady = Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") == "1"
-            && ReviewTransportToken.IsRequestId(launch)
-            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
-            && Context.ScreenId == 0;
-        bool fixtureReady = bindingReady && testSave() is { } fixture
-            && fixture.TryVerifyReviewFixture(out _, out _);
+        bool bindingReady = selection.BindingReady(launch);
+        bool fixtureReady = bindingReady && selection.FixtureReady(testSave, networkTwo);
         bool worldReady = fixtureReady && Context.IsWorldReady && !Game1.exitToTitle
             && Game1.currentLocation is not null;
         Farmer? player = worldReady ? Game1.player : null;

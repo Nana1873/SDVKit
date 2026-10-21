@@ -19,7 +19,7 @@ internal static class ReviewWorldActCommand
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal static void Handle(string[] args, string runtimePath, IMonitor monitor,
-        IReviewInputRuntime input, Func<TestSaveAutomation?> testSave)
+        IReviewInputRuntime input, Func<TestSaveAutomation?> testSave, Func<NetworkTwoAutomation?> networkTwo)
     {
         if (args.Length == 3 && args[1] == "cancel" && ReviewTransportToken.IsRequestId(args[2]))
         {
@@ -34,7 +34,8 @@ internal static class ReviewWorldActCommand
             return;
         }
         var query = new ReviewWorldActQuery(args[3], x, y, args[6]);
-        if (ReviewWorldActContract.Validate(query) is not null || args[7] != "single")
+        if (ReviewWorldActContract.Validate(query) is not null
+            || !ReviewActionSelection.TryParse(args[7], out ReviewActionSelection selection))
         {
             monitor.Log("SDVKit world act rejected invalid bounded arguments.", LogLevel.Error);
             return;
@@ -42,7 +43,7 @@ internal static class ReviewWorldActCommand
         string launch = Environment.GetEnvironmentVariable("SDVKIT_LAB_LAUNCH_ID") ?? "";
         ReviewWorldActionReport Report(string state, string? code, string dispatch, string? button = null,
             int? start = null, int? end = null) => new(ReviewWorldActionContract.SchemaVersion, state, code,
-                launch, "single", null, DateTimeOffset.UtcNow, query.Action, query.X, query.Y,
+                launch, selection.Topology, selection.Role, DateTimeOffset.UtcNow, query.Action, query.X, query.Y,
                 dispatch, button, start, end);
         void Write(ReviewWorldActionReport report)
         {
@@ -73,7 +74,7 @@ internal static class ReviewWorldActCommand
                 Write(Report("unavailable", "worldActionBindingInvalid", "notDispatched"));
                 return;
             }
-            string? rejection = Validate(query, launch, testSave);
+            string? rejection = Validate(query, launch, selection, testSave, networkTwo);
             if (rejection is not null)
             {
                 Write(Report("unavailable", rejection, "notDispatched"));
@@ -107,7 +108,7 @@ internal static class ReviewWorldActCommand
             var request = new ReviewInputRequest(ReviewInputKind.Press, button, cursorX, cursorY, RequestId: args[1]);
             var dispatchGate = new ReviewWorldActionDispatchGate(cursorX, cursorY,
                 () => CursorForTarget() == ReviewVirtualCursor.Position ? (cursorX, cursorY) : null,
-                () => Validate(query, launch, testSave));
+                () => Validate(query, launch, selection, testSave, networkTwo));
             // Keep the press-edge refusal so the report names it instead of a generic uncertainty.
             string? gateProblem = null;
             string? Gate() => gateProblem = dispatchGate.Validate();
@@ -197,14 +198,11 @@ internal static class ReviewWorldActCommand
         }, JsonOptions);
     }
 
-    private static string? Validate(ReviewWorldActQuery query, string launch, Func<TestSaveAutomation?> testSave)
+    private static string? Validate(ReviewWorldActQuery query, string launch, ReviewActionSelection selection,
+        Func<TestSaveAutomation?> testSave, Func<NetworkTwoAutomation?> networkTwo)
     {
-        bool bindingReady = Environment.GetEnvironmentVariable("SDVKIT_PROJECT_REVIEW") == "1"
-            && ReviewTransportToken.IsRequestId(launch)
-            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SDVKIT_NETWORK_TWO_ROLE"))
-            && Context.ScreenId == 0;
-        bool fixtureReady = bindingReady && testSave() is { } fixture
-            && fixture.TryVerifyReviewFixture(out _, out _);
+        bool bindingReady = selection.BindingReady(launch);
+        bool fixtureReady = bindingReady && selection.FixtureReady(testSave, networkTwo);
         bool worldReady = fixtureReady && Context.IsWorldReady && !Game1.exitToTitle
             && Game1.currentLocation is not null;
         Farmer? player = worldReady ? Game1.player : null;

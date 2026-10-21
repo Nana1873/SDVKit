@@ -230,14 +230,11 @@ public sealed class ReviewWorldActionTests
     }
 
     [Fact]
-    public void PermissionAndTopologyFailBeforeDispatch()
+    public void PermissionFailsBeforeDispatch()
     {
         using TemporaryDirectory temporary = new();
         Assert.Equal("worldActionTestSaveRequired", ProjectReviewWorldActionService.Execute(
             ProjectReviewMcpTests.CreateReadyReview(temporary), Query("water"),
-            _ => throw new InvalidOperationException()).ErrorCode);
-        Assert.Equal("worldActionTopologyUnsupported", ProjectReviewWorldActionService.Execute(
-            ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host"), Query("water"),
             _ => throw new InvalidOperationException()).ErrorCode);
         using TemporaryDirectory cancellationRoot = new();
         using var canceled = new CancellationTokenSource();

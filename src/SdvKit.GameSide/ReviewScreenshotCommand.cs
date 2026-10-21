@@ -158,17 +158,17 @@ internal static class ReviewCommand
                 else if (arguments.Length > 0 && arguments[0] == "world-act")
                 {
                     ReviewWorldActCommand.Handle(arguments, runtimePath, monitor,
-                        inputRuntimes.Value, testSave);
+                        inputRuntimes.Value, testSave, networkTwo);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "world-move")
                 {
                     ReviewWorldMoveCommand.Handle(arguments, runtimePath, monitor,
-                        inputRuntimes.Value, testSave);
+                        inputRuntimes.Value, testSave, networkTwo);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "world-action")
                 {
                     ReviewWorldActionCommand.Handle(arguments, runtimePath, monitor,
-                        inputRuntimes.Value, testSave);
+                        inputRuntimes.Value, testSave, networkTwo);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "world")
                 {
@@ -180,7 +180,7 @@ internal static class ReviewCommand
                 }
                 else if (arguments.Length > 0 && arguments[0] == "container-transfer")
                 {
-                    ReviewContainerTransferCommand.Handle(arguments, runtimePath, monitor, helper, menuCommands.Value, testSave);
+                    ReviewContainerTransferCommand.Handle(arguments, runtimePath, monitor, helper, menuCommands.Value, testSave, networkTwo);
                 }
                 else if (arguments.Length > 0 && arguments[0] == "menu")
                 {

@@ -5,7 +5,7 @@ using SdvKit.Cli.Mcp;
 namespace SdvKit.Cli;
 
 /// <summary>
-/// Sends one faced-tile action (check or useTool) to the owned single review. Shares the binding, transport and
+/// Sends one faced-tile action (check or useTool) to the owned review's selected player. Shares the binding, transport and
 /// report checks of <see cref="ProjectReviewWorldActionService"/>; the target has no identity, so the backpack
 /// revision and the adjacency check bind the request.
 /// </summary>
@@ -24,22 +24,12 @@ internal static class ProjectReviewWorldActService
             new(1, "unavailable", code, null, reader.Topology, reader.Role, clock(), query.Action,
                 query.X, query.Y, dispatch, null, null, null);
         if (ReviewWorldActContract.Validate(query) is { } problem) return Failure(problem);
-        if (reader.Topology != "single" || reader.Role is not null) return Failure("worldActionTopologyUnsupported");
-        ProjectReviewMcpContextResult context = reader.ReadContext();
-        if (!context.Succeeded) return Failure(context.ErrorCode!);
-        if (context.Context!.TestSave is null) return Failure("worldActionTestSaveRequired");
-        ProjectReviewMcpVerifiedContext permission = expectedContext ?? context.Context;
-        if (!permission.AllTargetsReady || permission.TestSave is null
-            || !ProjectReviewCpRefresh.SamePermissionBinding(permission, context.Context))
-            return Failure("worldActionStartupBindingChanged");
-        beforeSnapshotRead?.Invoke();
-        ProjectReviewMcpReadResult before = reader.Read();
-        if (!before.Succeeded || !before.Snapshot!.Runtime.WorldReady) return Failure("worldActionWorldNotReady");
-        if (!ProjectReviewWorldActionService.SamePermissionSnapshot(permission, before.Snapshot))
-            return Failure("worldActionStartupBindingChanged");
+        if (ProjectReviewWorldActionService.Prepare(reader, expectedContext, beforeSnapshotRead,
+                out ProjectReviewMcpVerifiedContext? permission, out ProjectReviewMcpRuntimeSnapshot? before) is { } refused)
+            return Failure(refused);
         string requestId = Guid.NewGuid().ToString("N");
-        string command = string.Create(CultureInfo.InvariantCulture,
-            $"sdvkit world-act {requestId} {permission.State.LaunchId} {query.Action} {query.X} {query.Y} {query.InventoryRevision} single");
+        string command = reader.SelectCommand(string.Create(CultureInfo.InvariantCulture,
+            $"sdvkit world-act {requestId} {permission!.State.LaunchId} {query.Action} {query.X} {query.Y} {query.InventoryRevision} {ProjectReviewWorldActionService.SelectionToken(reader)}"));
         DateTimeOffset started = clock();
         ProjectReviewResponseTransportResult<ReviewWorldActionResponseEnvelope> result =
             ProjectReviewResponseTransport.Execute(command,
@@ -47,21 +37,20 @@ internal static class ProjectReviewWorldActService
                     reader.ProjectRoot, reader.Topology, reader.Role), requestId),
                 ReviewWorldActionContract.MaximumResponseBytes, "worldAction", "review-world-act",
                 reader.ProjectRoot, ProjectReviewWorldActionService.Deserialize, response => Valid(response, requestId, query,
-                    before.Snapshot, started, clock()), responseTimeout: responseTimeout,
+                    before!, started, clock()), responseTimeout: responseTimeout,
                 topology: reader.Topology, role: reader.Role, send: send,
                 drainAfterDispatchOnCancellation: true, cancellationToken: cancellationToken,
                 onCancellation: () => ProjectReviewInputService.DispatchCancellation(() =>
                     send is null
-                        ? ProjectReviewService.ExecuteCommand($"sdvkit world-act cancel {requestId}",
+                        ? ProjectReviewService.ExecuteCommand(reader.SelectCommand($"sdvkit world-act cancel {requestId}"),
                             reader.Topology, reader.Role, reader.ProjectRoot)
-                        : send($"sdvkit world-act cancel {requestId}")));
+                        : send(reader.SelectCommand($"sdvkit world-act cancel {requestId}"))));
         if (result.Response is null)
             return Failure(result.Problems.Count > 0 ? result.Problems[0].Code : "worldActionResponseInvalid",
                 result.CommandMayHaveBeenWritten ? "mayHaveRun" : "notDispatched");
         if (result.CancellationRequested)
             return Failure("worldActionCancellationRequested", "mayHaveRun");
-        ProjectReviewMcpContextResult after = reader.ReadContext();
-        if (!after.Succeeded || !ProjectReviewCpRefresh.SamePermissionBinding(permission, after.Context!))
+        if (!ProjectReviewWorldActionService.BindingHeld(reader, permission))
             return Failure("worldActionBindingChanged", "mayHaveRun");
         return result.Response.Report;
     }
@@ -73,7 +62,7 @@ internal static class ProjectReviewWorldActService
         if (envelope is null || envelope.SchemaVersion != 1 || envelope.RequestId != requestId) return false;
         ReviewWorldActionReport report = envelope.Report;
         return report is not null && report.SchemaVersion == 1 && report.LaunchId == expected.LaunchId
-            && report.Topology == "single" && report.Role is null && report.Action == query.Action
+            && report.Topology == expected.Topology && report.Role == expected.Role && report.Action == query.Action
             && report.X == query.X && report.Y == query.Y && report.ObservedAtUtc.Offset == TimeSpan.Zero
             && report.ObservedAtUtc >= started && report.ObservedAtUtc <= now.AddSeconds(5)
             && now - report.ObservedAtUtc <= TimeSpan.FromSeconds(20)

@@ -25,7 +25,7 @@ internal static class ProjectReviewMcpWorldMoveTools
           "locationId","tileX","tileY","position","targetX","targetY","reached"],
          "properties":{"schemaVersion":{"const":1},"state":{"enum":["completed","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
-          "topology":{"const":"single"},"role":{"type":"null"},"observedAtUtc":{"type":"string"},
+          "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},"observedAtUtc":{"type":"string"},
           "direction":{"enum":["up","right","down","left"]},"turnOnly":{"type":"boolean"},
           "dispatchState":{"enum":["notDispatched","completed","mayHaveRun"]},
           "button":{"type":["string","null"]},
@@ -49,7 +49,7 @@ internal static class ProjectReviewMcpWorldMoveTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Move the player exactly one tile up, right, down or left in the owned disposable single-player review, or with turnOnly just face that direction. SDVKit holds the game's own movement key until the player stands on the next tile past its centre, then releases it, so repeated calls land one tile apart; a turn presses the key for one tick and shifts the player a few pixels inside its tile. Refused with worldMoveTargetBlocked when the next tile is off the map or blocked for the player (objects, features, buildings, villagers, map collisions) and with worldActionPlayerBusy during a menu, event, tool use or while already moving. The result reports locationId, tileX/tileY, position and reached (true only on the target tile of the same location, facing the direction; a warp on the target changes the location instead). No pathfinding; read stardew_world_area_get to plan a route.",
+            Description = "Move the player exactly one tile up, right, down or left as the selected player (role or local screen) of the owned disposable review, or with turnOnly just face that direction. SDVKit holds the game's own movement key until the player stands on the next tile past its centre, then releases it, so repeated calls land one tile apart; a turn presses the key for one tick and shifts the player a few pixels inside its tile. Refused with worldMoveTargetBlocked when the next tile is off the map or blocked for the player (objects, features, buildings, villagers, map collisions) and with worldActionPlayerBusy during a menu, event, tool use or while already moving. The result reports locationId, tileX/tileY, position and reached (true only on the target tile of the same location, facing the direction; a warp on the target changes the location instead). No pathfinding; read stardew_world_area_get to plan a route.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations

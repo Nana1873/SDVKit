@@ -28,7 +28,7 @@ internal static class ProjectReviewMcpWorldActionTools
           "action","x","y","dispatchState","button","startTick","endTick"],
          "properties":{"schemaVersion":{"const":1},"state":{"enum":["completed","unavailable"]},
           "errorCode":{"type":["string","null"]},"launchId":{"type":["string","null"]},
-          "topology":{"const":"single"},"role":{"type":"null"},"observedAtUtc":{"type":"string"},
+          "topology":{"enum":["single","network-2"]},"role":{"enum":[null,"host","farmhand"]},"observedAtUtc":{"type":"string"},
           "action":{"enum":["water","harvest","machineInsert","machineCollect"]},
           "x":{"type":"integer"},"y":{"type":"integer"},
           "dispatchState":{"enum":["notDispatched","completed","mayHaveRun"]},
@@ -43,7 +43,7 @@ internal static class ProjectReviewMcpWorldActionTools
         public override Tool ProtocolTool { get; } = new()
         {
             Name = ToolName,
-            Description = "Dispatch exactly one native adjacent water, harvest, machine-insert, or machine-collect interaction in the owned disposable single-player review. Requires fresh target identity/revision from stardew_world_area_get and inventoryRevision from stardew_inventory_get. Completion proves input delivery only; read both again to prove the effect.",
+            Description = "Dispatch exactly one native adjacent water, harvest, machine-insert, or machine-collect interaction as the selected player (role or local screen) of the owned disposable review. Requires fresh target identity/revision from stardew_world_area_get and inventoryRevision from stardew_inventory_get. Completion proves input delivery only; read both again to prove the effect.",
             InputSchema = InputSchema,
             OutputSchema = OutputSchema,
             Annotations = new ToolAnnotations
