@@ -4,7 +4,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ## [Unreleased]
 
-## [2.2.0] - 2026-10-22
+## [2.2.0] - 2026-10-21
 
 ### Added
 
