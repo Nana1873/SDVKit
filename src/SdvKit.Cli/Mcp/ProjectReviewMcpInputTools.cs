@@ -592,7 +592,7 @@ internal static class ProjectReviewMcpInputTools
                 session,
                 Tool(
                     WheelToolName,
-                    "Send one directional virtual mouse-wheel notch to the active menu at the virtual cursor.",
+                    "Send one directional virtual mouse-wheel notch at the virtual cursor: to the active menu, or with no menu open to the game's own hotbar switch (inputWheelPlayerBusy or inputWheelInventoryEmpty where the game would ignore it).",
                     WheelInputSchema,
                     destructive: false,
                     idempotent: false),

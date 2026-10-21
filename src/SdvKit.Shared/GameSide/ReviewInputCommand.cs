@@ -215,6 +215,11 @@ internal interface IReviewInputRuntime
     bool TryText(ReviewInputRequest request, Action<ReviewInputResult> completed, out string error)
     { error = "Text input is unavailable."; return false; }
 
+    /// <summary>Null when the game would turn a wheel notch into a hotbar switch with no menu open,
+    /// else the problem code: <c>inputWheelPlayerBusy</c>, <c>inputWheelInventoryEmpty</c>, or
+    /// <c>inputMenuMissing</c> for a runtime without world wheel support.</summary>
+    string? WorldWheelRefusal => "inputMenuMissing";
+
     bool TryScroll(int direction, out string error);
 
     bool TrySetCursor(int x, int y, out string error);
@@ -685,11 +690,19 @@ internal static class ReviewInputOperation
                     "inputCursorMissing",
                     "Set the virtual review cursor before sending mouse-wheel input.");
             }
-            if (!runtime.MenuOpen)
+            // Without a menu, Game1.UpdateControlInput turns the same cumulative wheel delta into a
+            // hotbar switch; the runtime names the game state that would ignore it.
+            string? worldRefusal = runtime.MenuOpen ? null : runtime.WorldWheelRefusal;
+            if (worldRefusal is not null)
             {
-                return Failure(
-                    "inputMenuMissing",
-                    "Mouse-wheel review input requires an active game menu.");
+                return Failure(worldRefusal, worldRefusal switch
+                {
+                    "inputWheelPlayerBusy" =>
+                        "The local player cannot switch tools now: the world is not ready, a tool, dialogue, event, fade or frozen controls blocks hotbar wheel input, or the player cannot move.",
+                    "inputWheelInventoryEmpty" =>
+                        "The local player's inventory is empty, so the game ignores hotbar wheel input.",
+                    _ => "Mouse-wheel review input requires an active game menu.",
+                });
             }
 
             int direction = string.Equals(
@@ -702,7 +715,9 @@ internal static class ReviewInputOperation
             return runtime.TryScroll(direction, out string error)
                 ? new ReviewInputResult(
                     true,
-                    $"Pressed review input '{canonicalButton}' for one mouse-wheel notch.",
+                    runtime.MenuOpen
+                        ? $"Pressed review input '{canonicalButton}' for one mouse-wheel notch."
+                        : $"Pressed review input '{canonicalButton}' for one mouse-wheel notch; with no menu open the game switches the hotbar slot on its next input update.",
                     canonicalButton)
                 : Failure("inputWheelRejected", error);
         }

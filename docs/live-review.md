@@ -205,7 +205,7 @@ The coordinates are an example; inspect the current viewport before you choose t
 
 **Title screen.** In a `--test-save` review, the tools need the fixture to be loaded. While it is not, for example at the title screen during a language change, a single review's `project review command` still accepts two kinds of line: `sdvkit input press|chord|cursor|click|scroll|drag ...` and `sdvkit screenshot viewport <label>`. Once the fixture loads again, it refuses them with `reviewConsoleUseTool`. Fixture and world actions keep their fixture and join readiness checks.
 
-**Mouse input** uses only the process-local virtual cursor. Set the cursor before a mouse button or `MouseWheelUp`/`MouseWheelDown` press. Wheel input also needs an open menu. Never move the physical pointer, focus the game, or use desktop automation instead of review input. A successful injection still needs a separate check of its effect.
+**Mouse input** uses only the process-local virtual cursor. Set the cursor before a mouse button or `MouseWheelUp`/`MouseWheelDown` press. With a menu open, a wheel notch goes to the menu. With no menu, the game reads the same cumulative wheel delta in its control update and switches the hotbar slot (up selects the previous slot, down the next; `Options.invertScrollDirection` reverses it, empty slots are skipped and the 12-slot row wraps). Where the game would ignore it, the notch is refused before injection: `inputWheelPlayerBusy` while the world is not ready or a tool, dialogue, event, fade, frozen controls or a player who cannot move blocks tool switching, and `inputWheelInventoryEmpty` for an empty inventory. Gamepad controls do not refuse it, because the game reads the mouse wheel then too. `stardew_input_scroll` stays a menu gesture. Never move the physical pointer, focus the game, or use desktop automation instead of review input. A successful injection still needs a separate check of its effect.
 
 **Network reviews.** Add exactly one `--role host` or `--role farmhand` to each command. Do not infer one role's state from the other. Use distinct screenshot labels.
 
@@ -241,7 +241,7 @@ Send actions one at a time. Observe each effect before you send the next. GameSi
 | Chord or hold | 1–8 button names, applied together for 1–120 input updates | One `Pressed`, then `Held` for the remaining updates, then `Released`; acknowledged after the release sample |
 | Mouse button | Same override at the virtual cursor | Same button lifecycle; event cursor and `GetCursorPosition()` use the virtual coordinates |
 | Cursor set or change | Scaled virtual position; unchanged coordinates create no movement | Normal `CursorMoved` old/new transition when SMAPI sees a changed position |
-| Wheel up or down | One queued cumulative `+120`/`-120` delta through normal menu handling | One matching `MouseWheelScrolled`; no second direct menu call |
+| Wheel up or down | One queued cumulative `+120`/`-120` delta through normal menu handling, or with no menu through the game's hotbar switch | One matching `MouseWheelScrolled`; no second direct menu or slot call |
 | Cursor clear, title, controlled exit, command exception | Stop reapplying input before restoring physical coordinates; cancel an unconsumed wheel notch | Keep the consumed wheel origin to avoid a reverse notch; let button state drain over a few updates; later physical wheel input stays visible |
 
 Rules for every action:

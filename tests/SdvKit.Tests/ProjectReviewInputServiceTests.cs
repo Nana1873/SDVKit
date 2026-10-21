@@ -103,7 +103,7 @@ public sealed class ProjectReviewInputServiceTests
     }
 
     [Fact]
-    public void WheelAcknowledgementRequiresTheCursorAndMenuOnSuccess()
+    public void WheelAcknowledgementRequiresTheCursorOnSuccessWithOrWithoutAMenu()
     {
         ReviewInputQuery query = new(
             ReviewInputContract.WheelAction,
@@ -123,7 +123,7 @@ public sealed class ProjectReviewInputServiceTests
             query,
             RequestedAt,
             RequestedAt.AddSeconds(1)));
-        Assert.False(ProjectReviewInputService.MatchesResponse(
+        Assert.True(ProjectReviewInputService.MatchesResponse(
             response with { MenuOpen = false },
             RequestId,
             query,

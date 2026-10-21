@@ -319,14 +319,22 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
             return false;
         }
 
-        if (Game1.activeClickableMenu is null)
+        if (Game1.activeClickableMenu is null && WorldWheelRefusal is not null)
         {
-            error = "Mouse-wheel review input requires an active game menu.";
+            error = "The game would not switch the hotbar with this mouse-wheel notch now.";
             return false;
         }
 
         return ReviewVirtualCursor.TryScroll(direction, out error);
     }
+
+    // Mirrors the gate before Game1.pressSwitchToolButton in UpdateControlInput, which is reached
+    // only without a menu, fade or frozen controls. The game reads the wheel with gamepad controls too.
+    public string? WorldWheelRefusal =>
+        !Context.IsWorldReady || Game1.player is not { } player || Game1.globalFade || Game1.freezeControls
+            || player.UsingTool || Game1.dialogueUp || !player.CanMove || Game1.eventUp || Game1.farmEvent is not null
+            ? "inputWheelPlayerBusy"
+            : !player.Items.HasAny() ? "inputWheelInventoryEmpty" : null;
 
     public bool TrySetCursor(int x, int y, out string error)
     {

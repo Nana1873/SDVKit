@@ -467,7 +467,8 @@ internal static class ProjectReviewInputService
                 && string.Equals(response.Direction, query.Direction, StringComparison.Ordinal)
                 && response.X is null
                 && response.Y is null
-                && (!response.Succeeded || response.CursorSet && response.MenuOpen),
+                // Without a menu a successful notch is world hotbar input (#294).
+                && (!response.Succeeded || response.CursorSet),
             ReviewInputContract.CursorSetAction =>
                 response.Button is null
                 && response.Direction is null
