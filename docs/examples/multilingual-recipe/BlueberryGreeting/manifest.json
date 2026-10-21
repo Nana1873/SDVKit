@@ -1,0 +1,9 @@
+{
+  "Name": "Blueberry Greeting",
+  "Author": "SDVKit Example",
+  "Version": "1.0.0",
+  "Description": "An original multilingual dialogue and persistence recipe.",
+  "UniqueID": "SDVKit.Example.BlueberryGreeting",
+  "EntryDll": "BlueberryGreeting.dll",
+  "MinimumApiVersion": "4.5.2"
+}

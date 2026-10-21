@@ -1,0 +1,10 @@
+{
+  "$schema": "https://smapi.io/schemas/i18n.json",
+  "dialogue.prompt": "Hello {{farmer}}! Recipe marker: {{marker}}. {{fallback}}",
+  "dialogue.completed": "Welcome back, {{farmer}}. Recipe marker: {{marker}}. {{fallback}}",
+  "fallback.default-only": "Default-only marker: BLUEBERRY.",
+  "choice.cancel": "Not now",
+  "choice.accept": "Remember this greeting",
+  "result.cancelled": "Nothing was changed.",
+  "result.accepted": "The blueberry greeting is remembered."
+}

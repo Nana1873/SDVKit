@@ -1,0 +1,9 @@
+{
+  "$schema": "https://smapi.io/schemas/i18n.json",
+  "dialogue.prompt": "Hallo {{farmer}}! Rezeptmarke: {{marker}}. {{fallback}}",
+  "dialogue.completed": "Willkommen zurück, {{farmer}}. Rezeptmarke: {{marker}}. {{fallback}}",
+  "choice.cancel": "Jetzt nicht",
+  "choice.accept": "Diesen Gruß merken",
+  "result.cancelled": "Es wurde nichts geändert.",
+  "result.accepted": "Der Blaubeergruß wurde gespeichert."
+}

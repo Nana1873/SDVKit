@@ -11,6 +11,7 @@ Each script runs one SDVKit workflow end to end against the real game: build, pa
 | [`gmcm-checkbox.ps1`](gmcm-checkbox.ps1) | A GMCM checkbox toggle stays unsaved; Save writes `Enabled=true`, `config-reconcile` accepts it, and a restart with the saved config warps to Farm 64,15. | `-Gmcm` (1.16.0 folder) | [Change and verify a GMCM option](../../docs/test-a-gmcm-option.md) |
 | [`container.ps1`](container.ps1) | A one-time reward gives ten Stone; `stardew_container_transfer` deposits three and withdraws one with exact `7/3/0` and `8/2/0` totals, a stale request is refused with `containerTransferSelectionStale`, and the chest contents survive a fixture save, stop and restart without the reward repeating. | none | [Test a chest transfer](../../docs/test-a-container-transfer.md) |
 | [`data-migration.ps1`](data-migration.ps1) | v1 saves a ledger and a one-time reward; a broken v2 refuses to migrate and keeps the data; the corrected v2 migrates it once (schema 2, no second reward); after a save and a restart v2 loads the existing ledger without migrating again. | none | [Test a save-data migration](../../docs/test-a-data-migration.md) |
+| [`multilingual-ui.ps1`](multilingual-ui.ps1) | A deliberate German placeholder error fails `project check` and one corrected token passes; the English dialogue is read, cancelled and accepted by mouse; after a save and restart, the title-screen language change to Deutsch loads the saved state with German texts and the English fallback sentence (read from the mod's log, see the guide); English is restored and a second accept is idempotent. Controller input is not covered ([#271](https://github.com/Nana1873/SDVKit/issues/271)). | none | [Test a multilingual dialogue](../../docs/test-a-multilingual-ui.md) |
 
 ## Run a script
 
@@ -36,13 +37,5 @@ The GMCM scripts click fixed screen positions, because GMCM's page exposes no me
 [`SdvKitAcceptance.psm1`](SdvKitAcceptance.psm1) holds the shared steps: run sdvkit and keep its output, call a tool, wait for a ready review, click a menu component by its bounds, take a screenshot, stop and reset, and compare the protected folders. For GMCM and mod log checks it also copies the GMCM provider (`Copy-GmcmProvider`), starts a review with a companion (`Start-CompanionReview`), clicks Save and accepts the change with `config-reconcile` (`Save-GmcmPage`), runs a mod console command and reads its log line (`Invoke-ModLogCommand`, `Get-SmapiLogPath`), and reads the player position (`Get-PlayerPosition`). Write a new script for another workflow with these helpers, and add it to the table above and to the [release procedure](../../docs/releasing.md#run-the-selected-live-checks).
 
 ## Other recipes
-
-The remaining recipes in `docs/` are guides. These are worth converting into scripts the same way:
-
-| Recipe | Why |
-| --- | --- |
-| [Progression](../../docs/progression-authoring.md) | NPC, mail and quest reads through a reload. |
-| [Multiplayer](../../docs/multiplayer-authoring.md) | The only end-to-end `network-2` and split-screen workflow. |
-| [Multilingual UI](../../docs/multilingual-ui-authoring.md) | Title-screen language change and controller input. |
 
 These stay guides only, because `project smoke` and the scripts above already cover their live steps: [CP authoring](../../docs/cp-authoring.md), [SMAPI authoring](../../docs/smapi-authoring.md), [Bundle Arrival](../../docs/bundle-authoring.md) and [CP patch order](../../docs/cp-patch-order-recipe.md).
