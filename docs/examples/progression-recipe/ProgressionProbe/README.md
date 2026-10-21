@@ -1,6 +1,6 @@
 # Progression Probe
 
-This original disposable recipe target belongs to [the progression guide](../../../progression-authoring.md).
+This original disposable recipe target belongs to [the progression guide](../../../test-a-progression-read.md).
 Copy only the four source/project/manifest/config files to an ignored lab source
 directory, then use the existing SDVKit check/build/package workflow. It requires
 the exact owned single-player fixture and never targets normal saves or Mods.

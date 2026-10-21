@@ -28,7 +28,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Observe supported Gold-shop offers, money and inventory | [Shop inspection](shop-inspection.md) |
 | Inspect every bounded backpack slot without opening a menu | [Inventory inspection](inventory-inspection.md) |
 | Inspect bounded live soil, crops, machines, terrain features and furniture | [World inspection](world-inspection.md) |
-| Observe selected NPC/mail/quest state and prove an original recipe through reload | [Progression authoring and observation](progression-authoring.md) |
+| Observe selected NPC/mail/quest state and prove it through two reloads | [Progression guide](test-a-progression-read.md), [read contract](progression-authoring.md) |
 | Connect an agent to a running review | [Native MCP](mcp.md) |
 | Observe world and local-player values | [Runtime state](runtime-state.md) |
 | Prepare a natural fishing test and observe its rod | [Fishing preparation](lab-reference.md#fishing-preparation) and [fishing state](runtime-state.md#fishing-observations) |
