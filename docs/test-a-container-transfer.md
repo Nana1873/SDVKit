@@ -4,6 +4,8 @@ Use this pattern when your mod gives items, or you want to prove that items move
 
 Read [container inspection](container-inspection.md) and [container transfer](container-transfer.md) first. The transfer works in an unbound `single` review on the test save and needs `--allow-container-transfer` (a separate grant from input and fixture actions).
 
+The reward mod writes its grant marker only after the whole stack was accepted into the backpack, so a failed or partial grant is never marked done and a completed one never repeats. Keep that order in your own mod; the restart check below depends on it.
+
 ## 1. Read the start state
 
 Start a `single` review with `--test-save` and read the backpack: the reward must give exactly ten Stone, once. Place and open the chest with a test-only helper (the example's `inventory_reward_chest` and `inventory_reward_open` console commands); a helper that opens the menu directly needs no player positioning. Then read both sides:
@@ -30,6 +32,6 @@ Send the first request again with its old identities. It must fail with `contain
 
 ## 4. Save, restart and read again
 
-Close the chest with `stardew_input_press {"button":"Escape"}` while nothing is held, call `stardew_fixture_save`, and stop **without** reset. Start the same package again, open the chest and read both sides: `8/2/0` proves that the chest persisted and that the one-time reward did not repeat (that would show 18). Finish with stop and reset.
+Close the chest with `stardew_input_press {"button":"Escape"}` (needs `--allow-input`) while nothing is held, call `stardew_fixture_save` (needs `--allow-fixture-actions`), and stop **without** reset. Start the same package again, open the chest and read both sides: `8/2/0` proves that the chest persisted and that the one-time reward did not repeat (that would show 18). Finish with stop and reset.
 
 What a pass proves: the native transfer of ordinary stackable items in one owned single-player test world, and persistence of a placed chest through a fixture save. It does not prove other chest types, mod containers, multiplayer or normal saves.
