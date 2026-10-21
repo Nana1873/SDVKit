@@ -221,7 +221,7 @@ public sealed class ReviewHttpEndpointTests
         var idle = new List<TcpClient>();
         try
         {
-            for (int index = 0; index < 8; index++)
+            for (int index = 0; index < ReviewHttpEndpoint.MaximumConnections; index++)
             {
                 var client = new TcpClient();
                 client.Connect(IPAddress.Loopback, lab.Endpoint.Port);
@@ -293,7 +293,9 @@ public sealed class ReviewHttpEndpointTests
                 idle.Add(client);
             }
 
-            Thread.Sleep(200);
+            // Wait until the endpoint has accepted every idle connection, instead of a fixed sleep that
+            // a loaded runner can outrun in either direction.
+            WaitFor(() => lab.Endpoint.ActiveConnections == ReviewHttpEndpoint.MaximumConnections);
             Assert.Equal(ReviewResponseReadStatus.Pending, lab.Sender().TryTake(responsePath, 1024).Status);
             Assert.True(ReviewResponseMailbox.Contains(responsePath));
         }
@@ -305,7 +307,7 @@ public sealed class ReviewHttpEndpointTests
             }
         }
 
-        Thread.Sleep(200);
+        WaitFor(() => lab.Endpoint.ActiveConnections == 0);
         Assert.Equal(ReviewResponseReadStatus.Available, lab.Sender().TryTake(responsePath, 1024).Status);
     }
 
@@ -319,6 +321,16 @@ public sealed class ReviewHttpEndpointTests
 
         Assert.Equal(ReviewResponseReadStatus.Invalid, stranger.TryTake(responsePath, 1024).Status);
         Assert.True(ReviewResponseMailbox.Contains(responsePath));
+    }
+
+    private static void WaitFor(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(4);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "The endpoint did not reach the expected connection count in time.");
+            Thread.Sleep(10);
+        }
     }
 
     private sealed class FakeLab : IDisposable
