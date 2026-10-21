@@ -67,7 +67,7 @@ Extend the file for the affected responsibility. Keep shared state in its existi
 - Keep the root README focused on installation and one example for each product pillar.
 - Put command behavior in the relevant [guide/reference](docs/README.md); agent skills link to it and retain only workflow-specific decisions.
 - Update the [capability matrix](docs/README.md#capability-matrix) when a supported target, topology, role, or opt-in changes.
-- Add user-visible changes to `CHANGELOG.md` under `Unreleased`. Explain the trigger and resulting behavior; implementation/CI evidence belongs in the PR or release issue.
+- Add user-visible changes to `CHANGELOG.md` under `Unreleased`: one sentence per change, two at most, saying what a mod developer can now do or what no longer goes wrong, with the issue number. Leave out implementation details, refusal-code lists, live evidence and verification limits; they belong in the PR, the docs or the release issue. Changes to tests, CI, acceptance-script internals or development-only docs get no entry. The release notes are generated from this file.
 - Check relative links and anchors, run changed executable examples where practical, and inspect root/subcommand help. Distinguish live examples inspected statically from those actually run.
 
 The existing CI runs restore, formatting, build, the complete tests, packaging, and portable verification. It does not launch Stardew. Offline checks may run independently; live work requires one known owner of the selected lab and verified teardown before handoff.
