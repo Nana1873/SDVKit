@@ -218,6 +218,7 @@ public sealed class LiveLabStorageTests(ITestOutputHelper output)
                 CompletedWrites = writeTick - 1,
                 ScanIndex = scanIndex,
                 CompletedScans = scanIndex,
+                WindowsStatusFile.HeldDestinationReplacements,
             }, writerFailure, scanFailure);
         Assert.True(File.Exists(paths.StatusPath));
     }

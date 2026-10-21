@@ -161,6 +161,147 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void DeniedReplacementOfAHeldDestinationStillPublishesTheCompleteSnapshot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        var writer = new StatusWriter(LaunchId, path);
+        writer.Write("active", 1, false, false);
+        long replacements = WindowsStatusFile.HeldDestinationReplacements;
+        using (var oldSnapshot = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            try
+            {
+                writer.Write("active", 2, false, false);
+            }
+            finally
+            {
+                WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+            }
+
+            Assert.Equal("active", Read(path).State);
+            Assert.Equal(2, Read(path).Tick);
+            using JsonDocument old = JsonDocument.Parse(oldSnapshot);
+            Assert.Equal(1, old.RootElement.GetProperty("tick").GetInt32());
+        }
+
+        Assert.Equal(replacements + 1, WindowsStatusFile.HeldDestinationReplacements);
+        Assert.Equal([path], Directory.GetFiles(directory.Path));
+
+        writer.Write("active", 3, false, false);
+        Assert.Equal(3, Read(path).Tick);
+        Assert.Equal(replacements + 1, WindowsStatusFile.HeldDestinationReplacements);
+        Assert.Equal([path], Directory.GetFiles(directory.Path));
+    }
+
+    [Fact]
+    public void DeniedReplacementReplacesALeftoverAsideName()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        string leftover = directory.WriteFile("status.json" + WindowsStatusFile.ReplacedSuffix, "stale");
+        var writer = new StatusWriter(LaunchId, path);
+        writer.Write("active", 1, false, false);
+        Assert.True(File.Exists(leftover));
+
+        WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+        try
+        {
+            writer.Write("active", 2, false, false);
+        }
+        finally
+        {
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+        }
+
+        Assert.Equal(2, Read(path).Tick);
+        Assert.Equal([path], Directory.GetFiles(directory.Path));
+    }
+
+    [Fact]
+    public void DeniedReplacementReportsAFailedAsideRenameAndKeepsTheDestination()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        string leftover = directory.WriteFile("status.json" + WindowsStatusFile.ReplacedSuffix, "stale");
+        var writer = new StatusWriter(LaunchId, path);
+        writer.Write("active", 1, false, false);
+        byte[] original = File.ReadAllBytes(path);
+        long replacements = WindowsStatusFile.HeldDestinationReplacements;
+        using (new FileStream(leftover, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            try
+            {
+                IOException error = Assert.Throws<IOException>(() => writer.Write("active", 2, false, false));
+                Assert.Equal(unchecked((int)0x80070005), error.HResult);
+                Assert.Contains("(error 5)", error.Message, StringComparison.Ordinal);
+                Assert.Contains("aside", error.Message, StringComparison.Ordinal);
+                Assert.Contains("(error 32)", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+            }
+        }
+
+        Assert.Equal(original, File.ReadAllBytes(path));
+        Assert.Equal(1, Read(path).Tick);
+        Assert.Equal(replacements, WindowsStatusFile.HeldDestinationReplacements);
+        Assert.Equal(
+            new[] { path, leftover }.Order(StringComparer.Ordinal),
+            Directory.GetFiles(directory.Path).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void DeniedReplacementOfAReadOnlyDestinationStaysDenied()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TemporaryDirectory directory = new();
+        string path = Path.Combine(directory.Path, "status.json");
+        var writer = new StatusWriter(LaunchId, path);
+        writer.Write("active", 1, false, false);
+        byte[] original = File.ReadAllBytes(path);
+        long replacements = WindowsStatusFile.HeldDestinationReplacements;
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            IOException error = Assert.Throws<IOException>(() => writer.Write("active", 2, false, false));
+            Assert.Equal(unchecked((int)0x80070005), error.HResult);
+            Assert.Equal(0, WindowsStatusFile.SimulatedHeldDestinationDenials);
+            Assert.Equal(original, File.ReadAllBytes(path));
+            Assert.Equal([path], Directory.GetFiles(directory.Path));
+            Assert.Equal(replacements, WindowsStatusFile.HeldDestinationReplacements);
+        }
+        finally
+        {
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 0;
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
     public void PartialAndReplacedLaunchMarkersAreRejectedAndFreshPublicationRecovers()
     {
         using TemporaryDirectory directory = new();
@@ -244,6 +385,7 @@ public sealed class StatusWriterTests(ITestOutputHelper output)
                 ReadTimeUtc = now,
                 Report = report,
                 ReadExceptions = readerFailure is not null ? readExceptions.Describe() : [],
+                WindowsStatusFile.HeldDestinationReplacements,
             }, writerFailure, readerFailure);
         Assert.Equal(500, Read(path).Tick);
         Assert.Equal([path], Directory.GetFiles(directory.Path));
