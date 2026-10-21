@@ -339,6 +339,8 @@ To test persistence:
 
 **Return to title.** An intentional return to title suspends a passed single fixture review. It resumes only when Stardew loads the registered save again. That one reload is checked against the live world identity before fixture commands and MCP fixture actions work again. Loading any other save is a terminal failure. This allows title-only settings, such as language, without weakening the fixture boundary.
 
+> **Caution ([#341](https://github.com/Nana1873/SDVKit/issues/341)):** observed on 2.1.0, the review does not resume. The exit to title fails the fixture check, and after the exact save loads again the status stays `testSaveFailed` and every command and tool answers blocked (`reviewTestSaveNotReady`). Read such a world from the mod's own log, or stop and start the review; see the [multilingual test guide](test-a-multilingual-ui.md#3-save-restart-and-the-title-screen-language-change).
+
 Always finish the review:
 
 ```powershell

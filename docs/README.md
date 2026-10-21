@@ -9,7 +9,7 @@ Start with [installation and the two quickstarts](../README.md). The [glossary](
 | Author a conditional CP change through live proof and ZIP | [CP authoring recipe](cp-authoring.md) |
 | Implement a C# event/config feature and diagnose a runtime error | [SMAPI authoring recipe](smapi-authoring.md) |
 | Build and review one explicit C# and associated content-pack bundle | [Bundle Arrival recipe](bundle-authoring.md) |
-| Author a multilingual SMAPI dialogue through fallback, controller, and reload proof | [Multilingual UI authoring recipe](multilingual-ui-authoring.md) |
+| Test a multilingual dialogue, fallback and the title-screen language change | [Multilingual UI guide](test-a-multilingual-ui.md) |
 | Test a purchase in your shop | [Shop purchase guide](test-a-shop-purchase.md) |
 | Change and verify a GMCM option (checkbox or slider) | [GMCM option guide](test-a-gmcm-option.md) |
 | Check the GMCM contract and API interface | [GMCM contract](gmcm-authoring.md) |
