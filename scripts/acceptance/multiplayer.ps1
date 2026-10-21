@@ -397,6 +397,7 @@ try {
         # stardew_lab_warp refuses it as not a permanent location. The cabin door is the map warp at 3,12 (Maps/FarmHouse),
         # which stardew_world_move reports as blocked, so screen 1 walks to 3,11 and leaves with a key chord instead.
         $hostBefore = Get-PlayerRuntime 'split-host-before' 'screen0'
+        # The 9,9 start and the route to 3,11 are the fixture's cabin layout (Maps/FarmHouse); another fixture needs another route.
         $cabin = Get-PlayerRuntime 'split-guest-cabin' 'screen1'
         Assert-That ($cabin.tileX -eq 9 -and $cabin.tileY -eq 9) "screen 1 starts at $($cabin.tileX),$($cabin.tileY), not on the cabin bed 9,9."
         $x = $cabin.tileX
@@ -424,9 +425,9 @@ try {
         Write-Step 'The host joins it on the Farm, prepares the probe chest, and screen 1 reads and uses it.'
         # Fixture tools are unbound only (the host is screen 0): no --screen here.
         $warp = Invoke-SdvKit 'warp-host' @('project', 'review', 'call', 'stardew_lab_warp', (@{ location = 'Farm'; x = $outside.tileX + 2; y = $outside.tileY } | ConvertTo-Json -Compress), '--allow-fixture-actions')
-        Assert-That ($warp.Json.state -ceq 'ready' -and $warp.Json.lab.locationId -ceq 'Farm') 'the host did not warp to the Farm next to screen 1.'
+        Assert-That ($warp.Json.state -ceq 'ready' -and $warp.Json.lab.locationId -ceq 'Farm' -and $warp.Json.lab.tileX -eq $outside.tileX + 2 -and $warp.Json.lab.tileY -eq $outside.tileY) "the host did not land on Farm $($outside.tileX + 2),$($outside.tileY) next to screen 1."
         Start-Sleep -Milliseconds 1500
-        $prepared = Invoke-PlayerLogCommand 'prepare-chest' 'screen0' 'per-player-proof-chest prepare' 'Prepared owned proof chest at Farm \((\d+), (\d+)\) with Stone 2'
+        Invoke-PlayerLogCommand 'prepare-chest' 'screen0' 'per-player-proof-chest prepare' 'Prepared owned proof chest at Farm \((\d+), (\d+)\) with Stone 2' | Out-Null
         Invoke-PlayerLogCommand 'open-chest' 'screen1' 'per-player-proof-chest open screen=1' 'Opened owned proof chest for farmer' | Out-Null
         Wait-ChestMenu 'split-guest' 'screen1'
         $chest = Read-Chest 'split-guest' 'screen1'

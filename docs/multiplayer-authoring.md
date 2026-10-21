@@ -21,7 +21,8 @@ The host does **not** measure or write a remote player's inventory.
 | Explicit save and new-process reload | Verified by the script |
 | Natural overnight disk save | Observed, not restart proof |
 | Local split-screen state per screen, walking, `worldActionCursorAimUnavailable` | Verified by the script |
-| Local split-screen replacement, persistence and chest | Verified manually (below), not in the script |
+| Local split-screen chest read and one-Stone withdrawal on screen 1 | Verified by the script |
+| Local split-screen replacement and persistence | Verified manually (below), not in the script |
 
 This covers one local host with one farmhand in `network-2`, and two screens in one `single --test-save` process. It does not prove other or internet multiplayer setups.
 
@@ -74,7 +75,7 @@ Then prove persistence:
 2. Stop without reset and restart the kept `single --test-save` review.
 3. Rejoin and read the screens again.
 4. Require 1/2 and `persisted=True` with matching actual and event values.
-5. Run the chest gate for both screens without transfer. Then clean up, stop and reset.
+5. Run the chest gate for both screens without transfer (`multiplayer.ps1` also withdraws one Stone on screen 1). Then clean up, stop and reset.
 
 In the accepted run, the old farmhand client failed and the replacement appeared as screen 2 with a new context. Save and restart kept host 1 / farmhand 2, and probe v3 produced the chest capture above. Final cleanup stopped and reset both topologies. All 41,612 protected normal-save, `Mods` and staging entries matched the baseline, with nothing changed, missing or added.
 
