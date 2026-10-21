@@ -22,12 +22,14 @@ The host prepares the probe's marked chest (`per-player-proof-chest prepare`, St
 
 ## 5. Split-screen, as far as the game allows
 
-On a `single --test-save` review with `split-screen join`, F7 on screen 0 once and on screen 1 twice gives 1 and 2, each with its own F8 dialog (every command carries `--screen`). Screen 1 walks one tile with `stardew_world_move`. `stardew_world_act` is refused there with `worldActionCursorAimUnavailable` before dispatch: Stardew forces gamepad controls on screens other than 0, and gamepad mode acts on the faced tile instead of the cursor tile. To act on a screen, face the target and press the button, as [world interaction](world-interaction.md#roles-and-screens) describes.
+On a `single --test-save` review with `split-screen join`, F7 on screen 0 once and on screen 1 twice gives 1 and 2, each with its own F8 dialog (every command carries `--screen`). Screen 1 starts in its cabin, a generated `FarmHouse<guid>` location. Screens have no fixture tools (`--screen` with `--allow-fixture-actions` is a usage error) and an unbound `stardew_lab_warp` into that location is refused with "is not a permanent location", so the host cannot join it there. Screen 1 instead walks to the cabin door with `stardew_world_move` (the door tile itself is refused with `worldMoveTargetBlocked`) and leaves with a held `S` chord, which puts it on the Farm. The host warps next to it, prepares the probe chest, and screen 1 opens it with the probe command (`per-player-proof-chest open screen=1`), reads it with `stardew_container_get`, and withdraws one Stone with `stardew_container_transfer` (3/1); screen 0 then reads the chest at 1 and its own backpack at 1. This is the first live use of the transfer on a screen.
+
+`stardew_world_act` is refused on screen 1 with `worldActionCursorAimUnavailable` before dispatch: Stardew forces gamepad controls on screens other than 0 (`localPlayer.data.input.gamepadControls` is `true`), and gamepad mode acts on the faced tile instead of the cursor tile. To act on a screen, face the target and press the button, as [world interaction](world-interaction.md#roles-and-screens) describes.
 
 ## Not covered by the script
 
-- **Chest and transfer on a screen:** the second screen's farmhand starts in its cabin, whose location name `stardew_lab_warp` rejects, and the probe places the chest where the host stands, so the two never share a location. This stays a finding, not a workaround.
 - **Screen leave, replacement and persistence after a restart**, and the stale-MCP-client checks for the leaving farmhand: manual steps in [the multiplayer recipe](multiplayer-authoring.md#local-split-screen).
+- Opening the chest on a screen with `stardew_world_act` (refused as above) or by walking to it and pressing the action button; the script opens it with the probe's console command.
 - Controller input and internet multiplayer, and anything outside one local host with one farmhand.
 
 A pass proves the per-player result of one sample mod for one `network-2` host and farmhand, and per-screen state on one split-screen review. It does not prove other mods, other networks or normal saves.

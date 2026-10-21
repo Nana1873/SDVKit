@@ -21,10 +21,12 @@ last inventory event on F8. The script runs these sections in order:
    - The host saves the fixture, the review stops without reset and starts again from the kept save: new processes,
      the same farmers, host Stone 1, farmhand Stone 3, and both F8 dialogs report persisted=True.
 3. split: the corrected target on a single test-save review with the second screen joined. F7 on screen 0 once and on
-   screen 1 twice gives host 1 and farmhand 2 with each screen's own F8 dialog. Screen 1 then walks one tile with
-   stardew_world_move, and stardew_world_act on screen 1 is refused with worldActionCursorAimUnavailable (Stardew forces
-   gamepad mode on that screen). The chest, screen leave and replacement, and persistence after a restart stay manual;
-   see docs/test-a-multiplayer-mod.md.
+   screen 1 twice gives host 1 and farmhand 2 with each screen's own F8 dialog. Screen 1 walks to its cabin door with
+   stardew_world_move and out with a key chord, the host warps next to it on the Farm and prepares the probe chest, screen 1
+   opens it with the probe command, reads it and withdraws one Stone with stardew_container_transfer, and screen 0 reads
+   the chest. stardew_world_act on screen 1 is refused with worldActionCursorAimUnavailable (Stardew forces gamepad
+   controls on that screen). Screen leave and replacement and persistence after a restart stay manual; see
+   docs/test-a-multiplayer-mod.md.
 
 Every tool call and every read names its role or screen, so one player's state is never inferred from the other's.
 
@@ -143,30 +145,13 @@ function Assert-Dialog($Dialog, [string] $Player, [string] $FarmerId, [int] $Cou
     Assert-That ($Dialog.Actual -eq $Count -and $Dialog.EventStone -eq $Count -and $Dialog.Persisted -ceq 'True' -and $Dialog.Stone -ceq "$Count") "the $Player dialog shows persisted=$($Dialog.Persisted) stone=$($Dialog.Stone) actual=$($Dialog.Actual) eventStone=$($Dialog.EventStone), expected $Count everywhere."
 }
 
-function Get-PlayerLogPath([string] $Player) {
-    $profile = if ($Player -like 'screen*') { 'single' } else { "network-2\$Player" }
-    Join-Path $context.Lab ".sdvkit\lab\profiles\$profile\AppData\Roaming\StardewValley\ErrorLogs\SMAPI-latest.txt"
-}
-
 function Invoke-PlayerLogCommand([string] $Label, [string] $Player, [string] $Command, [string] $Pattern) {
-    # Runs a console command of the reviewed mods in one player's process and returns the first regex match its output adds to that player's SMAPI log.
-    $log = Get-PlayerLogPath $Player
-    $offset = (Get-Item -LiteralPath $log).Length
-    $selection = if ($Player -like 'screen*') { @() } else { Get-Selection $Player }
-    $result = Invoke-SdvKit "$Label-$Player" (@('project', 'review', 'command', $Command, '--json') + $selection)
-    Assert-That ($result.Json.commandWritten -eq $true) "the command $Command did not run for $Player."
-    $deadline = [DateTime]::UtcNow.AddSeconds(15)
-    do {
-        Start-Sleep -Milliseconds 300
-        $stream = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
-        try {
-            [void]$stream.Seek($offset, 'Begin')
-            $tail = [IO.StreamReader]::new($stream).ReadToEnd()
-        }
-        finally { $stream.Dispose() }
-    } until ($tail -match $Pattern -or [DateTime]::UtcNow -gt $deadline)
-    Assert-That ($tail -match $Pattern) "$Command did not log a line matching $Pattern for $Player."
-    return $Matches
+    # A console command of the reviewed mods in one player's process: a network role through its own profile log, screen 0
+    # unbound, another screen through SMAPI's screen=<id> argument in the command itself.
+    $isScreen = $Player -like 'screen*'
+    $log = if ($isScreen) { $script:singleLog } else { Get-SmapiLogPath -Role $Player }
+    $selection = if ($isScreen) { @() } else { Get-Selection $Player }
+    Invoke-ModLogCommand "$Label-$Player" -Command $Command -Pattern $Pattern -Log $log -Selection $selection -TimeoutSeconds 15
 }
 
 function Get-Area([string] $Label, [string] $Player, [int] $X, [int] $Y, [int] $Width, [int] $Height) {
@@ -352,8 +337,8 @@ try {
         Invoke-SdvKit 'leave' @('project', 'review', 'network', 'leave', '--role', 'farmhand', '--json') | Out-Null
         $away = (Invoke-SdvKit 'status-away' @('project', 'review', 'status', '--topology', 'network-2', '--json') -AllowExit @(0, 3)).Json
         Assert-That ($away.network.host.gameSide.state -ceq 'active' -and $away.network.host.gameSide.projectMod.phase -ceq 'loaded') 'the host is not loaded and active while the farmhand is away.'
-        $refused = Invoke-SdvKit 'inventory-while-away' (@('project', 'review', 'inventory', '--json') + (Get-Selection 'host')) -AllowExit @(1, 2, 3, 4, 5, 6)
-        Assert-That ($refused.Exit -ne 0) 'a host inventory read succeeded while the farmhand was away.'
+        $refused = Invoke-SdvKit 'inventory-while-away' (@('project', 'review', 'inventory', '--json') + (Get-Selection 'host')) -AllowExit @(3)
+        Assert-That ($refused.Json.state -ceq 'unavailable' -and $refused.Json.errorCode -ceq 'reviewPairNotReady') "the host inventory read while the farmhand was away returned $($refused.Json.state)/$($refused.Json.errorCode), expected unavailable/reviewPairNotReady."
         Invoke-SdvKit 'join' @('project', 'review', 'network', 'join', '--role', 'farmhand', '--json') | Out-Null
         $rejoined = Wait-ReviewReady -Topology 'network-2'
         Assert-That ($rejoined.network.host.gameSide.networkTwo.sessionId -ceq $hostSession) 'the host session changed after the farmhand rejoined.'
@@ -377,14 +362,20 @@ try {
 
     if (Test-Section 'split') {
         Write-Step 'Split-screen: the second screen in one test-save review.'
-        Invoke-SdvKit 'start-split' @('project', 'review', 'start', $fixedReady, '--game-path', $context.GamePath, '--topology', 'single', '--test-save', '--json') | Out-Null
-        Wait-ReviewReady -TestSave | Out-Null
+        Invoke-SdvKit 'start-split' @('project', 'review', 'start', $fixedReady, '--game-path', $context.GamePath, '--topology', 'single', '--test-save', '--companion', $probeReady, '--json') | Out-Null
+        $script:singleLog = Get-SmapiLogPath (Wait-ReviewReady -TestSave)
         Invoke-SdvKit 'split-screen-join' @('project', 'review', 'split-screen', 'join', '--json') | Out-Null
         $deadline = [DateTime]::UtcNow.AddSeconds(120)
         do {
             Start-Sleep -Seconds 3
             $status = (Invoke-SdvKit 'split-status' @('project', 'review', 'status', '--topology', 'single', '--json')).Json
-            $runtime = if ($status.lab.gameSide.testSave.localSplitScreen -eq $true) { (Invoke-PlayerTool 'runtime-join' 'screen1' 'stardew_runtime_get' -AllowExit @(0, 3)).Json } else { $null }
+            $runtime = $null
+            if ($status.lab.gameSide.testSave.localSplitScreen -eq $true) {
+                # Until the second screen answers, the read is refused with state unavailable (exit 3); anything else is a failure.
+                $join = Invoke-PlayerTool 'runtime-join' 'screen1' 'stardew_runtime_get' -AllowExit @(0, 3)
+                Assert-That ($join.Exit -eq 0 -or $join.Json.state -ceq 'unavailable') "the screen 1 read failed with exit $($join.Exit)."
+                $runtime = $join.Json
+            }
         } until (($runtime -and $runtime.PSObject.Properties['screen'] -and $runtime.screen.screenId -eq 1) -or [DateTime]::UtcNow -gt $deadline)
         Assert-That ($runtime -and $runtime.PSObject.Properties['screen'] -and $runtime.screen.screenId -eq 1) 'screen 1 did not become readable after the split-screen join.'
         $hostId = [string](Get-PlayerRuntime 'split-host' 'screen0').localPlayer.data.playerId
@@ -401,18 +392,65 @@ try {
         Assert-Dialog (Read-ResultDialog 'split-guest' 'screen1') 'screen1' $farmhandId 2
         Write-Step 'Screen 0 holds Stone 1 and screen 1 holds Stone 2, each dialog with its own farmer.'
 
-        Write-Step 'What screen 1 can and cannot do: walk one tile, and the act refusal.'
-        $start = Get-PlayerRuntime 'split-guest-start' 'screen1'
-        $move = Invoke-PlayerTool 'move' 'screen1' 'stardew_world_move' @{ direction = 'left' } -OptIn '--allow-world-actions'
-        Assert-That ($move.Json.state -ceq 'completed' -and $move.Json.reached -eq $true -and $move.Json.tileX -eq $start.tileX - 1 -and $move.Json.tileY -eq $start.tileY -and $move.Json.position.facing -ceq 'left') "stardew_world_move on screen 1 returned $($move.Json.state)/$($move.Json.errorCode) at $($move.Json.tileX),$($move.Json.tileY)."
+        Write-Step 'Screen 1 walks out of its cabin so that both screens share the Farm.'
+        # The cabin interior is a generated location (FarmHouse<guid>): screens have no fixture tools, and the unbound
+        # stardew_lab_warp refuses it as not a permanent location. The cabin door is the map warp at 3,12 (Maps/FarmHouse),
+        # which stardew_world_move reports as blocked, so screen 1 walks to 3,11 and leaves with a key chord instead.
+        $hostBefore = Get-PlayerRuntime 'split-host-before' 'screen0'
+        $cabin = Get-PlayerRuntime 'split-guest-cabin' 'screen1'
+        Assert-That ($cabin.tileX -eq 9 -and $cabin.tileY -eq 9) "screen 1 starts at $($cabin.tileX),$($cabin.tileY), not on the cabin bed 9,9."
+        $x = $cabin.tileX
+        $y = $cabin.tileY
+        foreach ($direction in @('left') * 6 + @('down') * 2) {
+            $step = Invoke-PlayerTool "walk-$direction" 'screen1' 'stardew_world_move' @{ direction = $direction } -OptIn '--allow-world-actions'
+            if ($direction -ceq 'left') { $x-- } else { $y++ }
+            Assert-That ($step.Json.state -ceq 'completed' -and $step.Json.reached -eq $true -and $step.Json.tileX -eq $x -and $step.Json.tileY -eq $y -and $step.Json.position.facing -ceq $direction) "screen 1 walking $direction returned $($step.Json.state)/$($step.Json.errorCode) at $($step.Json.tileX),$($step.Json.tileY), expected $x,$y."
+        }
         Start-Sleep -Milliseconds 1500
-        $moved = Get-PlayerRuntime 'split-guest-moved' 'screen1'
-        Assert-That ($moved.tileX -eq $start.tileX - 1 -and $moved.tileY -eq $start.tileY -and $moved.locationId -ceq $start.locationId) 'a runtime read after the move on screen 1 disagrees with its result.'
-        Assert-That ((Get-PlayerRuntime 'split-host-still' 'screen0').tileX -eq 9) 'the move on screen 1 changed screen 0.'
+        $beforeDoor = Get-PlayerRuntime 'split-guest-door' 'screen1'
+        Assert-That ($beforeDoor.tileX -eq 3 -and $beforeDoor.tileY -eq 11 -and $beforeDoor.locationId -ceq $cabin.locationId) "screen 1 is at $($beforeDoor.tileX),$($beforeDoor.tileY), not in front of the cabin door."
+        Assert-That ((Get-PlayerRuntime 'split-host-still' 'screen0').tileX -eq $hostBefore.tileX -and (Get-PlayerRuntime 'split-host-still2' 'screen0').tileY -eq $hostBefore.tileY) 'walking screen 1 moved screen 0.'
+        $revision = (Get-PlayerMenu 'split-door' 'screen1').uiRevision
+        $exit = Invoke-PlayerTool 'leave-cabin' 'screen1' 'stardew_input_chord' @{ buttons = @('S'); durationTicks = 40; uiRevision = [string]$revision } -OptIn '--allow-input'
+        Assert-That ($exit.Json.succeeded -eq $true -and $exit.Json.released -eq $true) 'the key chord through the cabin door did not complete.'
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            Start-Sleep -Seconds 1
+            $outside = Get-PlayerRuntime 'split-guest-outside' 'screen1'
+        } until ($outside.locationId -ceq 'Farm' -or [DateTime]::UtcNow -gt $deadline)
+        Assert-That ($outside.locationId -ceq 'Farm') "screen 1 is in $($outside.locationId), not on the Farm."
+        Write-Step "Screen 1 left the cabin and stands on the Farm at $($outside.tileX),$($outside.tileY)."
+
+        Write-Step 'The host joins it on the Farm, prepares the probe chest, and screen 1 reads and uses it.'
+        # Fixture tools are unbound only (the host is screen 0): no --screen here.
+        $warp = Invoke-SdvKit 'warp-host' @('project', 'review', 'call', 'stardew_lab_warp', (@{ location = 'Farm'; x = $outside.tileX + 2; y = $outside.tileY } | ConvertTo-Json -Compress), '--allow-fixture-actions')
+        Assert-That ($warp.Json.state -ceq 'ready' -and $warp.Json.lab.locationId -ceq 'Farm') 'the host did not warp to the Farm next to screen 1.'
+        Start-Sleep -Milliseconds 1500
+        $prepared = Invoke-PlayerLogCommand 'prepare-chest' 'screen0' 'per-player-proof-chest prepare' 'Prepared owned proof chest at Farm \((\d+), (\d+)\) with Stone 2'
+        Invoke-PlayerLogCommand 'open-chest' 'screen1' 'per-player-proof-chest open screen=1' 'Opened owned proof chest for farmer' | Out-Null
+        Wait-ChestMenu 'split-guest' 'screen1'
+        $chest = Read-Chest 'split-guest' 'screen1'
+        Assert-That ([string]$chest.playerId -ceq $farmhandId -and (Get-StoneCount $chest.player.slots) -eq 2 -and (Get-StoneCount $chest.container.slots) -eq 2) "screen 1 reads player $($chest.playerId), backpack Stone $(Get-StoneCount $chest.player.slots), chest Stone $(Get-StoneCount $chest.container.slots); expected its own farmer with 2/2."
+        Invoke-Withdraw 'split-guest' 'screen1' 1 | Out-Null
+        Start-Sleep -Milliseconds 1500
+        $after = Read-Chest 'split-guest-after' 'screen1'
+        Assert-That ((Get-StoneCount $after.player.slots) -eq 3 -and (Get-StoneCount $after.container.slots) -eq 1) "after the withdrawal screen 1 sees backpack $(Get-StoneCount $after.player.slots) and chest $(Get-StoneCount $after.container.slots), expected 3/1."
+        Close-ChestMenu 'split-guest' 'screen1'
+        Invoke-PlayerLogCommand 'open-chest-host' 'screen0' 'per-player-proof-chest open' 'Opened owned proof chest for farmer' | Out-Null
+        Wait-ChestMenu 'split-host' 'screen0'
+        $hostChest = Read-Chest 'split-host' 'screen0'
+        Assert-That ([string]$hostChest.playerId -ceq $hostId -and (Get-StoneCount $hostChest.player.slots) -eq 1 -and (Get-StoneCount $hostChest.container.slots) -eq 1) "screen 0 reads backpack Stone $(Get-StoneCount $hostChest.player.slots) and chest Stone $(Get-StoneCount $hostChest.container.slots); expected its own 1 and the chest's 1."
+        Close-ChestMenu 'split-host' 'screen0'
+        Invoke-PlayerLogCommand 'cleanup-chest' 'screen0' 'per-player-proof-chest cleanup' 'Removed exactly one owned proof chest' | Out-Null
+        Write-Step 'Screen 1 withdrew one Stone from the chest (3/1); screen 0 read the chest at 1 and its own backpack at 1.'
+
+        Write-Step 'The act refusal: Stardew forces gamepad controls on screen 1.'
+        $guest = Get-PlayerRuntime 'split-guest-act' 'screen1'
+        Assert-That ($guest.localPlayer.data.input.gamepadControls -eq $true) 'screen 1 does not report gamepad controls, so the act refusal below would not be the gamepad-mode refusal.'
         $inventory = Get-PlayerInventory 'split-act' 'screen1'
-        $act = Invoke-PlayerTool 'act' 'screen1' 'stardew_world_act' @{ action = 'check'; x = $moved.tileX - 1; y = $moved.tileY; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(0, 3)
-        Assert-That ($act.Exit -eq 3 -and $act.Json.errorCode -ceq 'worldActionCursorAimUnavailable' -and $act.Json.dispatchState -ceq 'notDispatched') "stardew_world_act on screen 1 returned $($act.Json.state)/$($act.Json.errorCode)/$($act.Json.dispatchState), expected the gamepad-mode refusal worldActionCursorAimUnavailable before dispatch."
-        Write-Step 'Screen 1 walked one tile and its act was refused (gamepad mode); chest, screen leave and replacement, and restart persistence stay manual.'
+        $act = Invoke-PlayerTool 'act' 'screen1' 'stardew_world_act' @{ action = 'check'; x = $guest.tileX - 1; y = $guest.tileY; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions' -AllowExit @(3)
+        Assert-That ($act.Json.errorCode -ceq 'worldActionCursorAimUnavailable' -and $act.Json.dispatchState -ceq 'notDispatched') "stardew_world_act on screen 1 returned $($act.Json.state)/$($act.Json.errorCode)/$($act.Json.dispatchState), expected the gamepad-mode refusal worldActionCursorAimUnavailable before dispatch."
+        Write-Step 'Screen 1 left its cabin, used the chest and its act was refused (gamepad mode); screen leave and replacement and restart persistence stay manual.'
         Stop-Review -Topology 'single' -Reset -Label 'split'
     }
 
