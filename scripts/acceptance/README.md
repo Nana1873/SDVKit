@@ -12,6 +12,7 @@ Each script runs one SDVKit workflow end to end against the real game: build, pa
 | [`container.ps1`](container.ps1) | A one-time reward gives ten Stone; `stardew_container_transfer` deposits three and withdraws one with exact `7/3/0` and `8/2/0` totals, a stale request is refused with `containerTransferSelectionStale`, and the chest contents survive a fixture save, stop and restart without the reward repeating. | none | [Test a chest transfer](../../docs/test-a-container-transfer.md) |
 | [`data-migration.ps1`](data-migration.ps1) | v1 saves a ledger and a one-time reward; a broken v2 refuses to migrate and keeps the data; the corrected v2 migrates it once (schema 2, no second reward); after a save and a restart v2 loads the existing ledger without migrating again. | none | [Test a save-data migration](../../docs/test-a-data-migration.md) |
 | [`multilingual-ui.ps1`](multilingual-ui.ps1) | A deliberate German placeholder error fails `project check` and one corrected token passes; the English dialogue is read, cancelled and accepted by mouse; after a save and restart, the title-screen language change to Deutsch loads the saved state with German texts and the English fallback sentence (read from the mod's log, see the guide); English is restored and a second accept is idempotent. Controller input is not covered ([#271](https://github.com/Nana1873/SDVKit/issues/271)). | none | [Test a multilingual dialogue](../../docs/test-a-multilingual-ui.md) |
+| [`progression.ps1`](progression.ps1) | A wrong 750-point condition keeps Leah's mail and quest away at 500 seeded points; the corrected threshold delivers exactly one mailbox entry and one quest (repeat evaluation adds none); the native mailbox action receives the letter; the objective completes the quest once; `stardew_fixture_npc_place` puts Leah next to the player, the runtime NPC list shows her there and talking raises her friendship; two restarts with the accepted config leave every `project review progression` read unchanged. | none | [Test an NPC, mail and quest read](../../docs/test-a-progression-read.md) |
 
 ## Run a script
 
@@ -42,7 +43,6 @@ The remaining recipes in `docs/` are guides. These are worth converting into scr
 
 | Recipe | Why |
 | --- | --- |
-| [Progression](../../docs/progression-authoring.md) | NPC, mail and quest reads through a reload. |
 | [Multiplayer](../../docs/multiplayer-authoring.md) | The only end-to-end `network-2` and split-screen workflow. |
 
 These stay guides only, because `project smoke` and the scripts above already cover their live steps: [CP authoring](../../docs/cp-authoring.md), [SMAPI authoring](../../docs/smapi-authoring.md), [Bundle Arrival](../../docs/bundle-authoring.md) and [CP patch order](../../docs/cp-patch-order-recipe.md).
