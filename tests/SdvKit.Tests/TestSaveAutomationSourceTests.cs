@@ -80,6 +80,10 @@ public sealed class TestSaveAutomationSourceTests
         Assert.True(suspend > titleGuard);
         Assert.True(verification > suspend);
         Assert.True(unverified > suspension);
+        Assert.DoesNotContain(
+            "_publishStatus();",
+            source[suspension..source.IndexOf("private void StartCreate()", suspension, StringComparison.Ordinal)],
+            StringComparison.Ordinal);
         Assert.True(logged > returnedToTitle);
         Assert.True(armed > logged);
         Assert.Equal(

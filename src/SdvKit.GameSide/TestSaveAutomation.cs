@@ -659,8 +659,9 @@ internal sealed class TestSaveAutomation
 
         _returningToTitle = true;
         _identityVerified = false;
+        // Not published here: the status writer reads the half-cleared world. ReturnedToTitle
+        // publishes the suspended review, and fixture commands verify the world themselves.
         Log("returningToTitle", "Stardew is exiting to title; fixture commands are refused until the registered save is reloaded.");
-        _publishStatus();
     }
 
     private void StartCreate()
