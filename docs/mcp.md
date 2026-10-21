@@ -155,8 +155,8 @@ Call `stardew_menu_get` first. Its `uiRevision` binds the menu, layout, screen s
 | `stardew_input_scroll` | `{ "x": 200, "y": 100, "notches": -3, "uiRevision": "..." }`. 1-20 notches; positive scrolls up. |
 | `stardew_input_drag` | `{ "x": 200, "y": 100, "endX": 200, "endY": 300, "button": "MouseLeft", "durationTicks": 30, "uiRevision": "..." }`. Press, move for 1-120 updates, hold one update, release. |
 | `stardew_input_text` | `{ "text": "Märchen Hof", "fieldId": 2, "uiRevision": "..." }`. Types into that `textField.id`. |
-| `stardew_input_chord` | `{ "buttons": ["LeftShift", "F8"], "durationTicks": 5, "uiRevision": "..." }`. 1-8 SMAPI buttons held together for 1-120 updates. |
-| `stardew_input_press` | `{ "button": "F8" }`. One non-wheel `SButton` for one tick. |
+| `stardew_input_chord` | `{ "buttons": ["LeftShift", "F8"], "durationTicks": 5, "uiRevision": "..." }`. 1-8 SMAPI buttons held together for 1-120 updates. A chord with a controller button is refused like a press. |
+| `stardew_input_press` | `{ "button": "F8" }`. One non-wheel `SButton` for one tick. A controller button is refused with `inputControllerUnsafeInAutoMode` while `gamepadMode` is `auto` and no gamepad is connected ([#273](https://github.com/Nana1873/SDVKit/issues/273)); use keyboard or mouse, or set `gamepadMode` to `forceOn` or `forceOff` first. |
 | `stardew_input_cursor_set` | `{ "x": 200, "y": 100 }`. Sets the virtual cursor. |
 | `stardew_input_cursor_clear` | `{}`. Clears the cursor and held input. |
 | `stardew_input_wheel` | `{ "direction": "up" }` or `"down"`. One notch; needs the cursor. Goes to an open menu, or without one switches the hotbar like the game's wheel; refused with `inputWheelPlayerBusy` or `inputWheelInventoryEmpty` where the game would not switch. |

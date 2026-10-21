@@ -219,16 +219,16 @@ Choose the detailed surface for the task:
 
 ### Close a menu
 
-For routine menu tests, prefer keyboard or process-local mouse input. Use controller buttons only to test controller behavior. With no controller connected, a synthetic press can briefly report one as connected, then disconnected.
+For routine menu tests, use keyboard or process-local mouse input. With no controller connected, a synthetic controller press briefly reports one as connected, then disconnected. In the game's `auto` gamepad mode that transition switches gamepad controls and, with no menu open, opens the game menu, so SDVKit refuses every controller button in a press or chord before injection with `inputControllerUnsafeInAutoMode` while `gamepadMode` is `auto` and no physical gamepad is connected ([#273](https://github.com/Nana1873/SDVKit/issues/273)). With `forceOn` or `forceOff`, Stardew's `CheckGamepadMode` returns before that connection handling, so controller presses are allowed; a test that needs them sets `gamepadMode` explicitly first. Keyboard and mouse input are unchanged. The bound player's mode is in the runtime `input` object.
 
-The [neutral single-review proof](examples/menu-close-probe/README.md#observed-behavior-2026-09-12) showed the consequence in native Auto mode with the raw controller disconnected. One B press closed the root menu and went `Pressed` → `Released` → `None`. Stardew then opened the inventory on the disconnect. With a parent menu remaining, the child closed and no inventory opened. One Escape, or one click on the visible close button, closed the tested menu without that controller transition. These observations do not fix controller close or cover other menus and controller setups.
+The [neutral single-review proof](examples/menu-close-probe/README.md#observed-behavior-2026-09-12), recorded before that refusal, showed the consequence in native Auto mode with the raw controller disconnected. One B press closed the root menu and went `Pressed` → `Released` → `None`. Stardew then opened the inventory on the disconnect. With a parent menu remaining, the child closed and no inventory opened. One Escape, or one click on the visible close button, closed the tested menu without that controller transition. These observations do not fix controller close or cover other menus and controller setups.
 
 1. Read the current menu through `project review menu` or `stardew_menu_get`. If inspection does not support that menu, inspect a fresh viewport screenshot instead. Do not send a close input when the menu is already closed.
 2. Send one `Escape` press, or click the visible close button once with the virtual cursor. Use current geometry and a fresh `uiRevision` for clicks. Do not guess coordinates, hold the input or repeat it.
 3. Wait for input completion. Then read the menu again or inspect a fresh viewport screenshot. An input acknowledgement proves delivery and release, not that the menu closed.
 4. Stop when the menu is closed. A returned parent menu is a new state, not permission for another close press. If the same menu remains, check how it supports closing before you act again. Do not retry blindly, cycle controller buttons or continue an uncertain action. Record and investigate an unexpected inventory menu.
 
-This guidance does not change controller simulation or prove menu-close regressions fixed. For a deeper investigation, the [neutral menu-close probe](examples/menu-close-probe/README.md) records native callbacks, root and child menus, input states and the following ticks in a single fixture.
+This guidance does not emulate a gamepad ([#271](https://github.com/Nana1873/SDVKit/issues/271)) or prove menu-close regressions fixed. For a deeper investigation, the [neutral menu-close probe](examples/menu-close-probe/README.md) records native callbacks, root and child menus, input states and the following ticks in a single fixture.
 
 ### Input behavior
 
