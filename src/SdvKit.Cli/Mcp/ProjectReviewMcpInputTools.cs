@@ -917,7 +917,7 @@ internal static class ProjectReviewMcpInputTools
         {
             Name = name,
             Description = name is PressToolName or ChordToolName or ClickToolName
-                ? description + " For routine menu closing, first inspect the current menu; send one Escape press or one virtual click on its observed visible close button, wait for completion, then inspect the menu again (use a fresh viewport screenshot if menu inspection is unsupported). Stop when the intended menu closes; do not blindly repeat, hold, or use controller buttons as a fallback. Reserve controller input for explicit controller tests; synthetic controller presses can cause connection/disconnection transitions."
+                ? description + " For routine menu closing, first inspect the current menu; send one Escape press or one virtual click on its observed visible close button, wait for completion, then inspect the menu again (use a fresh viewport screenshot if menu inspection is unsupported). Stop when the intended menu closes; do not blindly repeat, hold, or use controller buttons as a fallback. Controller buttons are refused with inputControllerUnsafeInAutoMode while gamepadMode is auto and no gamepad is connected (#273)."
                 : description,
             InputSchema = inputSchema,
             OutputSchema = name switch

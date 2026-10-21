@@ -19,6 +19,8 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
+- Controller buttons (`ControllerA`, `RightShoulder`, `DPadUp`, thumbstick directions and the others) in `stardew_input_press`, `stardew_input_chord`, `sdvkit input press` and `sdvkit input chord` are now refused before injection with `inputControllerUnsafeInAutoMode` while the bound player's `gamepadMode` is `auto` and no physical gamepad is connected, or when the mode cannot be read (#273). There, Stardew read the synthetic press as a gamepad connect and the next tick as a disconnect, switched gamepad controls and, with no menu open, opened the game menu. With `forceOn` or `forceOff` the game skips that handling, so presses are still allowed; SDVKit has no command for the mode, so change Gamepad Mode on the game's Options page in the lab (`forceOn` for controller tests). Keyboard and mouse input are unchanged. SDVKit does not emulate a gamepad (#271).
+
 - Live tests have one owner per lab root instead of one per machine (#322): two `single --test-save` reviews and two acceptance scripts ran cleanly side by side in separate lab roots on one PC. The live guide, the lab reference ("Several lab roots on one PC"), the acceptance README and the lab kit's `SDVKIT.md` say so; code is unchanged.
 
 ### Fixed

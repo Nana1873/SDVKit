@@ -43,6 +43,11 @@ internal static class ReviewInputCommand
             }
             if (request!.Kind is ReviewInputKind.Chord or ReviewInputKind.Press or ReviewInputKind.Gesture)
             {
+                if (ReviewInputOperation.ControllerRefusal(request, runtime) is { } refusal)
+                {
+                    Complete(refusal);
+                    return;
+                }
                 if (!runtime.TryChord(request, Complete, out string chordError))
                     Complete(new(false, chordError, ProblemCode: "inputChordRejected",
                         Buttons: request.Buttons, Released: false));
@@ -204,6 +209,21 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
     public bool CursorSet => ReviewVirtualCursor.IsSet;
 
     public bool MenuOpen => Game1.activeClickableMenu is not null;
+
+    public string? GamepadMode => Game1.options?.gamepadMode switch
+    {
+        Options.GamepadModes.Auto => "auto",
+        Options.GamepadModes.ForceOn => "forceOn",
+        Options.GamepadModes.ForceOff => "forceOff",
+        _ => null,
+    };
+
+    public bool IsControllerButton(string token) =>
+        Enum.TryParse(token, ignoreCase: true, out SButton button) && button.TryGetController(out _);
+
+    // The raw MonoGame state: SMAPI's override marks an injected controller button as connected.
+    public bool GamepadConnected => Game1.playerOneIndex >= Microsoft.Xna.Framework.PlayerIndex.One
+        && GamePad.GetState(Game1.playerOneIndex).IsConnected;
     public int? CursorX => ReviewVirtualCursor.Position.X;
     public int? CursorY => ReviewVirtualCursor.Position.Y;
 

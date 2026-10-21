@@ -141,7 +141,7 @@ public sealed class ReviewInputCommandTests
     [Fact]
     public void OperationReportsTheCanonicalPressedButton()
     {
-        var runtime = new FakeRuntime { CanonicalButton = "ControllerA" };
+        var runtime = new FakeRuntime { CanonicalButton = "ControllerA", GamepadMode = "forceOn" };
 
         ReviewInputResult result = ReviewInputOperation.Execute(
             new ReviewInputRequest(ReviewInputKind.Press, "controllera", 0, 0),
@@ -150,6 +150,121 @@ public sealed class ReviewInputCommandTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(1, runtime.PressRequests);
         Assert.Contains("ControllerA", result.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("ControllerB")]
+    [InlineData("RightShoulder")]
+    [InlineData("leftthumbstickup")]
+    [InlineData("BigButton")]
+    public void OperationRefusesControllerPressesInAutoModeWithoutAPhysicalGamepad(string button)
+    {
+        var runtime = new FakeRuntime { GamepadMode = "auto" };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0),
+            runtime);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("inputControllerUnsafeInAutoMode", result.ProblemCode);
+        Assert.Equal(button, result.CanonicalButton);
+        Assert.Equal(0, runtime.PressRequests);
+        Assert.Contains("gamepadMode is auto", result.Message, StringComparison.Ordinal);
+        Assert.Contains("keyboard or mouse", result.Message, StringComparison.Ordinal);
+        Assert.Contains("Options page", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ControllerRefusalCoversEveryButtonOfAChordAndKeepsItsShape()
+    {
+        var request = new ReviewInputRequest(ReviewInputKind.Chord, null, 0, 0, RequestId,
+            ["W", "ControllerA"], 4, "ui-1");
+
+        ReviewInputResult? result = ReviewInputOperation.ControllerRefusal(
+            request, new FakeRuntime { GamepadMode = "auto" });
+
+        Assert.NotNull(result);
+        Assert.False(result.Succeeded);
+        Assert.Equal("inputControllerUnsafeInAutoMode", result.ProblemCode);
+        Assert.Equal("ControllerA", result.CanonicalButton);
+        Assert.Equal(["W", "ControllerA"], result.Buttons);
+        Assert.False(result.Released);
+        Assert.Null(result.StartTick);
+    }
+
+    [Theory]
+    [InlineData("forceOn", false)]
+    [InlineData("forceOff", false)]
+    [InlineData("auto", true)]
+    public void ControllerRefusalAllowsExplicitModesAndAConnectedGamepad(string mode, bool connected)
+    {
+        var runtime = new FakeRuntime { GamepadMode = mode, GamepadConnected = connected };
+
+        Assert.Null(ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Press, "RightShoulder", 0, 0), runtime));
+        Assert.Null(ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Chord, null, 0, 0, Buttons: ["ControllerB", "DPadUp"]), runtime));
+    }
+
+    [Fact]
+    public void ControllerRefusalAsksTheRuntimeWhetherATokenIsAController()
+    {
+        // SMAPI parses the numeric SButton value 2512 as RightShoulder.
+        var runtime = new FakeRuntime { ControllerTokens = ["2512"] };
+
+        ReviewInputResult? result = ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Press, "2512", 0, 0), runtime);
+
+        Assert.NotNull(result);
+        Assert.Equal("inputControllerUnsafeInAutoMode", result.ProblemCode);
+        Assert.Equal("2512", result.CanonicalButton);
+    }
+
+    [Fact]
+    public void ControllerRefusalFailsClosedWhenTheGamepadModeIsUnreadable()
+    {
+        ReviewInputResult? result = ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Press, "RightThumbstickRight", 0, 0),
+            new FakeRuntime { GamepadMode = null, GamepadConnected = true });
+
+        Assert.NotNull(result);
+        Assert.Equal("inputControllerUnsafeInAutoMode", result.ProblemCode);
+        Assert.Contains("unreadable", result.Message, StringComparison.Ordinal);
+        Assert.True(result.Message.Length <= ReviewInputContract.MaximumProblemLength, result.Message);
+    }
+
+    [Theory]
+    [InlineData("F8")]
+    [InlineData("B")]
+    [InlineData("Escape")]
+    [InlineData("MouseLeft")]
+    public void ControllerRefusalLeavesKeyboardAndMouseInputUnchanged(string button)
+    {
+        var runtime = new FakeRuntime { GamepadMode = "auto" };
+
+        Assert.Null(ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0), runtime));
+        Assert.Null(ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Chord, null, 0, 0, Buttons: [button, "LeftShift"]), runtime));
+        Assert.True(ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Press, button, 0, 0), runtime).Succeeded);
+    }
+
+    [Fact]
+    public void EverySmapiControllerButtonIsAControllerToken()
+    {
+        string[] controller =
+        [
+            "ControllerA", "ControllerB", "ControllerX", "ControllerY", "ControllerBack", "ControllerStart",
+            "DPadUp", "DPadDown", "DPadLeft", "DPadRight", "LeftShoulder", "RightShoulder",
+            "LeftTrigger", "RightTrigger", "LeftStick", "RightStick", "BigButton",
+            "LeftThumbstickLeft", "LeftThumbstickRight", "LeftThumbstickDown", "LeftThumbstickUp",
+            "RightThumbstickLeft", "RightThumbstickRight", "RightThumbstickDown", "RightThumbstickUp",
+        ];
+
+        Assert.All(controller, b => Assert.True(ReviewInputArguments.IsControllerButtonToken(b), b));
+        Assert.All(["A", "B", "Left", "Up", "LeftShift", "MouseLeft", "Back"],
+            b => Assert.False(ReviewInputArguments.IsControllerButtonToken(b), b));
     }
 
     [Theory]
@@ -421,6 +536,15 @@ public sealed class ReviewInputCommandTests
         public bool MenuOpen { get; init; } = true;
 
         public string? WorldWheelRefusal { get; init; }
+
+        public string? GamepadMode { get; init; } = "auto";
+
+        public bool GamepadConnected { get; init; }
+
+        public string[] ControllerTokens { get; init; } = [];
+
+        public bool IsControllerButton(string token) =>
+            ControllerTokens.Contains(token) || ReviewInputArguments.IsControllerButtonToken(token);
 
         public string CanonicalButton { get; init; } = "F8";
 
