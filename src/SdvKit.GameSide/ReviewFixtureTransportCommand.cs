@@ -161,7 +161,7 @@ internal static class ReviewFixtureTransportCommand
                     ? []
                     : [execution.Problem
                         ?? new ReviewFixtureProblem(
-                            "fixtureActionRejected",
+                            completedResult.ProblemCode ?? "fixtureActionRejected",
                             completedResult.Message)],
                 save: null,
                 monitor);
@@ -256,7 +256,8 @@ internal static class ReviewFixtureTransportCommand
             result.Animal,
             save,
             Lab: result.Lab,
-            Item: result.Item);
+            Item: result.Item,
+            Catch: result.Catch);
         var envelope = new ReviewFixtureResponseEnvelope(
             ReviewFixtureTransportContract.SchemaVersion,
             requestId,
