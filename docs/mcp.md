@@ -9,7 +9,7 @@ Connect an MCP client to an [already-running review](live-review.md#start-a-revi
 | Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +15 | Unsupported | +15 | +6 |
-| Add `--allow-world-actions` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-world-actions` | +3 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 
@@ -205,7 +205,7 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 ## Opt-in world interactions
 
-`--allow-world-actions` adds `stardew_world_interact` and `stardew_world_act` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player).
+`--allow-world-actions` adds `stardew_world_interact`, `stardew_world_act` and `stardew_world_move` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player). `stardew_world_move { "direction": "up" | "right" | "down" | "left", "turnOnly"? }` walks the player exactly one tile (or only turns it) and reports `tileX`/`tileY`, `position` and `reached`; a blocked target is refused with `worldMoveTargetBlocked`; see [move exactly one tile](world-interaction.md#move-exactly-one-tile).
 
 - `water`: dry crop soil, watering can selected.
 - `harvest`: a ready hand-harvest crop, empty hand. Scythe crops are rejected.

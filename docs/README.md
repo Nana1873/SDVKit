@@ -101,6 +101,7 @@ MCP tools and `project review call` need the opt-in flag. The dedicated CLI comm
 | Bring a villager next to the player | `stardew_fixture_npc_place` | `--allow-fixture-actions` | Test save; `single` or host. See [NPC placement](lab-reference.md#npc-placement) |
 | Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md) |
 | Action button or tool on a tile next to the player | `stardew_world_act` (CLI: `project review act`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player) |
+| Walk exactly one tile, or turn | `stardew_world_move` (CLI: `project review act move`) | `--allow-world-actions` | `single` test save; no pathfinding. See [move exactly one tile](world-interaction.md#move-exactly-one-tile) |
 | Move a quantity between backpack and chest | `stardew_container_transfer` (CLI: `project review container-transfer`) | `--allow-container-transfer` | `single` test save, unbound. See [container transfer](container-transfer.md) |
 | Refresh CP patches | `stardew_cp_refresh` | `--allow-cp-refresh` | `single`, a root CP 2.9.1 pack |
 

@@ -6,9 +6,15 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
+- `scripts/acceptance/player-actions.ps1 -Topology network-2 -Role <host|farmhand>` and `-Screen <id>` run the input-only sections (walking, hotbar keys, game menu with tab switch, inventory move by two clicks, Escape) through the selected network role or split-screen screen, with every tool call and menu, inventory and world read bound to that selection (#299). The fixture and world sections stay single-only (#297) and are skipped with a console note; evidence goes to `player-actions-<role>` or `player-actions-screen<id>`. The shared helpers accept a role or screen selection and wait for a ready `network-2` pair.
+- `project review act move <up|right|down|left> [--turn-only]` and the MCP tool `stardew_world_move` (opt-in `--allow-world-actions`, test save, single) walk the player exactly one tile in a direction, or only turn it, and report the reached `locationId`, `tileX`/`tileY`, `position` and `reached` (#293). SDVKit holds the game's own movement key through its process-local input until the player stands past the centre of the next tile, then releases it, so repeated moves land one tile apart where a timed chord moved 2 or 3 tiles. A target that is off the map or blocked for the player is refused with `worldMoveTargetBlocked` before any input; a warp on the target changes the location instead. There is no pathfinding.
+
+## [2.1.0] - 2026-10-20
+
+### Added
+
 - The local player runtime data has an optional `input` object: `gamepadControls`, `gamepadMode` (`auto`, `forceOn`, `forceOff`), `mouseCursorVisible` and `gamepadConnected`, so evidence states which input mode a test used (#271). It is absent in status from an older GameSide.
 - World-area reads expose an optional per-tile `feature` for trees, fruit trees, grass, bushes, resource clumps, giant crops and furniture, including bounded tool-effect facts and the origin of multi-tile features (#295). A feature that cannot be read makes only its tile `unavailable`. Older responses without the field remain valid. Verified live: an axe hit lowers tree health and the scythe cuts grass blades; furniture, giant crops and boulders are not yet verified live.
-- `scripts/acceptance/player-actions.ps1 -Topology network-2 -Role <host|farmhand>` and `-Screen <id>` run the input-only sections (walking, hotbar keys, game menu with tab switch, inventory move by two clicks, Escape) through the selected network role or split-screen screen, with every tool call and menu, inventory and world read bound to that selection (#299). The fixture and world sections stay single-only (#297) and are skipped with a console note; evidence goes to `player-actions-<role>` or `player-actions-screen<id>`. The shared helpers accept a role or screen selection and wait for a ready `network-2` pair.
 - `scripts/acceptance/player-actions.ps1 -Only <sections>` runs the shared setup and only the named sections while developing SDVKit (#308). Partial runs keep their evidence under `player-actions-partial` and never count as acceptance.
 - The local player runtime data has an optional `npcs` list: the visible villagers in the player's current location with internal and display name, tile and facing, at most 64 (#292). It is available to every role and screen, and absent in status from an older GameSide.
 - `stardew_fixture_npc_place { name, x, y }` (opt-in `--allow-fixture-actions`, test save, single or network-2 host) warps one named villager to a free tile in the player's location, stops its path and turns it toward the player, so dialogue and gift tests do not depend on schedules (#292). It is test setup, not proof of game behaviour.
@@ -21,10 +27,11 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 ### Fixed
 
 - The lab starts the game window without giving it focus (SDL's `SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN`, set in the game's environment) (#311). Switching between other windows during a review or an acceptance run no longer makes the next input fail with `inputForegroundChanged`; the game window becoming the foreground window (a click into it, Alt+Tab, or Windows activating it after the window in front closes) still does.
-
 - `lab test-save` no longer fails with `gameSideStale` when loading the test save blocks the game for more than five seconds: while the exact test save is still loading or waiting, it keeps polling for up to 30 seconds after the marker becomes stale (#303). The acceptance scripts' readiness wait does the same.
 - Fishing preparation now requires natural fishable water both two and three tiles out from the nearest collision-free bank facing left or right. It skips vertical banks because down-facing short casts sometimes spent stamina without starting fishing; the cause remains undetermined. If no qualifying side-facing bank exists, the fixture stays unchanged (#305).
 - `lab test-save` now accepts an exact, verified completed scenario from a stale active status marker and then requests its normal clean stop. A passing scenario no longer remains failed as `gameSideStale` after successful cleanup; incomplete or mismatching evidence and an unconfirmed or timed-out stop still fail (#303).
+
+[Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/320) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.1.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v2.0.0...v2.1.0)
 
 ## [2.0.0] - 2026-10-11
 
