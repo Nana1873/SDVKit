@@ -146,9 +146,7 @@ public sealed class ReviewWorldActionSelectionTests
         using TemporaryDirectory temporary = new();
         ProjectReviewMcpRuntimeSnapshot farmhand = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(
             ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "farmhand").Read().Snapshot);
-        var query = new ReviewContainerTransferQuery("deposit", 0, 1, "(O)24",
-            "sha256:" + new string('a', 64), "sha256:" + new string('b', 64),
-            "sha256:" + new string('c', 64), "sha256:" + new string('d', 64));
+        ReviewContainerTransferQuery query = TransferQuery();
         ReviewContainerTransferReport Refused(string topology, string? role) =>
             new(1, "refused", "containerTransferSelectionStale", farmhand.LaunchId, topology, role,
                 DateTimeOffset.UtcNow, null);
@@ -159,6 +157,74 @@ public sealed class ReviewWorldActionSelectionTests
         Assert.False(ProjectReviewContainerTransferService.Valid(Refused("single", null), farmhand, query,
             DateTimeOffset.UtcNow));
     }
+
+    [Fact]
+    public void HostActionsNameTheHostAndNeedThePassedPairBeforeAndAfterDispatch()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader host = ProjectReviewMcpTests.CreateReadyNetworkReview(temporary, "host");
+        Assert.True(host.Read().Succeeded);
+        string runtime = ProjectReviewInputService.RuntimePath(temporary.Path, "network-2", "host");
+        string? sent = null;
+        ReviewWorldActionReport departedAfter = ProjectReviewWorldActService.Execute(host, Act(), command =>
+        {
+            sent = command;
+            string[] parts = command.Split(' ');
+            RespondAct(runtime, parts[2], ActReport(parts[3], "network-2", "host"));
+            DepartFarmhand(temporary);
+            return Ok(temporary);
+        }, TimeSpan.Zero);
+        Assert.EndsWith($" {Inventory} host", sent, StringComparison.Ordinal);
+        Assert.Equal(("worldActionBindingChanged", "mayHaveRun"), (departedAfter.ErrorCode, departedAfter.DispatchState));
+
+        ReviewWorldMoveReport departedBefore = ProjectReviewWorldMoveService.Execute(host, new("down", false),
+            _ => throw new InvalidOperationException("No dispatch without the passed pair."), TimeSpan.Zero);
+        Assert.Equal(("reviewPairNotReady", "notDispatched"), (departedBefore.ErrorCode, departedBefore.DispatchState));
+        ReviewContainerTransferReport transfer = ProjectReviewContainerTransferService.Execute(TransferQuery(), host,
+            _ => throw new InvalidOperationException("No dispatch without the passed pair."), TimeSpan.Zero);
+        Assert.Equal(("refused", "reviewPairNotReady"), (transfer.State, transfer.ErrorCode));
+    }
+
+    [Fact]
+    public void ScreenBindingChangeIsRefusedBeforeAndReportedAfterDispatch()
+    {
+        using TemporaryDirectory temporary = new();
+        string runtime = LiveLabPaths.Resolve(temporary.Path).RuntimePath;
+        string farmer = ScreenFarmer;
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyLocalScreenReview(temporary, 1,
+            command =>
+            {
+                ProjectReviewMcpTests.WriteScreenBindingResponse(temporary, command, farmer, ScreenContext);
+                return Ok(temporary);
+            });
+        Assert.True(reader.Read().Succeeded);
+        ReviewWorldActionReport changedAfter = ProjectReviewWorldActService.Execute(reader, Act(), command =>
+        {
+            string[] parts = command.Split(' ');
+            RespondAct(runtime, parts[2], ActReport(parts[3], "single", null));
+            farmer = "303";
+            return Ok(temporary);
+        }, TimeSpan.Zero);
+        Assert.Equal(("worldActionBindingChanged", "mayHaveRun"), (changedAfter.ErrorCode, changedAfter.DispatchState));
+
+        ReviewWorldActionReport changedBefore = ProjectReviewWorldActService.Execute(reader, Act(),
+            _ => throw new InvalidOperationException("No dispatch after the screen binding changed."), TimeSpan.Zero);
+        Assert.Equal(("reviewScreenBindingChanged", "notDispatched"), (changedBefore.ErrorCode, changedBefore.DispatchState));
+    }
+
+    private static void DepartFarmhand(TemporaryDirectory temporary)
+    {
+        LiveLabPaths paths = LiveLabPaths.Resolve(temporary.Path);
+        ProjectReviewMcpTests.RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.HostRole).StatusPath, "waitingForFarmhand");
+        ProjectReviewMcpTests.RewriteNetworkPhase(
+            LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StatusPath, "waitingForRejoin",
+            identityVerified: false, sessionId: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", worldReady: false);
+    }
+
+    private static ReviewContainerTransferQuery TransferQuery() => new("deposit", 0, 1, "(O)24",
+        "sha256:" + new string('a', 64), "sha256:" + new string('b', 64),
+        "sha256:" + new string('c', 64), "sha256:" + new string('d', 64));
 
     private static ReviewWorldActQuery Act() => new("check", 7, 9, Inventory);
 

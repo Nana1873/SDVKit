@@ -37,7 +37,7 @@ The role or screen is fixed at startup; see [bound and unbound](glossary.md#topo
 
 A screen-bound server freezes the screen ID, farmer ID and game context. If the screen leaves or is replaced, the server stops working, even if the ID is reused. Start a new one for the new screen.
 
-A network-role server freezes its role's session. While the farmhand leaves and rejoins through the [CLI network lifecycle commands](live-review.md#leave-and-rejoin-the-network-farmhand), an existing host client keeps observing. A new host client cannot start in that window, and input and fixture actions are refused until the pair passes again. When the farmhand returns to the title, its session changes and its client is rejected, even after rejoin. Start a new farmhand client once the pair passes again. MCP cannot leave or join.
+A network-role server freezes its role's session. While the farmhand leaves and rejoins through the [CLI network lifecycle commands](live-review.md#leave-and-rejoin-the-network-farmhand), an existing host client keeps observing. A new host client cannot start in that window, and input, fixture, world actions and container transfer are refused with `reviewPairNotReady` until the pair passes again. When the farmhand returns to the title, its session changes and its client is rejected, even after rejoin. Start a new farmhand client once the pair passes again. MCP cannot leave or join.
 
 ## Default observation and screenshots
 

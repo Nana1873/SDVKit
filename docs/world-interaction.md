@@ -75,14 +75,14 @@ Always read the target and inventory again. Compare their fresh revisions, the s
 
 ## Roles and screens
 
-`stardew_world_interact`, `stardew_world_act`, `stardew_world_move` and `stardew_container_transfer` act as the player the server is bound to. The command names that selection, a screen-bound command also carries the frozen farmer and context, and the game refuses it on any other process, role or screen (`worldActionBindingInvalid`) or when the fixture is not verified for that player (`worldActionTestSaveRequired`). A `network-2` role also needs the joined and passed pair (`reviewPairNotReady`). Results name the topology and role of the player that acted.
+`stardew_world_interact`, `stardew_world_act`, `stardew_world_move` and `stardew_container_transfer` act as the player the server is bound to. The command names that selection, a screen-bound command also carries the frozen farmer and context, and the game refuses it on any other process, role or screen, or when the fixture is not verified for that player: the world actions with `worldActionBindingInvalid` or `worldActionTestSaveRequired`, the transfer with `containerTransferReviewBindingInvalid`. A `network-2` role also needs the joined and passed pair before and after the action (`reviewPairNotReady` before it). A result names the `network-2` topology and role for a role, and `single` with no role for the single review and for a screen; a screen result does not name the screen, which the bound server and its frozen farmer and context fix.
 
 ```powershell
 & $sdvkit project review call stardew_world_move '{"direction":"down"}' --topology network-2 --role farmhand --allow-world-actions
 & $sdvkit project review call stardew_world_move '{"direction":"left"}' --screen 1 --allow-world-actions
 ```
 
-Stardew forces gamepad controls on split-screen screens other than 0. In gamepad mode the game acts on the faced tile, not under the cursor, so `stardew_world_act` is refused there with `worldActionCursorAimUnavailable`. Face the tile with `stardew_world_move` and `turnOnly`, then use `stardew_world_interact` for its four actions, or the action and tool keys through input. Screens have no fixture tools, so items and placement for a screen test come from the game itself.
+Stardew forces gamepad controls on split-screen screens other than 0. In gamepad mode the game acts on the faced tile, not under the cursor, so `stardew_world_act` is refused there with `worldActionCursorAimUnavailable`. To act there, face the target, read a fresh `stardew_runtime_get` and check that `localPlayer.data.position.grabTileX`/`grabTileY` is the target: facing a tile can leave the grab tile on the player's own tile, depending on where inside its tile the player stands (facing down from the tile north of a target often does). Then use `stardew_world_interact` for its four actions, or the action and tool keys through input. This route has not been verified live on a screen yet: there, `stardew_world_interact` and `stardew_container_transfer` were only refused at the target check, before any input. Screens have no fixture tools, so items and placement for a screen test come from the game itself.
 
 ## Reference details
 

@@ -95,13 +95,14 @@ internal static class ProjectReviewWorldActionService
     }
 
     /// <summary>
-    /// After a response: the same launch, role and staged review, and for a local screen the same farmer and context.
+    /// After a response: the same launch, role and staged review, a network-2 role's pair still joined and passed,
+    /// and for a local screen the same farmer and context.
     /// </summary>
     internal static bool BindingHeld(ProjectReviewMcpRuntimeReader reader, ProjectReviewMcpVerifiedContext permission)
     {
         ProjectReviewMcpContextResult after = reader.ReadContext();
         return after.Succeeded && ProjectReviewCpRefresh.SameReviewBinding(permission, after.Context!)
-            && (reader.ScreenId is null || reader.Read().Succeeded);
+            && (reader.Role is null && reader.ScreenId is null || reader.ReadForAction().Succeeded);
     }
 
     internal static bool SamePermissionSnapshot(ProjectReviewMcpVerifiedContext permission,
