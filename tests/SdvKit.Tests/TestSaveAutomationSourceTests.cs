@@ -33,6 +33,122 @@ public sealed class TestSaveAutomationSourceTests
     }
 
     [Fact]
+    public void PassedReviewSuspendsTheTickCheckOnlyWhileStardewExitsToTitle()
+    {
+        // Stardew clears the world one tick before SMAPI raises ReturnedToTitle (#341).
+        string source = ReadAutomationSource();
+        int update = source.IndexOf(
+            "public void OnUpdateTicked()",
+            StringComparison.Ordinal);
+        int passedReview = source.IndexOf(
+            "if (IsPassedReview)",
+            update,
+            StringComparison.Ordinal);
+        int titleGuard = source.IndexOf(
+            "if (Game1.gameMode == Game1.titleScreenGameMode)",
+            passedReview,
+            StringComparison.Ordinal);
+        int suspend = source.IndexOf(
+            "SuspendForReturnToTitle();",
+            titleGuard,
+            StringComparison.Ordinal);
+        int verification = source.IndexOf(
+            "VerifyExactWorld(allowMultiplayer: _allowMultiplayer);",
+            suspend,
+            StringComparison.Ordinal);
+        int suspension = source.IndexOf(
+            "private void SuspendForReturnToTitle()",
+            StringComparison.Ordinal);
+        int unverified = source.IndexOf(
+            "_identityVerified = false;",
+            suspension,
+            StringComparison.Ordinal);
+        int returnedToTitle = source.IndexOf(
+            "public void OnReturnedToTitle()",
+            StringComparison.Ordinal);
+        int logged = source.IndexOf(
+            "Log(\"returnedToTitle\"",
+            returnedToTitle,
+            StringComparison.Ordinal);
+        int armed = source.IndexOf(
+            "_awaitingReviewReload = CanRevalidateReviewReload;",
+            logged,
+            StringComparison.Ordinal);
+
+        Assert.True(passedReview > update);
+        Assert.True(titleGuard > passedReview);
+        Assert.True(suspend > titleGuard);
+        Assert.True(verification > suspend);
+        Assert.True(unverified > suspension);
+        Assert.DoesNotContain(
+            "_publishStatus();",
+            source[suspension..source.IndexOf("private void StartCreate()", suspension, StringComparison.Ordinal)],
+            StringComparison.Ordinal);
+        Assert.True(logged > returnedToTitle);
+        Assert.True(armed > logged);
+        Assert.Equal(
+            source.IndexOf("Game1.titleScreenGameMode", StringComparison.Ordinal),
+            source.LastIndexOf("Game1.titleScreenGameMode", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ARefusedReviewReloadRecordsWhyAndStaysFailed()
+    {
+        string source = ReadAutomationSource();
+        int saveLoaded = source.IndexOf(
+            "public void OnSaveLoaded()",
+            StringComparison.Ordinal);
+        int consumeAuthorization = source.IndexOf(
+            "_awaitingReviewReload = false;",
+            saveLoaded,
+            StringComparison.Ordinal);
+        int refused = source.IndexOf(
+            "if (isReviewReload)",
+            consumeAuthorization,
+            StringComparison.Ordinal);
+        int message = source.IndexOf(
+            "The reload after the return to title was not the registered fixture:",
+            refused,
+            StringComparison.Ordinal);
+        int rethrow = source.IndexOf(
+            "throw;",
+            message,
+            StringComparison.Ordinal);
+        int saving = source.IndexOf(
+            "public void OnSaving()",
+            StringComparison.Ordinal);
+
+        Assert.True(refused > consumeAuthorization);
+        Assert.True(message > refused);
+        Assert.True(rethrow > message);
+        Assert.True(saving > rethrow);
+        Assert.DoesNotContain(
+            "SetPhase(\"passed\"",
+            source[refused..saving],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreationNamesTheSaveBeforeStardewsInitialSerialization()
+    {
+        // Without the name, Stardew avoids the existing slot binding and writes a second '<farm>2_<id>' save.
+        string source = ReadAutomationSource();
+        int saveCreating = source.IndexOf(
+            "public void OnSaveCreating()",
+            StringComparison.Ordinal);
+        int name = source.IndexOf(
+            "Game1.SetSaveName(_identity.PlayerName);",
+            saveCreating,
+            StringComparison.Ordinal);
+        int saveCreated = source.IndexOf(
+            "public void OnSaveCreated()",
+            StringComparison.Ordinal);
+
+        Assert.True(name > saveCreating);
+        Assert.True(saveCreated > name);
+    }
+
+    [Fact]
     public void ReturningToTitleInvalidatesAPassedReview()
     {
         string source = ReadAutomationSource();

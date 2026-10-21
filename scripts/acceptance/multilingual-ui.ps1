@@ -16,24 +16,22 @@ script:
    accepts with another and requires the callback, the unsaved-state guard (saveRequired), a fixture save, and the saved state after a
    stop without reset and a restart;
 3. returns to the title screen with the mod's command, selects Language and Deutsch by clicking at positions measured for
-   1280x720, requires languageCode de and a 1280x720 title screenshot, loads the fixture from the native Load menu and
-   requires, from the mod's own log line written at save load, the German runtime locale, the translated prompt and labels with the English fallback
-   sentence, and the accepted state restored from the saved game;
-4. stops, restarts (the autoload starts in the empty locale although the German preference is set), returns to the title screen,
-   selects English, stops without reset and restarts the same package, and requires the
-   original empty locale, languageCode en, accepted=true with pendingSave=false, the English completed prompt and an
-   idempotent second accept; the run ends with stop and reset.
-
-Finding: after the title-screen Load, the review does not revalidate the fixture (`reviewTestSaveNotReady`, status
-testSaveFailed), so menu reads, input tools and screenshots of the German world are refused and the German texts are proved from
-the mod's log lines, not from a rendered menu (issue #341). See docs/test-a-multilingual-ui.md.
+   1280x720, requires languageCode de and a 1280x720 title screenshot, loads the fixture from the native Load menu,
+   requires the review to be revalidated (status passed with the identity verified), the German runtime locale and the
+   accepted state restored from the saved game, reads the German prompt and labels with the English fallback sentence from
+   the open dialogue and accepts once more in German (before=true, after=true, changed=false);
+4. returns to the title screen again in the same review, selects English, loads the fixture again and requires a second
+   revalidation, languageCode en, the original empty locale, accepted=true with pendingSave=false, the English completed
+   prompt and an idempotent accept;
+5. returns to the title screen, selects Deutsch, stops with reset and requires the reset to put languageCode en back.
 
 The title screen exposes no menu components, so Language, Deutsch, Load and the save row are clicked at fixed positions
 measured for the default 1280x720 viewport (each screenshot is checked for that size); pass other positions as parameters.
-The Load menu lists the work save and an `SDVKit2_` copy of it, which look identical. The row is chosen as the position of
-the fixture's save folder in the saves ordered by the write time of their SaveGameInfo, newest first; the game's log must
-name the fixture's save as the loaded one, or the run fails. Controller input is not
-covered (issue #271).
+The fixture is clicked in the first Load-menu row. `lab test-save` removes the stale `SDVKit2_<uniqueGameId>` copy that a
+fixture created by SDVKit 2.1.0 or earlier left in the isolated profile and that the Load menu shows in arbitrary order
+(issue #341, see docs/live-review.md); the script requires it gone before the first start. The game's log must name the
+fixture's save as the loaded one, or the run fails.
+Controller input is not covered (issue #271).
 
 Guide: docs/test-a-multilingual-ui.md.
 
@@ -49,9 +47,9 @@ param(
     [int] $LanguageX = 1206, [int] $LanguageY = 558,
     [int] $EnglishX = 270, [int] $EnglishY = 222,
     [int] $GermanX = 265, [int] $GermanY = 305,
-    # The LOAD button and the first Load-menu row (rows are $LoadRowStep apart).
+    # The LOAD button and the first Load-menu row.
     [int] $LoadX = 515, [int] $LoadY = 600,
-    [int] $LoadRowX = 640, [int] $LoadRowY = 120, [int] $LoadRowStep = 170
+    [int] $LoadRowX = 640, [int] $LoadRowY = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -181,30 +179,11 @@ function Select-Language([string] $Label, [int] $X, [int] $Y, [string] $Code) {
     Save-TitleScreenshot "$Label-title"
 }
 
-function Get-FixtureRow {
-    # The Load menu row of the fixture's save folder: its position in the profile's saves, newest first.
-    # At the title screen the invalidated fixture makes status exit 3 with only testSaveFailed.
-    $read = Invoke-SdvKit 'status-row' @('project', 'review', 'status', '--topology', 'single', '--json') -AllowExit @(0, 3)
-    $status = $read.Json
-    Assert-That ($read.Exit -eq 0 -or (@($status.problems).Count -eq 1 -and $status.problems[0].code -ceq 'testSaveFailed')) 'the title-screen status reports a problem other than the invalidated fixture.'
-    $saveId = [string]$status.lab.gameSide.testSave.saveId
-    $script:saveId = $saveId
-    # The Load menu lists the newest save first; the age of a save is the write time of its SaveGameInfo file.
-    $folders = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $profileRoot 'Saves') -Directory |
-        Sort-Object { (Get-Item -LiteralPath (Join-Path $_.FullName 'SaveGameInfo')).LastWriteTimeUtc } -Descending | ForEach-Object Name)
-    $row = [Array]::IndexOf($folders, $saveId)
-    Assert-That ($row -ge 0 -and $folders.Count -le 4) "the fixture folder $saveId is not among the profile's $($folders.Count) saves."
-    return $row
-}
-
 function Load-FixtureFromTitle([string] $Label) {
-    # Native Load menu, then the fixture's row. The review does not revalidate the fixture afterwards (see the guide), so the
-    # world is read through the mod's own log lines only.
-    $row = Get-FixtureRow
-    $savedLoadedBefore = @([regex]::Matches((Get-Content -Raw -LiteralPath $script:smapiLog), 'BLUEBERRY_GREETING \{"state":"saveLoaded"')).Count
+    # Native Load menu, then its first row; the review then revalidates the registered save.
     Invoke-TitleClick "$Label-load" $LoadX $LoadY
     Save-TitleScreenshot "$Label-load"
-    Invoke-TitleClick "$Label-row" $LoadRowX ($LoadRowY + $row * $LoadRowStep)
+    Invoke-TitleClick "$Label-row" $LoadRowX $LoadRowY
     $deadline = [DateTime]::UtcNow.AddSeconds(90)
     do {
         Start-Sleep -Seconds 3
@@ -215,14 +194,20 @@ function Load-FixtureFromTitle([string] $Label) {
     $script:loadCount = $count
     $last = @($loaded)[-1].Line
     Assert-That ($last -clike "*loaded save '$($script:saveId)'*") "the Load menu row loaded a different save: $last"
-    # The mod logs its state when the save loads, so the loaded world can be read without a command; require a new line.
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    Wait-Revalidated $Label
+}
+
+function Wait-Revalidated([string] $Label) {
+    # The one reload of the registered save after a return to title is checked again before commands work (#341).
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
     do {
         Start-Sleep -Seconds 2
-        $lines = @([regex]::Matches((Get-Content -Raw -LiteralPath $script:smapiLog), 'BLUEBERRY_GREETING (\{"state":"saveLoaded"[^\r\n]*\})'))
-    } until ($lines.Count -gt $savedLoadedBefore -or [DateTime]::UtcNow -gt $deadline)
-    Assert-That ($lines.Count -gt $savedLoadedBefore) 'the mod did not log the loaded world.'
-    return ($lines[-1].Groups[1].Value | ConvertFrom-Json)
+        $read = Invoke-SdvKit "status-$Label" @('project', 'review', 'status', '--topology', 'single', '--json') -AllowExit @(0, 3)
+        $testSave = $read.Json.lab.gameSide.testSave
+    } until (($read.Exit -eq 0 -and $testSave.phase -ceq 'passed') -or [DateTime]::UtcNow -gt $deadline)
+    Assert-That ($read.Exit -eq 0 -and @($read.Json.problems).Count -eq 0) "after the reload the status reports $(@($read.Json.problems | ForEach-Object code) -join ', '): $($testSave.message)"
+    Assert-That ($testSave.phase -ceq 'passed' -and $testSave.identityVerified -eq $true -and $testSave.message -ceq 'Exact fixture reloaded and revalidated for interactive review.') "the reload was not revalidated: phase $($testSave.phase), identityVerified $($testSave.identityVerified), '$($testSave.message)'."
+    Write-Step 'Revalidated after the title reload: phase passed, identityVerified true.'
 }
 
 function Go-ToTitle([string] $Label) {
@@ -236,15 +221,6 @@ function Start-Package([string] $Label) {
     $script:smapiLog = Get-SmapiLogPath (Wait-ReviewReady -TestSave)
     $script:answerCount = 0
     $script:loadCount = @(Select-String -LiteralPath $script:smapiLog -Pattern 'Context: loaded save' -SimpleMatch).Count
-}
-
-function Switch-Language([string] $Label, [int] $X, [int] $Y, [string] $Code) {
-    # The title screen sets the language preference. Loading the fixture from the native Load menu does not revalidate it
-    # (the review stays failed, see the guide), so stop without reset and start the same package: the autoload uses the new preference.
-    Go-ToTitle $Label
-    Select-Language $Label $X $Y $Code
-    Stop-Review -Label "switch-$Label"
-    Start-Package "switch-$Label"
 }
 
 function Save-Fixture([string] $Label) {
@@ -284,16 +260,17 @@ try {
         Assert-That ((Get-FileHash (Join-Path $mod $file)).Hash -eq (Get-FileHash (Join-Path $ready $file)).Hash) "$file differs between the source and the package."
     }
     Invoke-SdvKit 'test-save' @('lab', 'test-save', '--topology', 'single', '--game-path', $context.GamePath, '--json') | Out-Null
+    # The Load menu orders saves by their save minute, so the stale copy of the fixture could take the first row; loading it
+    # is refused and ends the review. lab test-save removes SDVKit's own copy; require it gone (#341).
+    $fixture = Get-Content -Raw -LiteralPath (Join-Path $context.Lab '.sdvkit\lab\single\test-save\fixture.json') | ConvertFrom-Json
+    $script:saveId = [string]$fixture.saveId
+    $staleCopy = "$($fixture.farmName)2_$($fixture.uniqueGameId)"
+    Assert-That (-not (Test-Path -LiteralPath (Join-Path $profileRoot "Saves\$staleCopy"))) "the isolated profile still holds the stale fixture copy $staleCopy after lab test-save."
 
     Write-Step 'English start: the dialogue, then cancel with a mouse click.'
     Start-Package 'initial'
-    if ((Get-LanguageCode) -cne 'en') {
-        # An earlier run that failed after the language change leaves its preference in the isolated lab profile.
-        Write-Step "The isolated startup preference is '$(Get-LanguageCode)'; restoring English through the title screen first."
-        Switch-Language 'prepare' $EnglishX $EnglishY 'en'
-    }
     $initialLanguage = Get-LanguageCode
-    Assert-That ($initialLanguage -ceq 'en') "the isolated startup preference is '$initialLanguage', not an English-first run."
+    Assert-That ($initialLanguage -ceq 'en') "the isolated startup preference is '$initialLanguage', not an English-first run; 'project review reset --topology single' restores English while the lab is stopped."
     $initial = Get-Greeting 'status-initial' 'ready'
     Assert-That ($initial.locale -ceq '' -and $initial.accepted -eq $false -and $initial.pendingSave -eq $false -and $initial.marker -ceq 'BLUEBERRY-42' -and $initial.fallback -ceq 'Default-only marker: BLUEBERRY.') "the initial status is $($initial | ConvertTo-Json -Compress)."
     Save-ViewportScreenshot 'initial-world'
@@ -327,48 +304,46 @@ try {
     Write-Step 'Language change through the native title screen: Deutsch, then the fixture from the native Load menu.'
     Go-ToTitle 'to-de'
     Select-Language 'de' $GermanX $GermanY 'de'
-    # The review does not revalidate the fixture after a title reload and then refuses every command, so the German world
-    # is read from the mod's log line written when the save loads.
-    $de = Load-FixtureFromTitle 'de'
-    Assert-That ($de.locale -like 'de*' -and $de.accepted -eq $true -and $de.pendingSave -eq $false) "the German world reports $($de | ConvertTo-Json -Compress)."
-    Assert-That ($de.prompt -ceq "Willkommen zur$([char]0xFC)ck, SDVKit. Rezeptmarke: BLUEBERRY-42. Default-only marker: BLUEBERRY." -and $de.cancel -ceq 'Jetzt nicht' -and $de.accept -ceq "Diesen Gru$([char]0xDF) merken" -and $de.fallback -ceq 'Default-only marker: BLUEBERRY.') "the German texts are $($de | ConvertTo-Json -Compress)."
-    Write-Step "German runtime locale '$($de.locale)': translated prompt and labels with the default-language fallback sentence; the accepted state came back from the saved game."
+    Load-FixtureFromTitle 'de'
+    $de = Get-Greeting 'status-de' 'ready'
+    Assert-That ($de.locale -like 'de*' -and $de.accepted -eq $true -and $de.pendingSave -eq $false -and $de.fallback -ceq 'Default-only marker: BLUEBERRY.') "the German world reports $($de | ConvertTo-Json -Compress)."
+    $dialogue = Open-Greeting 'de'
+    Assert-That ($dialogue.text -ceq "Willkommen zur$([char]0xFC)ck, SDVKit. Rezeptmarke: BLUEBERRY-42. Default-only marker: BLUEBERRY.") "the German prompt is '$($dialogue.text)'."
+    Assert-That ($dialogue.choices[0].text -ceq 'Jetzt nicht' -and $dialogue.choices[1].text -ceq "Diesen Gru$([char]0xDF) merken") "the German response labels are '$($dialogue.choices[0].text)', '$($dialogue.choices[1].text)'."
+    Save-ViewportScreenshot 'de-open'
+    Answer-Greeting 'de-accept' $dialogue 'blueberry_accept'
+    Assert-Answer 'German accept' 'blueberry_accept' $true $true $false
+    Close-Dialogue 'de-result'
+    Write-Step "German runtime locale '$($de.locale)': translated prompt and labels with the default-language fallback sentence read from the open dialogue; the accepted state came back from the saved game."
 
-    Write-Step 'Restore English: restart with the German preference, return to the title screen, select English, restart again.'
-    Stop-Review -Label 'after-de'
-    Start-Package 'german-preference'
-    $autoload = Get-Greeting 'status-german-preference' 'ready'
-    Assert-That ($autoload.accepted -eq $true -and $autoload.pendingSave -eq $false) "the restart with the German preference reports $($autoload | ConvertTo-Json -Compress)."
-    Switch-Language 'to-en' $EnglishX $EnglishY 'en'
-    $restored = Get-Greeting 'status-restart' 'ready'
-    Assert-That ($restored.locale -ceq '' -and $restored.accepted -eq $true -and $restored.pendingSave -eq $false) "after the restart the status is $($restored | ConvertTo-Json -Compress)."
+    Write-Step 'Second return to title in the same review: English, then the fixture from the native Load menu again.'
+    Go-ToTitle 'to-en'
+    Select-Language 'en' $EnglishX $EnglishY 'en'
+    Load-FixtureFromTitle 'en'
+    $restored = Get-Greeting 'status-en' 'ready'
+    Assert-That ($restored.locale -ceq '' -and $restored.accepted -eq $true -and $restored.pendingSave -eq $false) "after the English reload the status is $($restored | ConvertTo-Json -Compress)."
     Assert-That ((Get-LanguageCode) -ceq $initialLanguage) 'the startup preference language was not restored.'
     $dialogue = Open-Greeting 'en-again'
     Assert-That ($dialogue.text -ceq 'Welcome back, SDVKit. Recipe marker: BLUEBERRY-42. Default-only marker: BLUEBERRY.') "the English completed prompt is '$($dialogue.text)'."
-    Save-ViewportScreenshot 'restart-en'
+    Save-ViewportScreenshot 'reload-en'
     Answer-Greeting 'en-again-accept' $dialogue 'blueberry_accept'
     Assert-Answer 'repeated accept' 'blueberry_accept' $true $true $false
     Close-Dialogue 'en-again-result'
     Invoke-SdvKit 'diagnostics' @('project', 'review', 'diagnostics', '--mod', $modId, '--limit', '30', '--json') | Out-Null
+
+    Write-Step 'Reset after a language change: Deutsch on the title screen, then stop with reset.'
+    Go-ToTitle 'to-de-reset'
+    Select-Language 'de-reset' $GermanX $GermanY 'de'
     Stop-Review -Reset -Label 'final'
+    Assert-That ((Get-LanguageCode) -ceq 'en') "the reset left languageCode '$(Get-LanguageCode)' in the isolated startup preferences (#340)."
+    Write-Step 'The reset restored languageCode en.'
 }
 catch {
     $failed = $true
     Write-Host $_.Exception.Message -ForegroundColor Red
 }
 finally {
-    try { Complete-Acceptance -Failed:$failed }
-    finally {
-        # Reset does not restore the language preference (#340), and a failed run may stop after the language change. The game
-        # is stopped here, so put the isolated profile's startup preference back to English for the next script.
-        $preferences = Join-Path $profileRoot 'startup_preferences'
-        $stopped = (& $context.SdvKit project review status --topology single --json | ConvertFrom-Json).state -ceq 'stopped'
-        if ($stopped -and (Test-Path -LiteralPath $preferences) -and (Get-LanguageCode) -cne 'en') {
-            $text = [IO.File]::ReadAllText($preferences)
-            [IO.File]::WriteAllText($preferences, ($text -replace '<languageCode>[^<]*</languageCode>', '<languageCode>en</languageCode>'), [Text.UTF8Encoding]::new($false))
-            Write-Step 'Restored languageCode en in the isolated startup_preferences (#340).'
-        }
-    }
+    Complete-Acceptance -Failed:$failed
 }
 
 if ($failed) { exit 1 }

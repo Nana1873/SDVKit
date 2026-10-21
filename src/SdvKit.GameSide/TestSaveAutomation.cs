@@ -65,6 +65,7 @@ internal sealed class TestSaveAutomation
     private bool _localSaveCompleted;
     private bool _saveReachedCompletion;
     private bool _awaitingReviewReload;
+    private bool _returningToTitle;
     private DateTimeOffset? _saveOperationStartedAtUtc;
     private Action<bool, string>? _reviewSaveCompletion;
     private string? _message;
@@ -380,6 +381,14 @@ internal sealed class TestSaveAutomation
 
             if (IsPassedReview)
             {
+                if (Game1.gameMode == Game1.titleScreenGameMode)
+                {
+                    // Stardew's exit to title clears the world one tick before SMAPI reports
+                    // ReturnedToTitle; checking it here would fail the review first (#341).
+                    SuspendForReturnToTitle();
+                    return;
+                }
+
                 VerifyExactWorld(allowMultiplayer: _allowMultiplayer);
                 return;
             }
@@ -461,6 +470,10 @@ internal sealed class TestSaveAutomation
             }
 
             VerifyCreatePrerequisites();
+            // The fixture's slot already exists as SDVKit's binding, so without an explicit name
+            // Stardew's initial serialization avoids the collision and writes a second
+            // '<farm>2_<id>' save that the Load menu lists beside the fixture (#341).
+            Game1.SetSaveName(_identity.PlayerName);
             Farmer player = Game1.player;
             player.Name = _identity.PlayerName;
             player.displayName = _identity.PlayerName;
@@ -574,6 +587,16 @@ internal sealed class TestSaveAutomation
         }
         catch (Exception exception)
         {
+            if (isReviewReload)
+            {
+                // The review already failed at title; record why the one reload was refused.
+                _identityVerified = false;
+                _message = $"The reload after the return to title was not the registered fixture: {exception.GetBaseException().Message}";
+                Log("failed", _message, LogLevel.Error);
+                _publishStatus();
+                throw;
+            }
+
             Fail(exception.GetBaseException().Message);
             throw;
         }
@@ -612,6 +635,8 @@ internal sealed class TestSaveAutomation
     public void OnReturnedToTitle()
     {
         Game1.startingGameSeed = null;
+        _returningToTitle = false;
+        Log("returnedToTitle", $"Stardew reported ReturnedToTitle in phase '{_phase}'.");
         if (IsPassedReview)
         {
             _awaitingReviewReload = CanRevalidateReviewReload;
@@ -623,6 +648,20 @@ internal sealed class TestSaveAutomation
         {
             Fail("Stardew returned to title before the test-save workflow completed.");
         }
+    }
+
+    private void SuspendForReturnToTitle()
+    {
+        if (_returningToTitle)
+        {
+            return;
+        }
+
+        _returningToTitle = true;
+        _identityVerified = false;
+        // Not published here: the status writer reads the half-cleared world. ReturnedToTitle
+        // publishes the suspended review, and fixture commands verify the world themselves.
+        Log("returningToTitle", "Stardew is exiting to title; fixture commands are refused until the registered save is reloaded.");
     }
 
     private void StartCreate()

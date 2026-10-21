@@ -104,7 +104,7 @@ Reports name each artifact's role (target, companion or pack), kind, ID, declare
 
 An interactive review owns a separate Windows console instead of captured lab output. SMAPI logs and screenshots still belong to the isolated profile. A plain single review keeps its own isolated saves. `--test-save` selects the registered work fixture. A review does not end on its own after 120 ticks.
 
-What stop and reset keep is listed in [finish or test persistence](live-review.md#finish-or-test-persistence).
+What stop and reset keep is listed in [finish or test persistence](live-review.md#finish-or-test-persistence). The reset contract for the isolated profile's options: a `single` or `network-2` reset sets `languageCode` in each of its profiles' `startup_preferences` back to `en`, the only option a documented SDVKit flow changes (the title-screen language change). A new profile has no `startup_preferences` until Stardew writes it; SDVKit assumes it starts in Stardew's default, `en`, as observed with Stardew 1.6.15. Every start forces the window options to windowed 1280x720. Other options stay as the game wrote them. The reset checks every profile's file and the fixture before it changes anything: a file that is not valid XML or lacks exactly one `languageCode` element blocks the reset with `reviewFixtureResetFailed`. The reset and `lab test-save` also remove the [stale fixture copy](live-review.md#stale-fixture-copy) that SDVKit 2.1.0 and earlier left in old labs.
 
 ### Retained selection
 

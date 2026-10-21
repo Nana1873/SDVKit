@@ -40,6 +40,36 @@ public sealed class LabWindowPreferencesTests
     }
 
     [Fact]
+    public void LanguageRestoreChangesOnlyTheLanguageCode()
+    {
+        using TemporaryDirectory temporary = new();
+        const string Before =
+            "<StartupPreferences><languageCode>de</languageCode><windowMode>0</windowMode>"
+            + "<clientOptions><fullscreen>true</fullscreen></clientOptions></StartupPreferences>";
+        string path = temporary.WriteFile("startup_preferences", Before);
+
+        LabWindowPreferences.RestoreDefaultLanguage(temporary.Path);
+
+        Assert.Equal(
+            Before.Replace("<languageCode>de<", "<languageCode>en<", StringComparison.Ordinal),
+            XDocument.Load(path).Root!.ToString(SaveOptions.DisableFormatting));
+    }
+
+    [Fact]
+    public void LanguageRestoreFailsClosedWithoutExactlyOneLanguageCode()
+    {
+        using TemporaryDirectory temporary = new();
+        const string Before = "<StartupPreferences><windowMode>1</windowMode></StartupPreferences>";
+        string path = temporary.WriteFile("startup_preferences", Before);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => LabWindowPreferences.RestoreDefaultLanguage(temporary.Path));
+
+        Assert.Contains("languageCode", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(Before, File.ReadAllText(path));
+    }
+
+    [Fact]
     public void MissingPreferencesRemainOwnedByStardew()
     {
         using TemporaryDirectory temporary = new();

@@ -109,8 +109,6 @@ internal sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         _pendingSave = false;
-        // Logged without a command, so a test can read the loaded world's locale and texts from the log alone.
-        LogStatus("saveLoaded");
     }
 
     private void OnSaved(object? sender, SavedEventArgs e)
@@ -127,9 +125,5 @@ internal sealed class ModEntry : Mod
         pendingSave = _pendingSave,
         marker = Marker,
         fallback = Translate("fallback.default-only"),
-        // The translated texts the dialogue would show, so a test can read them from the log without opening a menu.
-        prompt = Translate(IsAccepted() ? "dialogue.completed" : "dialogue.prompt", Translate("fallback.default-only")),
-        cancel = Translate("choice.cancel"),
-        accept = Translate("choice.accept"),
     }), LogLevel.Info);
 }

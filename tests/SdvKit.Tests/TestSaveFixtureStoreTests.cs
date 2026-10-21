@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SdvKit.Cli;
 using SdvKit.Cli.LiveLab;
 
 namespace SdvKit.Tests;
@@ -228,15 +229,22 @@ public sealed class TestSaveFixtureStoreTests
         File.WriteAllText(savePath, "review mutation");
         File.WriteAllText(reviewOnlyPath, "review mutation");
 
-        Assert.Throws<InvalidOperationException>(store.ResetReview);
+        Assert.Throws<InvalidOperationException>(() => store.ResetReview());
 
         Assert.True(junction.Active);
         Assert.Equal("review mutation", File.ReadAllText(savePath));
         Assert.Equal("review mutation", File.ReadAllText(reviewOnlyPath));
 
         store.CompleteStopped(review, "66666666666666666666666666666666");
+        string preferencesPath = Path.Combine(paths.StardewDataPath, "startup_preferences");
+        File.WriteAllText(
+            preferencesPath,
+            "<StartupPreferences><languageCode>de</languageCode><windowMode>1</windowMode></StartupPreferences>");
         store.ResetReview();
 
+        Assert.Equal(
+            "<StartupPreferences><languageCode>en</languageCode><windowMode>1</windowMode></StartupPreferences>",
+            System.Xml.Linq.XDocument.Load(preferencesPath).Root!.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
         Assert.False(junction.Active);
         Assert.Equal("baseline save", File.ReadAllText(savePath));
         Assert.Equal(
@@ -252,6 +260,130 @@ public sealed class TestSaveFixtureStoreTests
             paths.TestSaveRoot,
             ".*.tmp",
             SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public void ReviewResetRestoresTheLanguageOfEveryGivenProfile()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        using TemporaryDirectory farmhand = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        TestSaveFixtureStore store = CreateReviewedStore(paths, saves.Path);
+        string hostPreferences = WritePreferences(paths.StardewDataPath, "de");
+        string farmhandPreferences = WritePreferences(farmhand.Path, "de");
+
+        store.ResetReview(farmhand.Path);
+
+        Assert.Equal("en", LanguageCode(hostPreferences));
+        Assert.Equal("en", LanguageCode(farmhandPreferences));
+    }
+
+    [Fact]
+    public void ReviewResetRefusesABadProfileBeforeChangingAnything()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        using TemporaryDirectory farmhand = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        TestSaveFixtureStore store = CreateReviewedStore(paths, saves.Path);
+        string savePath = Path.Combine(paths.TestSaveWorkPath, Identity().SaveId);
+        File.WriteAllText(savePath, "review mutation");
+        string hostPreferences = WritePreferences(paths.StardewDataPath, "de");
+        File.WriteAllText(
+            Path.Combine(farmhand.Path, "startup_preferences"),
+            "<StartupPreferences><windowMode>1</windowMode></StartupPreferences>");
+        string staleCopy = WriteStaleCreationCopy(saves.Path, FixtureId);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => store.ResetReview(farmhand.Path));
+
+        Assert.Contains("languageCode", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("review mutation", File.ReadAllText(savePath));
+        Assert.Equal("de", LanguageCode(hostPreferences));
+        Assert.True(Directory.Exists(staleCopy));
+    }
+
+    [Fact]
+    public void ReviewResetRemovesOnlySdvKitsOwnStaleCreationCopy()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        TestSaveFixtureStore store = CreateReviewedStore(paths, saves.Path);
+        string staleCopy = WriteStaleCreationCopy(saves.Path, FixtureId);
+        string otherSave = Path.Combine(saves.Path, "SDVKit3_123456789");
+        Directory.CreateDirectory(otherSave);
+
+        store.ResetReview();
+
+        Assert.False(Directory.Exists(staleCopy));
+        Assert.True(Directory.Exists(otherSave));
+    }
+
+    [Fact]
+    public void AStaleCopyWithOtherMarkersIsRefusedAndKept()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        TestSaveFixtureStore store = CreateReviewedStore(paths, saves.Path);
+        string savePath = Path.Combine(paths.TestSaveWorkPath, Identity().SaveId);
+        File.WriteAllText(savePath, "review mutation");
+        string staleCopy = WriteStaleCreationCopy(saves.Path, "44444444444444444444444444444444");
+
+        TestSaveStaleCopyException exception = Assert.Throws<TestSaveStaleCopyException>(
+            () => store.ResetReview());
+
+        Assert.Contains("SDVKit2_123456789", exception.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(staleCopy, "SDVKit2_123456789")));
+        Assert.Equal("review mutation", File.ReadAllText(savePath));
+    }
+
+    [Fact]
+    public void TestSavePreparationRemovesSdvKitsOwnStaleCreationCopy()
+    {
+        using TemporaryDirectory project = new();
+        using TemporaryDirectory saves = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        var junction = new FakeJunction();
+        TestSaveFixtureStore store = CreateStore(paths, saves.Path, junction);
+        TestSaveLaunchState create = store.PrepareForStart().LaunchState;
+        WriteCompleteSavePayload(paths, create.Identity);
+        store.CompleteStopped(create, LaunchId);
+        string staleCopy = WriteStaleCreationCopy(saves.Path, FixtureId);
+
+        TestSaveLaunchState scenario = store.PrepareForStart().LaunchState;
+
+        Assert.Equal(TestSaveContract.ScenarioMode, scenario.Mode);
+        Assert.False(Directory.Exists(staleCopy));
+    }
+
+    [Fact]
+    public void ServiceResetReportsABadPreferencesFileAsAFixtureResetFailure()
+    {
+        using TemporaryDirectory project = new();
+        LiveLabPaths paths = LiveLabPaths.Resolve(project.Path);
+        paths.EnsureDirectories();
+        TestSaveFixtureStore store = CreateStore(paths, paths.SavesPath, new FakeJunction());
+        TestSaveLaunchState create = store.PrepareForStart().LaunchState;
+        WriteCompleteSavePayload(paths, create.Identity);
+        store.CompleteStopped(create, LaunchId);
+        File.WriteAllText(Path.Combine(paths.StardewDataPath, "startup_preferences"), "<StartupPreferences>");
+
+        LiveLabCommandResult result = ProjectReviewService.Execute(
+            "reset",
+            project.Path,
+            [],
+            [],
+            LiveLabState.SingleTopology,
+            project.Path,
+            () => throw new InvalidOperationException("No game discovery is allowed for a reset."));
+
+        string json = JsonSerializer.Serialize(result.Report, LiveLabJsonOptions.CamelCase);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("\"code\":\"reviewFixtureResetFailed\"", json, StringComparison.Ordinal);
+        Assert.Contains("invalid XML", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -482,6 +614,46 @@ public sealed class TestSaveFixtureStoreTests
 
         Assert.All(invalid, value => Assert.Throws<InvalidDataException>(value.Validate));
         identity.Validate();
+    }
+
+    private static TestSaveFixtureStore CreateReviewedStore(LiveLabPaths paths, string savesRoot)
+    {
+        var junction = new FakeJunction();
+        TestSaveFixtureStore store = CreateStore(paths, savesRoot, junction);
+        TestSaveLaunchState create = store.PrepareForStart().LaunchState;
+        WriteCompleteSavePayload(paths, create.Identity, "baseline save", "baseline info");
+        store.CompleteStopped(create, LaunchId);
+        TestSaveLaunchState review = store.PrepareReviewForStart(resetFromBaseline: true).LaunchState;
+        store.CompleteStopped(review, "66666666666666666666666666666666");
+        return store;
+    }
+
+    private static string WritePreferences(string stardewDataPath, string languageCode)
+    {
+        Directory.CreateDirectory(stardewDataPath);
+        string path = Path.Combine(stardewDataPath, "startup_preferences");
+        File.WriteAllText(
+            path,
+            $"<StartupPreferences><languageCode>{languageCode}</languageCode></StartupPreferences>");
+        return path;
+    }
+
+    private static string LanguageCode(string preferencesPath) =>
+        System.Xml.Linq.XDocument.Load(preferencesPath).Root!.Element("languageCode")!.Value;
+
+    // The '<farm>2_<id>' save that Stardew's first serialization left beside a fixture created by SDVKit 2.1.0 (#341).
+    private static string WriteStaleCreationCopy(string savesRoot, string fixtureId)
+    {
+        string path = Path.Combine(savesRoot, "SDVKit2_123456789");
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "SDVKit2_123456789"), "stale save");
+        File.WriteAllText(
+            Path.Combine(path, "SaveGameInfo"),
+            "<Farmer><modData>"
+            + $"<item><key><string>{TestSaveContract.WorkspaceOwnerMarkerKey}</string></key><value><string>{WorkspaceId}</string></value></item>"
+            + $"<item><key><string>{TestSaveContract.FixtureMarkerKey}</string></key><value><string>{fixtureId}</string></value></item>"
+            + "</modData></Farmer>");
+        return path;
     }
 
     private static TestSaveFixtureStore CreateStore(
