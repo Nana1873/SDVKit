@@ -66,13 +66,19 @@ internal static class WindowsStatusFile
             error = Marshal.GetLastWin32Error();
         }
 
-        if (error == ErrorAccessDenied && TryReplaceHeldDestination(handle, destination, statusPath))
+        IOException failure = PublicationError("rename the completed status snapshot", error);
+        if (error == ErrorAccessDenied)
         {
-            return;
+            if (TryReplaceHeldDestination(handle, destination, statusPath, failure, out IOException? stepFailure))
+            {
+                return;
+            }
+
+            failure = stepFailure ?? failure;
         }
 
-        FailureObserver?.Invoke(error, temporaryPath, statusPath);
-        throw PublicationError("rename the completed status snapshot", error);
+        FailureObserver?.Invoke(failure.HResult & 0xFFFF, temporaryPath, statusPath);
+        throw failure;
     }
 
     /// <summary>
@@ -82,10 +88,17 @@ internal static class WindowsStatusFile
     /// Move the held snapshot aside, give the completed snapshot the destination name, and remove the
     /// aside name at once. Open readers keep the old snapshot; later opens see the new one. The
     /// destination name is absent for the moment between the two renames, which the reader tolerates.
-    /// A read-only destination, an unopenable one, and every other error keep the original denial.
+    /// A read-only or unopenable destination keeps the original denial (<paramref name="stepFailure"/>
+    /// stays null); a failing step after that reports its own error and where the previous snapshot is.
     /// </summary>
-    private static bool TryReplaceHeldDestination(SafeFileHandle completed, RenameBuffer destination, string statusPath)
+    private static bool TryReplaceHeldDestination(
+        SafeFileHandle completed,
+        RenameBuffer destination,
+        string statusPath,
+        IOException denial,
+        out IOException? stepFailure)
     {
+        stepFailure = null;
         using SafeFileHandle held = CreateFile(
             ExtendedPath(statusPath),
             DeleteAccess | FileReadAttributes,
@@ -99,16 +112,29 @@ internal static class WindowsStatusFile
             return false;
         }
 
-        using RenameBuffer aside = new(statusPath + ReplacedSuffix, ReplaceIfExists | PosixSemantics);
+        string asidePath = statusPath + ReplacedSuffix;
+        using RenameBuffer aside = new(asidePath, ReplaceIfExists | PosixSemantics);
         if (!SetFileInformationByHandle(held, FileRenameInfoEx, aside.Pointer, aside.Size))
         {
+            int asideError = Marshal.GetLastWin32Error();
+            stepFailure = new IOException(
+                $"{denial.Message} Moving the held snapshot aside to '{asidePath}' failed (error {asideError}): "
+                + $"{new Win32Exception(asideError).Message} The previous snapshot keeps its name.",
+                denial.HResult);
             return false;
         }
 
         if (!SetFileInformationByHandle(completed, FileRenameInfoEx, destination.Pointer, destination.Size))
         {
+            int renameError = Marshal.GetLastWin32Error();
             // Give the previous snapshot its name back so readers keep a complete snapshot.
-            SetFileInformationByHandle(held, FileRenameInfoEx, destination.Pointer, destination.Size);
+            string outcome = SetFileInformationByHandle(held, FileRenameInfoEx, destination.Pointer, destination.Size)
+                ? "The previous snapshot was given its name back."
+                : $"Restoring the previous snapshot failed (error {Marshal.GetLastWin32Error()}); it remains at '{asidePath}'.";
+            stepFailure = new IOException(
+                $"{denial.Message} Renaming the completed snapshot to the destination after moving the held snapshot aside "
+                + $"failed (error {renameError}): {new Win32Exception(renameError).Message} {outcome}",
+                unchecked((int)(0x80070000u | (uint)renameError)));
             return false;
         }
 

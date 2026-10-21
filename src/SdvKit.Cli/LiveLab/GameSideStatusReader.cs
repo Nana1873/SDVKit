@@ -129,6 +129,9 @@ internal static class GameSideStatusReader
                 or DirectoryNotFoundException
                 or UnauthorizedAccessException)
             {
+                // Access denied here is usually a delete-pending name during replacement; it cannot
+                // be told apart from an ACL denial or a directory at the path, so those also wait
+                // the window before they count as invalid.
                 if (WaitForReplacement(absentSince))
                 {
                     continue;
