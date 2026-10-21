@@ -122,7 +122,7 @@ internal static class LocalPlayerCapture
             .ToArray();
     }
 
-    private static PlayerPositionValues? CapturePosition(Farmer player)
+    internal static PlayerPositionValues? CapturePosition(Farmer player)
     {
         string? facing = LocalPlayerSnapshotContract.FacingName(player.FacingDirection);
         if (facing is null)

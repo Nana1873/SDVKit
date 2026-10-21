@@ -122,7 +122,7 @@ internal static class LocalPlayerSnapshotContract
     public static string? FacingName(int direction) =>
         direction is >= 0 and <= 3 ? FacingDirections[direction] : null;
 
-    private static bool PositionValid(PlayerPositionValues position) =>
+    public static bool PositionValid(PlayerPositionValues position) =>
         FacingDirections.Contains(position.Facing)
         && float.IsFinite(position.StandingX)
         && float.IsFinite(position.StandingY)

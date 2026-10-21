@@ -374,4 +374,31 @@ public sealed class ReviewMouseGestureTests
         Assert.True(Matches(failure));
         Assert.True(Matches(ProjectReviewInputService.DeserializeResponse(JsonSerializer.SerializeToUtf8Bytes(failure, JsonOptions))!));
     }
+
+    [Fact]
+    public void StopEarlyEndsOnlyAStartedPlainChordAndTheNextSampleReleasesIt()
+    {
+        var held = new ReviewChordProgress(120);
+        Assert.Throws<InvalidOperationException>(held.StopEarly);
+        held.Consumed(10);
+        held.Consumed(11);
+        Assert.Equal(118, held.Remaining);
+        held.StopEarly();
+        Assert.Equal(0, held.Remaining);
+        Assert.False(held.Canceled);
+        Assert.False(held.Finished);
+        held.Released(12);
+        Assert.Equal((10, 12), (held.StartTick, held.EndTick));
+        Assert.Throws<InvalidOperationException>(held.StopEarly);
+
+        var canceled = new ReviewChordProgress(5);
+        canceled.Consumed(1);
+        canceled.Cancel();
+        Assert.Throws<InvalidOperationException>(canceled.StopEarly);
+
+        var gesture = new ReviewChordProgress(1, Click());
+        PrepareCursor(gesture);
+        gesture.ObserveGestureSample(3, released: false, succeeded: true);
+        Assert.Throws<InvalidOperationException>(gesture.StopEarly);
+    }
 }

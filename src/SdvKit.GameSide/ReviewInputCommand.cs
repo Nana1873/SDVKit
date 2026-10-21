@@ -296,6 +296,21 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
             request.RequestId, gesture, validateDispatch: validateDispatch);
     }
 
+    public bool TryWorldHold(ReviewInputRequest request, Func<string?> validateDispatch, Func<bool> releaseWhen,
+        Action<ReviewInputResult> completed, out string error)
+    {
+        if (request.Kind != ReviewInputKind.Chord || request.Buttons is not { Count: 1 }
+            || !Enum.TryParse(request.Buttons[0], out SButton button) || !button.TryGetKeyboard(out _)
+            || request.DurationTicks is < 1 or > 120)
+        {
+            error = "A held move requires exactly one keyboard button for 1-120 input ticks.";
+            return false;
+        }
+        return ReviewVirtualCursor.TryChord(helper.Input, [button], request.DurationTicks, null, currentRevision,
+            result => completed(result with { CanonicalButton = result.Buttons?[0] }), out error,
+            request.RequestId, validateDispatch: validateDispatch, releaseWhen: releaseWhen);
+    }
+
     public bool TryScroll(int direction, out string error)
     {
         if (!ReviewVirtualCursor.IsSet)
@@ -370,6 +385,7 @@ internal static partial class ReviewVirtualCursor
         public Func<string?>? CurrentViewport { get; init; }
         public string? Viewport { get; init; }
         public Func<string?>? ValidateDispatch { get; init; }
+        public Func<bool>? ReleaseWhen { get; init; }
     }
     private sealed class InputSample
     {
@@ -548,7 +564,7 @@ internal static partial class ReviewVirtualCursor
     public static bool TryChord(IInputHelper helper, SButton[] buttons, int duration, string? revision,
         Func<string?> currentRevision, Action<ReviewInputResult> completed, out string error, string? requestId,
         ReviewInputQuery? gesture = null, Func<string?>? currentContinuity = null, Func<string?>? currentViewport = null,
-        Func<string?>? validateDispatch = null)
+        Func<string?>? validateDispatch = null, Func<bool>? releaseWhen = null)
     {
         lock (Sync)
         {
@@ -583,7 +599,8 @@ internal static partial class ReviewVirtualCursor
                 Continuity = currentContinuity?.Invoke(),
                 CurrentViewport = currentViewport,
                 Viewport = currentViewport?.Invoke(),
-                ValidateDispatch = validateDispatch
+                ValidateDispatch = validateDispatch,
+                ReleaseWhen = gesture is null ? releaseWhen : null
             };
             if (gesture is not null || buttons.Any(b => ReviewInputArguments.IsMouseButtonToken(b.ToString())))
                 BindNativeMouse();
@@ -656,6 +673,11 @@ internal static partial class ReviewVirtualCursor
                         ? "The UI revision changed before the first input update."
                         : "The UI context changed while input actions remained.");
                 }
+                // A held move reads the player after the previous game update; releasing here means the
+                // key is up in this tick's update, and the game halts the player before it moves again.
+                if (chord.ReleaseWhen is not null && chord.Progress.Gesture is null && !chord.Progress.Canceled
+                    && chord.Progress.StartTick is not null && chord.Progress.Remaining > 0 && chord.ReleaseWhen())
+                    chord.Progress.StopEarly();
                 if (chord.Progress.Remaining == 0 && chord.Progress.Gesture is null) return;
                 if (chord.Progress.StartTick is null && chord.ValidateDispatch is not null
                     && !ReviewWorldActionDispatchGate.TryAuthorize(chord.ValidateDispatch, out string? dispatchProblem))
