@@ -293,7 +293,7 @@ Results:
 
 Reconcile does not update source files, rebuild, reload the mod or restart Stardew. The launch, build identity and process stay the same. Observe the menu or gameplay effect separately: saved JSON does not prove the mod applied the settings in memory.
 
-Keep the returned audit and export paths if you need the saved config later; they do not become the next review's input. Export, restage and restart form the separate [GMCM persistence workflow](gmcm-authoring.md#validate-export-stop-and-restage-the-saved-config). Finish with the normal [stop and reset](#finish-or-test-persistence), also after a rejected reconcile. Never edit ownership markers to accept drift.
+Keep the returned audit and export paths if you need the saved config later; they do not become the next review's input. Export, restage and restart form the separate [GMCM persistence workflow](test-a-gmcm-option.md#3-save-and-accept-the-change). Finish with the normal [stop and reset](#finish-or-test-persistence), also after a rejected reconcile. Never edit ownership markers to accept drift.
 
 ## Diagnose selected-mod warnings and exceptions
 

@@ -1,6 +1,6 @@
 # Change and verify a GMCM option
 
-Use this pattern to prove that an option in your mod's Generic Mod Config Menu page is saved and takes effect. The complete worked example is [`scripts/acceptance/gmcm-number.ps1`](../scripts/acceptance/gmcm-number.ps1), which tests an integer slider from [`docs/examples/gmcm-number-recipe`](examples/gmcm-number-recipe/GmcmArrivalRow/). The [GMCM checkbox recipe](gmcm-authoring.md) shows the same steps for a Boolean option.
+Use this pattern to prove that an option in your mod's Generic Mod Config Menu page is saved and takes effect. Two complete worked examples: [`scripts/acceptance/gmcm-number.ps1`](../scripts/acceptance/gmcm-number.ps1) tests an integer slider from [`docs/examples/gmcm-number-recipe`](examples/gmcm-number-recipe/GmcmArrivalRow/), and [`scripts/acceptance/gmcm-checkbox.ps1`](../scripts/acceptance/gmcm-checkbox.ps1) tests a Boolean checkbox from [`docs/examples/gmcm-checkbox-recipe`](examples/gmcm-checkbox-recipe/GmcmArrival/). The [GMCM contract and API notes](gmcm-authoring.md) list what the checkbox example does and does not cover.
 
 ## Prepare GMCM and your config
 
@@ -22,13 +22,13 @@ GMCM's page has no menu components SDVKit can read, so you work from a screensho
 & $sdvkit project review menu --json
 ```
 
-Measure the control's position on the screenshot. The screenshot and the menu's `viewport` use the same coordinates. Click or drag with a fresh `uiRevision` from `menu`:
+Measure the control's position on the screenshot; a checkbox needs one click, and a checked box is only cached until Save, so log the value and read the staged `config.json` to prove it is unchanged. The screenshot and the menu's `viewport` use the same coordinates. Click or drag with a fresh `uiRevision` from `menu`:
 
 ```powershell
 & $sdvkit project review call stardew_input_drag '{"x":820,"y":141,"endX":1004,"endY":141,"button":"MouseLeft","durationTicks":6,"uiRevision":"..."}' --allow-input
 ```
 
-A GMCM slider truncates the pointer position before clamping it, so drag slightly past the last tick to reach the maximum. Until you click Save, your mod's value must not change: log it after each move to prove that.
+A checkbox needs one `stardew_input_click` on its measured centre; the example's default is x=660, y=141 and Save is x=692, y=657, both for GMCM 1.16.0 in the default 1280x720 lab window. The acceptance scripts refuse to click when the viewport differs, so measure the positions again for another size. A GMCM slider truncates the pointer position before clamping it, so drag slightly past the last tick to reach the maximum. Until you click Save, your mod's value must not change: log it after each move to prove that.
 
 ## 3. Save and accept the change
 
