@@ -2,7 +2,12 @@
 
 This bounded original diagnostic target supports [issue #217](https://github.com/Nana1873/SDVKit/issues/217).
 The [observations below](#observed-behavior-2026-09-12) reproduce a native
-controller-close limitation; no SDVKit runtime fix is claimed. Use the existing
+controller-close limitation. Since [#273](https://github.com/Nana1873/SDVKit/issues/273),
+SDVKit refuses the controller B case with `inputControllerUnsafeInAutoMode` while
+`gamepadMode` is `auto` and no gamepad is connected; repeat it only with
+Gamepad Mode set to `forceOn` on the game's Options page in the lab, or with a
+physical gamepad ([how](../../live-review.md#close-a-menu)). No controller
+emulation or close fix is claimed. Use the existing
 [review workflow](../../live-review.md), including exclusive lab ownership,
 an exact disposable **single/screen 0** fixture, process-local input, and final
 stop/reset. Do not start it while another task owns this lab root.

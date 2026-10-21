@@ -172,6 +172,19 @@ internal static class ReviewInputArguments
         || string.Equals(value, "MouseX1", StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, "MouseX2", StringComparison.OrdinalIgnoreCase);
 
+    // SMAPI's SButton controller values (MonoGame Buttons plus 2000), by exact name.
+    private static readonly HashSet<string> ControllerButtonTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ControllerA", "ControllerB", "ControllerX", "ControllerY", "ControllerBack", "ControllerStart",
+        "DPadUp", "DPadDown", "DPadLeft", "DPadRight", "LeftShoulder", "RightShoulder",
+        "LeftTrigger", "RightTrigger", "LeftStick", "RightStick", "BigButton",
+        "LeftThumbstickLeft", "LeftThumbstickRight", "LeftThumbstickDown", "LeftThumbstickUp",
+        "RightThumbstickLeft", "RightThumbstickRight", "RightThumbstickDown", "RightThumbstickUp",
+    };
+
+    public static bool IsControllerButtonToken(string? value) =>
+        value is not null && ControllerButtonTokens.Contains(value);
+
     private static bool TryParseCoordinate(string value, out int coordinate) =>
         int.TryParse(
             value,
@@ -193,6 +206,17 @@ internal interface IReviewInputRuntime
     bool CursorSet => false;
 
     bool MenuOpen => false;
+
+    /// <summary>The bound screen's <c>Options.gamepadMode</c> (<c>auto</c>, <c>forceOn</c> or
+    /// <c>forceOff</c>), or null when it cannot be read.</summary>
+    string? GamepadMode => null;
+
+    /// <summary>Whether a physical gamepad is connected for the bound screen, read without SMAPI's overrides.</summary>
+    bool GamepadConnected => false;
+
+    /// <summary>Whether the token names a controller button. The game runtime decides from the parsed SMAPI
+    /// <c>SButton</c>, so a numeric value cannot pass as a non-controller token.</summary>
+    bool IsControllerButton(string token) => ReviewInputArguments.IsControllerButtonToken(token);
     int? CursorX => null;
     int? CursorY => null;
 
@@ -668,6 +692,11 @@ internal static class ReviewInputOperation
                     "Set the virtual review cursor before pressing a mouse button.");
             }
 
+            if (ControllerRefusal(request, runtime) is { } refusal)
+            {
+                return refusal;
+            }
+
             return runtime.TryPress(request.Button!, out string canonicalButton, out string error)
                 ? new ReviewInputResult(
                     true,
@@ -747,6 +776,46 @@ internal static class ReviewInputOperation
                 $"Set the virtual review cursor to UI coordinate {request.X},{request.Y}; the physical pointer was not moved.")
             : Failure("inputCursorUnavailable", cursorError);
     }
+
+    /// <summary>
+    /// Refuses controller buttons in a press or chord before injection when the game's gamepad mode is
+    /// <c>auto</c> (or unreadable) and no physical gamepad is connected. There, Game1.CheckGamepadMode sees
+    /// the synthetic press as a gamepad connect and the next tick as a disconnect: it switches gamepad
+    /// controls and, with no menu open, opens the game menu (#273). <c>forceOn</c> and <c>forceOff</c>
+    /// return before that handling, so presses there are allowed.
+    /// </summary>
+    public static ReviewInputResult? ControllerRefusal(ReviewInputRequest request, IReviewInputRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(runtime);
+        IReadOnlyList<string>? buttons = request.Kind switch
+        {
+            ReviewInputKind.Press => request.Button is null ? null : [request.Button],
+            ReviewInputKind.Chord => request.Buttons,
+            _ => null,
+        };
+        string? controller = buttons?.FirstOrDefault(runtime.IsControllerButton);
+        if (controller is null)
+        {
+            return null;
+        }
+
+        string? mode = runtime.GamepadMode;
+        if (mode is "forceOn" or "forceOff" || (mode == "auto" && runtime.GamepadConnected))
+        {
+            return null;
+        }
+
+        return new ReviewInputResult(
+            false,
+            $"Refused controller button '{controller}': gamepadMode is {mode ?? "unreadable"} with no gamepad, so the game sees a gamepad connect, switches controls and can open the game menu. Use keyboard or mouse, or set Gamepad Mode on the game's Options page.",
+            controller,
+            ControllerUnsafeCode,
+            request.Kind == ReviewInputKind.Chord ? request.Buttons : null,
+            Released: request.Kind == ReviewInputKind.Chord ? false : null);
+    }
+
+    public const string ControllerUnsafeCode = "inputControllerUnsafeInAutoMode";
 
     private static ReviewInputResult Failure(
         string code,
