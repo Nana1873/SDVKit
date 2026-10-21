@@ -1,0 +1,10 @@
+{
+  "Name": "Inventory Reward",
+  "Author": "ExampleAuthor",
+  "Version": "1.0.0",
+  "Description": "Grant ten Stone once per save and manage one marked chest for the container acceptance.",
+  "UniqueID": "ExampleAuthor.InventoryReward",
+  "EntryDll": "InventoryReward.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
