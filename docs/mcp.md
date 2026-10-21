@@ -159,7 +159,7 @@ Call `stardew_menu_get` first. Its `uiRevision` binds the menu, layout, screen s
 | `stardew_input_press` | `{ "button": "F8" }`. One non-wheel `SButton` for one tick. |
 | `stardew_input_cursor_set` | `{ "x": 200, "y": 100 }`. Sets the virtual cursor. |
 | `stardew_input_cursor_clear` | `{}`. Clears the cursor and held input. |
-| `stardew_input_wheel` | `{ "direction": "up" }` or `"down"`. One notch; needs the cursor and a menu. |
+| `stardew_input_wheel` | `{ "direction": "up" }` or `"down"`. One notch; needs the cursor. Goes to an open menu, or without one switches the hotbar like the game's wheel; refused with `inputWheelPlayerBusy` or `inputWheelInventoryEmpty` where the game would not switch. |
 
 - **Buttons.** Click and drag take `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseX1` or `MouseX2`, plus up to six Shift, Control or Alt modifiers. Mouse buttons in `press` and `chord` need the virtual cursor and never use the physical pointer position; `cursor_set` never moves the physical pointer. Chords reject `None`, wheel tokens, buttons already held, overlapping actions, and Ctrl+V. A key still held physically at release is not reported as released.
 - **Gestures.** A change of menu or page stops a gesture. Changes the gesture itself causes are allowed, and the last step may close the menu. A viewport or scale change interrupts it.

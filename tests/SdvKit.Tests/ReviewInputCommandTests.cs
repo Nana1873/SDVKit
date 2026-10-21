@@ -204,6 +204,70 @@ public sealed class ReviewInputCommandTests
     }
 
     [Theory]
+    [InlineData("MouseWheelUp", 120)]
+    [InlineData("MouseWheelDown", -120)]
+    public void OperationSendsOneWorldWheelNotchWhenTheGameWouldSwitchTheHotbar(string button, int expectedDirection)
+    {
+        var runtime = new FakeRuntime { MenuOpen = false };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Scroll, button, 0, 0),
+            runtime);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(result.ProblemCode);
+        Assert.Equal(button, result.CanonicalButton);
+        Assert.Equal(1, runtime.ScrollRequests);
+        Assert.Equal(expectedDirection, runtime.ScrollDirection);
+        Assert.Contains("hotbar", result.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("inputWheelPlayerBusy", "cannot switch tools")]
+    [InlineData("inputWheelInventoryEmpty", "inventory is empty")]
+    [InlineData("inputMenuMissing", "requires an active game menu")]
+    public void OperationRefusesWorldWheelInputTheGameWouldIgnore(string code, string message)
+    {
+        var runtime = new FakeRuntime { MenuOpen = false, WorldWheelRefusal = code };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Scroll, "MouseWheelDown", 0, 0),
+            runtime);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(code, result.ProblemCode);
+        Assert.Contains(message, result.Message, StringComparison.Ordinal);
+        Assert.Equal(0, runtime.ScrollRequests);
+    }
+
+    [Fact]
+    public void OperationIgnoresTheWorldGateWhileAMenuOwnsTheWheel()
+    {
+        var runtime = new FakeRuntime { WorldWheelRefusal = "inputWheelPlayerBusy" };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Scroll, "MouseWheelUp", 0, 0),
+            runtime);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(1, runtime.ScrollRequests);
+        Assert.DoesNotContain("hotbar", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OperationRequiresTheCursorBeforeWorldWheelInput()
+    {
+        var runtime = new FakeRuntime { MenuOpen = false, CursorSet = false };
+
+        ReviewInputResult result = ReviewInputOperation.Execute(
+            new ReviewInputRequest(ReviewInputKind.Scroll, "MouseWheelUp", 0, 0),
+            runtime);
+
+        Assert.Equal("inputCursorMissing", result.ProblemCode);
+        Assert.Equal(0, runtime.ScrollRequests);
+    }
+
+    [Theory]
     [InlineData(-1, 0)]
     [InlineData(0, -1)]
     [InlineData(1280, 0)]
@@ -355,6 +419,8 @@ public sealed class ReviewInputCommandTests
         public bool CursorSet { get; init; } = true;
 
         public bool MenuOpen { get; init; } = true;
+
+        public string? WorldWheelRefusal { get; init; }
 
         public string CanonicalButton { get; init; } = "F8";
 
