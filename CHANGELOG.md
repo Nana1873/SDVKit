@@ -29,7 +29,6 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Development
 
-- Release live gates can run the `single` acceptance scripts in parallel lab roots (#322).
 - `player-actions.ps1` re-reads and re-places Lewis before talking to or gifting him (#346).
 - Shared GMCM and log helpers moved into `SdvKitAcceptance.psm1` (#284).
 - Two timing-sensitive tests were made deterministic (#333, #351).
