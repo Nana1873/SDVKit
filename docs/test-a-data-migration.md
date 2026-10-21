@@ -6,6 +6,8 @@ Use this pattern when a new version of your mod has to read data that an older v
 
 ## 1. Save the old data
 
+A single-player stop removes the owned staging but keeps the work save, so the next single start can stage a different build of the mod against the same save. That is what makes the stop-then-start sequences below valid; `reset` would discard the save and its mod data.
+
 Start the v1 build with `--test-save` and log the mod's own status (the sample's `migration-recipe status` console command). Require the exact values, for example `artifact=1.0.0; schema=1; credits=37; crop=(O)634; claimed=True; stone=5`. Save with `stardew_fixture_save` (`--allow-fixture-actions`), require `state=ready` and stop **without** `reset`: the test save and its mod data are what the next version reads.
 
 ## 2. Diagnose the broken upgrade
@@ -18,4 +20,4 @@ Stop, start the corrected v2 and require the migration log line and the new shap
 
 ## Not covered by the script
 
-The sample also has fixture operations for a missing ledger and a future schema 99 (`migration-recipe fixture missing`, `fixture future`). They are manual steps for the recipe, not part of the script: after sending one, save through the fixture tool, stop, restart the corrected v2 and read the status. Missing data must give explicit new defaults; schema 99 must be refused with the future values preserved. The offline tests cover the mapping and its rejection cases. A pass does not prove arbitrary schema recovery, multiplayer, real saves or crash-safe reward transactions.
+The missing-ledger and future-schema cases (`migration-recipe fixture missing`, `fixture future`) are manual steps described under [Missing and future data](data-migration-authoring.md#missing-and-future-data-manual). A pass does not prove arbitrary schema recovery, multiplayer, real saves or crash-safe reward transactions.
