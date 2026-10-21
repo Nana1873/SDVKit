@@ -784,9 +784,31 @@ try {
         $lewis = @((Get-Runtime 'npc-list').localPlayer.data.npcs | Where-Object name -ceq 'Lewis')
         Assert-That ($lewis.Count -eq 1 -and $lewis[0].tileX -eq $npcSpot.x -and $lewis[0].tileY -eq $npcSpot.y) "the runtime NPC list does not show Lewis at $($npcSpot.x),$($npcSpot.y)."
 
+        # Placed villagers can resume their schedule and walk off. Before every talk or gift input take a fresh runtime read of
+        # Lewis; if he moved, place him again (at most twice, each placement re-read) and fail if he is still not on the tile.
+        # Then require the player's tool tile to be that tile, so the right-click can only land on Lewis.
+        function Confirm-LewisAtTarget([string] $Label) {
+            for ($replace = 0; $replace -le 2; $replace++) {
+                $read = Get-Runtime "$Label-$replace"
+                $found = @($read.localPlayer.data.npcs | Where-Object name -ceq 'Lewis')
+                Assert-That ($found.Count -eq 1) "the runtime NPC list shows $($found.Count) entries named Lewis before $Label."
+                if ($found[0].tileX -eq $npcSpot.x -and $found[0].tileY -eq $npcSpot.y) {
+                    $position = $read.localPlayer.data.position
+                    Assert-That ($position.toolTileX -eq $npcSpot.x -and $position.toolTileY -eq $npcSpot.y) "before $Label the player's tool tile is $($position.toolTileX),$($position.toolTileY) facing $($position.facing), not Lewis's tile $($npcSpot.x),$($npcSpot.y)."
+                    return
+                }
+                Assert-That ($replace -lt 2) "Lewis stood at $($found[0].tileX),$($found[0].tileY) before $Label, not $($npcSpot.x),$($npcSpot.y), even after placing him twice again."
+                Write-Step "Lewis walked to $($found[0].tileX),$($found[0].tileY) before $Label; placing him again ($($replace + 1) of 2)."
+                $again = (Invoke-Tool "$Label-replace-$($replace + 1)" 'stardew_fixture_npc_place' @{ name = 'Lewis'; x = $npcSpot.x; y = $npcSpot.y } -OptIn '--allow-fixture-actions').Json
+                Assert-That ($again.state -ceq 'ready' -and $again.navigation.tileX -eq $npcSpot.x -and $again.navigation.tileY -eq $npcSpot.y) "placing Lewis again before $Label failed: $($again.message)"
+                Wait-Settled
+            }
+        }
+
         $friendship = Get-Friendship 'npc-before' 'Lewis'
         Invoke-Press 'npc-talk-select' (Get-SlotKey (Find-ToolSlot 'npc-talk' '(T)Hoe'))
         Wait-Settled
+        Confirm-LewisAtTarget 'npc-talk'
         $inventory = (Get-Inventory 'npc-talk-inventory')
         $talk = Invoke-Tool 'npc-talk' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($talk.Json.state -ceq 'completed') "check on Lewis did not complete: $($talk.Json.errorCode)"
@@ -803,6 +825,7 @@ try {
         Wait-Settled
         $inventory = (Get-Inventory 'npc-gift-inventory')
         Assert-That ($inventory.selectedSlot -eq $gift.item.slot) 'the parsnip is not selected.'
+        Confirm-LewisAtTarget 'npc-gift'
         $give = Invoke-Tool 'npc-gift' 'stardew_world_act' @{ action = 'check'; x = $npcSpot.x; y = $npcSpot.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
         Assert-That ($give.Json.state -ceq 'completed') "check with the parsnip did not complete: $($give.Json.errorCode)"
         Wait-Settled
