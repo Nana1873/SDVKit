@@ -630,7 +630,7 @@ try {
 
     if (-not $screenMode -and (Test-Section 'interact')) {
         Write-Step 'stardew_world_interact: the setup player tills and plants a plot, the selected player waters it with the watering can.'
-        # The setup player stands north of the plot; in a farmhand run the farmhand stands west of it.
+        # The setup player tills and plants from the tile north of the plot; the selected player waters from the west.
         $plot = Find-FreeSpot 'interact' @(@(0, -1), @(-1, 0))
         Invoke-SetupTool 'interact-warp' 'stardew_lab_warp' @{ location = 'Farm'; x = $plot.x; y = ($plot.y - 1) } -OptIn '--allow-fixture-actions' | Out-Null
         Wait-Settled
@@ -640,11 +640,10 @@ try {
         Assert-That ($null -ne (Get-SetupArea 'interact-tilled' $plot.x $plot.y).soil) "the setup hoe did not till $($plot.x),$($plot.y)."
         $setupInventory = Select-SetupItem 'interact-seed' '(O)472'
         Invoke-SetupAct 'interact-plant' 'check' $plot $setupInventory.inventoryRevision
-        if (-not $setupIsActor) {
-            Invoke-Warp 'interact-actor' 'Farm' ($plot.x - 1) $plot.y
-            Invoke-Turn 'interact-face' 'right'
-        }
-        else { Invoke-Turn 'interact-face' 'down' }
+        # Watering needs the plot as the grab tile. Facing down from the tile north of it leaves the grab tile on the
+        # player's own tile unless the player stands low in it, so the selected player always waters from the west.
+        Invoke-Warp 'interact-actor' 'Farm' ($plot.x - 1) $plot.y
+        Invoke-Turn 'interact-face' 'right'
         $canSlot = Find-ToolSlot 'interact-can' '(T)WateringCan'
         Invoke-Press 'interact-can-select' (Get-SlotKey $canSlot)
         Wait-Settled
