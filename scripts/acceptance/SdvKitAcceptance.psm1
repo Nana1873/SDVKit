@@ -425,5 +425,127 @@ function Invoke-ComponentClick {
     return $click
 }
 
+function Get-SmapiLogPath {
+    # The SMAPI log of a review, next to its persistent saves, from a ready status.
+    param([Parameter(Mandatory)] $Status)
+    Join-Path (Split-Path ([IO.Path]::GetFullPath((Join-Path $Status.labRoot $Status.persistentSavesPath))) -Parent) 'ErrorLogs\SMAPI-latest.txt'
+}
+
+function Invoke-ModLogCommand {
+    <#
+    .SYNOPSIS
+    Runs a mod console command and returns the first regex match its output adds to the SMAPI log within 10 seconds.
+    #>
+    param(
+        [Parameter(Mandatory, Position = 0)] [string] $Label,
+        [Parameter(Mandatory)] [string] $Command,
+        [Parameter(Mandatory)] [string] $Pattern,
+        [Parameter(Mandatory)] [string] $Log
+    )
+
+    $offset = (Get-Item -LiteralPath $Log).Length
+    $result = Invoke-SdvKit $Label @('project', 'review', 'command', $Command, '--json')
+    Assert-That ($result.Json.commandWritten -eq $true) "the command $Command did not run."
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 300
+        $stream = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite')
+        try {
+            [void]$stream.Seek($offset, 'Begin')
+            $tail = [IO.StreamReader]::new($stream).ReadToEnd()
+        }
+        finally { $stream.Dispose() }
+    } until ($tail -match $Pattern -or [DateTime]::UtcNow -gt $deadline)
+    Assert-That ($tail -match $Pattern) "$Command did not log a line matching $Pattern."
+    return $Matches
+}
+
+function Get-PlayerPosition([string] $Label) {
+    # The local player's location and tile as "Farm 64,15".
+    $runtime = (Invoke-SdvKit "status-$Label" @('project', 'review', 'status', '--json')).Json.lab.gameSide.runtime
+    "$($runtime.locationId) $($runtime.tileX),$($runtime.tileY)"
+}
+
+function Start-CompanionReview {
+    <#
+    .SYNOPSIS
+    Starts a single test-save review of a mod folder with one companion mod and waits until it is ready.
+    #>
+    param(
+        [Parameter(Mandatory, Position = 0)] [string] $Label,
+        [Parameter(Mandatory, Position = 1)] [string] $Target,
+        [Parameter(Mandatory)] [string] $Companion
+    )
+
+    Invoke-SdvKit "start-$Label" @('project', 'review', 'start', $Target, '--game-path', $script:Context.GamePath, '--companion', $Companion,
+        '--topology', 'single', '--test-save', '--json') | Out-Null
+    return Wait-ReviewReady -TestSave
+}
+
+function Copy-GmcmProvider {
+    <#
+    .SYNOPSIS
+    Copies a local Generic Mod Config Menu 1.16.0 folder into the lab, records its hashes and writes its default
+    config.json, which GMCM would otherwise write itself on first launch and SDVKit would report as changed.
+    #>
+    param([Parameter(Mandatory)] [string] $Source, [Parameter(Mandatory)] [string] $Destination)
+
+    Copy-Item -Recurse -LiteralPath $Source -Destination $Destination
+    Add-ProviderIdentity 'GenericModConfigMenu' $Destination
+    $manifest = Get-Content -Raw -LiteralPath (Join-Path $Destination 'manifest.json') | ConvertFrom-Json
+    Assert-That ($manifest.UniqueID -ceq 'spacechase0.GenericModConfigMenu' -and $manifest.Version -ceq '1.16.0') "the selected GMCM is $($manifest.UniqueID) $($manifest.Version), expected 1.16.0."
+    [IO.File]::WriteAllText((Join-Path $Destination 'config.json'), "{`r`n  `"OpenMenuKey`": `"None`",`r`n  `"ScrollSpeed`": 120`r`n}", [Text.UTF8Encoding]::new($false))
+}
+
+function Get-GmcmMenuRevision {
+    # The open GMCM page's uiRevision. Refuses another viewport, because the clicked positions are for 1280x720.
+    param([Parameter(Mandatory, Position = 0)] [string] $Label)
+
+    $menu = (Invoke-SdvKit "menu-$Label" @('project', 'review', 'menu', '--json')).Json
+    Assert-That ($menu.menuOpen -eq $true -and -not [string]::IsNullOrWhiteSpace([string]$menu.uiRevision)) 'the GMCM page is not open.'
+    Assert-That ($menu.viewport.width -eq 1280 -and $menu.viewport.height -eq 720) "the viewport is $($menu.viewport.width)x$($menu.viewport.height); the GMCM coordinates are for 1280x720. Measure them on the screenshots and pass them as parameters."
+    return [string]$menu.uiRevision
+}
+
+function Save-GmcmPage {
+    <#
+    .SYNOPSIS
+    Clicks GMCM's Save button, waits until the staged config holds the expected value, accepts the saved config with
+    config-reconcile and returns the path of the exported config. GMCM rewrites config.json during the click, so the
+    click or the next read ends with exit 3 and reviewStagingOwnershipDrifted, which is expected.
+    #>
+    param(
+        [Parameter(Mandatory)] [int] $X,
+        [Parameter(Mandatory)] [int] $Y,
+        [Parameter(Mandatory)] [string] $ModId,
+        [Parameter(Mandatory)] [string] $StagedConfig,
+        # Reads the mod's value from a config file path; throws for an invalid file.
+        [Parameter(Mandatory)] [scriptblock] $ReadValue,
+        [Parameter(Mandatory)] $Expected
+    )
+
+    $save = Invoke-Tool 'click-save' 'stardew_input_click' @{ x = $X; y = $Y; button = 'MouseLeft'; count = 1; uiRevision = (Get-GmcmMenuRevision 'before-save') } -OptIn '--allow-input' -AllowExit @(0, 3)
+    if ($save.Exit -eq 3) {
+        Assert-That ((Get-Content -Raw -LiteralPath $save.File) + (Get-Content -Raw -LiteralPath ($save.File -replace '\.json$', '.stderr.txt') -ErrorAction SilentlyContinue) -match 'reviewStagingOwnershipDrifted') 'the Save click failed for an unexpected reason.'
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 200
+        $saved = try { & $ReadValue $StagedConfig } catch { $null }
+    } until ($saved -eq $Expected -or [DateTime]::UtcNow -gt $deadline)
+    Assert-That ($saved -eq $Expected) "the saved config holds '$saved', expected '$Expected'."
+
+    $drift = Invoke-SdvKit 'expected-drift' @('project', 'review', 'menu', '--json') -AllowExit @(3)
+    Assert-That ($drift.Json.errorCode -ceq 'reviewStagingOwnershipDrifted') "expected reviewStagingOwnershipDrifted, got $($drift.Json.errorCode)."
+    $reconcile = Invoke-SdvKit 'config-reconcile' @('project', 'review', 'config-reconcile', '--mod', $ModId, '--json')
+    Assert-That ($reconcile.Json.state -ceq 'reconciled') 'the saved config was not reconciled.'
+    $export = [IO.Path]::GetFullPath((Join-Path $script:Context.Lab $reconcile.Json.reconciliation.exportPath))
+    Assert-That ((& $ReadValue $export) -eq $Expected) 'the reconciled export does not hold the saved value.'
+    Invoke-Tool 'cursor-clear' 'stardew_input_cursor_clear' -OptIn '--allow-input' | Out-Null
+    return $export
+}
+
 Export-ModuleMember -Function Initialize-Acceptance, Get-AcceptanceContext, Get-AcceptanceSelection, Write-Step, Assert-That, Invoke-SdvKit, Invoke-Tool,
-    Wait-ReviewReady, Stop-Review, Complete-Acceptance, Add-ProviderIdentity, Get-ToolErrorCode, Get-ProtectedFingerprint, Save-ViewportScreenshot, Get-ComponentCenter, Invoke-ComponentClick
+    Wait-ReviewReady, Stop-Review, Complete-Acceptance, Add-ProviderIdentity, Get-ToolErrorCode, Get-ProtectedFingerprint, Save-ViewportScreenshot, Get-ComponentCenter, Invoke-ComponentClick,
+    Get-SmapiLogPath, Invoke-ModLogCommand, Get-PlayerPosition, Start-CompanionReview, Copy-GmcmProvider, Get-GmcmMenuRevision, Save-GmcmPage

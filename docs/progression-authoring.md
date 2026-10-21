@@ -172,7 +172,7 @@ save checkpoint prevents redelivery but is not an independent success observatio
 
 ## Save, restart twice and clean up
 
-Before stopping, follow the existing [config export/restage checks](gmcm-authoring.md#validate-export-stop-and-restage-the-saved-config).
+Before stopping, follow the existing [config export/restage checks](test-a-gmcm-option.md#4-prove-the-effect-after-a-restart).
 Copy the exact accepted export to an explicitly selected ready directory made
 from the same mod ZIP. Compare complete non-config files and DLL hash with the
 original ready artifact and retain both config hashes. Never let a source rebuild
