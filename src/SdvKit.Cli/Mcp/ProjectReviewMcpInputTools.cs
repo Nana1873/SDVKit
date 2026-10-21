@@ -52,6 +52,8 @@ internal sealed class ProjectReviewMcpInputSession
     private readonly ProjectReviewMcpRuntimeReader _reader;
     private readonly ProjectReviewMcpInputRunner _runInput;
     private readonly string _runtimePath;
+    // Distinct status samples without a foreground observation after which a check gives up.
+    private const int UnobservedForegroundSampleLimit = 3;
     private readonly Action<TimeSpan> _delay;
     private readonly TimeSpan _postActionTimeout;
     private readonly TimeSpan _cleanupTimeout;
@@ -165,18 +167,12 @@ internal sealed class ProjectReviewMcpInputSession
 
         using (actionLock)
         {
-            ProjectReviewMcpReadResult before = _reader.ReadForAction();
+            ProjectReviewMcpReadResult before = ReadWithObservedForeground();
             if (!before.Succeeded)
             {
                 return ProjectReviewMcpInputInvocation.Error(
                     before.ErrorCode!,
                     before.ErrorMessage!);
-            }
-            if (!HasPublishedForeground(before.Snapshot!))
-            {
-                return ProjectReviewMcpInputInvocation.Error(
-                    "inputForegroundUnavailable",
-                    "GameSide has not published a valid foreground window handle and process ID for the exact review binding.");
             }
 
             int previousCleanup = Interlocked.Exchange(ref _cleanupRequired, 1);
@@ -340,6 +336,33 @@ internal sealed class ProjectReviewMcpInputSession
         && snapshot.ForegroundProcessId != snapshot.ReviewProcessId
         && snapshot.ForegroundProcessId != snapshot.PeerProcessId;
 
+    // Windows reports no foreground window for a moment while the desktop switches
+    // windows (#349). Such a status sample observes nothing, so the checks wait for the
+    // next sample instead of deciding on it; nothing is dispatched again meanwhile.
+    private ProjectReviewMcpReadResult ReadWithObservedForeground()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var unobservedTicks = new HashSet<int>();
+        while (true)
+        {
+            ProjectReviewMcpReadResult read = _reader.ReadForAction();
+            if (!read.Succeeded || HasPublishedForeground(read.Snapshot!))
+            {
+                return read;
+            }
+            unobservedTicks.Add(read.Snapshot!.StatusTick);
+            if (unobservedTicks.Count >= UnobservedForegroundSampleLimit
+                || stopwatch.Elapsed >= _postActionTimeout)
+            {
+                return new ProjectReviewMcpReadResult(
+                    null,
+                    "inputForegroundUnavailable",
+                    "GameSide has not published a valid foreground window handle and process ID for the exact review binding. Nothing was sent; retrying the action is safe.");
+            }
+            _delay(TimeSpan.FromMilliseconds(50));
+        }
+    }
+
     private ProjectReviewMcpReadResult WaitForPostActionStatus(
         ProjectReviewMcpRuntimeSnapshot before,
         ReviewInputResponseEnvelope response,
@@ -347,9 +370,11 @@ internal sealed class ProjectReviewMcpInputSession
     {
         externalForegroundChanged = false;
         var stopwatch = Stopwatch.StartNew();
+        var unobservedTicks = new HashSet<int>();
         while (true)
         {
             ProjectReviewMcpReadResult after = _reader.ReadForAction();
+            bool unobserved = false;
             if (after.Succeeded)
             {
                 ProjectReviewMcpRuntimeSnapshot snapshot = after.Snapshot!;
@@ -360,14 +385,16 @@ internal sealed class ProjectReviewMcpInputSession
                         "inputBindingChanged",
                         "The exact review, target, fixture, role session or local-screen binding changed while the bounded input action ran; do not retry it automatically.");
                 }
-                if (!HasPublishedForeground(snapshot))
+                unobserved = !HasPublishedForeground(snapshot);
+                if (unobserved)
                 {
-                    return new ProjectReviewMcpReadResult(
-                        null,
-                        "inputForegroundUnavailable",
-                        "GameSide no longer publishes a valid foreground observation; action completion is uncertain, not evidence of desktop control.");
+                    unobservedTicks.Add(snapshot.StatusTick);
+                    if (unobservedTicks.Count >= UnobservedForegroundSampleLimit)
+                    {
+                        return PostActionForegroundUnavailable();
+                    }
                 }
-                if (!SameForeground(before, snapshot))
+                else if (!SameForeground(before, snapshot))
                 {
                     // Window identity is diagnostic for unrelated desktop activity. A
                     // transition involving either owned review process still fails closed.
@@ -381,7 +408,8 @@ internal sealed class ProjectReviewMcpInputSession
                     externalForegroundChanged = true;
                 }
 
-                if (snapshot.StatusTick > before.StatusTick
+                if (!unobserved
+                    && snapshot.StatusTick > before.StatusTick
                     && snapshot.StatusTick > response.GameTick
                     && snapshot.StatusObservedAtUtc > before.StatusObservedAtUtc
                     && snapshot.StatusObservedAtUtc > response.ObservedAtUtc)
@@ -396,6 +424,10 @@ internal sealed class ProjectReviewMcpInputSession
                 {
                     return after;
                 }
+                if (unobserved)
+                {
+                    return PostActionForegroundUnavailable();
+                }
                 return new ProjectReviewMcpReadResult(
                     null,
                     "inputPostStateTimedOut",
@@ -405,6 +437,12 @@ internal sealed class ProjectReviewMcpInputSession
             _delay(TimeSpan.FromMilliseconds(50));
         }
     }
+
+    private static ProjectReviewMcpReadResult PostActionForegroundUnavailable() =>
+        new(
+            null,
+            "inputForegroundUnavailable",
+            "After the action was sent, GameSide published no valid foreground window handle and process ID until the observation bound ended (Windows briefly reports no foreground window during desktop transitions); action completion is uncertain, not evidence of desktop control.");
 
     private static bool HasPublishedForeground(
         ProjectReviewMcpRuntimeSnapshot snapshot) =>

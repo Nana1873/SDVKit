@@ -108,6 +108,128 @@ public sealed class ProjectReviewMcpConcurrentInputTests
         Assert.Null(result.Acknowledgement);
         Assert.Equal(afterDispatch, result.ActionMayHaveRun);
         Assert.Equal(afterDispatch ? 1 : 0, dispatches);
+        // Only the pre-dispatch refusal may tell a caller that a retry is safe.
+        Assert.Equal(!afterDispatch, result.Problem!.Message.Contains("retrying the action is safe", StringComparison.Ordinal));
+        Assert.Equal(afterDispatch, result.Problem.Message.Contains("After the action was sent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnUnobservedForegroundBeforeDispatchWaitsForTheNextSample()
+    {
+        using TemporaryDirectory temporary = new();
+        var reader = CreateReader(temporary, null, null);
+        string statusPath = StatusPath(temporary, null);
+        long handle = ReadStatus(statusPath).ForegroundWindowHandle!.Value;
+        int processId = ReadStatus(statusPath).ForegroundProcessId!.Value;
+        UpdateStatus(statusPath, MissingForeground);
+        int dispatches = 0;
+        var session = Bounded(reader, statusPath, (query, _) =>
+        {
+            dispatches++;
+            return Acknowledge(statusPath, query, marker => marker);
+        }, _ => Advance(statusPath, marker => marker with
+        {
+            ForegroundWindowHandle = handle,
+            ForegroundProcessId = processId,
+        }));
+
+        var result = session.Execute(Query(), CancellationToken.None);
+
+        Assert.Null(result.Problem);
+        Assert.True(result.Acknowledgement?.Succeeded);
+        Assert.Equal(1, dispatches);
+    }
+
+    [Fact]
+    public void ForegroundThatStaysUnobservedBeforeDispatchIsRefusedAsSafeToRetry()
+    {
+        using TemporaryDirectory temporary = new();
+        var reader = CreateReader(temporary, null, null);
+        string statusPath = StatusPath(temporary, null);
+        UpdateStatus(statusPath, MissingForeground);
+        int dispatches = 0, delays = 0;
+        var session = Bounded(reader, statusPath, (query, _) =>
+        {
+            dispatches++;
+            return Acknowledge(statusPath, query, marker => marker);
+        }, _ =>
+        {
+            delays++;
+            Advance(statusPath, marker => marker);
+        });
+
+        var result = session.Execute(Query(), CancellationToken.None);
+
+        Assert.Equal("inputForegroundUnavailable", result.Problem?.Code);
+        Assert.Contains("retrying the action is safe", result.Problem!.Message, StringComparison.Ordinal);
+        Assert.False(result.ActionMayHaveRun);
+        Assert.Equal(0, dispatches);
+        Assert.Equal(2, delays);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnUnobservedForegroundAfterDispatchIsDecidedByTheNextSample(bool reviewTookFocus)
+    {
+        using TemporaryDirectory temporary = new();
+        var reader = CreateReader(temporary, null, null);
+        string statusPath = StatusPath(temporary, null);
+        GameSideStatusMarker initial = ReadStatus(statusPath);
+        int dispatches = 0;
+        var session = Bounded(reader, statusPath, (query, _) =>
+        {
+            dispatches++;
+            return Acknowledge(statusPath, query, MissingForeground);
+        }, _ => Advance(statusPath, marker => marker with
+        {
+            ForegroundWindowHandle = reviewTookFocus ? initial.ForegroundWindowHandle + 1 : initial.ForegroundWindowHandle,
+            ForegroundProcessId = reviewTookFocus ? marker.ProcessId : initial.ForegroundProcessId,
+            IsActive = reviewTookFocus || initial.IsActive,
+        }));
+
+        var result = session.Execute(Query(), CancellationToken.None);
+
+        Assert.True(result.ActionMayHaveRun);
+        Assert.Equal(1, dispatches);
+        if (reviewTookFocus)
+        {
+            Assert.Null(result.Acknowledgement);
+            Assert.Equal("inputForegroundChanged", result.Problem?.Code);
+        }
+        else
+        {
+            Assert.Null(result.Problem);
+            Assert.True(result.Acknowledgement?.Succeeded);
+            Assert.Null(result.Acknowledgement?.ExternalForegroundChanged);
+        }
+    }
+
+    [Fact]
+    public void ForegroundThatStaysUnobservedAfterDispatchFailsWithoutReplay()
+    {
+        using TemporaryDirectory temporary = new();
+        var reader = CreateReader(temporary, null, null);
+        string statusPath = StatusPath(temporary, null);
+        int dispatches = 0, delays = 0;
+        var session = Bounded(reader, statusPath, (query, _) =>
+        {
+            dispatches++;
+            return Acknowledge(statusPath, query, MissingForeground);
+        }, _ =>
+        {
+            delays++;
+            Advance(statusPath, marker => marker);
+        });
+
+        var result = session.Execute(Query(), CancellationToken.None);
+
+        Assert.Null(result.Acknowledgement);
+        Assert.Equal("inputForegroundUnavailable", result.Problem?.Code);
+        Assert.StartsWith("After the action was sent", result.Problem!.Message, StringComparison.Ordinal);
+        Assert.True(result.ActionMayHaveRun);
+        Assert.Equal(1, dispatches);
+        Assert.Equal(2, delays);
     }
 
     [Theory]
@@ -173,6 +295,26 @@ public sealed class ProjectReviewMcpConcurrentInputTests
     private static ProjectReviewMcpInputSession Session(ProjectReviewMcpRuntimeReader reader,
         string statusPath, ProjectReviewMcpInputRunner runner) =>
         new(reader, Path.GetDirectoryName(statusPath)!, runner, postActionTimeout: TimeSpan.Zero);
+
+    // A long observation bound, so only the sample limit ends the wait; each delay publishes the next status sample.
+    private static ProjectReviewMcpInputSession Bounded(ProjectReviewMcpRuntimeReader reader,
+        string statusPath, ProjectReviewMcpInputRunner runner, Action<TimeSpan> delay) =>
+        new(reader, Path.GetDirectoryName(statusPath)!, runner, delay, postActionTimeout: TimeSpan.FromMinutes(1));
+
+    private static GameSideStatusMarker ReadStatus(string path) =>
+        JsonSerializer.Deserialize<GameSideStatusMarker>(File.ReadAllText(path), LiveLabJsonOptions.CamelCase)!;
+
+    private static void Advance(string path, Func<GameSideStatusMarker, GameSideStatusMarker> update) =>
+        UpdateStatus(path, marker =>
+        {
+            var observed = marker.ObservedAtUtc.AddMilliseconds(10);
+            return update(marker) with
+            {
+                Tick = marker.Tick + 1,
+                ObservedAtUtc = observed,
+                Runtime = marker.Runtime! with { ObservedAtUtc = observed },
+            };
+        });
 
     private static ReviewInputQuery Query() => new(ReviewInputContract.CursorSetAction, null, null, 20, 30);
 
