@@ -9,8 +9,8 @@ Connect an MCP client to an [already-running review](live-review.md#start-a-revi
 | Default observation/evidence | 31 tools | 12 tools | 12 tools | 12 tools |
 | Add `--allow-input` | +9 | +8; text unavailable | +9 | +9 |
 | Add `--allow-fixture-actions` | +15 | Unsupported | +15 | +6 |
-| Add `--allow-world-actions` | +3 | Unsupported | Unsupported | Unsupported |
-| Add `--allow-container-transfer` | +1 | Unsupported | Unsupported | Unsupported |
+| Add `--allow-world-actions` | +3 | +3 | +3 | +3 |
+| Add `--allow-container-transfer` | +1 | +1 | +1 | +1 |
 | Add `--allow-cp-refresh` | +1 for a ready root CP pack | Unsupported | Unsupported | Unsupported |
 
 Counts describe these profiles, not a client allowlist. Enable only the [opt-in flags](glossary.md#commands-and-results) the task needs. No flag implies another.
@@ -205,7 +205,7 @@ To prove persistence, stop and start the same review. Always finish with `projec
 
 ## Opt-in world interactions
 
-`--allow-world-actions` adds `stardew_world_interact`, `stardew_world_act` and `stardew_world_move` on a ready single-player test save. `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player). `stardew_world_move { "direction": "up" | "right" | "down" | "left", "turnOnly"? }` walks the player exactly one tile (or only turns it) and reports `tileX`/`tileY`, `position` and `reached`; a blocked target is refused with `worldMoveTargetBlocked`; see [move exactly one tile](world-interaction.md#move-exactly-one-tile).
+`--allow-world-actions` adds `stardew_world_interact`, `stardew_world_act` and `stardew_world_move` on a ready test save. They act as the server's player: the unbound single review's main player, the bound `network-2` role, or the bound split-screen screen (see [roles and screens](world-interaction.md#roles-and-screens)). `stardew_world_interact` names a target and revision from `stardew_world_area_get` and the `inventoryRevision` from `stardew_inventory_get`. `stardew_world_act { "action": "check" | "useTool", "x", "y", "inventoryRevision" }` presses the action button or uses the selected tool on one of the four tiles next to the player, with the virtual cursor on that tile; see [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player). `stardew_world_move { "direction": "up" | "right" | "down" | "left", "turnOnly"? }` walks the player exactly one tile (or only turns it) and reports `tileX`/`tileY`, `position` and `reached`; a blocked target is refused with `worldMoveTargetBlocked`; see [move exactly one tile](world-interaction.md#move-exactly-one-tile).
 
 - `water`: dry crop soil, watering can selected.
 - `harvest`: a ready hand-harvest crop, empty hand. Scythe crops are rejected.
@@ -220,7 +220,7 @@ The permission belongs to the review the server started with. After that review 
 
 ## Opt-in container transfer
 
-`--allow-container-transfer` adds `stardew_container_transfer` for the [native chest transfer](container-transfer.md). Only unbound single-review servers on a test save accept it.
+`--allow-container-transfer` adds `stardew_container_transfer` for the [native chest transfer](container-transfer.md) on a test save. It moves items between the server's player's backpack and the chest that player has open, for the unbound single review, a `network-2` role or a split-screen screen.
 
 ## Client configuration
 

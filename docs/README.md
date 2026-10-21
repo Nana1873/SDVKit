@@ -99,10 +99,10 @@ MCP tools and `project review call` need the opt-in flag. The dedicated CLI comm
 | Fishing preparation | `stardew_fixture_fishing_prepare` | `--allow-fixture-actions` | Test save; `single` or host. See [fishing](lab-reference.md#fishing-preparation) |
 | Give the player an item | `stardew_fixture_item_add` | `--allow-fixture-actions` | Test save; `single` or host. See [item preparation](lab-reference.md#item-preparation) |
 | Bring a villager next to the player | `stardew_fixture_npc_place` | `--allow-fixture-actions` | Test save; `single` or host. See [NPC placement](lab-reference.md#npc-placement) |
-| Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md) |
-| Action button or tool on a tile next to the player | `stardew_world_act` (CLI: `project review act`) | `--allow-world-actions` | `single` test save. See [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player) |
-| Walk exactly one tile, or turn | `stardew_world_move` (CLI: `project review act move`) | `--allow-world-actions` | `single` test save; no pathfinding. See [move exactly one tile](world-interaction.md#move-exactly-one-tile) |
-| Move a quantity between backpack and chest | `stardew_container_transfer` (CLI: `project review container-transfer`) | `--allow-container-transfer` | `single` test save, unbound. See [container transfer](container-transfer.md) |
+| Water, harvest, machine insert and collect | `stardew_world_interact` (CLI: `project review interact`) | `--allow-world-actions` | Test save; single, role or screen ([roles and screens](world-interaction.md#roles-and-screens)). See [world interaction](world-interaction.md) |
+| Action button or tool on a tile next to the player | `stardew_world_act` (CLI: `project review act`) | `--allow-world-actions` | Test save; single, role or screen, refused on gamepad-mode screens. See [world interaction](world-interaction.md#action-button-or-tool-on-a-tile-next-to-the-player) |
+| Walk exactly one tile, or turn | `stardew_world_move` (CLI: `project review act move`) | `--allow-world-actions` | Test save; single, role or screen; no pathfinding. See [move exactly one tile](world-interaction.md#move-exactly-one-tile) |
+| Move a quantity between backpack and chest | `stardew_container_transfer` (CLI: `project review container-transfer`) | `--allow-container-transfer` | Test save; single, role or screen. See [container transfer](container-transfer.md) |
 | Refresh CP patches | `stardew_cp_refresh` | `--allow-cp-refresh` | `single`, a root CP 2.9.1 pack |
 
 `project review command` runs the reviewed mod's and SMAPI's console commands. While the test save is not loaded yet, such as at the title screen, it also accepts `sdvkit input ...` and `sdvkit screenshot viewport ...`. MCP fixes its role or screen when the server starts.

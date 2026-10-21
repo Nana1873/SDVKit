@@ -1,6 +1,6 @@
 # Bounded world interaction
 
-Use `project review interact` or the MCP tool `stardew_world_interact` (opt-in `--allow-world-actions`) to send one native interaction to one adjacent target you just read. For the action button or a tool on any neighbouring tile, see [`act`](#action-button-or-tool-on-a-tile-next-to-the-player). It works only in a single [owned](glossary.md#reviews-and-ownership) review on the [test save](glossary.md#worlds-and-fixtures), on screen 0. It is not available for a normal save, a network role or another split-screen screen.
+Use `project review interact` or the MCP tool `stardew_world_interact` (opt-in `--allow-world-actions`) to send one native interaction to one adjacent target you just read. For the action button or a tool on any neighbouring tile, see [`act`](#action-button-or-tool-on-a-tile-next-to-the-player). It works only in an [owned](glossary.md#reviews-and-ownership) review on the [test save](glossary.md#worlds-and-fixtures), never on a normal save. The CLI commands act on the single review's main player; for a `network-2` role or a split-screen screen, use the MCP tools through a bound server or `project review call` with `--role` or `--screen` (see [roles and screens](#roles-and-screens)).
 
 First read the one-tile target with [`project review world`](world-inspection.md) and the whole backpack with [`project review inventory`](inventory-inspection.md). Pass the target's `instanceId` and `revision`: the soil for `water`, the crop for `harvest`, or the machine. Also pass the full `inventoryRevision`:
 
@@ -73,11 +73,22 @@ The result is one of `notDispatched`, `completed` or `mayHaveRun`.
 
 Always read the target and inventory again. Compare their fresh revisions, the selected slot, tool or item, and the slot facts. The preconditions reject an item on the cursor, so good before/after evidence also shows the cursor is still empty; do not assume a hidden output. Never replay a canceled, timed-out or uncertain action blindly.
 
+## Roles and screens
+
+`stardew_world_interact`, `stardew_world_act`, `stardew_world_move` and `stardew_container_transfer` act as the player the server is bound to. The command names that selection, a screen-bound command also carries the frozen farmer and context, and the game refuses it on any other process, role or screen (`worldActionBindingInvalid`) or when the fixture is not verified for that player (`worldActionTestSaveRequired`). A `network-2` role also needs the joined and passed pair (`reviewPairNotReady`). Results name the topology and role of the player that acted.
+
+```powershell
+& $sdvkit project review call stardew_world_move '{"direction":"down"}' --topology network-2 --role farmhand --allow-world-actions
+& $sdvkit project review call stardew_world_move '{"direction":"left"}' --screen 1 --allow-world-actions
+```
+
+Stardew forces gamepad controls on split-screen screens other than 0. In gamepad mode the game acts on the faced tile, not under the cursor, so `stardew_world_act` is refused there with `worldActionCursorAimUnavailable`. Face the tile with `stardew_world_move` and `turnOnly`, then use `stardew_world_interact` for its four actions, or the action and tool keys through input. Screens have no fixture tools, so items and placement for a screen test come from the game itself.
+
 ## Reference details
 
 The checks cover:
 
-- launch, test save, screen 0, and world and player readiness;
+- launch, test save, the bound role or screen and its player, and world and player readiness;
 - no menu, event, minigame, UI mode or tool use;
 - the player faces an adjacent target tile, and the cursor maps visibly to that tile at the current zoom and UI scale;
 - target instance and revision, and the full inventory revision;

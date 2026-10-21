@@ -16,7 +16,7 @@ SDVKit 2.0 supports two equal workflows: the [modding toolkit](toolkit.md) and t
 
 Creation, inspection and offline authoring checks need no game. C# builds and packages need the SDK and the selected game and SMAPI assemblies. Content packs need a provider you select for live review. Ready code/pack bundles are single-only. A bundle needs exactly one code mod, with every direct pack member selected. Bundles do not extend the standalone C# smoke contract.
 
-The [capability matrix](README.md#capability-matrix) is the reference for each command's topology and prerequisites. Chest transfers, world actions, progression observations and CP refresh are single-only. Network and local-screen reads do not grant those actions. [MCP startup profiles](mcp.md) list each [opt-in](glossary.md#commands-and-results) action group and its role or screen binding. After an action reports success, observe its effect. Never replay an action whose completion is uncertain.
+The [capability matrix](README.md#capability-matrix) is the reference for each command's topology and prerequisites. Progression observations and CP refresh are single-only. Chest transfers and world actions also work for a `network-2` role or a local screen through a bound MCP server, each with its own opt-in. [MCP startup profiles](mcp.md) list each [opt-in](glossary.md#commands-and-results) action group and its role or screen binding. After an action reports success, observe its effect. Never replay an action whose completion is uncertain.
 
 ## First use and upgrade
 
