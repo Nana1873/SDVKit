@@ -154,7 +154,9 @@ try {
     Assert-Effects (Get-Progression 'finished') 'mail=True/False/0 quest=1/1/1' 'the objective'
 
     Write-Step 'Place Leah next to the player and talk to her.'
-    # Candidate tiles come from a Farm scan; the game decides whether a character fits, so try a few and keep the first it accepts.
+    # The area read has no passability or building-layer data, so a tile it shows empty can still be refused for a character.
+    # Candidates come from a Farm scan; only the refusal "not free for a character" moves on to the next one, at most six tiles.
+    # -Skip 3 is kept from player-actions.ps1, which uses the first scanned tiles for its earlier sections; it only varies the first try here.
     $area = @(Get-Area 'scan' 58 18 16 16)
     $byTile = @{}
     foreach ($tile in $area) { $byTile["$($tile.x),$($tile.y)"] = $tile }
@@ -162,10 +164,19 @@ try {
     $target = $null
     $placed = $null
     foreach ($candidate in @($area | Where-Object { (Test-Free $_) -and (Test-Free $byTile["$($_.x - 1),$($_.y)"]) } | Select-Object -Skip 3 -First 6)) {
-        Invoke-Tool "warp-stand-$($candidate.x)-$($candidate.y)" 'stardew_lab_warp' @{ location = 'Farm'; x = $candidate.x - 1; y = $candidate.y } -OptIn '--allow-fixture-actions' | Out-Null
+        $standX = $candidate.x - 1
+        $warp = (Invoke-Tool "warp-stand-$($candidate.x)-$($candidate.y)" 'stardew_lab_warp' @{ location = 'Farm'; x = $standX; y = $candidate.y } -OptIn '--allow-fixture-actions' -AllowExit @(0, 3)).Json
+        if ($null -eq $warp -or $warp.state -cne 'ready' -or $warp.lab.locationId -cne 'Farm' -or $warp.lab.tileX -ne $standX -or $warp.lab.tileY -ne $candidate.y) {
+            Write-Step "Tile $($candidate.x),$($candidate.y) skipped: the player did not land on $standX,$($candidate.y) ($($warp.message))."
+            continue
+        }
         Start-Sleep -Milliseconds 1500
         $attempt = (Invoke-Tool "npc-place-$($candidate.x)-$($candidate.y)" 'stardew_fixture_npc_place' @{ name = 'Leah'; x = $candidate.x; y = $candidate.y } -OptIn '--allow-fixture-actions' -AllowExit @(0, 3)).Json
+        if ($null -eq $attempt) { throw "Acceptance failed: placing Leah at $($candidate.x),$($candidate.y) returned no result." }
         if ($attempt.state -ceq 'ready') { $target = $candidate; $placed = $attempt; break }
+        $reason = "$($attempt.message)"
+        if ($reason -notmatch 'not free for a character') { throw "Acceptance failed: placing Leah at $($candidate.x),$($candidate.y) was refused for another reason: $($attempt.state)/$reason" }
+        Write-Step "Tile $($candidate.x),$($candidate.y) refused: $reason"
     }
     Assert-That ($null -ne $target) 'the game accepted no scanned Farm tile for Leah.'
     Assert-That ($placed.navigation.locationId -ceq 'Farm' -and $placed.navigation.tileX -eq $target.x -and $placed.navigation.tileY -eq $target.y) "placing Leah reported $($placed.navigation.locationId) $($placed.navigation.tileX),$($placed.navigation.tileY), not Farm $($target.x),$($target.y)."
@@ -173,7 +184,18 @@ try {
     $leah = @((Invoke-Tool 'runtime' 'stardew_runtime_get').Json.runtime.localPlayer.data.npcs | Where-Object name -ceq 'Leah')
     Assert-That ($leah.Count -eq 1 -and $leah[0].tileX -eq $target.x -and $leah[0].tileY -eq $target.y) "the runtime NPC list does not show Leah at $($target.x),$($target.y)."
     $before = Get-Points (Get-Progression 'before-talk')
+    # A check with an item selected can read as a gift, so select the hoe first, as player-actions.ps1 does.
+    $hoe = @((Invoke-SdvKit 'inventory-hoe' @('project', 'review', 'inventory', '--json')).Json.data.slots | Where-Object { $_.item.qualifiedItemId -ceq '(T)Hoe' })[0]
+    Assert-That ($null -ne $hoe) 'the backpack has no hoe to select for the talk.'
+    $hoeKey = switch ($hoe.slot) { { $_ -lt 9 } { "D$($hoe.slot + 1)" } 9 { 'D0' } 10 { 'OemMinus' } 11 { 'OemPlus' } }
+    $press = Invoke-Tool 'select-hoe' 'stardew_input_press' @{ button = $hoeKey } -OptIn '--allow-input'
+    Assert-That ($press.Json.succeeded -eq $true) 'selecting the hoe did not complete.'
+    Start-Sleep -Milliseconds 1500
     $inventory = (Invoke-SdvKit 'inventory' @('project', 'review', 'inventory', '--json')).Json.data
+    Assert-That ($inventory.selectedSlot -eq $hoe.slot) 'the hoe is not selected for the talk.'
+    # Placed villagers can walk again at any time: read her tile right before the check.
+    $leah = @((Invoke-Tool 'runtime-before-talk' 'stardew_runtime_get').Json.runtime.localPlayer.data.npcs | Where-Object name -ceq 'Leah')
+    Assert-That ($leah.Count -eq 1 -and $leah[0].tileX -eq $target.x -and $leah[0].tileY -eq $target.y) "Leah moved from $($target.x),$($target.y) before the talk."
     $talk = Invoke-Tool 'talk' 'stardew_world_act' @{ action = 'check'; x = $target.x; y = $target.y; inventoryRevision = $inventory.inventoryRevision } -OptIn '--allow-world-actions'
     Assert-That ($talk.Json.state -ceq 'completed') "check on Leah did not complete: $($talk.Json.errorCode)"
     Start-Sleep -Seconds 1
@@ -205,6 +227,7 @@ try {
         Write-Step "Reload ${round}: Leah $saved points, mail received, quest accepted and completed once, nothing added."
         if ($round -eq 1) { Save-Fixture 'reload-1'; Stop-Review -Label 'between-reloads' }
     }
+    # Evidence only: the selected mod's diagnostics are kept, nothing is asserted on them.
     Invoke-SdvKit 'diagnostics' @('project', 'review', 'diagnostics', '--mod', $modId, '--limit', '30', '--json') | Out-Null
     Stop-Review -Reset -Label 'final'
 }

@@ -1,4 +1,4 @@
-# Observe one NPC, mail and quest workflow
+# NPC, mail and quest read contract
 
 This page keeps the read-only contract of `project review progression` and
 `stardew_progression_get`. The live steps (diagnose one wrong friendship threshold in the
