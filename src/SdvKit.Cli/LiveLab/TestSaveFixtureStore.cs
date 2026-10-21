@@ -127,6 +127,7 @@ internal sealed class TestSaveFixtureStore : ITestSaveFixtureStore
             _savesRoot,
             identity.SaveId,
             _paths.TestSaveWorkPath);
+        LabWindowPreferences.RestoreDefaultLanguage(_paths.StardewDataPath);
     }
 
     internal string SelectInspectionSource(string selection, out TestSaveIdentity identity)

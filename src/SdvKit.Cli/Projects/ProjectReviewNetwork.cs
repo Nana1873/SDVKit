@@ -399,6 +399,8 @@ internal static partial class ProjectReviewService
                 paths,
                 NetworkTwoContract.HostRole);
             new TestSaveFixtureStore(hostPaths).ResetReview();
+            LabWindowPreferences.RestoreDefaultLanguage(
+                LiveLabPaths.ResolveNetworkRole(paths, NetworkTwoContract.FarmhandRole).StardewDataPath);
         }
         catch (Exception exception) when (IsControlledFailure(exception))
         {

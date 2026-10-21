@@ -8,7 +8,33 @@ internal static class LabWindowPreferences
     internal const int Width = 1280;
     internal const int Height = 720;
 
+    // Stardew's default language, which every new isolated profile starts with.
+    internal const string DefaultLanguageCode = "en";
+
     public static void Prepare(string stardewDataPath)
+    {
+        Update(stardewDataPath, root =>
+        {
+            XElement clientOptions = RequiredChild(root, "clientOptions");
+            RequiredChild(root, "windowMode").Value = "1";
+            RequiredChild(clientOptions, "fullscreen").Value = "false";
+            RequiredChild(clientOptions, "windowedBorderlessFullscreen").Value = "false";
+            RequiredChild(clientOptions, "preferredResolutionX").Value =
+                Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            RequiredChild(clientOptions, "preferredResolutionY").Value =
+                Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        });
+    }
+
+    // A review may change the language on the title screen, which Stardew keeps in the
+    // isolated startup preferences; a reset returns it to the default.
+    public static void RestoreDefaultLanguage(string stardewDataPath)
+    {
+        Update(stardewDataPath, root =>
+            RequiredChild(root, "languageCode").Value = DefaultLanguageCode);
+    }
+
+    private static void Update(string stardewDataPath, Action<XElement> change)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stardewDataPath);
 
@@ -59,14 +85,7 @@ internal static class LabWindowPreferences
                 "The isolated review startup preferences file has an unexpected root element.");
         }
 
-        XElement clientOptions = RequiredChild(root, "clientOptions");
-        RequiredChild(root, "windowMode").Value = "1";
-        RequiredChild(clientOptions, "fullscreen").Value = "false";
-        RequiredChild(clientOptions, "windowedBorderlessFullscreen").Value = "false";
-        RequiredChild(clientOptions, "preferredResolutionX").Value =
-            Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        RequiredChild(clientOptions, "preferredResolutionY").Value =
-            Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        change(root);
 
         string temporaryPath = preferencesPath + ".sdvkit-" + Guid.NewGuid().ToString("N");
         try

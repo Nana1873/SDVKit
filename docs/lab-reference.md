@@ -98,7 +98,7 @@ Reports name each artifact's role (target, companion or pack), kind, ID, declare
 
 An interactive review owns a separate Windows console instead of captured lab output. SMAPI logs and screenshots still belong to the isolated profile. A plain single review keeps its own isolated saves. `--test-save` selects the registered work fixture. A review does not end on its own after 120 ticks.
 
-What stop and reset keep is listed in [finish or test persistence](live-review.md#finish-or-test-persistence).
+What stop and reset keep is listed in [finish or test persistence](live-review.md#finish-or-test-persistence). The reset contract for the isolated profile's options: a `single` or `network-2` reset sets `languageCode` in each of its profiles' `startup_preferences` back to `en`, the only option a documented SDVKit flow changes (the title-screen language change). Every start forces the window options to windowed 1280x720. Other options stay as the game wrote them. A `startup_preferences` file without exactly one `languageCode` element blocks the reset with `reviewFixtureResetFailed`.
 
 ### Retained selection
 

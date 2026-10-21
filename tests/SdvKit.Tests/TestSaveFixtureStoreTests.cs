@@ -235,8 +235,15 @@ public sealed class TestSaveFixtureStoreTests
         Assert.Equal("review mutation", File.ReadAllText(reviewOnlyPath));
 
         store.CompleteStopped(review, "66666666666666666666666666666666");
+        string preferencesPath = Path.Combine(paths.StardewDataPath, "startup_preferences");
+        File.WriteAllText(
+            preferencesPath,
+            "<StartupPreferences><languageCode>de</languageCode><windowMode>1</windowMode></StartupPreferences>");
         store.ResetReview();
 
+        Assert.Equal(
+            "<StartupPreferences><languageCode>en</languageCode><windowMode>1</windowMode></StartupPreferences>",
+            System.Xml.Linq.XDocument.Load(preferencesPath).Root!.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
         Assert.False(junction.Active);
         Assert.Equal("baseline save", File.ReadAllText(savePath));
         Assert.Equal(

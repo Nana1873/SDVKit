@@ -337,9 +337,11 @@ To test persistence:
 3. Start the same target, topology and companions again. Do not reset between stop and start.
 4. After `SaveLoaded`, verify the saved state and the identities. An input acknowledgement or a written save file alone does not prove reload behavior.
 
-**Return to title.** An intentional return to title suspends a passed single fixture review. It resumes only when Stardew loads the registered save again. That one reload is checked against the live world identity before fixture commands and MCP fixture actions work again. Loading any other save is a terminal failure. This allows title-only settings, such as language, without weakening the fixture boundary.
+**Return to title.** An intentional return to title suspends a passed single fixture review. It resumes only when Stardew loads the registered save again. That one reload is checked against the live world identity before fixture commands and MCP fixture actions work again. Loading any other save is a terminal failure. This allows title-only settings, such as language, without weakening the fixture boundary. Each return to title from a resumed review allows one reload again.
 
-> **Caution ([#341](https://github.com/Nana1873/SDVKit/issues/341)):** observed on 2.1.0, the review does not resume. The exit to title fails the fixture check, and after the exact save loads again the status stays `testSaveFailed` and every command and tool answers blocked (`reviewTestSaveNotReady`). Read such a world from the mod's own log, or stop and start the review; see the [multilingual test guide](test-a-multilingual-ui.md#3-save-restart-and-the-title-screen-language-change).
+While the game is at the title screen, status reports `testSaveFailed` (phase `failed`, `identityVerified=false`) and fixture tools answer `reviewTestSaveNotReady`; after the reload it reports phase `passed` with the message `Exact fixture reloaded and revalidated for interactive review.`. The review's scenario log records the order: `returningToTitle`, `returnedToTitle`, `failed`, then `passed`. A refused reload records `The reload after the return to title was not the registered fixture: ...` and stays failed; stop and reset the review.
+
+The Load menu should list only the fixture. A lab whose fixture was created by SDVKit 2.1.0 or earlier also keeps a stale `SDVKit2_<id>` save in the isolated profile's `Saves` folder: Stardew's own first serialization of the new fixture, with the same farm and markers. The Load menu shows the two rows in arbitrary order, and loading that copy is refused. Remove the `SDVKit2_<id>` folder from `.sdvkit/lab/profiles/single/AppData/Roaming/StardewValley/Saves` while the lab is stopped, or use a new lab root.
 
 Always finish the review:
 
@@ -359,8 +361,10 @@ For `network-2`:
 | Review | `stop` | `reset` |
 | --- | --- | --- |
 | `single` | Removes staging | Not needed |
-| `single --test-save` | Removes staging; keeps the work save for a restart | Restores the baseline |
-| `network-2` | Keeps the work save **and staging** for a restart | Restores the baseline and removes staging |
+| `single --test-save` | Removes staging; keeps the work save for a restart | Restores the baseline and the English language |
+| `network-2` | Keeps the work save **and staging** for a restart | Restores the baseline and the English language, and removes staging |
+
+The language is the isolated profile's `languageCode` in `startup_preferences`, which a title-screen language change sets and a stop keeps for the restart. Reset sets it back to `en`, Stardew's default and the language every new lab profile starts with. Other options in the isolated profile are kept; SDVKit sets the 1280x720 window options itself at every start.
 
 An unconfirmed restore of the isolated game option after a verified exit is a **warning**. These block: unknown process identity, unconfirmed exit, unsafe paths, or missing fixture or staging cleanup. Let stop and reset choose the paths. Never delete ownership records by hand or kill the game by process name. The [lab reference](lab-reference.md#identity-and-exit) explains these results.
 
