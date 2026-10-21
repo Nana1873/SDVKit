@@ -1,0 +1,10 @@
+{
+  "Name": "Per-Player Inventory Proof (Broken)",
+  "Author": "SDVKitAcceptance",
+  "Version": "1.0.0-broken",
+  "Description": "Intentional shared-player bug used by the SDVKit multiplayer recipe.",
+  "UniqueID": "SDVKitAcceptance.PerPlayerInventoryProof",
+  "EntryDll": "PerPlayerInventoryProof.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
