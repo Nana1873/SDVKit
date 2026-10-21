@@ -171,7 +171,7 @@ public sealed class ReviewInputCommandTests
         Assert.Equal(0, runtime.PressRequests);
         Assert.Contains("gamepadMode is auto", result.Message, StringComparison.Ordinal);
         Assert.Contains("keyboard or mouse", result.Message, StringComparison.Ordinal);
-        Assert.Contains("forceOn or forceOff", result.Message, StringComparison.Ordinal);
+        Assert.Contains("Options page", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -204,6 +204,20 @@ public sealed class ReviewInputCommandTests
             new ReviewInputRequest(ReviewInputKind.Press, "RightShoulder", 0, 0), runtime));
         Assert.Null(ReviewInputOperation.ControllerRefusal(
             new ReviewInputRequest(ReviewInputKind.Chord, null, 0, 0, Buttons: ["ControllerB", "DPadUp"]), runtime));
+    }
+
+    [Fact]
+    public void ControllerRefusalAsksTheRuntimeWhetherATokenIsAController()
+    {
+        // SMAPI parses the numeric SButton value 2512 as RightShoulder.
+        var runtime = new FakeRuntime { ControllerTokens = ["2512"] };
+
+        ReviewInputResult? result = ReviewInputOperation.ControllerRefusal(
+            new ReviewInputRequest(ReviewInputKind.Press, "2512", 0, 0), runtime);
+
+        Assert.NotNull(result);
+        Assert.Equal("inputControllerUnsafeInAutoMode", result.ProblemCode);
+        Assert.Equal("2512", result.CanonicalButton);
     }
 
     [Fact]
@@ -526,6 +540,11 @@ public sealed class ReviewInputCommandTests
         public string? GamepadMode { get; init; } = "auto";
 
         public bool GamepadConnected { get; init; }
+
+        public string[] ControllerTokens { get; init; } = [];
+
+        public bool IsControllerButton(string token) =>
+            ControllerTokens.Contains(token) || ReviewInputArguments.IsControllerButtonToken(token);
 
         public string CanonicalButton { get; init; } = "F8";
 

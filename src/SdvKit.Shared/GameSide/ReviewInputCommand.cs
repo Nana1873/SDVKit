@@ -213,6 +213,10 @@ internal interface IReviewInputRuntime
 
     /// <summary>Whether a physical gamepad is connected for the bound screen, read without SMAPI's overrides.</summary>
     bool GamepadConnected => false;
+
+    /// <summary>Whether the token names a controller button. The game runtime decides from the parsed SMAPI
+    /// <c>SButton</c>, so a numeric value cannot pass as a non-controller token.</summary>
+    bool IsControllerButton(string token) => ReviewInputArguments.IsControllerButtonToken(token);
     int? CursorX => null;
     int? CursorY => null;
 
@@ -790,7 +794,7 @@ internal static class ReviewInputOperation
             ReviewInputKind.Chord => request.Buttons,
             _ => null,
         };
-        string? controller = buttons?.FirstOrDefault(ReviewInputArguments.IsControllerButtonToken);
+        string? controller = buttons?.FirstOrDefault(runtime.IsControllerButton);
         if (controller is null)
         {
             return null;
@@ -804,7 +808,7 @@ internal static class ReviewInputOperation
 
         return new ReviewInputResult(
             false,
-            $"Refused controller button '{controller}': gamepadMode is {mode ?? "unreadable"} with no gamepad, so the game sees a gamepad connect, switches controls and can open the game menu. Use keyboard or mouse input, or set gamepadMode to forceOn or forceOff first.",
+            $"Refused controller button '{controller}': gamepadMode is {mode ?? "unreadable"} with no gamepad, so the game sees a gamepad connect, switches controls and can open the game menu. Use keyboard or mouse, or set Gamepad Mode on the game's Options page.",
             controller,
             ControllerUnsafeCode,
             request.Kind == ReviewInputKind.Chord ? request.Buttons : null,

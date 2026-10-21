@@ -218,6 +218,9 @@ internal sealed class StardewReviewInputRuntime(IModHelper helper, Func<string?>
         _ => null,
     };
 
+    public bool IsControllerButton(string token) =>
+        Enum.TryParse(token, ignoreCase: true, out SButton button) && button.TryGetController(out _);
+
     // The raw MonoGame state: SMAPI's override marks an injected controller button as connected.
     public bool GamepadConnected => Game1.playerOneIndex >= Microsoft.Xna.Framework.PlayerIndex.One
         && GamePad.GetState(Game1.playerOneIndex).IsConnected;
