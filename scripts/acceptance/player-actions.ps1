@@ -33,11 +33,16 @@ starts from the Farm. Such a partial run writes its evidence under player-action
 acceptance; PRs and releases need a full run.
 
 -Topology network-2 -Role <host|farmhand> runs the input-only sections (walk, hotbar, menu) through the selected
-network role, and -Screen <id> runs them on one screen of a split-screen test-save review (#299). The other sections
-need fixture or world actions that are single-only (#297), so those modes skip them with a console note. Every tool
-call and every menu, inventory and world read then carries the role or screen selection. A screen cannot be warped,
-so its walking test starts from the tile the local farmhand spawns on. Evidence goes to player-actions-<role> or
-player-actions-screen<id>. Both topologies are stopped and reset at the end, also after a failure.
+network role, and -Screen <id> (1 or higher; screen 0 is the host) runs them on one screen of a split-screen test-save
+review (#299). The other sections (move, mapwarp, tools, act, item, npc, fishing) need fixture or world actions that
+are single-only (#297), so those modes skip them with a console note; a role run still uses stardew_fixture_farm and
+stardew_lab_warp as setup on the host or farmhand, a screen has no warp and starts from the local farmhand's cabin bed.
+Every tool call and every menu, inventory and world read carries the role or screen selection; every runtime read
+asserts the selected role or screen, and inventory reads assert that player's ID. Such a run proves only walking,
+hotbar and menu input on that player and is not full acceptance; it complements the full single run. Evidence goes to
+player-actions-<role> or player-actions-screen<id>. The topology the run started (network-2 for a role, single for a
+screen) is stopped and reset at the end, also after a failure. A network-2 start that fails with gameSideStale (#325)
+stops and resets its host and can simply be rerun.
 
 .EXAMPLE
 pwsh scripts/acceptance/player-actions.ps1 -SdvKit C:\Tools\SDVKit\sdvkit.exe -GamePath 'D:\Games\Stardew Valley' -LabRoot D:\Labs\acceptance
@@ -57,7 +62,7 @@ param(
     [Parameter(Mandatory)] [string] $LabRoot,
     [ValidateSet('single', 'network-2')] [string] $Topology = 'single',
     [ValidateSet('host', 'farmhand')] [string] $Role,
-    [ValidateRange(0, 99)] [int] $Screen,
+    [ValidateRange(1, 99)] [int] $Screen,
     [switch] $SkipProtectedCheck,
     [string[]] $Only
 )
@@ -85,7 +90,7 @@ if ($mode -ne 'single') {
     $singleOnly = @($Only | Where-Object { $_ -cnotin $inputOnly })
     if ($singleOnly.Count -gt 0) { throw "The $mode mode runs only the input-only sections ($($inputOnly -join ', ')); $($singleOnly -join ', ') need fixture or world actions that are single-only (#297)." }
 }
-$name = if ($partial) { 'player-actions-partial' } elseif ($mode -eq 'single') { 'player-actions' } else { "player-actions-$mode" }
+$name = if ($partial) { ($mode -eq 'single') ? 'player-actions-partial' : "player-actions-partial-$mode" } elseif ($mode -eq 'single') { 'player-actions' } else { "player-actions-$mode" }
 $context = Initialize-Acceptance -Name $name -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck -Selection $selection
 
 function Test-Section([string[]] $Names) {
@@ -100,7 +105,11 @@ function Get-Menu([string] $Label) {
 }
 
 function Get-Inventory([string] $Label) {
-    (Invoke-SdvKit $Label (@('project', 'review', 'inventory', '--json') + $selection)).Json.data
+    $data = (Invoke-SdvKit $Label (@('project', 'review', 'inventory', '--json') + $selection)).Json.data
+    if ($mode -ne 'single' -and $null -ne $script:boundPlayerId) {
+        Assert-That ([string]$data.playerId -ceq $script:boundPlayerId) "the inventory read '$Label' reports player $($data.playerId), not the bound player $script:boundPlayerId."
+    }
+    $data
 }
 
 function Join-SplitScreen {
@@ -127,8 +136,18 @@ function Join-SplitScreen {
 $stones = @('(O)343', '(O)450', '(O)668', '(O)670', '(O)760', '(O)762')
 $weeds = @('(O)313', '(O)314', '(O)315', '(O)316', '(O)317', '(O)318', '(O)319', '(O)320', '(O)321', '(O)674', '(O)675', '(O)676', '(O)677', '(O)678', '(O)679', '(O)784', '(O)785', '(O)786', '(O)792', '(O)793', '(O)794')
 
+$boundPlayerId = $null
 function Get-Runtime([string] $Label) {
-    (Invoke-Tool "runtime-$Label" 'stardew_runtime_get').Json.runtime
+    # In a role or screen run the read must come from the selected player; later inventory reads must show the same player.
+    $result = (Invoke-Tool "runtime-$Label" 'stardew_runtime_get').Json
+    if ($Role) { Assert-That ($result.role -ceq $Role) "the runtime read '$Label' came from role '$($result.role)', not $Role." }
+    elseif ($screenMode) { Assert-That ($result.PSObject.Properties['screen'] -and $result.screen.screenId -eq $Screen) "the runtime read '$Label' is not bound to screen $Screen." }
+    if ($mode -ne 'single') {
+        $playerId = [string]$result.runtime.localPlayer.data.playerId
+        if ($null -eq $script:boundPlayerId) { $script:boundPlayerId = $playerId }
+        Assert-That ($playerId -ceq $script:boundPlayerId) "the runtime read '$Label' reports player $playerId, not the bound player $script:boundPlayerId."
+    }
+    $result.runtime
 }
 
 function Wait-Settled {
@@ -235,7 +254,7 @@ try {
         Invoke-Tool 'farm' 'stardew_fixture_farm' -OptIn '--allow-fixture-actions' | Out-Null
         Wait-Settled
     }
-    if ($mode -ne 'single') { Write-Step "$mode mode: only the input-only sections run ($($inputOnly -join ', ')); mapwarp, tools, act, item, npc and fishing need fixture or world actions that are single-only (#297) and are skipped." }
+    if ($mode -ne 'single') { Write-Step "$mode mode: only the input-only sections run ($($inputOnly -join ', ')); move, mapwarp, tools, act, item, npc and fishing need fixture or world actions that are single-only (#297) and are skipped. This proves input on the selected player only and is not full acceptance." }
     $spot = $null
     if ($partial) { Write-Step "Partial run ($($Only -join ', ')): development only, not acceptance evidence." }
 
@@ -386,7 +405,7 @@ try {
         $menu = (Get-Menu 'menu-opened')
         $gameMenu = @($menu.menus | Where-Object adapter -ceq 'gameMenu')[0]
         Assert-That ($null -ne $gameMenu -and $gameMenu.currentTab -eq 0) 'E did not open the game menu on its first tab.'
-        if ($screenMode -and $Screen -ne 0) {
+        if ($screenMode) {
             # Input is screen-local: the menu opened on the selected screen only, and the host screen shows none.
             $hostMenu = (Invoke-SdvKit 'menu-screen-0' @('project', 'review', 'menu', '--screen', '0', '--json')).Json
             Assert-That ($hostMenu.menuOpen -eq $false) "E on screen $Screen also opened a menu on screen 0."
