@@ -406,7 +406,7 @@ try {
     }
 
     if (Test-Section 'move') {
-        Write-Step 'Bounded move: exactly one tile in four directions back to the start, a turn, and a blocked target refused.'
+        Write-Step ($screenMode ? 'Bounded move: exactly one tile in four directions back to the start and a turn.' : 'Bounded move: exactly one tile in four directions back to the start, a turn, and a blocked target refused.')
         if ($screenMode) {
             # Back to the cabin bed on the row the walk section ran along, then left, up, down and right on free floor (see
             # the walk section), ending on the bed again.
