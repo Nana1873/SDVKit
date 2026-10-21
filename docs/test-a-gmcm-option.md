@@ -28,7 +28,7 @@ Measure the control's position on the screenshot; a checkbox needs one click, an
 & $sdvkit project review call stardew_input_drag '{"x":820,"y":141,"endX":1004,"endY":141,"button":"MouseLeft","durationTicks":6,"uiRevision":"..."}' --allow-input
 ```
 
-A GMCM slider truncates the pointer position before clamping it, so drag slightly past the last tick to reach the maximum. Until you click Save, your mod's value must not change: log it after each move to prove that.
+A checkbox needs one `stardew_input_click` on its measured centre; the example's default is x=660, y=141 and Save is x=692, y=657, both for GMCM 1.16.0 in the default 1280x720 lab window. The acceptance scripts refuse to click when the viewport differs, so measure the positions again for another size. A GMCM slider truncates the pointer position before clamping it, so drag slightly past the last tick to reach the maximum. Until you click Save, your mod's value must not change: log it after each move to prove that.
 
 ## 3. Save and accept the change
 
