@@ -4,7 +4,8 @@ This matrix lists the everyday keyboard-and-mouse player actions, how to perform
 
 "Live" names where the action was verified in a game:
 - **script:** [`scripts/acceptance/player-actions.ps1`](../scripts/acceptance/player-actions.ps1) or another [acceptance script](../scripts/acceptance/README.md), in a `single` review on the test save;
-- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), where input on split-screen screen 1 opened a menu only on that screen.
+- **2.0 release:** the [2.0.0 acceptance](https://github.com/Nana1873/SDVKit/issues/286), where input on split-screen screen 1 opened a menu only on that screen;
+- **host, farmhand, screen 1:** the same script with `-Topology network-2 -Role <host|farmhand>` or `-Screen 1` ([#299](https://github.com/Nana1873/SDVKit/issues/299)), which runs only the walking, hotbar and game-menu rows through that network role or split-screen screen.
 
 All input uses SDVKit's [process-local](glossary.md#commands-and-results) input and needs `--allow-input`. A chord (`stardew_input_chord`) holds 1–8 buttons for 1–120 ticks and needs a `uiRevision` from `stardew_menu_get`; one is issued also when no menu is open.
 
@@ -13,12 +14,12 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Walk exactly one tile | `stardew_world_move` with `direction` (`--allow-world-actions`, test save); CLI `project review act move <direction>` | Its `reached`, `tileX`/`tileY`, `locationId` and `position`; `runtime.tileX`/`tileY` agree in a newer sample | script (four directions, a blocked target refused with `worldMoveTargetBlocked`) | Single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)); no pathfinding; a warp on the target tile changes the location instead |
-| Walk in a direction for a while | Chord `W`, `A`, `S` or `D` | `runtime.tileX`/`tileY` change; `position.facing` is the walking direction; `position.standingX`/`standingY` show the sub-tile position | script | Equal tick counts can move 2 or 3 tiles; use `stardew_world_move` for an exact stop ([#293](https://github.com/Nana1873/SDVKit/issues/293)) |
-| Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script | No running state is reported |
-| Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script | — |
-| Face a direction | `stardew_world_move` with `turnOnly: true`; or press the direction key once | `localPlayer.data.position.facing`; `toolTileX`/`toolTileY` is where a tool lands | script (both ways) | Both shift the player a few pixels inside its tile |
+| Walk in a direction for a while | Chord `W`, `A`, `S` or `D` | `runtime.tileX`/`tileY` change; `position.facing` is the walking direction; `position.standingX`/`standingY` show the sub-tile position | script; host; farmhand; screen 1 | Equal tick counts can move 2 or 3 tiles; use `stardew_world_move` for an exact stop ([#293](https://github.com/Nana1873/SDVKit/issues/293)) |
+| Walk instead of run | Chord `LeftShift` with the direction | Fewer tiles for the same ticks (about 1 instead of 2–3 for 30 ticks) | script; host; farmhand; screen 1 | No running state is reported |
+| Stop | Release (end of the chord) | The tile is unchanged in a newer runtime sample | script; host; farmhand; screen 1 | — |
+| Face a direction | `stardew_world_move` with `turnOnly: true`; or press the direction key once | `localPlayer.data.position.facing`; `toolTileX`/`toolTileY` is where a tool lands | script (both ways); host, farmhand and screen 1 (by key) | Both shift the player a few pixels inside its tile |
 | Change location through a map warp | Chord into the warp tiles listed by `stardew_map_warps_list`, or `stardew_world_move` onto the warp tile; for action doors listed by `stardew_map_actions_list`, `stardew_world_act` with `check` on the door from a neighbouring tile | `runtime.locationId`; a move reports the new `locationId` with `reached: false` | script (Farm to BusStop by chord) | Doors through `check` and warps by `move` are not in the script yet |
-| Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
+| Warp for setup | `stardew_lab_warp {location,x,y}` (`--allow-fixture-actions`, test save) | Its result and `runtime` | script; host; farmhand | Not on split-screen screens ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 
 ## Interaction and tools
 
@@ -48,10 +49,10 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
-| Select a hotbar slot | Press `D1`–`D9`, `D0`, `OemMinus`, `OemPlus` | `localPlayer.data.selectedSlot` | script | The mouse wheel needs a menu and is refused with `inputMenuMissing` ([#294](https://github.com/Nana1873/SDVKit/issues/294)) |
-| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script | — |
-| Close a menu | Press `Escape` (the close component is also listed by `menu_get`) | `menuOpen=false` | script (game menu, `Escape`) | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
-| Move items in the inventory | Click the source `inventorySlot` component (picks the item up), then the target one (places it); a drag only picks it up | `stardew_inventory_get` slots | script | The held item is not reported by `inventory_get` |
+| Select a hotbar slot | Press `D1`–`D9`, `D0`, `OemMinus`, `OemPlus` | `localPlayer.data.selectedSlot` | script; host; farmhand; screen 1 | The mouse wheel needs a menu and is refused with `inputMenuMissing` ([#294](https://github.com/Nana1873/SDVKit/issues/294)) |
+| Open the game menu, switch tab | Press `E`; click a `tab` component from `menu_get` | `gameMenu` `currentTab` | script; host; farmhand; screen 1 | — |
+| Close a menu | Press `Escape` (the close component is also listed by `menu_get`) | `menuOpen=false` | script (game menu, `Escape`); host; farmhand; screen 1 | A synthetic controller B has side effects ([#273](https://github.com/Nana1873/SDVKit/issues/273)) |
+| Move items in the inventory | Click the source `inventorySlot` component (picks the item up), then the target one (places it); a drag only picks it up | `stardew_inventory_get` slots | script; host; farmhand; screen 1 | The held item is not reported by `inventory_get` |
 | Chest and backpack transfer | Click slot components, or `stardew_container_transfer` (`--allow-container-transfer`) | `stardew_container_get` both sides | script (click, crop-machine) | The transfer tool has no script yet; single only ([#297](https://github.com/Nana1873/SDVKit/issues/297)) |
 | Buy in a shop | Click a sale row from `menu_get` | `stardew_shop_get` money, stock, held item | script (shop) | `SeedShop` Gold offers only |
 | Craft | Give the ingredients with `stardew_fixture_item_add`, then click a recipe component of the crafting page | Inventory and crafting page | — | Not in the script yet |
@@ -66,4 +67,4 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 
 ## Roles and screens
 
-Input, menu, inventory, container and world reads are supported for the `network-2` host and farmhand and for split-screen screens ([MCP startup profiles](mcp.md)). Supported world actions, container transfer and most fixture tools are single-only ([#297](https://github.com/Nana1873/SDVKit/issues/297)). The rows above were verified live in `single` unless noted; live checks of the input-only actions on the farmhand and on a second screen are tracked in [#299](https://github.com/Nana1873/SDVKit/issues/299).
+Input, menu, inventory, container and world reads are supported for the `network-2` host and farmhand and for split-screen screens ([MCP startup profiles](mcp.md)). Supported world actions, container transfer and most fixture tools are single-only ([#297](https://github.com/Nana1873/SDVKit/issues/297)). The rows above were verified live in `single` unless noted. The walking, hotbar and game-menu rows were also verified on the `network-2` host and farmhand and on split-screen screen 1 with the same script ([#299](https://github.com/Nana1873/SDVKit/issues/299)): every tool call and every menu, inventory and world read carries the `--role` or `--screen` selection, every runtime read asserts the selected role or screen, and inventory reads assert that player's ID (the recorded evidence of the live runs satisfies these assertions). Such a run proves only walking, hotbar and menu input on that player and is not full acceptance. A role run still uses `stardew_fixture_farm` and `stardew_lab_warp` as setup. A screen cannot use the fixture tools, so the local farmhand is not warped and the script walks it from its cabin bed, measuring the run and the Shift walk from the sub-tile position (about 2.5 and 1 tile for 30 ticks); the mouse wheel without a menu is refused there too, and `E` on screen 1 left screen 0 without a menu.
