@@ -11,7 +11,7 @@ Proves each action through a state read, not through the input acknowledgement:
   reached flag, confirmed by a runtime read), a turn that keeps the tile, and a blocked target refused with
   worldMoveTargetBlocked before any input;
 - stardew_lab_warp (runtime location and tile) and a location change by walking through a map warp;
-- hotbar selection with number keys, and the documented refusal of the mouse wheel without a menu;
+- hotbar selection with number keys, and one mouse-wheel notch each way without a menu moving one occupied slot (wrapping);
 - the game menu: open with E, switch tab by clicking its component, close with Escape;
 - hoe, pickaxe and scythe on the faced tile, after checking the reported facing and tool tile (soil appears, the stone or weeds disappear, stamina drops);
 - stardew_world_act: the hoe by useTool on a tile next to the player, check on the Farm sign opens its message, and a
@@ -481,7 +481,7 @@ try {
     }
 
     if (Test-Section 'hotbar') {
-        Write-Step 'Hotbar: number keys select slots; the mouse wheel needs a menu.'
+        Write-Step 'Hotbar: number keys select slots; one wheel notch without a menu moves one occupied slot.'
         if (-not $screenMode) { Invoke-Warp 'hotbar' 'Farm' 64 16 }
         foreach ($slot in 2, 5) {
             Invoke-Press "hotbar-$slot" (Get-SlotKey $slot)
@@ -489,9 +489,29 @@ try {
             Assert-That ((Get-Runtime "hotbar-$slot").localPlayer.data.selectedSlot -eq $slot) "$(Get-SlotKey $slot) did not select slot $slot."
         }
 
+        # Game1.pressSwitchToolButton: wheel down selects the next and wheel up the previous slot of the
+        # 12-slot row, wrapping and skipping empty slots.
+        $occupied = @((Get-Inventory 'hotbar-wheel-slots').slots | Where-Object { $_.slot -lt 12 -and $null -ne $_.item } | ForEach-Object { [int] $_.slot })
+        Assert-That ($occupied -contains 0 -and $occupied.Count -ge 2) "the hotbar needs slot 0 and one more occupied slot, has $($occupied -join ',')."
+        Invoke-Press 'hotbar-wheel-start' (Get-SlotKey 0)
+        Wait-Settled
+        Assert-That ((Get-Runtime 'hotbar-wheel-start').localPlayer.data.selectedSlot -eq 0) 'D1 did not select slot 0 before the wheel.'
         Invoke-Tool 'park-wheel' 'stardew_input_cursor_set' @{ x = 8; y = 8 } -OptIn '--allow-input' | Out-Null
-        $wheel = Invoke-Tool 'wheel-without-menu' 'stardew_input_wheel' @{ direction = 'down' } -OptIn '--allow-input' -AllowExit @(3)
-        Assert-That ($wheel.Json.problem.code -ceq 'inputMenuMissing') "the wheel without a menu returned $($wheel.Json.problem.code), expected inputMenuMissing."
+        $slot = 0
+        $seen = @()
+        foreach ($direction in 'down', 'up', 'up', 'down') {
+            $step = if ($direction -ceq 'down') { 1 } else { -1 }
+            $expected = $slot
+            do { $expected = ($expected + $step + 12) % 12 } until ($occupied -contains $expected)
+            $wheel = Invoke-Tool "wheel-$direction-from-$slot" 'stardew_input_wheel' @{ direction = $direction } -OptIn '--allow-input'
+            Assert-That ($wheel.Json.succeeded -eq $true -and $wheel.Json.menuOpen -eq $false -and $wheel.Json.direction -ceq $direction) "the world wheel $direction from slot $slot returned succeeded=$($wheel.Json.succeeded) menuOpen=$($wheel.Json.menuOpen) problem=$($wheel.Json.problem.code)."
+            Wait-Settled
+            $selected = (Get-Runtime "wheel-$direction-from-$slot").localPlayer.data.selectedSlot
+            Assert-That ($selected -eq $expected) "one wheel $direction notch from slot $slot selected $selected, expected $expected."
+            $seen += "$direction $slot->$selected"
+            $slot = $selected
+        }
+        Write-Step "Wheel notches with occupied slots $($occupied -join ','): $($seen -join '; ')."
     }
 
     if (Test-Section 'menu') {
