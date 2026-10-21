@@ -27,6 +27,13 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - `network-2` review starts wait up to 30 seconds for a host whose fixture load takes longer than five seconds (#325).
 - Input no longer fails with `inputForegroundUnavailable` when Windows briefly reports no foreground window during a desktop switch (#349). If it still fails, the message says whether the action was sent.
 
+### Development
+
+- Release live gates can run the `single` acceptance scripts in parallel lab roots (#322).
+- `player-actions.ps1` re-reads and re-places Lewis before talking to or gifting him (#346).
+- Shared GMCM and log helpers moved into `SdvKitAcceptance.psm1` (#284).
+- Two timing-sensitive tests were made deterministic (#333, #351).
+
 [Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/352) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.2.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v2.1.0...v2.2.0)
 
 

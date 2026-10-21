@@ -26,7 +26,17 @@ if ($end -eq $start) {
     throw "The changelog section for $Version is empty."
 }
 
-$notes = ($lines[$start..($end - 1)] -join "`n").Trim()
+# '### Development' records changes that matter only to SDVKit's own development (tests, CI, acceptance-script
+# internals); it stays in CHANGELOG.md but is left out of the release notes.
+$section = [System.Collections.Generic.List[string]]::new()
+$skipping = $false
+foreach ($line in $lines[$start..($end - 1)]) {
+    if ($line -match '^### ') { $skipping = $line -match '^### Development\s*$' }
+    elseif ($line -match '^\[') { $skipping = $false }
+    if (-not $skipping) { $section.Add($line) }
+}
+
+$notes = ($section -join "`n").Trim()
 # A release body does not resolve repository-relative links, so point them at the tagged files.
 $notes = [regex]::Replace($notes, '\]\((?!https?:|#|mailto:)([^)\s]+)\)', { param($match) "](https://github.com/Nana1873/SDVKit/blob/v$Version/$($match.Groups[1].Value))" })
 if ([string]::IsNullOrWhiteSpace($notes)) {
