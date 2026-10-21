@@ -18,6 +18,12 @@ Each process gets its own profile, which holds Stardew and SMAPI preferences, sa
 
 This is process and data isolation, not an OS sandbox. Tested code and external services can still reach shared machine resources.
 
+### Several lab roots on one PC
+
+Each lab root holds its own profiles, mod groups, test saves, ownership records, status and stop files and its operation lock below its `.sdvkit/`. The command endpoint uses a dynamic loopback port with a per-launch token. Separate lab roots can therefore run reviews at the same time against the same read-only game folder, one owner per lab root; this was verified with two lab roots, a third partly overlapping. A second command in the same lab root while an operation runs there still reports `labBusy`; another lab root does not.
+
+Verified on 2026-10-21 with Stardew 1.6.15 and SMAPI 4.5.2 from one Steam installation ([#322](https://github.com/Nana1873/SDVKit/issues/322)): two `single --test-save` reviews in two lab roots started, took interleaved input presses, game-menu opens and closes and runtime reads, and stopped and reset cleanly, without `inputForegroundChanged`; neither lab's status, `doctor` or results named the other lab, and the protected folders stayed unchanged. `shop.ps1` and `container.ps1` then passed concurrently in the two roots while a third lab root's review also ran. Not covered: `network-2` or split-screen next to another lab, sustained runs of more than two labs, slower machines, where CPU and GPU load can lengthen loading past the documented waits, other Steam client states (offline, updating, not running) and non-Steam installations.
+
 ### Identity and exit
 
 Ownership binds the process ID, its UTC start time, the executable identity and a matching game-side marker. Status rechecks that binding on every read. Stop sends that launch's stop request and waits for the process handle and the terminal marker. It clears ownership only after a confirmed exit. With an unknown identity, a missing terminal marker or a timeout, the process record stays.

@@ -5,7 +5,7 @@ The [observations below](#observed-behavior-2026-09-12) reproduce a native
 controller-close limitation; no SDVKit runtime fix is claimed. Use the existing
 [review workflow](../../live-review.md), including exclusive lab ownership,
 an exact disposable **single/screen 0** fixture, process-local input, and final
-stop/reset. Do not start it while another task owns the lab.
+stop/reset. Do not start it while another task owns this lab root.
 
 Copy these three source files to the selected lab's ignored `.sdvkit/` directory,
 then use `project check`, `project build`, and `project package` with that explicit
