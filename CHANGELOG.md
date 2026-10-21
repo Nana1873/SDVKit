@@ -8,35 +8,36 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Added
 
-- `stardew_world_move` and `project review act move` walk the player exactly one tile, or only turn them (#293).
-- World actions and container transfer now also work for the `network-2` host and farmhand and for split-screen screens (#297). On split-screen screens the game forces gamepad mode, so `stardew_world_act` is refused there.
+- `stardew_world_move` and `project review act move` (opt-in `--allow-world-actions`, test save) walk the player exactly one tile, or only turn them (#293).
+- World actions and container transfer now also work for the `network-2` host and farmhand and for split-screen screens through MCP and `project review call`; the direct CLI commands stay single (#297). On screens other than 0 the game forces gamepad mode, so `stardew_world_act` is refused there.
 - The mouse wheel now scrolls the hotbar in the world, not only in menus (#294).
-- `stardew_fixture_fishing_catch` completes a catch through the game's own catch path as test setup, skipping only the minigame (#296).
-- New live acceptance scripts: `gmcm-checkbox`, `container`, `data-migration`, `multiplayer`, `progression` and `multilingual-ui` (#284). `player-actions.ps1` can also run as a `network-2` role or on a split-screen screen (#299). See [`scripts/acceptance/README.md`](scripts/acceptance/README.md).
+- `stardew_fixture_fishing_catch` (opt-in `--allow-fixture-actions`, test save) lands a catch through the game's own catch path as test setup, skipping the wait, the bite and the minigame (#296).
+- New live acceptance scripts: `gmcm-checkbox`, `container`, `data-migration`, `multiplayer`, `progression` and `multilingual-ui` (#284). `player-actions.ps1` can also run as a `network-2` role or on a split-screen screen (#299). The guides moved to `docs/test-a-*.md` and the samples to `docs/examples/`; see [`scripts/acceptance/README.md`](scripts/acceptance/README.md).
 
 ### Changed
 
 - Several lab roots can run `single` test-save reviews on one PC at the same time; each lab root has one owner (#322).
-- Controller buttons are refused with `inputControllerUnsafeInAutoMode` while the game's `gamepadMode` is `auto` and no gamepad is connected, because the game then opens its menu (#273).
+- Controller buttons are refused with `inputControllerUnsafeInAutoMode` while the game's `gamepadMode` is `auto` (or unreadable) and no gamepad is connected, because the game would then open its menu (#273). For controller tests, set Gamepad Mode to `forceOn` on the game's Options page.
 
 ### Fixed
 
 - A single test-save review resumes after an intentional return to the title screen and reload, as documented (#341).
-- `project review reset` restores the game language to English (#340), and removes SDVKit's own stale `SDVKit2_<id>` save copy left by earlier versions (#341).
-- The sporadic `status.json` publication error and the momentary unavailable status read are fixed (#136, #143, #328).
-- `network-2` review starts tolerate a host whose fixture load takes longer than five seconds (#325).
-- Input no longer fails with `inputForegroundUnavailable` when Windows briefly reports no foreground window during a desktop switch (#349).
+- `project review reset` restores the isolated profiles' game language to English (#340). `lab test-save` and the reset remove SDVKit's own stale `SDVKit2_<id>` save copy from the isolated lab, and refuse anything else under that name (#341).
+- The sporadic `status.json` publication error (#136) and the momentary unavailable status read (#143) are fixed; a status read of an absent file now waits up to 250 ms before reporting `pending`, and GameSide logs when it uses its fallback publication (#328).
+- `network-2` review starts wait up to 30 seconds for a host whose fixture load takes longer than five seconds (#325).
+- Input no longer fails with `inputForegroundUnavailable` when Windows briefly reports no foreground window during a desktop switch (#349). If it still fails, the message says whether the action was sent.
 
 [Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/352) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.2.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v2.1.0...v2.2.0)
+
 
 ## [2.1.0] - 2026-10-21
 
 ### Added
 
-- `stardew_world_act` and `project review act` press the action button or use the selected tool once on a tile next to the player (#290).
-- Fixture tools `stardew_fixture_item_add` and `stardew_fixture_npc_place` add an item to the backpack or place a villager next to the player as test setup (#291, #292).
+- `stardew_world_act` and `project review act` (opt-in `--allow-world-actions`, test save, single) press the action button or use the selected tool once on a tile next to the player (#290).
+- Fixture tools (opt-in `--allow-fixture-actions`, test save): `stardew_fixture_item_add` adds an item stack to the backpack, and `stardew_fixture_npc_place` puts a named villager on a free tile in the player's location and turns them toward the player (#291, #292).
 - `stardew_map_actions_list` lists map action tiles such as signs, doors and the town mailbox (#300).
-- Runtime reads add the player's `position` (facing, grab and tool tile), the visible villagers (`npcs`), the game's `input` mode, and per-tile `feature` facts for trees, grass, bushes, clumps, giant crops and furniture (#289, #292, #271, #295).
+- Runtime reads add the player's `position` (facing, grab and tool tile), the visible villagers (`npcs`), the game's `input` mode, and per-tile `feature` facts for trees, grass, bushes, clumps, giant crops and furniture (#289, #292, #271, #295); furniture, giant crops and boulders are not yet verified live.
 - [`docs/player-actions.md`](docs/player-actions.md) lists everyday player actions with the tool and the read that proves each; `scripts/acceptance/player-actions.ps1` verifies them live, and `-Only` runs selected sections during development (#270, #308).
 
 ### Fixed
@@ -46,6 +47,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 - Fishing preparation picks a side-facing bank with water two and three tiles out (#305).
 
 [Release acceptance and publication status](https://github.com/Nana1873/SDVKit/issues/320) · [Release](https://github.com/Nana1873/SDVKit/releases/tag/v2.1.0) · [Changes](https://github.com/Nana1873/SDVKit/compare/v2.0.0...v2.1.0)
+
 
 ## [2.0.0] - 2026-10-11
 
