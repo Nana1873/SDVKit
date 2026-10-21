@@ -43,24 +43,36 @@ public sealed class GameSideStatusReaderTests
     }
 
     [Fact]
-    public async Task ReadWaitsThroughATransientlyAbsentNameWhileAHeldSnapshotIsReplaced()
+    public void ReadWaitsThroughATransientlyAbsentNameWhileAHeldSnapshotIsReplaced()
     {
         using TemporaryDirectory temporary = new();
         string path = WriteMarker(temporary, Process());
         string aside = path + ".replaced";
         File.Move(path, aside);
-        Task restore = Task.Run(() =>
+
+        // The name comes back on the third wait of the reading thread itself, so the test cannot
+        // lose a race against the 250 ms window on a busy machine (#333).
+        int waits = 0;
+        GameSideStatusReader.AbsentNameWaitObserver = () =>
         {
-            Thread.Sleep(40);
-            File.Move(aside, path);
-        });
+            if (++waits == 3)
+            {
+                File.Move(aside, path);
+            }
+        };
+        try
+        {
+            GameSideStatusReport report = GameSideStatusReader.Read(path, "launch-1", Process(), ObservedAt);
 
-        GameSideStatusReport report = GameSideStatusReader.Read(path, "launch-1", Process(), ObservedAt);
-        await restore;
-
-        Assert.Equal("active", report.State);
-        Assert.Equal(600, report.Tick);
-        Assert.Equal(ObservedAt, report.ObservedAtUtc);
+            Assert.Equal(3, waits);
+            Assert.Equal("active", report.State);
+            Assert.Equal(600, report.Tick);
+            Assert.Equal(ObservedAt, report.ObservedAtUtc);
+        }
+        finally
+        {
+            GameSideStatusReader.AbsentNameWaitObserver = null;
+        }
     }
 
     [Fact]

@@ -16,6 +16,9 @@ grants ten Stone once per save and places and opens one marked wooden chest on c
 4. closes the chest, saves the fixture, stops without reset, restarts the same package, reopens the chest and
    requires 8/2/0 again. A reward granted twice would show as 18 Stone.
 
+The chest is opened by the sample mod's console command, so no player positioning or cursor parking is needed; the
+transfer tool uses SDVKit's own process-local cursor.
+
 Guide: docs/test-a-container-transfer.md.
 
 .EXAMPLE
