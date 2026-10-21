@@ -127,6 +127,7 @@ Each fixture operation is a native MCP tool. Call one from the command line with
 | `stardew_fixture_enter` with `greenhouse` | Any verified role; natural entry to the loaded Greenhouse |
 | `stardew_fixture_farm` | Any verified role; allowed natural Farm exit |
 | `stardew_fixture_fishing_prepare` | Single or host; prepare a collision-free bank and a selected rod in the current outdoor location |
+| `stardew_fixture_fishing_catch` | Single or host; complete the current cast's catch through the game's catch path, skipping only the minigame |
 | `stardew_fixture_item_add` | Single or host; put one new item stack into the first empty backpack slot |
 | `stardew_fixture_npc_place` | Single or host; warp one named villager to a free tile in the player's location |
 
@@ -158,9 +159,29 @@ With `skipTutorial`, an empty fish collection gets one Sunfish entry to bypass t
 
 Require the tool's `Fishing prepared` result. Check the reported player location and selected rod before casting. Preparation is not evidence of a cast or catch.
 
-Read the additive [fishing snapshot](runtime-state.md#fishing-observations) during play. Its normal one-second sample can miss a short nibble; it does not respond to bites. Bite timing, fish selection, the minigame, landing and inventory pickup need their own evidence.
+Read the additive [fishing snapshot](runtime-state.md#fishing-observations) during play. Its normal one-second sample can miss a short nibble; it does not respond to bites. To land a fish for a test, use the [fishing catch](#fishing-catch) fixture; real bite timing and the minigame stay unproven.
 
 This command neither saves nor resets; finish with the normal stop and reset. Farmhands cannot prepare but can read their own fishing state.
+
+### Fishing catch
+
+`stardew_fixture_fishing_catch` (no arguments) lands a fish for the main player's current cast, so mods that react to a catch can be tested. Input cannot do this: the runtime sample misses short nibbles and the bobber-bar minigame cannot be played with short chords. It requires:
+
+- the verified main player or host;
+- no open menu, event, festival or fade;
+- a selected rod with the bobber in fishable water (`localPlayer.data.fishing.fishing=true`), not a fish pond;
+- a rod that waits for a bite: not casting, hooked, reeling, pulling out or holding a catch;
+- an empty backpack slot.
+
+It runs the game's own code. It starts the bite as the rod's update does and hooks with `FishingRod.DoFunction`, as the auto-hook enchantment does, so the game chooses the fish, or trash, for this bobber, bait and location. For a fish it opens the game's `BobberBar` and finishes it as a won catch that was not perfect and found no treasure, then calls `FishingRod.pullFishFromWater`, `playerCaughtFishEndFunction` and `doneHoldingFish`. The game therefore records the catch (fish collection and size record, Fishing experience, stats, special orders, bait and tackle use) and adds the fish to the backpack, so Harmony patches on these methods and SMAPI inventory events see a normal catch. Only the waiting time, the bite timing and the minigame are skipped. The result reports `catch.qualifiedItemId`, `stack`, `quality`, `size` (in inches; -1 for trash) and the `inventoryRevision` after the catch.
+
+Refusals carry a named code: `fishingCatchBlocked`, `fishingCatchNotFishing`, `fishingCatchRodState`, `fishingCatchBobberNotInWater`, `fishingCatchFishPond` and `fishingCatchBackpackFull` change nothing. `fishingCatchNotHooked`, `fishingCatchNotInBackpack` and `fishingCatchReadBackFailed` mean the game state may already have moved; read `stardew_runtime_get` and `stardew_inventory_get` before going on. A catch is not idempotent: after a timeout that may have run, read the inventory before calling it again.
+
+```powershell
+& $sdvkit project review call stardew_fixture_fishing_catch --allow-fixture-actions
+```
+
+This is test setup, not evidence of the bite or the minigame. The command neither saves nor resets; finish with the normal stop and reset.
 
 ### Item preparation
 

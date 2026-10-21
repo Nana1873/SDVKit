@@ -24,7 +24,8 @@ Proves each action through a state read, not through the input acknowledgement:
 - stardew_world_interact: a tilled and planted plot is watered (the soil reads watered);
 - stardew_container_transfer: a placed chest opened by check, two parsnips moved one way and one back, each change and
   the unchanged total confirmed by a chest read;
-- fishing: preparation and a cast that puts the bobber in the water.
+- fishing: preparation, a cast that puts the bobber in the water, and stardew_fixture_fishing_catch landing the
+  game's fish, which a fresh inventory read shows in the backpack (the bite and minigame are skipped, not proven).
 
 The tool tests pick their tiles from a world-area read, so they adapt to the test save. The virtual cursor is
 parked in the screen corner before keyboard tool use, because Stardew aims at the tile under the cursor when it is
@@ -838,7 +839,20 @@ try {
             Write-Step 'The rod is idle after the first cast; casting once more.'
         }
         Assert-That ($fishing.fishing -eq $true -and $fishing.bobberTileY -gt 0) 'the cast did not put the bobber in the water.'
-        Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY). Hooking and the minigame are not covered."
+        Write-Step "Cast: bobber at $($fishing.bobberTileX),$($fishing.bobberTileY)."
+        # The catch fixture forces the bite and skips the minigame; the game picks the fish and adds it to the backpack.
+        $beforeCatch = Get-Inventory 'fishing-catch-before'
+        $catch = (Invoke-Tool 'fishing-catch' 'stardew_fixture_fishing_catch' -OptIn '--allow-fixture-actions').Json
+        Assert-That ($catch.state -ceq 'ready' -and $null -ne $catch.catch) "the fishing catch failed: $($catch.message)"
+        $caughtId = $catch.catch.qualifiedItemId
+        $afterCatch = Get-Inventory 'fishing-catch-after'
+        $count = { param($inventory) ($inventory.slots | Where-Object { $_.item.qualifiedItemId -ceq $caughtId } | Measure-Object -Property { $_.item.stack } -Sum).Sum }
+        $gained = [int](& $count $afterCatch) - [int](& $count $beforeCatch)
+        Assert-That ($gained -eq $catch.catch.stack) "the backpack gained $gained x $caughtId, not the reported $($catch.catch.stack)."
+        Assert-That ($afterCatch.inventoryRevision -ceq $catch.catch.inventoryRevision) 'the fresh inventory read does not match the revision the catch reported.'
+        $landed = (Get-Runtime 'fishing-catch-after').localPlayer.data.fishing
+        Assert-That (-not $landed.fishing -and -not $landed.catchReady -and -not $landed.pullingOut) 'the rod did not return to idle after the catch.'
+        Write-Step "Caught $($catch.catch.stack) x $caughtId (quality $($catch.catch.quality), size $($catch.catch.size)); the backpack shows it. The bite and the minigame were skipped by the fixture."
     }
 
     if ($partial) { Write-Step 'The selected sections passed. Run without -Only for acceptance evidence.' }

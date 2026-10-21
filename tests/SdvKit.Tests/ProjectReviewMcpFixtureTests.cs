@@ -643,6 +643,9 @@ public sealed class ProjectReviewMcpFixtureTests
             Item: query.Operation == ReviewFixtureTransportContract.ItemAddOperation
                 ? new ReviewFixtureItemReport(query.Kind!, query.X!.Value, query.Y!.Value, 3,
                     "sha256:" + new string('a', 64))
+                : null,
+            Catch: query.Operation == ReviewFixtureTransportContract.FishingCatchOperation
+                ? new ReviewFixtureCatchReport("(O)145", 1, 1, 9, "sha256:" + new string('b', 64))
                 : null);
         return new LiveLabCommandResult(0, report);
     }
@@ -691,6 +694,69 @@ public sealed class ProjectReviewMcpFixtureTests
             Assert.True(rejected.IsError);
         }
         Assert.Equal(2, sent.Count);
+    }
+
+    [Fact]
+    public async Task FishingCatchTakesNoArgumentsAndChecksTheCaughtItem()
+    {
+        using TemporaryDirectory temporary = new();
+        ProjectReviewMcpRuntimeReader reader = ProjectReviewMcpTests.CreateReadyReview(temporary, withTestSave: true);
+        ProjectReviewMcpRuntimeSnapshot expected = Assert.IsType<ProjectReviewMcpRuntimeSnapshot>(reader.Read().Snapshot);
+        var sent = new List<ReviewFixtureQuery>();
+        await using McpTestClient harness = await McpTestClient.StartAsync(ProjectReviewMcpServer.CreateOptions(
+            reader,
+            runFixture: (query, _, _) =>
+            {
+                sent.Add(query);
+                return Ready(query, expected);
+            }));
+
+        Tool tool = Assert.Single((await harness.Client.ListToolsAsync(new ListToolsRequestParams(), harness.Token)).Tools,
+            candidate => candidate.Name == ProjectReviewMcpFixtureTools.FishingCatchToolName);
+        Assert.Contains("Test setup, not proof", tool.Description, StringComparison.Ordinal);
+        JsonElement caught = (await Call(harness, ProjectReviewMcpFixtureTools.FishingCatchToolName)).GetProperty("catch");
+        Assert.Equal("(O)145", caught.GetProperty("qualifiedItemId").GetString());
+        Assert.Equal(9, caught.GetProperty("size").GetInt32());
+        Assert.StartsWith("sha256:", caught.GetProperty("inventoryRevision").GetString(), StringComparison.Ordinal);
+        CallToolResult rejected = await harness.Client.CallToolAsync(
+            ProjectReviewMcpFixtureTools.FishingCatchToolName,
+            new Dictionary<string, object?> { ["qualifiedItemId"] = "(O)145" },
+            cancellationToken: harness.Token);
+        Assert.True(rejected.IsError);
+        Assert.Equal([new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingCatchOperation)], sent);
+
+        var query = new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingCatchOperation);
+        ReviewFixtureResponseEnvelope ready = Envelope(query, expected, DateTimeOffset.UtcNow);
+        DateTimeOffset requestedAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        Assert.True(ProjectReviewFixtureService.Matches(ready, ready.RequestId, ready.Binding, query, expected, requestedAt));
+        foreach (ReviewFixtureReport invalid in new[]
+        {
+            ready.Report with { Catch = null },
+            ready.Report with { Catch = ready.Report.Catch! with { Quality = 3 } },
+            ready.Report with { Catch = ready.Report.Catch! with { Stack = 0 } },
+            ready.Report with { Catch = ready.Report.Catch! with { Size = -2 } },
+            ready.Report with { Catch = ready.Report.Catch! with { InventoryRevision = "r1" } },
+            ready.Report with { Catch = ready.Report.Catch! with { QualifiedItemId = "145" } },
+            ready.Report with { Item = new ReviewFixtureItemReport("(O)145", 1, 0, 0, "sha256:" + new string('b', 64)) },
+        })
+        {
+            Assert.False(ProjectReviewFixtureService.Matches(ready with { Report = invalid }, ready.RequestId, ready.Binding, query, expected, requestedAt));
+        }
+
+        // A catch payload never belongs to another operation, and a refusal carries its named code without one.
+        var itemQuery = new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Kind: "(O)24", X: 1, Y: 0);
+        ReviewFixtureResponseEnvelope item = Envelope(itemQuery, expected, DateTimeOffset.UtcNow);
+        Assert.False(ProjectReviewFixtureService.Matches(item with { Report = item.Report with { Catch = ready.Report.Catch } },
+            item.RequestId, item.Binding, itemQuery, expected, requestedAt));
+        ReviewFixtureReport blocked = ready.Report with
+        {
+            State = "blocked",
+            Catch = null,
+            Problems = [new ReviewFixtureProblem("fishingCatchNotFishing", "Not fishing.")],
+        };
+        Assert.True(ProjectReviewFixtureService.Matches(ready with { Report = blocked }, ready.RequestId, ready.Binding, query, expected, requestedAt));
+        Assert.False(ProjectReviewFixtureService.Matches(ready with { Report = blocked with { Catch = ready.Report.Catch } },
+            ready.RequestId, ready.Binding, query, expected, requestedAt));
     }
 
     [Fact]

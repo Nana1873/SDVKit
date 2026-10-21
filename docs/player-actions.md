@@ -63,7 +63,7 @@ All input uses SDVKit's [process-local](glossary.md#commands-and-results) input 
 | Action | How | Proof | Live | Gap |
 | --- | --- | --- | --- | --- |
 | Prepare and cast | `stardew_fixture_fishing_prepare`, park the cursor, chord `C` | `localPlayer.data.fishing.fishing=true` with the bobber tile | script | — |
-| Hook and catch | — | — | — | [#296](https://github.com/Nana1873/SDVKit/issues/296) |
+| Hook and catch | `stardew_fixture_fishing_catch` (`--allow-fixture-actions`, test save) while the bobber is in the water | Its `catch` item and size; the fish in a fresh `stardew_inventory_get` | script | Setup, not proof: the bite is forced and the minigame skipped |
 
 ## Roles and screens
 

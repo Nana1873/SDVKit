@@ -16,6 +16,7 @@ public sealed class ReviewFixtureLabTests
         new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, SkipTutorial: true),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingPrepareOperation, X: 40, Y: 12, SkipTutorial: true),
+        new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingCatchOperation),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetTimeOperation, X: 1930),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetWeatherOperation, Value: "Rain"),
         new ReviewFixtureQuery(ReviewFixtureTransportContract.SetSeasonOperation, Value: "winter"),
@@ -100,6 +101,15 @@ public sealed class ReviewFixtureLabTests
             new ReviewFixtureQuery(ReviewFixtureTransportContract.ItemAddOperation, Building: "coop", Kind: "(O)24", X: 1, Y: 0),
             "single", null));
 
+    [Theory]
+    [InlineData(null, null, "(O)145", false)]
+    [InlineData(1, 2, null, false)]
+    [InlineData(null, null, null, true)]
+    public void FishingCatchTakesNoOperands(int? x, int? y, string? kind, bool skipTutorial) =>
+        Assert.Equal("fixtureRequestInvalid", ProjectReviewFixtureService.Validate(
+            new ReviewFixtureQuery(ReviewFixtureTransportContract.FishingCatchOperation, Kind: kind, X: x, Y: y, SkipTutorial: skipTutorial),
+            "single", null)?.Code);
+
     [Fact]
     public void WarpNeedsBothCoordinatesOrNeither() =>
         Assert.NotNull(ProjectReviewFixtureService.Validate(
@@ -110,6 +120,7 @@ public sealed class ReviewFixtureLabTests
     [InlineData("setWeather", false)]
     [InlineData("objectEnsure", false)]
     [InlineData("fishingPrepare", false)]
+    [InlineData("fishingCatch", false)]
     [InlineData("itemAdd", false)]
     [InlineData("npcPlace", false)]
     [InlineData("warp", true)]
@@ -122,7 +133,7 @@ public sealed class ReviewFixtureLabTests
             "setTime" => new ReviewFixtureQuery(operation, X: 900),
             "setWeather" => new ReviewFixtureQuery(operation, Value: "Sun"),
             "objectEnsure" => new ReviewFixtureQuery(operation, Building: "coop", Kind: "(O)388"),
-            "fishingPrepare" => new ReviewFixtureQuery(operation),
+            "fishingPrepare" or "fishingCatch" => new ReviewFixtureQuery(operation),
             "itemAdd" => new ReviewFixtureQuery(operation, Kind: "(O)24", X: 1, Y: 0),
             "npcPlace" => new ReviewFixtureQuery(operation, Value: "Lewis", X: 1, Y: 1),
             "warp" => new ReviewFixtureQuery(operation, Value: "Town"),
