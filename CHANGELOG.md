@@ -18,7 +18,7 @@ User-visible changes are maintained here. GitHub release notes use the correspon
 
 ### Changed
 
-- Live tests now have one owner per lab root instead of one per machine (#322). A live proof on one PC ran two `single --test-save` reviews in two lab roots side by side with interleaved input, menu and runtime reads, clean stop and reset on both, no `inputForegroundChanged` and unchanged protected folders, and two acceptance scripts concurrently. The lab guide, the live guide, the lab reference (new section "Several lab roots on one PC"), the acceptance README and the lab kit's `SDVKIT.md` now say so; code is unchanged.
+- Live tests have one owner per lab root instead of one per machine (#322): two `single --test-save` reviews and two acceptance scripts ran cleanly side by side in separate lab roots on one PC. The live guide, the lab reference ("Several lab roots on one PC"), the acceptance README and the lab kit's `SDVKIT.md` say so; code is unchanged.
 
 ### Fixed
 
