@@ -38,4 +38,11 @@ The GMCM scripts click fixed screen positions, because GMCM's page exposes no me
 
 ## Other recipes
 
+The remaining recipes in `docs/` are guides. These are worth converting into scripts the same way:
+
+| Recipe | Why |
+| --- | --- |
+| [Progression](../../docs/progression-authoring.md) | NPC, mail and quest reads through a reload. |
+| [Multiplayer](../../docs/multiplayer-authoring.md) | The only end-to-end `network-2` and split-screen workflow. |
+
 These stay guides only, because `project smoke` and the scripts above already cover their live steps: [CP authoring](../../docs/cp-authoring.md), [SMAPI authoring](../../docs/smapi-authoring.md), [Bundle Arrival](../../docs/bundle-authoring.md) and [CP patch order](../../docs/cp-patch-order-recipe.md).

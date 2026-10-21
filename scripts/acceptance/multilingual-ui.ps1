@@ -1,7 +1,7 @@
 #Requires -Version 7.3
 <#
 .SYNOPSIS
-Live acceptance: a multilingual SMAPI dialogue through the offline i18n check, an English UI, the native title-screen language change, a German UI with default-language fallback, persistence and restoring the initial language.
+Live acceptance: a multilingual SMAPI dialogue through the offline i18n check, an English UI, the native title-screen language change, German texts with default-language fallback, persistence and restoring the initial language.
 
 .DESCRIPTION
 Uses docs/examples/multilingual-recipe/BlueberryGreeting (English default, German with one deliberately missing key). The
@@ -25,8 +25,8 @@ script:
    idempotent second accept; the run ends with stop and reset.
 
 Finding: after the title-screen Load, the review does not revalidate the fixture (`reviewTestSaveNotReady`, status
-testSaveFailed), so menu reads, input tools and screenshots of the German world are refused and the German UI is proved from
-the mod's log lines, not from a rendered menu. See docs/test-a-multilingual-ui.md.
+testSaveFailed), so menu reads, input tools and screenshots of the German world are refused and the German texts are proved from
+the mod's log lines, not from a rendered menu (issue #341). See docs/test-a-multilingual-ui.md.
 
 The title screen exposes no menu components, so Language, Deutsch, Load and the save row are clicked at fixed positions
 measured for the default 1280x720 viewport (each screenshot is checked for that size); pass other positions as parameters.
@@ -59,11 +59,11 @@ Import-Module (Join-Path $PSScriptRoot 'SdvKitAcceptance.psm1') -Force
 $context = Initialize-Acceptance -Name 'multilingual-ui' -SdvKit $SdvKit -GamePath $GamePath -LabRoot $LabRoot -SkipProtectedCheck:$SkipProtectedCheck
 
 $modId = 'SDVKit.Example.BlueberryGreeting'
-$profile = Join-Path $context.Lab '.sdvkit\lab\profiles\single\AppData\Roaming\StardewValley'
+$profileRoot = Join-Path $context.Lab '.sdvkit\lab\profiles\single\AppData\Roaming\StardewValley'
 $runId = [guid]::NewGuid().ToString('N').Substring(0, 8)
 
 function Get-LanguageCode {
-    $text = Get-Content -Raw -LiteralPath (Join-Path $profile 'startup_preferences')
+    $text = Get-Content -Raw -LiteralPath (Join-Path $profileRoot 'startup_preferences')
     if ($text -match '<languageCode>([^<]*)</languageCode>') { return $Matches[1] }
     return ''
 }
@@ -148,7 +148,7 @@ function Save-TitleScreenshot([string] $Label) {
     # Captures the viewport with the console line the title screen still accepts and keeps the PNG; it must be 1280x720.
     $name = "$Label-$runId"
     Invoke-SdvKit "screenshot-$Label" @('project', 'review', 'command', "sdvkit screenshot viewport $name", '--json') | Out-Null
-    $file = Join-Path $profile "Screenshots\SDVKit-$name.png"
+    $file = Join-Path $profileRoot "Screenshots\SDVKit-$name.png"
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     while (-not (Test-Path -LiteralPath $file -PathType Leaf) -and [DateTime]::UtcNow -le $deadline) { Start-Sleep -Milliseconds 500 }
     Assert-That (Test-Path -LiteralPath $file -PathType Leaf) "the title screenshot $Label was not written."
@@ -190,7 +190,7 @@ function Get-FixtureRow {
     $saveId = [string]$status.lab.gameSide.testSave.saveId
     $script:saveId = $saveId
     # The Load menu lists the newest save first; the age of a save is the write time of its SaveGameInfo file.
-    $folders = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $profile 'Saves') -Directory |
+    $folders = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $profileRoot 'Saves') -Directory |
         Sort-Object { (Get-Item -LiteralPath (Join-Path $_.FullName 'SaveGameInfo')).LastWriteTimeUtc } -Descending | ForEach-Object Name)
     $row = [Array]::IndexOf($folders, $saveId)
     Assert-That ($row -ge 0 -and $folders.Count -le 4) "the fixture folder $saveId is not among the profile's $($folders.Count) saves."
@@ -201,6 +201,7 @@ function Load-FixtureFromTitle([string] $Label) {
     # Native Load menu, then the fixture's row. The review does not revalidate the fixture afterwards (see the guide), so the
     # world is read through the mod's own log lines only.
     $row = Get-FixtureRow
+    $savedLoadedBefore = @([regex]::Matches((Get-Content -Raw -LiteralPath $script:smapiLog), 'BLUEBERRY_GREETING \{"state":"saveLoaded"')).Count
     Invoke-TitleClick "$Label-load" $LoadX $LoadY
     Save-TitleScreenshot "$Label-load"
     Invoke-TitleClick "$Label-row" $LoadRowX ($LoadRowY + $row * $LoadRowStep)
@@ -214,13 +215,13 @@ function Load-FixtureFromTitle([string] $Label) {
     $script:loadCount = $count
     $last = @($loaded)[-1].Line
     Assert-That ($last -clike "*loaded save '$($script:saveId)'*") "the Load menu row loaded a different save: $last"
-    # The mod logs its state when the save loads, so the loaded world can be read without a command.
-    Start-Sleep -Seconds 3
-    $text = Get-Content -Raw -LiteralPath $script:smapiLog
-    $lines = @([regex]::Matches($text, 'BLUEBERRY_GREETING (\{"state":"saveLoaded"[^
-
-]*\})'))
-    Assert-That ($lines.Count -gt 0) 'the mod did not log the loaded world.'
+    # The mod logs its state when the save loads, so the loaded world can be read without a command; require a new line.
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        Start-Sleep -Seconds 2
+        $lines = @([regex]::Matches((Get-Content -Raw -LiteralPath $script:smapiLog), 'BLUEBERRY_GREETING (\{"state":"saveLoaded"[^\r\n]*\})'))
+    } until ($lines.Count -gt $savedLoadedBefore -or [DateTime]::UtcNow -gt $deadline)
+    Assert-That ($lines.Count -gt $savedLoadedBefore) 'the mod did not log the loaded world.'
     return ($lines[-1].Groups[1].Value | ConvertFrom-Json)
 }
 
@@ -330,7 +331,7 @@ try {
     # is read from the mod's log line written when the save loads.
     $de = Load-FixtureFromTitle 'de'
     Assert-That ($de.locale -like 'de*' -and $de.accepted -eq $true -and $de.pendingSave -eq $false) "the German world reports $($de | ConvertTo-Json -Compress)."
-    Assert-That ($de.prompt -clike 'Willkommen zur* SDVKit. Rezeptmarke: BLUEBERRY-42. Default-only marker: BLUEBERRY.' -and $de.cancel -ceq 'Jetzt nicht' -and $de.accept -clike 'Diesen Gru*' -and $de.fallback -ceq 'Default-only marker: BLUEBERRY.') "the German texts are $($de | ConvertTo-Json -Compress)."
+    Assert-That ($de.prompt -ceq "Willkommen zur$([char]0xFC)ck, SDVKit. Rezeptmarke: BLUEBERRY-42. Default-only marker: BLUEBERRY." -and $de.cancel -ceq 'Jetzt nicht' -and $de.accept -ceq "Diesen Gru$([char]0xDF) merken" -and $de.fallback -ceq 'Default-only marker: BLUEBERRY.') "the German texts are $($de | ConvertTo-Json -Compress)."
     Write-Step "German runtime locale '$($de.locale)': translated prompt and labels with the default-language fallback sentence; the accepted state came back from the saved game."
 
     Write-Step 'Restore English: restart with the German preference, return to the title screen, select English, restart again.'
@@ -356,7 +357,18 @@ catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
 }
 finally {
-    Complete-Acceptance -Failed:$failed
+    try { Complete-Acceptance -Failed:$failed }
+    finally {
+        # Reset does not restore the language preference (#340), and a failed run may stop after the language change. The game
+        # is stopped here, so put the isolated profile's startup preference back to English for the next script.
+        $preferences = Join-Path $profileRoot 'startup_preferences'
+        $stopped = (& $context.SdvKit project review status --topology single --json | ConvertFrom-Json).state -ceq 'stopped'
+        if ($stopped -and (Test-Path -LiteralPath $preferences) -and (Get-LanguageCode) -cne 'en') {
+            $text = [IO.File]::ReadAllText($preferences)
+            [IO.File]::WriteAllText($preferences, ($text -replace '<languageCode>[^<]*</languageCode>', '<languageCode>en</languageCode>'), [Text.UTF8Encoding]::new($false))
+            Write-Step 'Restored languageCode en in the isolated startup_preferences (#340).'
+        }
+    }
 }
 
 if ($failed) { exit 1 }

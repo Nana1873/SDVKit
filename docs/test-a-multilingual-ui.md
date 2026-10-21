@@ -2,7 +2,7 @@
 
 Use this pattern when your mod ships translations and you want to prove the offline i18n check, the English and German text in the running game, and that the state survives a language change and a restart. The complete worked example is [`scripts/acceptance/multilingual-ui.ps1`](../scripts/acceptance/multilingual-ui.ps1) with the mod in [`docs/examples/multilingual-recipe/BlueberryGreeting`](examples/multilingual-recipe/BlueberryGreeting/): a console command opens a question dialogue with Cancel first and Accept second; accepting once writes one player `modData` value, accepting again changes nothing. English is the default locale, German the second, and one German key (`fallback.default-only`) is deliberately missing so SMAPI's fallback to `default.json` can be seen.
 
-Read [offline i18n authoring check](i18n-authoring.md), [live review](live-review.md) and [menu inspection](menu-inspection.md) first. The script takes several minutes and restarts the game five times.
+Read [offline i18n authoring check](i18n-authoring.md), [live review](live-review.md) and [menu inspection](menu-inspection.md) first. The script takes several minutes and starts the game four times (five when an earlier failed run left German in the isolated profile, which the script restores first; it also puts English back in its cleanup, because `reset` does not, [#340](https://github.com/Nana1873/SDVKit/issues/340)).
 
 | Gate | Proves | Does not prove |
 | --- | --- | --- |
@@ -24,11 +24,11 @@ The isolated profile's `startup_preferences` must say `languageCode` `en` (the s
 
 Load the fixture from the native Load menu. It lists two identical-looking saves, the work save and an `SDVKit2_` copy of it, newest first; the script picks the row by the write time of each save's `SaveGameInfo` and requires the game's log to name the fixture's save as the loaded one. The mod's own log line written when the save loads must then show the German runtime locale (`de-de`), the German prompt and labels with the English fallback sentence, and `accepted=true`: the state came back from the saved game.
 
-**Finding, not worked around:** the review does not revalidate the fixture after a title-screen reload. Status stays `testSaveFailed` ("The live world differs in these exact fixture fields...") and every command, including mod console commands, tool and menu read, answers `reviewTestSaveNotReady`/blocked. That is why the German world is read from the mod's log line at save load and not from a menu read, and why accepting in German is not part of the script. The older recipe describes a working revalidation; this needs a separate fix in the game-side test-save automation.
+**Finding, not worked around ([#341](https://github.com/Nana1873/SDVKit/issues/341)):** [live review](live-review.md#finish-or-test-persistence) says the one reload of the registered save after a return to title is checked against the live world and resumes the fixture. It does not: the exit to title already fails the test-save check ("The live world differs in these exact fixture fields...", logged when the title command runs), the Load menu then loads the exact save, and the status stays `testSaveFailed`. Every command from then on, including mod console commands, tool calls and menu reads, answers blocked or `reviewTestSaveNotReady`. That is why the German world is read from the mod's log line at save load, and why accepting in German is not part of the script.
 
 ## 4. Restore English and prove idempotence
 
-The review has to be stopped (no reset) and started again: the autoload begins in the empty locale although the German preference is set, so deliver `title`, click Language and ENGLISH, stop without reset and start the same package once more. Require `languageCode` `en`, the original empty locale, `accepted=true, pendingSave=false`, the English completed prompt, and a second Accept with `before=true, after=true, changed=false`. Finish with stop and reset.
+The review has to be stopped (no reset) and started again: the autoload begins in the empty locale although the German preference is set, so deliver `title`, click Language and ENGLISH, stop without reset and start the same package once more. Require `languageCode` `en` in the startup preferences, which is the proof that English is restored (the empty runtime locale only shows the English start), `accepted=true, pendingSave=false`, the English completed prompt, and a second Accept with `before=true, after=true, changed=false`. Finish with stop and reset.
 
 ## Not covered
 
