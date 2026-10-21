@@ -15,15 +15,16 @@ internal sealed class StatusPublication
     {
         try
         {
-            long replacements = WindowsStatusFile.HeldDestinationReplacements;
             write();
             _activeWriteErrorLogged = false;
-            if (!_fallbackLogged && WindowsStatusFile.HeldDestinationReplacements > replacements)
+            if (!_fallbackLogged && WindowsStatusFile.UsedHeldDestinationFallback)
             {
                 _fallbackLogged = true;
                 logInfo?.Invoke("SDVKit status snapshot replaced through the held-destination fallback; see #136.");
             }
 
+            // Like the write error above, a leftover is reported once per period; a publication
+            // without a leftover re-arms the report.
             string? leftover = WindowsStatusFile.AsideCleanupError;
             if (leftover is null)
             {

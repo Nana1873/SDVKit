@@ -30,6 +30,7 @@ internal static class WindowsStatusFile
     public static void Publish(string temporaryPath, string statusPath)
     {
         AsideCleanupError = null;
+        UsedHeldDestinationFallback = false;
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
         {
             throw new IOException("Atomic lab status publication requires Windows 10 version 1709 or later.");
@@ -140,6 +141,7 @@ internal static class WindowsStatusFile
         }
 
         Interlocked.Increment(ref heldDestinationReplacements);
+        UsedHeldDestinationFallback = true;
         IntPtr disposition = Marshal.AllocHGlobal(sizeof(uint));
         try
         {
@@ -193,12 +195,9 @@ internal static class WindowsStatusFile
         }
     }
 
-    // Test-only diagnostics; production leaves these thread-local observers unset.
+    /// <summary>Whether the last <see cref="Publish"/> on this thread succeeded through the held-destination fallback.</summary>
     [ThreadStatic]
-    internal static Action<int, string, string>? FailureObserver;
-
-    [ThreadStatic]
-    internal static Action<int, string>? AsideCleanupObserver;
+    internal static bool UsedHeldDestinationFallback;
 
     /// <summary>
     /// Set by the last <see cref="Publish"/> on this thread when it succeeded through the held-destination
@@ -206,6 +205,13 @@ internal static class WindowsStatusFile
     /// </summary>
     [ThreadStatic]
     internal static string? AsideCleanupError;
+
+    // Test-only diagnostics; production leaves these thread-local observers unset.
+    [ThreadStatic]
+    internal static Action<int, string, string>? FailureObserver;
+
+    [ThreadStatic]
+    internal static Action<int, string>? AsideCleanupObserver;
 
     /// <summary>Test-only: while positive, the next aside-name removals fail with ERROR_ACCESS_DENIED without being attempted.</summary>
     [ThreadStatic]

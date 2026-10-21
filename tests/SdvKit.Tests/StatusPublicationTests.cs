@@ -3,6 +3,7 @@ using SdvKit.GameSide;
 
 namespace SdvKit.Tests;
 
+[Collection("WindowsStatusFile")]
 public sealed class StatusPublicationTests
 {
     [Theory]
@@ -145,11 +146,19 @@ public sealed class StatusPublicationTests
             Assert.Single(warnings);
             Assert.Empty(errors);
 
+            // The ordinary publication re-armed the report, so a new failed removal logs again.
+            WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
+            WindowsStatusFile.SimulatedAsideDeleteFailures = 1;
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 6, false, false), errors.Add, null, warnings.Add));
+            Assert.Equal(2, warnings.Count);
+            Assert.True(publication.TryWrite("active", () => writer.Write("active", 7, false, false), errors.Add, null, warnings.Add));
+            Assert.Equal(2, warnings.Count);
+
             // A later successful fallback replaces the leftover.
             WindowsStatusFile.SimulatedHeldDestinationDenials = 1;
             Assert.True(publication.TryWrite("active", () => writer.Write("active", 5, false, false), errors.Add, null, warnings.Add));
             Assert.False(File.Exists(aside));
-            Assert.Single(warnings);
+            Assert.Equal(2, warnings.Count);
         }
         finally
         {
