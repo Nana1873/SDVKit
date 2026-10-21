@@ -209,7 +209,7 @@ The coordinates are an example; inspect the current viewport before you choose t
 
 **Network reviews.** Add exactly one `--role host` or `--role farmhand` to each command. Do not infer one role's state from the other. Use distinct screenshot labels.
 
-**Progression.** For one NPC friendship, mail ID and quest ID, use the read-only [progression contract and persistence recipe](progression-authoring.md). It first supports an unbound single-player test-save review. It does not list people, infer past completion or edit state.
+**Progression.** For one NPC friendship, mail ID and quest ID, use the read-only [progression read contract](progression-authoring.md) and its [live test guide](test-a-progression-read.md). It first supports an unbound single-player test-save review. It does not list people, infer past completion or edit state.
 
 Choose the detailed surface for the task:
 

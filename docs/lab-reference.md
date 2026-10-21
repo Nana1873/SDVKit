@@ -180,18 +180,18 @@ This is test setup, not evidence of game behaviour. The command neither saves no
 
 ### NPC placement
 
-`stardew_fixture_npc_place { "name": "Lewis", "x": 65, "y": 16 }` brings a villager to a tile in the main player's current location, usually next to the player, so dialogue and gift tests do not depend on schedules. It requires:
+`stardew_fixture_npc_place { "name": "Lewis", "x": 65, "y": 18 }` brings a villager to a tile in the main player's current location, usually next to the player, so dialogue and gift tests do not depend on schedules. It requires:
 
 - the verified main player or host;
 - no open menu, event, festival or fade;
 - the internal name of a villager that is in the world now and visible (`Game1.getCharacterFromName`, exact and case-sensitive), as listed in `npcs` of [runtime state](runtime-state.md#field-contract);
 - a permanent location (not a mine or volcano level or another temporary location, which can unload with the villager in it);
-- a tile that is not the player's own and where the game can spawn a character (`GameLocation.CanSpawnCharacterHere`).
+- a tile that is not the player's own and where the game can spawn a character (`GameLocation.CanSpawnCharacterHere`). A tile that `stardew_world_area_get` shows empty can still be refused, because the area read has no passability or building-layer data. The refusal is `fixtureActionRejected` with the text "Tile x,y in Farm is not free for a character; nothing moved."; try a neighbouring tile. On the test farm, 65,16 was refused and 65,18 accepted.
 
 It warps the villager with the game's own `Game1.warpCharacter`, stops its current path and square walk, and turns it toward the player. The result reports the location and tile in `navigation`. The villager can move again at any time, for example when its schedule continues, so read `npcs` before you act on it.
 
 ```powershell
-& $sdvkit project review call stardew_fixture_npc_place '{"name":"Lewis","x":65,"y":16}' --allow-fixture-actions
+& $sdvkit project review call stardew_fixture_npc_place '{"name":"Lewis","x":65,"y":18}' --allow-fixture-actions
 ```
 
 To talk, select a tool or an empty slot and use `stardew_world_act` `check` on the villager's tile; the `DialogueBox` in `stardew_menu_get` and the friendship points from `stardew_progression_get` are the proof. To give a gift, select the item first (for example one from `stardew_fixture_item_add`). A `DialogueBox` closes by clicking it, not with Escape; each click finishes the text or turns the page.
